@@ -1,0 +1,11 @@
+tunnel: 911f1d54-b575-4c79-aeec-b62ee5b1050a
+credentials-file: C:\Users\bryan\.cloudflared\911f1d54-b575-4c79-aeec-b62ee5b1050a.json
+
+ingress:
+  - hostname: orbweaver.spruked.com
+    path: /api/*
+    service: http://localhost:16500
+  - hostname: orbweaver.spruked.com
+    path: /*
+    service: http://localhost:16510
+  - service: http_status:404

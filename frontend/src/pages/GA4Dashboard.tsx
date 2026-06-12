@@ -16,7 +16,7 @@ import {
 import { Users, Eye, MousePointer, TrendingUp, Calendar, Globe } from 'lucide-react';
 import { api, GA4FullReport } from '../services/api';
 
-const COLORS = ['#FF6B35', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'];
+const COLORS = ['#18CFE3', '#073B5C', '#0E7490', '#8EEAF3', '#061A33'];
 
 const GA4Dashboard: React.FC = () => {
   const { propertyId } = useParams();
@@ -145,8 +145,8 @@ const GA4Dashboard: React.FC = () => {
                   <YAxis />
                   <Tooltip />
                   <Legend />
-                  <Area type="monotone" dataKey="sessions" stroke="#FF6B35" fill="#FF6B35" fillOpacity={0.1} />
-                  <Area type="monotone" dataKey="users" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.1} />
+                  <Area type="monotone" dataKey="sessions" stroke="#18CFE3" fill="#18CFE3" fillOpacity={0.1} />
+                  <Area type="monotone" dataKey="users" stroke="#073B5C" fill="#073B5C" fillOpacity={0.1} />
                   <Area type="monotone" dataKey="pageviews" stroke="#10B981" fill="#10B981" fillOpacity={0.1} />
                 </AreaChart>
               </ResponsiveContainer>

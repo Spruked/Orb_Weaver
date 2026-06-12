@@ -1,6 +1,22 @@
-const isLocalHost =
-  typeof window !== 'undefined' && ['localhost', '127.0.0.1'].includes(window.location.hostname);
-const API_BASE_URL = process.env.REACT_APP_API_URL || (isLocalHost ? 'http://127.0.0.1:16500' : '');
+function defaultApiBaseUrl() {
+  if (typeof window === 'undefined') return '';
+
+  const { hostname, port, protocol } = window.location;
+  const apiHostname = hostname === '0.0.0.0' ? '127.0.0.1' : hostname;
+  const isLocalOrPrivateHost =
+    port === '16510' ||
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname === '::1' ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+
+  return isLocalOrPrivateHost ? `${protocol}//${apiHostname}:16500` : '';
+}
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || defaultApiBaseUrl();
 const TOKEN_KEY = 'orb_weaver_customer_token';
 
 export const authStore = {
@@ -29,7 +45,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json();
 }
 
-async function download(path: string, filename: string) {
+function filenameFromDisposition(disposition: string | null) {
+  if (!disposition) return '';
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  return match?.[1] || '';
+}
+
+async function fetchBlob(path: string) {
   const token = authStore.getToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -40,11 +62,25 @@ async function download(path: string, filename: string) {
     const body = await response.json().catch(() => null);
     throw new Error(body?.detail || response.statusText);
   }
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
+  return {
+    data: await response.blob(),
+    filename: filenameFromDisposition(response.headers.get('Content-Disposition'))
+  };
+}
+
+async function openBlob(path: string) {
+  const blob = await fetchBlob(path);
+  const url = URL.createObjectURL(blob.data);
+  window.open(url, '_blank', 'noopener,noreferrer');
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+async function downloadAuto(path: string) {
+  const blob = await fetchBlob(path);
+  const url = URL.createObjectURL(blob.data);
   const link = document.createElement('a');
   link.href = url;
-  link.download = filename;
+  link.download = blob.filename || 'download';
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -68,11 +104,30 @@ export interface Project {
 export interface Customer {
   id: string;
   email: string;
+  full_name?: string | null;
   business_name: string;
+  company_name?: string | null;
   contact_name?: string | null;
   phone?: string | null;
+  address_line1?: string | null;
+  address_line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+  business_phone?: string | null;
+  business_address_line1?: string | null;
+  business_address_line2?: string | null;
+  business_city?: string | null;
+  business_state?: string | null;
+  business_postal_code?: string | null;
+  business_country?: string | null;
+  tax_id?: string | null;
+  is_admin?: boolean;
   status: string;
   created_at?: string | null;
+  updated_at?: string | null;
+  last_login_at?: string | null;
 }
 
 export interface AuthResponse {
@@ -80,11 +135,102 @@ export interface AuthResponse {
   customer: Customer;
 }
 
+export interface Product {
+  sku: string;
+  name: string;
+  description: string;
+  unit_amount_cents: number;
+  currency: string;
+}
+
+export interface CartItem {
+  id: string;
+  sku: string;
+  name: string;
+  unit_amount_cents: number;
+  currency: string;
+  quantity: number;
+  line_total_cents: number;
+  metadata?: Record<string, string>;
+}
+
+export interface CartPayload {
+  items: CartItem[];
+  total_amount_cents: number;
+  currency: string;
+}
+
+export interface CheckoutOrder {
+  id: string;
+  provider: string;
+  status: string;
+  amount_cents: number;
+  currency: string;
+  provider_order_id?: string | null;
+  checkout_url?: string | null;
+  line_items: CartItem[];
+  error?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface AdminCustomer extends Customer {
+  project_count: number;
+  cart_item_count: number;
+  checkout_order_count: number;
+  last_checkout_status?: string | null;
+}
+
 export interface CrawlConfig {
   max_pages: number;
   delay: number;
   max_depth: number;
   competitor_domains?: string[];
+  seed_urls?: string[];
+}
+
+export interface PreflightReport {
+  status?: 'not_run' | string;
+  site_url?: string;
+  scan_timestamp?: string;
+  scan_duration?: number;
+  detected?: {
+    existing_chat_widget?: boolean;
+    external_assistant_endpoint?: string | null;
+    cms_framework?: string | null;
+    has_contact_form?: boolean;
+    has_auth_pages?: boolean;
+    has_products?: boolean;
+    has_checkout?: boolean;
+    has_booking?: boolean;
+    has_blog?: boolean;
+    has_pdfs?: boolean;
+    robots_txt?: boolean;
+    robots_disallow_count?: number;
+    sitemap_xml?: boolean;
+    sitemap_url_count?: number;
+    cors_risks?: string[];
+    broken_links?: string[];
+    placeholder_pages?: string[];
+    privacy_page?: boolean;
+    terms_page?: boolean;
+    external_domains?: string[];
+    third_party_scripts?: string[];
+    exclude_recommendations?: string[];
+    custom_behavior_flags?: string[];
+  };
+  recommended_install_mode?: string;
+  required_custom_steps?: string[];
+  warnings?: string[];
+  pages_scanned?: number;
+  confidence?: number;
+  project?: Project;
+  orb_weaver_project?: {
+    project_id?: string;
+    domain?: string;
+    name?: string;
+    output_dir?: string;
+  };
 }
 
 export interface CrawledPage {
@@ -149,6 +295,8 @@ export interface CrawledPage {
 export interface CrawlJob {
   id: string;
   project_id: string;
+  project_name?: string;
+  project_domain?: string;
   status: string;
   config?: CrawlConfig;
   created_at?: string;
@@ -157,7 +305,7 @@ export interface CrawlJob {
   pages_crawled?: number;
   pages_found?: number;
   errors_count?: number;
-  stats?: Record<string, number | boolean>;
+  stats?: Record<string, number | boolean | string | Record<string, number | boolean | string | null>>;
   pages?: CrawledPage[];
   historical?: {
     has_previous: boolean;
@@ -246,6 +394,7 @@ export interface AuditReportPayload {
 export interface AuditReportResponse {
   id: string;
   crawl_job_id: string;
+  project?: Project | null;
   created_at: string;
   report: AuditReportPayload;
 }
@@ -275,9 +424,25 @@ export const api = {
   signup: (payload: {
     email: string;
     password: string;
-    business_name: string;
+    full_name: string;
+    business_name?: string | null;
+    company_name?: string | null;
     contact_name?: string | null;
     phone?: string | null;
+    address_line1: string;
+    address_line2?: string | null;
+    city: string;
+    state: string;
+    postal_code: string;
+    country: string;
+    business_phone?: string | null;
+    business_address_line1?: string | null;
+    business_address_line2?: string | null;
+    business_city?: string | null;
+    business_state?: string | null;
+    business_postal_code?: string | null;
+    business_country?: string | null;
+    tax_id?: string | null;
   }) =>
     request<AuthResponse>('/api/auth/signup', {
       method: 'POST',
@@ -290,6 +455,21 @@ export const api = {
     }),
   me: () => request<Customer>('/api/auth/me'),
   logout: () => request<{ status: string }>('/api/auth/logout', { method: 'POST' }),
+  listProducts: () => request<Product[]>('/api/products'),
+  getCart: () => request<CartPayload>('/api/cart'),
+  upsertCartItem: (payload: { sku: string; quantity: number }) =>
+    request<CartPayload>('/api/cart/items', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  deleteCartItem: (sku: string) => request<CartPayload>(`/api/cart/items/${encodeURIComponent(sku)}`, { method: 'DELETE' }),
+  createCheckout: (provider: 'stripe' | 'paypal') =>
+    request<CheckoutOrder>('/api/cart/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ provider })
+    }),
+  listCheckoutOrders: () => request<CheckoutOrder[]>('/api/checkout/orders'),
+  adminListCustomers: () => request<AdminCustomer[]>('/api/admin/customers'),
   listProjects: () => request<Project[]>('/api/projects'),
   createProject: (project: { name?: string | null; domain: string; ga4_property_id?: string | null }) =>
     request<Project>('/api/projects', {
@@ -312,7 +492,14 @@ export const api = {
     request<{ audit_id: string; status: string; message: string }>(`/api/projects/${projectId}/reaudit`, {
       method: 'POST'
     }),
+  getProjectPreflight: (projectId: string) => request<PreflightReport>(`/api/projects/${projectId}/preflight`),
+  runProjectPreflight: (projectId: string) =>
+    request<PreflightReport>(`/api/projects/${projectId}/preflight`, {
+      method: 'POST',
+      body: JSON.stringify({})
+    }),
   getCrawlJob: (jobId: string) => request<CrawlJob>(`/api/crawl-jobs/${jobId}`),
+  listCrawlJobs: () => request<CrawlJob[]>('/api/crawl-jobs'),
   getCrawlPages: (jobId: string) => request<PagesResponse>(`/api/crawl-jobs/${jobId}/pages?limit=200`),
   runAudit: (jobId: string) =>
     request<{ audit_id: string; status: string; message: string }>(`/api/crawl-jobs/${jobId}/audit`, {
@@ -336,11 +523,21 @@ export const api = {
 export const fileUrls = {
   crawlCsv: (jobId: string) => `${API_BASE_URL}/api/crawl-jobs/${jobId}/export/csv`,
   auditCsv: (auditId: string) => `${API_BASE_URL}/api/audit-reports/${auditId}/export/csv`,
-  auditPdf: (auditId: string) => `${API_BASE_URL}/api/audit-reports/${auditId}/export/pdf`
+  auditPdf: (auditId: string) => `${API_BASE_URL}/api/audit-reports/${auditId}/export/pdf`,
+  reportFile: (projectId: string, filename: string, disposition: 'inline' | 'attachment' = 'inline') =>
+    `${API_BASE_URL}/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=${disposition}`
 };
 
 export const downloads = {
-  crawlCsv: (jobId: string) => download(`/api/crawl-jobs/${jobId}/export/csv`, `crawl_${jobId}.csv`),
-  auditCsv: (auditId: string) => download(`/api/audit-reports/${auditId}/export/csv`, `audit_${auditId}.csv`),
-  auditPdf: (auditId: string) => download(`/api/audit-reports/${auditId}/export/pdf`, `audit_${auditId}.pdf`)
+  crawlCsv: (jobId: string) => downloadAuto(`/api/crawl-jobs/${jobId}/export/csv`),
+  auditCsv: (auditId: string) => downloadAuto(`/api/audit-reports/${auditId}/export/csv`),
+  auditPdf: (auditId: string) => downloadAuto(`/api/audit-reports/${auditId}/export/pdf`),
+  reportFile: (projectId: string, filename: string) =>
+    downloadAuto(`/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=attachment`)
+};
+
+export const openFiles = {
+  auditPdf: (auditId: string) => openBlob(`/api/audit-reports/${auditId}/export/pdf?disposition=inline`),
+  reportFile: (projectId: string, filename: string) =>
+    openBlob(`/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=inline`)
 };

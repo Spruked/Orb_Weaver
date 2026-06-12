@@ -86,19 +86,35 @@ class PageData:
         }
 
 class OrbWeaverCrawler:
-    def __init__(self, max_pages: int = None, delay: float = None, max_depth: int = None):
+    def __init__(self, max_pages: int = None, delay: float = None, max_depth: int = None, progress_callback=None):
         self.max_pages = max_pages or settings.CRAWL_MAX_PAGES
         self.delay = delay or settings.CRAWL_DELAY
         self.max_depth = max_depth or settings.CRAWL_MAX_DEPTH
+        self.progress_callback = progress_callback
+        self.last_progress_emit = 0.0
         self.timeout = aiohttp.ClientTimeout(total=settings.CRAWL_TIMEOUT)
         self.user_agent = settings.CRAWL_USER_AGENT
         self.respect_robots = settings.CRAWL_RESPECT_ROBOTS
 
         self.visited_urls: Set[str] = set()
+        self.discovered_urls: Set[str] = set()
         self.crawled_data: List[PageData] = []
         self.domain: Optional[str] = None
+        self.domain_key: Optional[str] = None
         self.robots_rules: Optional[str] = None
         self.sitemap_urls: Set[str] = set()
+        self.sitemap_indexes: Set[str] = set()
+        self.depth_limit_hits = 0
+        self.max_page_limit_hit = False
+
+    def _emit_progress(self, force: bool = False) -> None:
+        if not self.progress_callback:
+            return
+        now = time.time()
+        if not force and now - self.last_progress_emit < 1:
+            return
+        self.last_progress_emit = now
+        self.progress_callback(self)
 
     def _normalize_url(self, url: str) -> str:
         url, _ = urldefrag(url)
@@ -106,7 +122,50 @@ class OrbWeaverCrawler:
 
     def _is_same_domain(self, url: str) -> bool:
         parsed = urlparse(url)
-        return parsed.netloc == self.domain
+        return self._domain_key(parsed.netloc) == self.domain_key
+
+    def _domain_key(self, netloc: str) -> str:
+        host = netloc.lower().split("@")[-1].split(":")[0]
+        return host[4:] if host.startswith("www.") else host
+
+    async def _collect_sitemap_urls(self, session: aiohttp.ClientSession, sitemap_url: str, remaining_depth: int = 2) -> None:
+        normalized_sitemap = self._normalize_url(sitemap_url)
+        if remaining_depth < 0 or normalized_sitemap in self.sitemap_indexes:
+            return
+
+        self.sitemap_indexes.add(normalized_sitemap)
+        try:
+            async with session.get(sitemap_url, ssl=False) as resp:
+                if resp.status != 200:
+                    return
+                sitemap_content = await resp.text()
+        except Exception:
+            return
+
+        try:
+            root = ET.fromstring(sitemap_content)
+        except ET.ParseError:
+            return
+
+        root_name = root.tag.rsplit("}", 1)[-1].lower()
+        locs = [
+            (node.text or "").strip()
+            for node in root.iter()
+            if node.tag.rsplit("}", 1)[-1].lower() == "loc" and node.text
+        ]
+
+        if root_name == "sitemapindex":
+            for child_sitemap in locs:
+                if child_sitemap and self._is_same_domain(child_sitemap):
+                    await self._collect_sitemap_urls(session, child_sitemap, remaining_depth - 1)
+            return
+
+        for page_url in locs:
+            if page_url and self._is_same_domain(page_url):
+                normalized_page = self._normalize_url(page_url)
+                self.sitemap_urls.add(normalized_page)
+                self.discovered_urls.add(normalized_page)
+        self._emit_progress()
 
     def _extract_links(self, soup: BeautifulSoup, base_url: str) -> Tuple[Set[str], Set[str], List[Dict]]:
         internal = set()
@@ -494,10 +553,17 @@ class OrbWeaverCrawler:
             return None, 0, None, redirects
 
     async def _crawl_page(self, session: aiohttp.ClientSession, url: str, depth: int = 0) -> Optional[PageData]:
-        if depth > self.max_depth or len(self.visited_urls) >= self.max_pages:
+        normalized_url = self._normalize_url(url)
+        self.discovered_urls.add(normalized_url)
+
+        if depth > self.max_depth:
+            self.depth_limit_hits += 1
             return None
 
-        normalized_url = self._normalize_url(url)
+        if len(self.visited_urls) >= self.max_pages:
+            self.max_page_limit_hit = True
+            return None
+
         if normalized_url in self.visited_urls:
             return None
 
@@ -594,17 +660,40 @@ class OrbWeaverCrawler:
         )
 
         self.crawled_data.append(page_data)
+        self._emit_progress()
 
         # Add internal links to queue
         for link in internal_links:
-            if link not in self.visited_urls and len(self.visited_urls) < self.max_pages:
+            normalized_link = self._normalize_url(link)
+            self.discovered_urls.add(normalized_link)
+            if normalized_link not in self.visited_urls and len(self.visited_urls) < self.max_pages:
                 await self._crawl_page(session, link, depth + 1)
+            elif normalized_link not in self.visited_urls and len(self.visited_urls) >= self.max_pages:
+                self.max_page_limit_hit = True
 
         return page_data
 
-    async def crawl(self, start_url: str) -> List[PageData]:
+    def _resolve_seed_urls(self, start_url: str, seed_urls: Optional[List[str]] = None) -> List[str]:
+        resolved = []
+        seen = set()
+        for seed in seed_urls or []:
+            raw_seed = (seed or "").strip()
+            if not raw_seed:
+                continue
+            seed_url = urljoin(start_url.rstrip("/") + "/", raw_seed)
+            normalized = self._normalize_url(seed_url)
+            if normalized in seen or not self._is_same_domain(normalized):
+                continue
+            seen.add(normalized)
+            resolved.append(normalized)
+            self.discovered_urls.add(normalized)
+        return resolved
+
+    async def crawl(self, start_url: str, seed_urls: Optional[List[str]] = None) -> List[PageData]:
         parsed = urlparse(start_url)
         self.domain = parsed.netloc
+        self.domain_key = self._domain_key(parsed.netloc)
+        context_seed_urls = self._resolve_seed_urls(start_url, seed_urls)
 
         # Check for sitemap and robots.txt
         async with aiohttp.ClientSession(
@@ -623,18 +712,23 @@ class OrbWeaverCrawler:
 
             # Check sitemap.xml
             sitemap_url = f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"
-            try:
-                async with session.get(sitemap_url, ssl=False) as resp:
-                    if resp.status == 200:
-                        sitemap_content = await resp.text()
-                        root = ET.fromstring(sitemap_content)
-                        for url in root.findall('.//{http://www.sitemaps.org/schemas/sitemap/0.9}loc'):
-                            self.sitemap_urls.add(url.text)
-            except:
-                pass
+            await self._collect_sitemap_urls(session, sitemap_url)
+            self._emit_progress(force=True)
 
             # Start crawling
             await self._crawl_page(session, start_url)
+            for seed_url in context_seed_urls:
+                if len(self.visited_urls) >= self.max_pages:
+                    self.max_page_limit_hit = True
+                    break
+                await self._crawl_page(session, seed_url, 0)
+            for sitemap_url in sorted(self.sitemap_urls):
+                if len(self.visited_urls) >= self.max_pages:
+                    self.max_page_limit_hit = True
+                    break
+                if sitemap_url and self._is_same_domain(sitemap_url):
+                    await self._crawl_page(session, sitemap_url, 0)
+            self._emit_progress(force=True)
 
         # Post-processing: detect duplicate content
         content_hashes = {}
@@ -653,11 +747,29 @@ class OrbWeaverCrawler:
         return self.crawled_data
 
     def get_crawl_stats(self) -> Dict:
+        discovered_count = len(self.discovered_urls)
+        crawled_count = len(self.crawled_data)
+        visited_count = len(self.visited_urls)
+        skipped_estimate = max(discovered_count - visited_count, 0)
         return {
             'total_pages': len(self.crawled_data),
             'visited_urls': len(self.visited_urls),
+            'discovered_urls': discovered_count,
+            'pages_skipped_estimate': skipped_estimate,
             'sitemap_urls_found': len(self.sitemap_urls),
+            'sitemap_indexes_found': len(self.sitemap_indexes),
             'has_robots_txt': self.robots_rules is not None,
+            'queue_exhausted': not self.max_page_limit_hit and self.depth_limit_hits == 0 and skipped_estimate == 0,
+            'max_page_limit_hit': self.max_page_limit_hit,
+            'depth_limit_hit': self.depth_limit_hits > 0,
+            'depth_limit_hits': self.depth_limit_hits,
+            'max_pages_configured': self.max_pages,
+            'max_depth_configured': self.max_depth,
+            'host_normalization': {
+                'input_host': self.domain,
+                'canonical_host_key': self.domain_key,
+                'www_equivalent': True
+            },
             'avg_load_time': sum(p.load_time_ms for p in self.crawled_data if p.load_time_ms) / len([p for p in self.crawled_data if p.load_time_ms]) if any(p.load_time_ms for p in self.crawled_data) else 0,
             'ssl_pages': sum(1 for p in self.crawled_data if p.ssl_enabled),
             'indexable_pages': sum(1 for p in self.crawled_data if p.is_indexable),

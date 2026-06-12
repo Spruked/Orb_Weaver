@@ -20,6 +20,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "smoke:preflight": "node scripts/preflight-dashboard-smoke.js",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -45,6 +46,7 @@
     "@types/react": "^18.3.30",
     "@types/react-dom": "^18.3.7",
     "autoprefixer": "^10.4.16",
+    "playwright": "^1.60.0",
     "postcss": "^8.4.32"
   }
 }

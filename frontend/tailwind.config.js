@@ -6,14 +6,15 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'brand-orange': '#FF6B35',
-        'brand-dark': '#1a1a2e',
-        'brand-blue': '#16213e',
-        'brand-accent': '#0f3460',
+        'brand-orange': '#18CFE3',
+        'brand-dark': '#061A33',
+        'brand-blue': '#073B5C',
+        'brand-accent': '#0E7490',
         'brand-success': '#10b981',
         'brand-warning': '#f59e0b',
         'brand-danger': '#ef4444',
-        'brand-info': '#3b82f6'
+        'brand-info': '#18CFE3',
+        'brand-ice': '#F2FBFD'
       }
     },
   },

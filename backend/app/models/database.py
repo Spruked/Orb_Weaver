@@ -27,9 +27,26 @@ class Customer(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), nullable=False, unique=True, index=True)
     password_hash = Column(String(255), nullable=False)
+    full_name = Column(String(255), nullable=True)
     business_name = Column(String(255), nullable=False)
+    company_name = Column(String(255), nullable=True)
     contact_name = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
+    address_line1 = Column(String(255), nullable=True)
+    address_line2 = Column(String(255), nullable=True)
+    city = Column(String(120), nullable=True)
+    state = Column(String(120), nullable=True)
+    postal_code = Column(String(50), nullable=True)
+    country = Column(String(120), nullable=True)
+    business_phone = Column(String(50), nullable=True)
+    business_address_line1 = Column(String(255), nullable=True)
+    business_address_line2 = Column(String(255), nullable=True)
+    business_city = Column(String(120), nullable=True)
+    business_state = Column(String(120), nullable=True)
+    business_postal_code = Column(String(50), nullable=True)
+    business_country = Column(String(120), nullable=True)
+    tax_id = Column(String(120), nullable=True)
+    is_admin = Column(Boolean, default=False)
     status = Column(String(50), default="active")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -37,6 +54,8 @@ class Customer(Base):
 
     projects = relationship("Project", back_populates="customer")
     sessions = relationship("CustomerSession", back_populates="customer")
+    cart_items = relationship("CartItem", back_populates="customer")
+    checkout_orders = relationship("CheckoutOrder", back_populates="customer")
 
 class CustomerSession(Base):
     __tablename__ = "customer_sessions"
@@ -49,6 +68,40 @@ class CustomerSession(Base):
     revoked_at = Column(DateTime, nullable=True)
 
     customer = relationship("Customer", back_populates="sessions")
+
+class CartItem(Base):
+    __tablename__ = "cart_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    sku = Column(String(120), nullable=False)
+    name = Column(String(255), nullable=False)
+    unit_amount_cents = Column(Integer, nullable=False)
+    currency = Column(String(10), default="usd")
+    quantity = Column(Integer, default=1)
+    metadata_json = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    customer = relationship("Customer", back_populates="cart_items")
+
+class CheckoutOrder(Base):
+    __tablename__ = "checkout_orders"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    provider = Column(String(50), nullable=False)
+    status = Column(String(50), default="created")
+    amount_cents = Column(Integer, nullable=False)
+    currency = Column(String(10), default="usd")
+    provider_order_id = Column(String(255), nullable=True, index=True)
+    checkout_url = Column(Text, nullable=True)
+    line_items = Column(JSON, default=list)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    customer = relationship("Customer", back_populates="checkout_orders")
 
 class CrawlJob(Base):
     __tablename__ = "crawl_jobs"
@@ -161,6 +214,8 @@ def init_db(engine):
     Base.metadata.create_all(bind=engine)
     _ensure_json_columns(engine)
     _ensure_project_customer_column(engine)
+    _ensure_customer_profile_columns(engine)
+    _ensure_default_admin_customer(engine)
 
 
 def _ensure_json_columns(engine):
@@ -207,3 +262,55 @@ def _ensure_project_customer_column(engine):
 
     with engine.begin() as connection:
         connection.execute(text("ALTER TABLE projects ADD COLUMN customer_id INTEGER"))
+
+
+def _ensure_customer_profile_columns(engine):
+    inspector = inspect(engine)
+    if "customers" not in inspector.get_table_names():
+        return
+
+    existing = {column["name"] for column in inspector.get_columns("customers")}
+    columns = {
+        "full_name": "VARCHAR(255)",
+        "company_name": "VARCHAR(255)",
+        "address_line1": "VARCHAR(255)",
+        "address_line2": "VARCHAR(255)",
+        "city": "VARCHAR(120)",
+        "state": "VARCHAR(120)",
+        "postal_code": "VARCHAR(50)",
+        "country": "VARCHAR(120)",
+        "business_phone": "VARCHAR(50)",
+        "business_address_line1": "VARCHAR(255)",
+        "business_address_line2": "VARCHAR(255)",
+        "business_city": "VARCHAR(120)",
+        "business_state": "VARCHAR(120)",
+        "business_postal_code": "VARCHAR(50)",
+        "business_country": "VARCHAR(120)",
+        "tax_id": "VARCHAR(120)",
+        "is_admin": "BOOLEAN DEFAULT 0",
+    }
+    missing = [(name, type_name) for name, type_name in columns.items() if name not in existing]
+    if not missing:
+        return
+
+    with engine.begin() as connection:
+        for name, type_name in missing:
+            connection.execute(text(f"ALTER TABLE customers ADD COLUMN {name} {type_name}"))
+
+
+def _ensure_default_admin_customer(engine):
+    inspector = inspect(engine)
+    if "customers" not in inspector.get_table_names():
+        return
+
+    existing = {column["name"] for column in inspector.get_columns("customers")}
+    if "is_admin" not in existing:
+        return
+
+    with engine.begin() as connection:
+        admin_count = connection.execute(text("SELECT COUNT(*) FROM customers WHERE is_admin = 1")).scalar() or 0
+        if admin_count:
+            return
+        first_id = connection.execute(text("SELECT id FROM customers ORDER BY id ASC LIMIT 1")).scalar()
+        if first_id:
+            connection.execute(text("UPDATE customers SET is_admin = 1 WHERE id = :id"), {"id": first_id})

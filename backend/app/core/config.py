@@ -9,10 +9,21 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     VERSION: str = "1.0.0"
     ORB_WEAVER_SUBSTRATE_ROOT: str = "R:\\R_Drive_Substrate\\orb_weaver"
+    PUBLIC_BASE_URL: str = "https://orbweaver.spruked.com"
 
     # Database
     DATABASE_URL: str = "sqlite:///./data/orb_weaver.db"
     REDIS_URL: str = "redis://localhost:6379/0"
+
+    # Admin
+    ADMIN_TOKEN: Optional[str] = None
+
+    # Checkout
+    STRIPE_SECRET_KEY: Optional[str] = None
+    STRIPE_API_VERSION: str = "2026-02-25.clover"
+    PAYPAL_CLIENT_ID: Optional[str] = None
+    PAYPAL_CLIENT_SECRET: Optional[str] = None
+    PAYPAL_API_BASE: str = "https://api-m.paypal.com"
 
     # Google Analytics
     GA4_PROPERTY_ID: Optional[str] = None

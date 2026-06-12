@@ -1,9 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { AlertTriangle, AlertCircle, Lightbulb, ChevronDown, ChevronUp, Download, Share2 } from 'lucide-react';
+import { AlertTriangle, AlertCircle, Lightbulb, ChevronDown, ChevronUp, Download, Share2, Activity, Eye } from 'lucide-react';
 import ScoreCircle from '../components/ScoreCircle';
 import IssueCard from '../components/IssueCard';
-import { api, AuditReportResponse, downloads } from '../services/api';
+import { api, AuditReportResponse, downloads, openFiles } from '../services/api';
+
+const AuditProgressPanel: React.FC<{ progress: number }> = ({ progress }) => (
+  <div className="card border-blue-200 bg-blue-50">
+    <div className="flex items-start justify-between gap-4 mb-4">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
+          <Activity className="w-5 h-5 animate-pulse" />
+        </div>
+        <div>
+          <h2 className="font-bold text-gray-900">Audit report compiling</h2>
+          <p className="text-sm text-gray-600">Scoring crawl data and building recommendations</p>
+        </div>
+      </div>
+      <span className="text-2xl font-bold text-blue-700">{progress}%</span>
+    </div>
+    <div className="h-3 bg-white rounded-full overflow-hidden border border-blue-100">
+      <div className="h-full bg-blue-600 progress-slide transition-all duration-700" style={{ width: `${progress}%` }} />
+    </div>
+  </div>
+);
 
 const AuditReport: React.FC = () => {
   const { auditId } = useParams();
@@ -12,6 +32,7 @@ const AuditReport: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [shareStatus, setShareStatus] = useState('');
+  const [progress, setProgress] = useState(8);
 
   useEffect(() => {
     if (!auditId) return;
@@ -19,6 +40,7 @@ const AuditReport: React.FC = () => {
     let stopped = false;
     let attempts = 0;
     let timer: number | undefined;
+    const maxAttempts = 120;
 
     const load = async () => {
       try {
@@ -26,24 +48,33 @@ const AuditReport: React.FC = () => {
         if (!stopped) {
           setAuditData(report);
           setError('');
+          setProgress(100);
+          setIsLoading(false);
         }
       } catch (err) {
         attempts += 1;
-        if (attempts < 8) {
+        if (attempts < maxAttempts) {
+          if (!stopped) {
+            setProgress((current) => Math.min(95, Math.max(current + 1, Math.round(8 + (attempts / maxAttempts) * 87))));
+          }
           timer = window.setTimeout(load, 1500);
           return;
         }
         if (!stopped) setError(err instanceof Error ? err.message : 'Failed to load audit report');
       } finally {
-        if (!stopped && attempts >= 1) setIsLoading(false);
+        if (!stopped && attempts >= maxAttempts) setIsLoading(false);
       }
     };
 
+    const progressTimer = window.setInterval(() => {
+      setProgress((current) => Math.min(95, current + 1));
+    }, 1200);
     load();
 
     return () => {
       stopped = true;
       if (timer) window.clearTimeout(timer);
+      window.clearInterval(progressTimer);
     };
   }, [auditId]);
 
@@ -83,11 +114,13 @@ const AuditReport: React.FC = () => {
     }
   };
 
-  if (isLoading) return <div className="card text-gray-500">Loading audit report...</div>;
+  if (isLoading) return <AuditProgressPanel progress={progress} />;
   if (error) return <div className="card text-red-600">{error}</div>;
   if (!auditData) return <div className="card text-gray-500">Audit report not found.</div>;
 
   const report = auditData.report;
+  const projectName = auditData.project?.name || 'Website audit';
+  const projectDomain = auditData.project?.domain || 'Unknown website';
   const copyShareLink = async () => {
     await navigator.clipboard.writeText(window.location.href);
     setShareStatus('Link copied');
@@ -96,10 +129,12 @@ const AuditReport: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="card border-blue-100 bg-blue-50">
+        <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">SEO Audit Report</h1>
-          <p className="text-gray-500 mt-1">
+            <h1 className="text-2xl font-bold text-gray-900">{projectName}</h1>
+            <p className="text-gray-900 font-semibold mt-1">{projectDomain}</p>
+            <p className="text-sm text-gray-600 mt-1">
             Audit #{auditId} · Generated on {new Date(auditData.created_at).toLocaleDateString()}
           </p>
         </div>
@@ -116,12 +151,20 @@ const AuditReport: React.FC = () => {
             Export CSV
           </button>
           <button
+            onClick={() => openFiles.auditPdf(String(auditId))}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <Eye className="w-4 h-4" />
+            Open PDF
+          </button>
+          <button
             onClick={() => downloads.auditPdf(String(auditId))}
             className="btn-secondary flex items-center gap-2"
           >
             <Download className="w-4 h-4" />
             Export PDF
           </button>
+        </div>
         </div>
       </div>
 

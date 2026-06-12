@@ -83,7 +83,7 @@ const IssueCard: React.FC<IssueCardProps> = ({ issue }) => {
               <div 
                 className={`h-full rounded-full ${
                   issue.impact_score >= 80 ? 'bg-red-500' :
-                  issue.impact_score >= 60 ? 'bg-orange-500' :
+                  issue.impact_score >= 60 ? 'bg-brand-accent' :
                   issue.impact_score >= 40 ? 'bg-yellow-500' :
                   'bg-blue-500'
                 }`}

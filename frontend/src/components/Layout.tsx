@@ -1,15 +1,20 @@
 import React, { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { 
+import {
   LayoutDashboard, 
   Globe, 
   Search, 
   BarChart3, 
   Settings,
   FileText,
-  User
+  User,
+  ShoppingCart,
+  Shield
 } from 'lucide-react';
 import { Customer } from '../services/api';
+
+const bannerLogo = '/orbweaver1600.png';
+const squareLogo = '/orbweaverlogo1024.png';
 
 interface LayoutProps {
   children: ReactNode;
@@ -25,6 +30,8 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
     { path: '/crawl', icon: Search, label: 'Crawl Jobs' },
     { path: '/ga4', icon: BarChart3, label: 'GA4 Analytics' },
     { path: '/reports', icon: FileText, label: 'Reports' },
+    { path: '/cart', icon: ShoppingCart, label: 'Cart' },
+    ...(customer.is_admin ? [{ path: '/admin/customers', icon: Shield, label: 'Admin' }] : []),
     { path: '/account', icon: User, label: 'Account' },
   ];
 
@@ -32,21 +39,21 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
     <div className="min-h-screen bg-gray-50 flex">
       {/* Sidebar */}
       <aside className="w-64 bg-brand-dark text-white fixed h-full shadow-xl">
-        <div className="p-6">
-          <div className="flex items-center gap-3">
+        <div className="px-5 pt-5 pb-3">
+          <div className="flex flex-col gap-3">
             <img
-              src="/logositecrawler1600.png"
-              alt="Orb Impact logo"
-              className="w-10 h-10 rounded-md object-contain bg-white p-1"
+              src={squareLogo}
+              alt="Orb Weaver logo"
+              className="h-32 w-full object-contain"
             />
             <div>
-              <h1 className="text-xl font-bold">Orb Weaver</h1>
-              <p className="text-xs text-gray-400">Website ORB Intelligence Engine</p>
+              <h1 className="text-xl font-bold leading-tight">Orb Weaver</h1>
+              <p className="text-xs text-gray-400 mt-1">Website ORB Intelligence Engine</p>
             </div>
           </div>
         </div>
 
-        <nav className="mt-8 px-4">
+        <nav className="mt-5 px-4">
           {navItems.map((item) => {
             const isActive = location.pathname === item.path || 
                             (item.path !== '/' && location.pathname.startsWith(item.path));
@@ -77,13 +84,13 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
 
       {/* Main Content */}
       <main className="ml-64 flex-1 min-h-screen">
-        <header className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-10">
+        <header className="bg-white border-b border-gray-200 px-8 py-3 sticky top-0 z-10">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold text-gray-800">
               {navItems.find(n => location.pathname === n.path || 
                 (n.path !== '/' && location.pathname.startsWith(n.path)))?.label || 'Dashboard'}
             </h2>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-5">
               <Link to="/account" className="p-2 hover:bg-gray-100 rounded-lg" title="Account">
                 <Settings className="w-5 h-5 text-gray-600" />
               </Link>
@@ -91,13 +98,11 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
                 <p className="text-sm font-semibold text-gray-900">{customer.business_name}</p>
                 <p className="text-xs text-gray-500">{customer.email}</p>
               </div>
-              <div className="w-10 h-10 rounded-full border border-gray-200 bg-white flex items-center justify-center overflow-hidden">
-                <img
-                  src="/logositecrawler1600.png"
-                  alt="Orb Impact"
-                  className="w-8 h-8 object-contain"
-                />
-              </div>
+              <img
+                src={bannerLogo}
+                alt="Orb Weaver"
+                className="hidden h-24 w-72 object-contain sm:block"
+              />
             </div>
           </div>
         </header>

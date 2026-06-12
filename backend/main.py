@@ -1,923 +1,22 @@
+from datetime import datetime, timedelta
+from io import BytesIO, StringIO
+import base64
 import csv
 import hashlib
-import io
+import importlib.util
 import json
 import re
 import secrets
 import sqlite3
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional
-
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-
-from app.analytics.ga4 import GA4Connector
-from app.audit.engine import SEOAuditor
-from app.core.config import settings
-from app.crawler.engine import OrbWeaverCrawler, PageData
-from app.models.database import (
-    AuditReport,
-    CrawlJob,
-    CrawledPage,
-    Customer,
-    CustomerSession,
-    Project,
-    get_engine,
-    get_session_maker,
-    init_db,
-)
-
-BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
-REPORT_COMPILER_DIR = BASE_DIR / "report_compiler"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-REPORT_COMPILER_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def resolve_database_url() -> str:
-    configured = settings.DATABASE_URL.strip()
-    if not configured or configured == "postgresql://user:pass@localhost/orb_weaver":
-        return "sqlite:///./data/orb_weaver.db"
-    return configured
-
-
-def build_engine():
-    database_url = resolve_database_url()
-    if database_url.startswith("sqlite"):
-        return get_engine(database_url, connect_args={"check_same_thread": False})
-    return get_engine(database_url)
-
-
-engine = build_engine()
-SessionLocal = get_session_maker(engine)
-init_db(engine)
-
-app = FastAPI(
-    title=settings.APP_NAME,
-    description="Website ORB intelligence engine with crawling, semantic analysis, and local-first reporting",
-    version=settings.VERSION,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-class ProjectCreate(BaseModel):
-    name: Optional[str] = None
-    domain: str
-    ga4_property_id: Optional[str] = None
-
-
-class CrawlConfig(BaseModel):
-    max_pages: int = Field(default=100, ge=1, le=5000)
-    delay: float = Field(default=1.0, ge=0.1, le=10.0)
-    max_depth: int = Field(default=5, ge=1, le=10)
-    competitor_domains: List[str] = Field(default_factory=list)
-
-
-class GA4Config(BaseModel):
-    property_id: str
-    credentials_path: Optional[str] = None
-    days: int = Field(default=30, ge=1, le=365)
-
-
-class CustomerSignup(BaseModel):
-    email: str
-    password: str = Field(min_length=8)
-    business_name: str
-    contact_name: Optional[str] = None
-    phone: Optional[str] = None
-
-
-class CustomerLogin(BaseModel):
-    email: str
-    password: str
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def _normalize_email(email: str) -> str:
-    return email.strip().lower()
-
-
-def _hash_password(password: str, salt: Optional[str] = None) -> str:
-    password_salt = salt or secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), password_salt.encode("utf-8"), 120000)
-    return f"pbkdf2_sha256${password_salt}${digest.hex()}"
-
-
-def _verify_password(password: str, stored_hash: str) -> bool:
-    try:
-        algorithm, salt, digest = stored_hash.split("$", 2)
-    except ValueError:
-        return False
-    if algorithm != "pbkdf2_sha256":
-        return False
-    return secrets.compare_digest(_hash_password(password, salt), stored_hash)
-
-
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
-def _serialize_customer(customer: Customer) -> Dict:
-    return {
-        "id": str(customer.id),
-        "email": customer.email,
-        "business_name": customer.business_name,
-        "contact_name": customer.contact_name,
-        "phone": customer.phone,
-        "status": customer.status,
-        "created_at": customer.created_at.isoformat() if customer.created_at else None,
-    }
-
-
-def _issue_customer_session(customer: Customer, db: Session) -> Dict:
-    token = secrets.token_urlsafe(32)
-    session = CustomerSession(
-        customer_id=customer.id,
-        token_hash=_hash_token(token),
-        expires_at=datetime.utcnow() + timedelta(days=30),
-    )
-    customer.last_login_at = datetime.utcnow()
-    db.add(session)
-    db.commit()
-    return {"token": token, "customer": _serialize_customer(customer)}
-
-
-def get_current_customer(
-    authorization: Optional[str] = Header(default=None),
-    db: Session = Depends(get_db),
-) -> Customer:
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Login required")
-    token_hash = _hash_token(authorization.split(" ", 1)[1].strip())
-    session = db.query(CustomerSession).filter(CustomerSession.token_hash == token_hash).first()
-    if not session or session.revoked_at:
-        raise HTTPException(status_code=401, detail="Invalid session")
-    if session.expires_at and session.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=401, detail="Session expired")
-    customer = db.get(Customer, session.customer_id)
-    if not customer or customer.status != "active":
-        raise HTTPException(status_code=401, detail="Customer account unavailable")
-    return customer
-
-
-def _owned_project(project_id: str, customer: Customer, db: Session) -> Project:
-    project = db.get(Project, int(project_id))
-    if not project or project.customer_id != customer.id:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return project
-
-
-def _owned_crawl_job(job_id: str, customer: Customer, db: Session) -> CrawlJob:
-    job = db.get(CrawlJob, int(job_id))
-    if not job:
-        raise HTTPException(status_code=404, detail="Crawl job not found")
-    _owned_project(str(job.project_id), customer, db)
-    return job
-
-
-def _owned_audit_report(audit_id: str, customer: Customer, db: Session) -> AuditReport:
-    report = db.get(AuditReport, int(audit_id))
-    if not report:
-        raise HTTPException(status_code=404, detail="Audit report not found")
-    _owned_project(str(report.project_id), customer, db)
-    return report
-
-
-def normalize_domain(domain: str) -> str:
-    return domain.strip().replace("http://", "").replace("https://", "").rstrip("/")
-
-
-def default_project_name(domain: str) -> str:
-    root = normalize_domain(domain)
-    root = re.sub(r"^www\.", "", root)
-    base = root.split("/")[0].split(":")[0]
-    pieces = [p for p in re.split(r"[-_.]", base) if p]
-    if not pieces:
-        return root or "New Client"
-    return " ".join(piece.capitalize() for piece in pieces)
-
-
-def safe_folder_name(name: str) -> str:
-    cleaned = re.sub(r"[^a-zA-Z0-9 _.-]", "", name).strip()
-    cleaned = re.sub(r"\s+", "_", cleaned)
-    return cleaned or "client"
-
-
-def project_report_dir(project: Project) -> Path:
-    folder = REPORT_COMPILER_DIR / f"{project.id}_{safe_folder_name(project.name)}"
-    folder.mkdir(parents=True, exist_ok=True)
-    return folder
-
-
-def write_report_compiler_snapshot(project: Project, payload: Dict, prefix: str) -> None:
-    report_dir = project_report_dir(project)
-    stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-    out = report_dir / f"{prefix}_{stamp}.json"
-    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    latest = report_dir / f"{prefix}_latest.json"
-    latest.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
-def page_to_dict(page: CrawledPage) -> Dict:
-    return {
-        "url": page.url,
-        "title": page.title,
-        "meta_description": page.meta_description,
-        "h1": page.h1,
-        "h2_tags": page.h2_tags or [],
-        "word_count": page.word_count,
-        "status_code": page.status_code,
-        "load_time_ms": page.load_time_ms,
-        "canonical_url": page.canonical_url,
-        "robots_meta": page.robots_meta,
-        "schema_markup": page.schema_markup or [],
-        "internal_links": page.internal_links,
-        "external_links": page.external_links,
-        "images_count": page.images_count,
-        "images_without_alt": page.images_without_alt,
-        "ssl_enabled": page.ssl_enabled,
-        "content_hash": page.content_hash,
-        "is_indexable": page.robots_meta != "noindex",
-        "has_sitemap": page.has_sitemap,
-        "has_robots_txt": page.has_robots_txt,
-        "mobile_viewport": bool(page.mobile_friendly),
-        "duplicate_content_risk": False,
-        "open_graph": {},
-        "twitter_cards": {},
-        "heading_structure": [],
-        "redirect_chain": [],
-    }
-
-
-def crawl_stats_from_pages(pages: List[CrawledPage]) -> Dict:
-    total = len(pages)
-    load_times = [p.load_time_ms for p in pages if p.load_time_ms is not None]
-    return {
-        "total_pages": total,
-        "visited_urls": total,
-        "sitemap_urls_found": 0,
-        "has_robots_txt": any(p.has_robots_txt for p in pages),
-        "has_sitemap": any(p.has_sitemap for p in pages),
-        "avg_load_time": (sum(load_times) / len(load_times)) if load_times else 0,
-        "ssl_pages": sum(1 for p in pages if p.ssl_enabled),
-        "indexable_pages": sum(1 for p in pages if p.robots_meta != "noindex"),
-        "duplicate_content_pages": 0,
-        "total_images": sum(p.images_count or 0 for p in pages),
-        "images_missing_alt": sum(p.images_without_alt or 0 for p in pages),
-        "total_internal_links": sum(p.internal_links or 0 for p in pages),
-        "total_external_links": sum(p.external_links or 0 for p in pages),
-    }
-
-
-def crawl_job_to_dict(job: CrawlJob, pages: Optional[List[CrawledPage]] = None) -> Dict:
-    page_rows = pages if pages is not None else list(job.pages)
-    stats = crawl_stats_from_pages(page_rows)
-    payload = {
-        "id": str(job.id),
-        "project_id": str(job.project_id),
-        "status": job.status,
-        "config": job.config or {},
-        "created_at": job.start_time.isoformat() if job.start_time else None,
-        "start_time": job.start_time.isoformat() if job.start_time else None,
-        "end_time": job.end_time.isoformat() if job.end_time else None,
-        "pages_crawled": job.pages_crawled,
-        "pages_found": job.pages_found,
-        "errors_count": job.errors_count,
-        "stats": stats,
-    }
-    error_message = (job.config or {}).get("error")
-    if error_message:
-        payload["error"] = error_message
-    return payload
-
-
-def project_to_dict(project: Project, db: Session) -> Dict:
-    latest_crawl = (
-        db.query(CrawlJob)
-        .filter(CrawlJob.project_id == project.id)
-        .order_by(CrawlJob.id.desc())
-        .first()
-    )
-    latest_audit = (
-        db.query(AuditReport)
-        .filter(AuditReport.project_id == project.id)
-        .order_by(AuditReport.id.desc())
-        .first()
-    )
-    return {
-        "id": str(project.id),
-        "name": project.name,
-        "domain": project.domain,
-        "ga4_property_id": project.ga4_property_id,
-        "created_at": project.created_at.isoformat() if project.created_at else None,
-        "latest_crawl_id": str(latest_crawl.id) if latest_crawl else None,
-        "latest_crawl_status": latest_crawl.status if latest_crawl else "never_crawled",
-        "latest_audit_id": str(latest_audit.id) if latest_audit else None,
-        "folder_title": project.name,
-    }
-
-
-async def run_crawl_job(crawl_job_id: int, config: Dict):
-    db = SessionLocal()
-    try:
-        crawl_job = db.get(CrawlJob, crawl_job_id)
-        if not crawl_job:
-            return
-        project = db.get(Project, crawl_job.project_id)
-        if not project:
-            crawl_job.status = "failed"
-            crawl_job.config = {**(crawl_job.config or {}), "error": "Project not found"}
-            db.commit()
-            return
-
-        crawl_job.status = "running"
-        crawl_job.start_time = datetime.utcnow()
-        db.commit()
-
-        crawler = OrbWeaverCrawler(
-            max_pages=config.get("max_pages", 100),
-            delay=config.get("delay", 1.0),
-            max_depth=config.get("max_depth", 5),
-        )
-
-        start_url = f"https://{project.domain}" if not project.domain.startswith("http") else project.domain
-        pages = await crawler.crawl(start_url)
-        stats = crawler.get_crawl_stats()
-
-        db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl_job.id).delete()
-        for page in pages:
-            db.add(
-                CrawledPage(
-                    crawl_job_id=crawl_job.id,
-                    url=page.url,
-                    title=page.title,
-                    meta_description=page.meta_description,
-                    h1=page.h1,
-                    h2_tags=page.h2_tags,
-                    word_count=page.word_count,
-                    status_code=page.status_code,
-                    load_time_ms=page.load_time_ms,
-                    canonical_url=page.canonical_url,
-                    robots_meta=page.robots_meta,
-                    schema_markup=page.schema_markup,
-                    internal_links=page.internal_links,
-                    external_links=page.external_links,
-                    images_count=page.images_count,
-                    images_without_alt=page.images_without_alt,
-                    has_sitemap=page.has_sitemap,
-                    has_robots_txt=page.has_robots_txt,
-                    mobile_friendly=page.mobile_viewport,
-                    ssl_enabled=page.ssl_enabled,
-                    content_hash=page.content_hash,
-                )
-            )
-
-        crawl_job.status = "completed"
-        crawl_job.end_time = datetime.utcnow()
-        crawl_job.pages_crawled = len(pages)
-        crawl_job.pages_found = int(stats.get("visited_urls", len(pages)))
-        crawl_job.errors_count = 0
-        crawl_job.config = {**(crawl_job.config or {}), "stats": stats}
-        db.commit()
-
-        write_report_compiler_snapshot(
-            project,
-            {
-                "project_id": project.id,
-                "crawl_job_id": crawl_job.id,
-                "created_at": datetime.utcnow().isoformat(),
-                "stats": stats,
-                "pages": [p.to_dict() for p in pages],
-            },
-            "crawl_report",
-        )
-    except Exception as exc:
-        crawl_job = db.get(CrawlJob, crawl_job_id)
-        if crawl_job:
-            crawl_job.status = "failed"
-            crawl_job.end_time = datetime.utcnow()
-            crawl_job.config = {**(crawl_job.config or {}), "error": str(exc)}
-            db.commit()
-    finally:
-        db.close()
-
-
-async def run_audit_job(audit_id: int, crawl_job_id: int):
-    db = SessionLocal()
-    try:
-        crawl_job = db.get(CrawlJob, crawl_job_id)
-        audit = db.get(AuditReport, audit_id)
-        if not crawl_job or not audit or crawl_job.status != "completed":
-            return
-
-        page_rows = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl_job.id).all()
-        pages = [PageData(**page_to_dict(page)) for page in page_rows]
-        stats = crawl_stats_from_pages(page_rows)
-
-        auditor = SEOAuditor()
-        report = auditor.audit(pages, stats)
-
-        audit.report_data = report
-        audit.overall_score = report["scores"].get("overall")
-        audit.seo_score = report["scores"].get("seo")
-        audit.performance_score = report["scores"].get("performance")
-        audit.accessibility_score = report["scores"].get("accessibility")
-        audit.content_score = report["scores"].get("content")
-        audit.technical_score = report["scores"].get("technical")
-        audit.issues_found = report["summary"].get("critical_count", 0)
-        audit.warnings_found = report["summary"].get("warning_count", 0)
-        audit.opportunities_found = report["summary"].get("opportunity_count", 0)
-        db.commit()
-
-        project = db.get(Project, crawl_job.project_id)
-        if project:
-            write_report_compiler_snapshot(
-                project,
-                {
-                    "project_id": project.id,
-                    "crawl_job_id": crawl_job.id,
-                    "audit_id": audit.id,
-                    "created_at": datetime.utcnow().isoformat(),
-                    "report": report,
-                },
-                "compiled_report",
-            )
-    finally:
-        db.close()
-
-
-@app.get("/")
-async def root():
-    return {
-        "name": settings.APP_NAME,
-        "version": settings.VERSION,
-        "status": "operational",
-    }
-
-
-@app.post("/api/projects")
-async def create_project(project: ProjectCreate, db: Session = Depends(get_db)):
-    domain = normalize_domain(project.domain)
-    name = (project.name or "").strip() or default_project_name(domain)
-
-    existing = db.query(Project).filter(Project.domain == domain).first()
-    if existing:
-        existing.name = name
-        existing.ga4_property_id = project.ga4_property_id
-        db.commit()
-        db.refresh(existing)
-        return project_to_dict(existing, db)
-
-    row = Project(name=name, domain=domain, ga4_property_id=project.ga4_property_id)
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    project_report_dir(row)
-    return project_to_dict(row, db)
-
-
-@app.get("/api/projects")
-async def list_projects(db: Session = Depends(get_db)):
-    rows = db.query(Project).order_by(Project.id.asc()).all()
-    return [project_to_dict(row, db) for row in rows]
-
-
-@app.get("/api/projects/{project_id}")
-async def get_project(project_id: int, db: Session = Depends(get_db)):
-    row = db.get(Project, project_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return project_to_dict(row, db)
-
-
-@app.delete("/api/projects/{project_id}")
-async def delete_project(project_id: int, db: Session = Depends(get_db)):
-    row = db.get(Project, project_id)
-    if not row:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    crawl_ids = [job.id for job in db.query(CrawlJob).filter(CrawlJob.project_id == project_id).all()]
-    if crawl_ids:
-        db.query(CrawledPage).filter(CrawledPage.crawl_job_id.in_(crawl_ids)).delete(synchronize_session=False)
-        db.query(CrawlJob).filter(CrawlJob.id.in_(crawl_ids)).delete(synchronize_session=False)
-    db.query(AuditReport).filter(AuditReport.project_id == project_id).delete(synchronize_session=False)
-    db.delete(row)
-    db.commit()
-    return {"status": "deleted", "project_id": str(project_id)}
-
-
-@app.post("/api/projects/{project_id}/crawl")
-async def start_crawl(
-    project_id: int,
-    config: CrawlConfig,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-):
-    project = db.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    job = CrawlJob(
-        project_id=project_id,
-        status="pending",
-        config=config.model_dump(),
-        start_time=datetime.utcnow(),
-    )
-    db.add(job)
-    db.commit()
-    db.refresh(job)
-
-    background_tasks.add_task(run_crawl_job, job.id, config.model_dump())
-    return crawl_job_to_dict(job, [])
-
-
-@app.get("/api/crawl-jobs/{job_id}")
-async def get_crawl_job(job_id: int, db: Session = Depends(get_db)):
-    job = db.get(CrawlJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Crawl job not found")
-    pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == job.id).all()
-    return crawl_job_to_dict(job, pages)
-
-
-@app.get("/api/crawl-jobs/{job_id}/pages")
-async def get_crawl_pages(
-    job_id: int,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=500),
-    db: Session = Depends(get_db),
-):
-    job = db.get(CrawlJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Crawl job not found")
-
-    query = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == job_id)
-    total = query.count()
-    pages = query.offset(skip).limit(limit).all()
-    return {"total": total, "pages": [page_to_dict(page) for page in pages]}
-
-
-@app.get("/api/crawl-jobs/{job_id}/export/csv")
-async def export_crawl_csv(job_id: int, db: Session = Depends(get_db)):
-    rows = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == job_id).all()
-    if not rows:
-        raise HTTPException(status_code=404, detail="No crawled pages found")
-
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow([
-        "url",
-        "title",
-        "status_code",
-        "load_time_ms",
-        "word_count",
-        "internal_links",
-        "external_links",
-        "images_count",
-        "images_without_alt",
-        "ssl_enabled",
-        "schema_count",
-        "schema_errors",
-        "semantic_depth",
-        "internal_link_edges",
-        "orb_semantic_score",
-        "entity_count",
-        "mobile_ux_score",
-        "template_signature",
-        "crawl_depth",
-    ])
-    for page in rows:
-        writer.writerow([
-            page.url,
-            page.title or "",
-            page.status_code or "",
-            page.load_time_ms or "",
-            page.word_count or 0,
-            page.internal_links or 0,
-            page.external_links or 0,
-            page.images_count or 0,
-            page.images_without_alt or 0,
-            page.ssl_enabled,
-            len(page.schema_markup or []),
-            (page.schema_analysis or {}).get("invalid_count", 0),
-            (page.semantic_analysis or {}).get("semantic_depth", ""),
-            len(page.internal_link_targets or []),
-            (page.semantic_analysis or {}).get("orb_semantic_score", {}).get("overall", ""),
-            len((page.entity_analysis or {}).get("named_entities", [])),
-            (page.mobile_ux_analysis or {}).get("score", ""),
-            page.template_signature or "",
-            page.crawl_depth or 0,
-        ])
-
-    return Response(
-        content=output.getvalue(),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=crawl_job_{job_id}.csv"},
-    )
-
-
-@app.post("/api/crawl-jobs/{job_id}/audit")
-async def run_audit(job_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    job = db.get(CrawlJob, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Crawl job not found")
-
-    audit = AuditReport(project_id=job.project_id, crawl_job_id=job.id, report_data={})
-    db.add(audit)
-    db.commit()
-    db.refresh(audit)
-
-    background_tasks.add_task(run_audit_job, audit.id, job.id)
-    return {"audit_id": str(audit.id), "status": "started", "message": "Audit is running in background"}
-
-
-@app.get("/api/audit-reports/{audit_id}")
-async def get_audit_report(audit_id: int, db: Session = Depends(get_db)):
-    report = db.get(AuditReport, audit_id)
-    if not report:
-        raise HTTPException(status_code=404, detail="Audit report not found")
-    if not report.report_data:
-        raise HTTPException(status_code=404, detail="Audit report not ready")
-
-    return {
-        "id": str(report.id),
-        "crawl_job_id": str(report.crawl_job_id),
-        "created_at": report.created_at.isoformat() if report.created_at else datetime.utcnow().isoformat(),
-        "report": report.report_data,
-    }
-
-
-@app.get("/api/audit-reports/{audit_id}/export/csv")
-async def export_audit_csv(audit_id: int, db: Session = Depends(get_db)):
-    report = db.get(AuditReport, audit_id)
-    if not report or not report.report_data:
-        raise HTTPException(status_code=404, detail="Audit report not found")
-
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["severity", "category", "title", "description", "impact_score", "recommendation"])
-    for bucket in ("critical", "warnings", "opportunities"):
-        for issue in report.report_data.get("issues", {}).get(bucket, []):
-            writer.writerow([
-                issue.get("severity", ""),
-                issue.get("category", ""),
-                issue.get("title", ""),
-                issue.get("description", ""),
-                issue.get("impact_score", ""),
-                issue.get("recommendation", ""),
-            ])
-
-    return Response(
-        content=output.getvalue(),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=audit_report_{audit_id}.csv"},
-    )
-
-
-@app.get("/api/audit-reports/{audit_id}/export/pdf")
-async def export_audit_pdf(audit_id: int, db: Session = Depends(get_db)):
-    report = db.get(AuditReport, audit_id)
-    if not report or not report.report_data:
-        raise HTTPException(status_code=404, detail="Audit report not found")
-
-    try:
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"PDF export dependency missing: {exc}")
-
-    buffer = io.BytesIO()
-    pdf = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-
-    y = height - 50
-    pdf.setFont("Helvetica-Bold", 16)
-    pdf.drawString(40, y, f"SEO Audit Report #{audit_id}")
-    y -= 30
-
-    scores = report.report_data.get("scores", {})
-    pdf.setFont("Helvetica", 11)
-    pdf.drawString(40, y, f"Overall Score: {scores.get('overall', '-')}")
-    y -= 20
-
-    summary = report.report_data.get("summary", {})
-    pdf.drawString(40, y, f"Critical: {summary.get('critical_count', 0)}")
-    y -= 16
-    pdf.drawString(40, y, f"Warnings: {summary.get('warning_count', 0)}")
-    y -= 16
-    pdf.drawString(40, y, f"Opportunities: {summary.get('opportunity_count', 0)}")
-    y -= 26
-
-    pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(40, y, "Top Issues")
-    y -= 20
-
-    pdf.setFont("Helvetica", 10)
-    for issue in report.report_data.get("top_issues", [])[:10]:
-        title = (issue.get("title") or "")[:90]
-        recommendation = (issue.get("recommendation") or "")[:95]
-        pdf.drawString(44, y, f"- {title}")
-        y -= 14
-        pdf.drawString(52, y, f"Fix: {recommendation}")
-        y -= 18
-        if y < 60:
-            pdf.showPage()
-            y = height - 50
-            pdf.setFont("Helvetica", 10)
-
-    pdf.save()
-    buffer.seek(0)
-
-    return StreamingResponse(
-        buffer,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=audit_report_{audit_id}.pdf"},
-    )
-
-
-@app.get("/api/projects/{project_id}/report-compiler")
-async def get_report_compiler(project_id: int, db: Session = Depends(get_db)):
-    project = db.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    latest_crawl = (
-        db.query(CrawlJob)
-        .filter(CrawlJob.project_id == project_id, CrawlJob.status == "completed")
-        .order_by(CrawlJob.id.desc())
-        .first()
-    )
-    latest_audit = (
-        db.query(AuditReport)
-        .filter(AuditReport.project_id == project_id)
-        .order_by(AuditReport.id.desc())
-        .first()
-    )
-    directory = project_report_dir(project)
-
-    return {
-        "project": project_to_dict(project, db),
-        "latest_crawl": crawl_job_to_dict(latest_crawl, list(latest_crawl.pages)) if latest_crawl else None,
-        "latest_audit": {
-            "id": str(latest_audit.id),
-            "report": latest_audit.report_data,
-            "created_at": latest_audit.created_at.isoformat() if latest_audit.created_at else None,
-        }
-        if latest_audit and latest_audit.report_data
-        else None,
-        "files": [f.name for f in sorted(directory.glob("*.json"), reverse=True)],
-    }
-
-
-@app.post("/api/projects/{project_id}/recrawl")
-async def recrawl_project(project_id: int, config: CrawlConfig, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    return await start_crawl(project_id, config, background_tasks, db)
-
-
-@app.post("/api/projects/{project_id}/reaudit")
-async def reaudit_project(project_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    latest_crawl = (
-        db.query(CrawlJob)
-        .filter(CrawlJob.project_id == project_id, CrawlJob.status == "completed")
-        .order_by(CrawlJob.id.desc())
-        .first()
-    )
-    if not latest_crawl:
-        raise HTTPException(status_code=400, detail="No completed crawl found for this project")
-    return await run_audit(latest_crawl.id, background_tasks, db)
-
-
-@app.get("/api/combined/{project_id}/dashboard")
-async def get_combined_dashboard(project_id: int, db: Session = Depends(get_db)):
-    project = db.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    latest_crawl = (
-        db.query(CrawlJob)
-        .filter(CrawlJob.project_id == project_id, CrawlJob.status == "completed")
-        .order_by(CrawlJob.id.desc())
-        .first()
-    )
-    latest_audit = (
-        db.query(AuditReport)
-        .filter(AuditReport.project_id == project_id)
-        .order_by(AuditReport.id.desc())
-        .first()
-    )
-
-    pages = list(latest_crawl.pages) if latest_crawl else []
-    crawl_summary = crawl_stats_from_pages(pages) if latest_crawl else None
-
-    ga4_data = None
-    if project.ga4_property_id:
-        try:
-            connector = GA4Connector(property_id=project.ga4_property_id)
-            ga4_data = connector.get_full_report(days=30)
-        except Exception:
-            ga4_data = None
-
-    return {
-        "project": project_to_dict(project, db),
-        "crawl_summary": crawl_summary,
-        "audit_scores": latest_audit.report_data.get("scores") if latest_audit and latest_audit.report_data else None,
-        "audit_issues": latest_audit.report_data.get("summary") if latest_audit and latest_audit.report_data else None,
-        "ga4_data": ga4_data,
-        "top_issues": latest_audit.report_data.get("top_issues") if latest_audit and latest_audit.report_data else None,
-    }
-
-
-@app.post("/api/ga4/connect")
-async def connect_ga4(config: GA4Config):
-    try:
-        connector = GA4Connector(property_id=config.property_id, credentials_path=config.credentials_path)
-        overview = connector.get_traffic_overview(daysAgo="7daysAgo", end_date="today")
-        return {"status": "connected", "property_id": config.property_id, "test_data": overview["totals"]}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"GA4 connection failed: {str(e)}")
-
-
-@app.get("/api/ga4/{property_id}/overview")
-async def get_ga4_overview(property_id: str, days: int = Query(30, ge=1, le=365)):
-    try:
-        connector = GA4Connector(property_id=property_id)
-        return connector.get_full_report(days=days)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/ga4/{property_id}/top-pages")
-async def get_ga4_top_pages(property_id: str, days: int = Query(30, ge=1, le=365), limit: int = Query(50, ge=1, le=100)):
-    try:
-        connector = GA4Connector(property_id=property_id)
-        start_date = (datetime.now() - __import__("datetime").timedelta(days=days)).strftime("%Y-%m-%d")
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        pages = connector.get_top_pages(start_date, end_date, limit)
-        return {"pages": pages}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/ga4/{property_id}/search-queries")
-async def get_ga4_search_queries(property_id: str, days: int = Query(30, ge=1, le=365), limit: int = Query(100, ge=1, le=500)):
-    try:
-        connector = GA4Connector(property_id=property_id)
-        start_date = (datetime.now() - __import__("datetime").timedelta(days=days)).strftime("%Y-%m-%d")
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        queries = connector.get_search_queries(start_date, end_date, limit)
-        return {"queries": queries}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/api/ga4/{property_id}/devices")
-async def get_ga4_devices(property_id: str, days: int = Query(30, ge=1, le=365)):
-    try:
-        connector = GA4Connector(property_id=property_id)
-        start_date = (datetime.now() - __import__("datetime").timedelta(days=days)).strftime("%Y-%m-%d")
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        devices = connector.get_device_breakdown(start_date, end_date)
-        return {"devices": devices}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-from datetime import datetime, timedelta
-from io import BytesIO, StringIO
-import csv
-import hashlib
-import re
-import secrets
-import sqlite3
+import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 from collections import Counter
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
+import httpx
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -927,6 +26,8 @@ from app.core.config import settings
 from app.crawler.engine import OrbWeaverCrawler, PageData
 from app.models.database import (
     AuditReport,
+    CartItem,
+    CheckoutOrder,
     CrawlJob,
     CrawledPage,
     Customer,
@@ -977,6 +78,8 @@ REPORT_COMPILER_ROOT = Path("report_compiler")
 REPORT_COMPILER_ROOT.mkdir(parents=True, exist_ok=True)
 
 SUBSTRATE_ROOT = Path(settings.ORB_WEAVER_SUBSTRATE_ROOT)
+PREFLIGHT_SCANNER_ROOT = Path(__file__).resolve().parent.parent / "Preflight Scanner"
+PREFLIGHT_SCANNER_MODULE = PREFLIGHT_SCANNER_ROOT / "preflight_site_scan.py"
 
 
 def get_db():
@@ -998,6 +101,7 @@ class CrawlConfig(BaseModel):
     delay: float = Field(default=1.0, ge=0.1, le=10.0)
     max_depth: int = Field(default=5, ge=1, le=10)
     competitor_domains: List[str] = Field(default_factory=list)
+    seed_urls: List[str] = Field(default_factory=list)
 
 
 class GA4Config(BaseModel):
@@ -1009,14 +113,68 @@ class GA4Config(BaseModel):
 class CustomerSignup(BaseModel):
     email: str
     password: str = Field(min_length=8)
-    business_name: str
+    full_name: str
+    business_name: Optional[str] = None
+    company_name: Optional[str] = None
     contact_name: Optional[str] = None
     phone: Optional[str] = None
+    address_line1: str
+    address_line2: Optional[str] = None
+    city: str
+    state: str
+    postal_code: str
+    country: str = "US"
+    business_phone: Optional[str] = None
+    business_address_line1: Optional[str] = None
+    business_address_line2: Optional[str] = None
+    business_city: Optional[str] = None
+    business_state: Optional[str] = None
+    business_postal_code: Optional[str] = None
+    business_country: Optional[str] = None
+    tax_id: Optional[str] = None
 
 
 class CustomerLogin(BaseModel):
     email: str
     password: str
+
+
+class CartItemUpsert(BaseModel):
+    sku: str
+    quantity: int = Field(default=1, ge=1, le=99)
+
+
+class CheckoutCreate(BaseModel):
+    provider: str = Field(pattern="^(stripe|paypal)$")
+
+
+class PreflightRunConfig(BaseModel):
+    output_dir: Optional[str] = None
+
+
+SERVICE_CATALOG = {
+    "orb-weaver-starter-audit": {
+        "sku": "orb-weaver-starter-audit",
+        "name": "Starter Website Audit",
+        "description": "One website crawl with technical SEO and ORB-readable report output.",
+        "unit_amount_cents": 9900,
+        "currency": "usd",
+    },
+    "orb-weaver-growth-audit": {
+        "sku": "orb-weaver-growth-audit",
+        "name": "Growth Website Audit",
+        "description": "Deeper crawl, report compiler output, and prioritized recommendations.",
+        "unit_amount_cents": 24900,
+        "currency": "usd",
+    },
+    "orb-weaver-premium-pack": {
+        "sku": "orb-weaver-premium-pack",
+        "name": "Premium Intelligence Pack",
+        "description": "Client pack setup, crawl history, audit exports, and website ORB context.",
+        "unit_amount_cents": 49900,
+        "currency": "usd",
+    },
+}
 
 
 def _normalize_email(email: str) -> str:
@@ -1047,12 +205,179 @@ def _serialize_customer(customer: Customer) -> Dict:
     return {
         "id": str(customer.id),
         "email": customer.email,
+        "full_name": customer.full_name,
         "business_name": customer.business_name,
+        "company_name": customer.company_name,
         "contact_name": customer.contact_name,
         "phone": customer.phone,
+        "address_line1": customer.address_line1,
+        "address_line2": customer.address_line2,
+        "city": customer.city,
+        "state": customer.state,
+        "postal_code": customer.postal_code,
+        "country": customer.country,
+        "business_phone": customer.business_phone,
+        "business_address_line1": customer.business_address_line1,
+        "business_address_line2": customer.business_address_line2,
+        "business_city": customer.business_city,
+        "business_state": customer.business_state,
+        "business_postal_code": customer.business_postal_code,
+        "business_country": customer.business_country,
+        "tax_id": customer.tax_id,
+        "is_admin": bool(customer.is_admin),
         "status": customer.status,
         "created_at": customer.created_at.isoformat() if customer.created_at else None,
+        "updated_at": customer.updated_at.isoformat() if customer.updated_at else None,
+        "last_login_at": customer.last_login_at.isoformat() if customer.last_login_at else None,
     }
+
+
+def _serialize_admin_customer(customer: Customer, db: Session) -> Dict:
+    payload = _serialize_customer(customer)
+    payload.update(
+        {
+            "project_count": db.query(Project).filter(Project.customer_id == customer.id).count(),
+            "cart_item_count": db.query(CartItem).filter(CartItem.customer_id == customer.id).count(),
+            "checkout_order_count": db.query(CheckoutOrder).filter(CheckoutOrder.customer_id == customer.id).count(),
+            "last_checkout_status": (
+                db.query(CheckoutOrder)
+                .filter(CheckoutOrder.customer_id == customer.id)
+                .order_by(CheckoutOrder.id.desc())
+                .first()
+            ).status
+            if db.query(CheckoutOrder).filter(CheckoutOrder.customer_id == customer.id).count()
+            else None,
+        }
+    )
+    return payload
+
+
+def require_admin(
+    x_admin_token: Optional[str] = Header(default=None),
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+) -> Optional[Customer]:
+    if settings.ADMIN_TOKEN and x_admin_token and secrets.compare_digest(x_admin_token, settings.ADMIN_TOKEN):
+        return db.query(Customer).filter(Customer.is_admin == True).first()  # noqa: E712
+
+    customer = get_current_customer(authorization=authorization, db=db)
+    if not customer.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return customer
+
+
+def _serialize_cart_item(item: CartItem) -> Dict:
+    return {
+        "id": str(item.id),
+        "sku": item.sku,
+        "name": item.name,
+        "unit_amount_cents": item.unit_amount_cents,
+        "currency": item.currency,
+        "quantity": item.quantity,
+        "line_total_cents": item.unit_amount_cents * item.quantity,
+        "metadata": item.metadata_json or {},
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+    }
+
+
+def _cart_payload(customer: Customer, db: Session) -> Dict:
+    items = db.query(CartItem).filter(CartItem.customer_id == customer.id).order_by(CartItem.id.asc()).all()
+    total = sum(item.unit_amount_cents * item.quantity for item in items)
+    return {
+        "items": [_serialize_cart_item(item) for item in items],
+        "total_amount_cents": total,
+        "currency": "usd",
+    }
+
+
+def _serialize_checkout_order(order: CheckoutOrder) -> Dict:
+    return {
+        "id": str(order.id),
+        "provider": order.provider,
+        "status": order.status,
+        "amount_cents": order.amount_cents,
+        "currency": order.currency,
+        "provider_order_id": order.provider_order_id,
+        "checkout_url": order.checkout_url,
+        "line_items": order.line_items or [],
+        "error": order.error,
+        "created_at": order.created_at.isoformat() if order.created_at else None,
+        "updated_at": order.updated_at.isoformat() if order.updated_at else None,
+    }
+
+
+async def _create_stripe_checkout(order: CheckoutOrder, customer: Customer) -> Dict:
+    if not settings.STRIPE_SECRET_KEY:
+        return {"status": "provider_not_configured", "error": "STRIPE_SECRET_KEY is not configured"}
+
+    data = {
+        "mode": "payment",
+        "success_url": f"{settings.PUBLIC_BASE_URL}/checkout/success?order_id={order.id}",
+        "cancel_url": f"{settings.PUBLIC_BASE_URL}/cart?order_id={order.id}",
+        "customer_email": customer.email,
+        "metadata[orb_weaver_order_id]": str(order.id),
+    }
+    for index, item in enumerate(order.line_items or []):
+        data[f"line_items[{index}][price_data][currency]"] = order.currency
+        data[f"line_items[{index}][price_data][product_data][name]"] = item["name"]
+        data[f"line_items[{index}][price_data][unit_amount]"] = str(item["unit_amount_cents"])
+        data[f"line_items[{index}][quantity]"] = str(item["quantity"])
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.post(
+            "https://api.stripe.com/v1/checkout/sessions",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {settings.STRIPE_SECRET_KEY}",
+                "Stripe-Version": settings.STRIPE_API_VERSION,
+            },
+        )
+    if response.status_code >= 400:
+        return {"status": "provider_error", "error": response.text}
+    payload = response.json()
+    return {"status": "checkout_created", "provider_order_id": payload.get("id"), "checkout_url": payload.get("url")}
+
+
+async def _create_paypal_checkout(order: CheckoutOrder) -> Dict:
+    if not settings.PAYPAL_CLIENT_ID or not settings.PAYPAL_CLIENT_SECRET:
+        return {"status": "provider_not_configured", "error": "PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET are not configured"}
+
+    token = base64.b64encode(f"{settings.PAYPAL_CLIENT_ID}:{settings.PAYPAL_CLIENT_SECRET}".encode("utf-8")).decode("ascii")
+    async with httpx.AsyncClient(timeout=20) as client:
+        token_response = await client.post(
+            f"{settings.PAYPAL_API_BASE}/v1/oauth2/token",
+            data={"grant_type": "client_credentials"},
+            headers={"Authorization": f"Basic {token}"},
+        )
+        if token_response.status_code >= 400:
+            return {"status": "provider_error", "error": token_response.text}
+        access_token = token_response.json().get("access_token")
+        order_response = await client.post(
+            f"{settings.PAYPAL_API_BASE}/v2/checkout/orders",
+            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+            json={
+                "intent": "CAPTURE",
+                "purchase_units": [
+                    {
+                        "reference_id": str(order.id),
+                        "amount": {
+                            "currency_code": order.currency.upper(),
+                            "value": f"{order.amount_cents / 100:.2f}",
+                        },
+                    }
+                ],
+                "application_context": {
+                    "return_url": f"{settings.PUBLIC_BASE_URL}/checkout/success?order_id={order.id}",
+                    "cancel_url": f"{settings.PUBLIC_BASE_URL}/cart?order_id={order.id}",
+                },
+            },
+        )
+    if order_response.status_code >= 400:
+        return {"status": "provider_error", "error": order_response.text}
+    payload = order_response.json()
+    approve_url = next((link.get("href") for link in payload.get("links", []) if link.get("rel") == "approve"), None)
+    return {"status": "checkout_created", "provider_order_id": payload.get("id"), "checkout_url": approve_url}
 
 
 def _issue_customer_session(customer: Customer, db: Session) -> Dict:
@@ -1088,10 +413,49 @@ def get_current_customer(
 
 
 def _owned_project(project_id: str, customer: Customer, db: Session) -> Project:
-    project = db.get(Project, int(project_id))
+    try:
+        project_pk = int(project_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    project = db.get(Project, project_pk)
     if not project or project.customer_id != customer.id:
         raise HTTPException(status_code=404, detail="Project not found")
     return project
+
+
+def _owned_crawl_job(job_id: str, customer: Customer, db: Session) -> CrawlJob:
+    try:
+        job_pk = int(job_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=404, detail="Crawl job not found")
+
+    crawl_job = (
+        db.query(CrawlJob)
+        .join(Project, CrawlJob.project_id == Project.id)
+        .filter(CrawlJob.id == job_pk, Project.customer_id == customer.id)
+        .first()
+    )
+    if not crawl_job:
+        raise HTTPException(status_code=404, detail="Crawl job not found")
+    return crawl_job
+
+
+def _owned_audit_report(audit_id: str, customer: Customer, db: Session) -> AuditReport:
+    try:
+        audit_pk = int(audit_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=404, detail="Audit report not found")
+
+    report = (
+        db.query(AuditReport)
+        .join(Project, AuditReport.project_id == Project.id)
+        .filter(AuditReport.id == audit_pk, Project.customer_id == customer.id)
+        .first()
+    )
+    if not report:
+        raise HTTPException(status_code=404, detail="Audit report not found")
+    return report
 
 
 def _normalize_domain(raw_domain: str) -> str:
@@ -1106,6 +470,7 @@ def _default_project_name(domain: str) -> str:
 
 
 def _serialize_project(project: Project, db: Session) -> Dict:
+    report_folder = _project_report_dir(project)
     latest_crawl = (
         db.query(CrawlJob).filter(CrawlJob.project_id == project.id).order_by(CrawlJob.id.desc()).first()
     )
@@ -1117,6 +482,7 @@ def _serialize_project(project: Project, db: Session) -> Dict:
         "id": str(project.id),
         "name": project.name,
         "domain": project.domain,
+        "folder_title": report_folder.name,
         "ga4_property_id": project.ga4_property_id,
         "created_at": project.created_at.isoformat() if project.created_at else None,
         "latest_crawl_id": str(latest_crawl.id) if latest_crawl else None,
@@ -1132,6 +498,56 @@ def _project_report_dir(project: Project) -> Path:
     folder = REPORT_COMPILER_ROOT / f"{project.id}_{slug}"
     folder.mkdir(parents=True, exist_ok=True)
     return folder
+
+
+def _project_preflight_dir(project: Project) -> Path:
+    folder = _project_report_dir(project) / "preflight"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def _load_preflight_scanner():
+    if not PREFLIGHT_SCANNER_MODULE.is_file():
+        raise RuntimeError(f"Preflight scanner not found: {PREFLIGHT_SCANNER_MODULE}")
+
+    module_name = "orb_weaver_preflight_site_scan"
+    if module_name in sys.modules:
+        module = sys.modules[module_name]
+    else:
+        sys.path.insert(0, str(PREFLIGHT_SCANNER_ROOT))
+        spec = importlib.util.spec_from_file_location(module_name, PREFLIGHT_SCANNER_MODULE)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("Unable to load preflight scanner module")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+
+    scanner_cls = getattr(module, "PreflightScanner", None)
+    if scanner_cls is None:
+        raise RuntimeError("PreflightScanner class not found in preflight scanner module")
+    return scanner_cls
+
+
+async def _run_project_preflight(project: Project, output_dir: Optional[str] = None) -> Dict:
+    scanner_cls = _load_preflight_scanner()
+    target_output = Path(output_dir).resolve() if output_dir else _project_preflight_dir(project).resolve()
+    root_url = project.domain if project.domain.startswith(("http://", "https://")) else f"https://{project.domain}"
+    scanner = scanner_cls(root_url=root_url, output_dir=str(target_output))
+    report = await scanner.scan()
+    report["orb_weaver_project"] = {
+        "project_id": str(project.id),
+        "domain": project.domain,
+        "name": project.name,
+        "output_dir": str(target_output),
+    }
+    _write_json(target_output / "site_preflight_report.json", report)
+    return report
+
+
+def _content_disposition(filename: str, disposition: str = "attachment") -> Dict[str, str]:
+    safe_disposition = "inline" if disposition == "inline" else "attachment"
+    safe_filename = filename.replace("\\", "_").replace("/", "_").replace('"', "")
+    return {"Content-Disposition": f'{safe_disposition}; filename="{safe_filename}"'}
 
 
 def _safe_pack_name(value: str) -> str:
@@ -1462,6 +878,25 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
         config = crawl_job.config or {}
         config["substrate_preservation_error"] = str(exc)
         crawl_job.config = config
+
+
+def preserve_client_preflight_intelligence(project: Project, report: Dict) -> None:
+    root = _ensure_client_pack(project)
+    _init_client_index(_client_index_path(project))
+    _index_pack_meta(project, root)
+    preflight_path = root / "website_orb_context" / "site_preflight_report.json"
+    _write_json(preflight_path, report)
+    _write_json(root / "current" / "latest_preflight.json", report)
+    with sqlite3.connect(_client_index_path(project)) as connection:
+        connection.execute(
+            "INSERT OR REPLACE INTO context_documents(key, kind, json_path, updated_at) VALUES (?, ?, ?, ?)",
+            (
+                "site_preflight_report",
+                "website_orb_preflight",
+                str(preflight_path),
+                report.get("scan_timestamp") or datetime.utcnow().isoformat(),
+            ),
+        )
 
 
 def preserve_client_audit_intelligence(project: Project, crawl_job: CrawlJob, audit: AuditReport, db: Session) -> None:
@@ -1956,12 +1391,15 @@ async def _crawl_competitors(domains: List[str], config: CrawlConfig) -> List[Di
 
 def _serialize_crawl_job(crawl_job: CrawlJob, db: Session, include_pages: bool = False) -> Dict:
     pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl_job.id).all()
+    project = db.query(Project).filter(Project.id == crawl_job.project_id).first()
     config = crawl_job.config or {}
     stats = {**_compute_stats(pages), **(config.get("stats") or {})}
 
     payload = {
         "id": str(crawl_job.id),
         "project_id": str(crawl_job.project_id),
+        "project_name": project.name if project else None,
+        "project_domain": project.domain if project else None,
         "status": crawl_job.status,
         "config": config,
         "created_at": crawl_job.start_time.isoformat() if crawl_job.start_time else None,
@@ -1987,9 +1425,17 @@ def _serialize_crawl_job(crawl_job: CrawlJob, db: Session, include_pages: bool =
 
 
 def _serialize_audit_report(report: AuditReport) -> Dict:
+    project = getattr(report, "project", None)
     return {
         "id": str(report.id),
         "crawl_job_id": str(report.crawl_job_id) if report.crawl_job_id else None,
+        "project": {
+            "id": str(project.id),
+            "name": project.name,
+            "domain": project.domain,
+            "ga4_property_id": project.ga4_property_id,
+            "created_at": project.created_at.isoformat() if project.created_at else None,
+        } if project else None,
         "created_at": report.created_at.isoformat() if report.created_at else None,
         "report": report.report_data,
     }
@@ -2036,14 +1482,28 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict):
         crawl_job.start_time = datetime.utcnow()
         db.commit()
 
+        def persist_crawl_progress(active_crawler: OrbWeaverCrawler) -> None:
+            active_stats = active_crawler.get_crawl_stats()
+            crawl_job.pages_crawled = len(active_crawler.crawled_data)
+            crawl_job.pages_found = int(active_stats.get("discovered_urls") or active_stats.get("visited_urls") or 0)
+            crawl_job.config = {
+                **(crawl_job.config or {}),
+                "stats": {
+                    **((crawl_job.config or {}).get("stats") or {}),
+                    **active_stats,
+                },
+            }
+            db.commit()
+
         crawler = OrbWeaverCrawler(
             max_pages=config.max_pages,
             delay=config.delay,
             max_depth=config.max_depth,
+            progress_callback=persist_crawl_progress,
         )
 
         start_url = f"https://{project.domain}" if not project.domain.startswith("http") else project.domain
-        pages = await crawler.crawl(start_url)
+        pages = await crawler.crawl(start_url, seed_urls=config.seed_urls)
         crawl_stats = crawler.get_crawl_stats()
 
         db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl_job.id).delete()
@@ -2097,7 +1557,7 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict):
         crawl_job.status = "completed"
         crawl_job.end_time = datetime.utcnow()
         crawl_job.pages_crawled = len(pages)
-        crawl_job.pages_found = len(pages)
+        crawl_job.pages_found = int(stats.get("discovered_urls") or stats.get("visited_urls") or len(pages))
         crawl_job.errors_count = 0
         crawl_job.config = {
             **(crawl_job.config or {}),
@@ -2193,18 +1653,46 @@ async def signup_customer(payload: CustomerSignup, db: Session = Depends(get_db)
     email = _normalize_email(payload.email)
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Valid email is required")
-    if not payload.business_name.strip():
-        raise HTTPException(status_code=400, detail="Business name is required")
+    for label, value in {
+        "Full name": payload.full_name,
+        "Address line 1": payload.address_line1,
+        "City": payload.city,
+        "State": payload.state,
+        "Postal code": payload.postal_code,
+        "Country": payload.country,
+        "Phone": payload.phone,
+    }.items():
+        if not value or not value.strip():
+            raise HTTPException(status_code=400, detail=f"{label} is required")
     existing = db.query(Customer).filter(Customer.email == email).first()
     if existing:
         raise HTTPException(status_code=409, detail="Customer email already exists")
 
+    business_name = (payload.business_name or payload.company_name or payload.full_name).strip()
+    is_first_customer = db.query(Customer).count() == 0
     customer = Customer(
         email=email,
         password_hash=_hash_password(payload.password),
-        business_name=payload.business_name.strip(),
+        full_name=payload.full_name.strip(),
+        business_name=business_name,
+        company_name=(payload.company_name or "").strip() or None,
         contact_name=(payload.contact_name or "").strip() or None,
         phone=(payload.phone or "").strip() or None,
+        address_line1=payload.address_line1.strip(),
+        address_line2=(payload.address_line2 or "").strip() or None,
+        city=payload.city.strip(),
+        state=payload.state.strip(),
+        postal_code=payload.postal_code.strip(),
+        country=payload.country.strip(),
+        business_phone=(payload.business_phone or "").strip() or None,
+        business_address_line1=(payload.business_address_line1 or "").strip() or None,
+        business_address_line2=(payload.business_address_line2 or "").strip() or None,
+        business_city=(payload.business_city or "").strip() or None,
+        business_state=(payload.business_state or "").strip() or None,
+        business_postal_code=(payload.business_postal_code or "").strip() or None,
+        business_country=(payload.business_country or "").strip() or None,
+        tax_id=(payload.tax_id or "").strip() or None,
+        is_admin=is_first_customer,
     )
     db.add(customer)
     db.commit()
@@ -2242,6 +1730,124 @@ async def logout_customer(
         session.revoked_at = datetime.utcnow()
         db.commit()
     return {"status": "logged_out"}
+
+
+@app.get("/api/admin/customers")
+async def admin_list_customers(
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    customers = db.query(Customer).order_by(Customer.created_at.desc(), Customer.id.desc()).all()
+    return [_serialize_admin_customer(customer, db) for customer in customers]
+
+
+@app.get("/api/admin/customers/{customer_id}")
+async def admin_get_customer(
+    customer_id: int,
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    customer = db.get(Customer, customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    payload = _serialize_admin_customer(customer, db)
+    payload["projects"] = [_serialize_project(project, db) for project in db.query(Project).filter(Project.customer_id == customer.id).all()]
+    payload["orders"] = [
+        _serialize_checkout_order(order)
+        for order in db.query(CheckoutOrder).filter(CheckoutOrder.customer_id == customer.id).order_by(CheckoutOrder.id.desc()).all()
+    ]
+    return payload
+
+
+@app.get("/api/products")
+async def list_products():
+    return list(SERVICE_CATALOG.values())
+
+
+@app.get("/api/cart")
+async def get_cart(db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
+    return _cart_payload(customer, db)
+
+
+@app.post("/api/cart/items")
+async def upsert_cart_item(
+    payload: CartItemUpsert,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    product = SERVICE_CATALOG.get(payload.sku)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    item = db.query(CartItem).filter(CartItem.customer_id == customer.id, CartItem.sku == payload.sku).first()
+    if item:
+        item.quantity = payload.quantity
+        item.updated_at = datetime.utcnow()
+    else:
+        item = CartItem(
+            customer_id=customer.id,
+            sku=product["sku"],
+            name=product["name"],
+            unit_amount_cents=product["unit_amount_cents"],
+            currency=product["currency"],
+            quantity=payload.quantity,
+            metadata_json={"description": product["description"]},
+        )
+        db.add(item)
+    db.commit()
+    return _cart_payload(customer, db)
+
+
+@app.delete("/api/cart/items/{sku}")
+async def delete_cart_item(
+    sku: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    db.query(CartItem).filter(CartItem.customer_id == customer.id, CartItem.sku == sku).delete()
+    db.commit()
+    return _cart_payload(customer, db)
+
+
+@app.post("/api/cart/checkout")
+async def create_checkout(
+    payload: CheckoutCreate,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    cart = _cart_payload(customer, db)
+    if not cart["items"]:
+        raise HTTPException(status_code=400, detail="Cart is empty")
+
+    order = CheckoutOrder(
+        customer_id=customer.id,
+        provider=payload.provider,
+        status="created",
+        amount_cents=cart["total_amount_cents"],
+        currency=cart["currency"],
+        line_items=cart["items"],
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    provider_result = (
+        await _create_stripe_checkout(order, customer)
+        if payload.provider == "stripe"
+        else await _create_paypal_checkout(order)
+    )
+    order.status = provider_result.get("status", "provider_error")
+    order.provider_order_id = provider_result.get("provider_order_id")
+    order.checkout_url = provider_result.get("checkout_url")
+    order.error = provider_result.get("error")
+    db.commit()
+    db.refresh(order)
+    return _serialize_checkout_order(order)
+
+
+@app.get("/api/checkout/orders")
+async def list_checkout_orders(db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
+    orders = db.query(CheckoutOrder).filter(CheckoutOrder.customer_id == customer.id).order_by(CheckoutOrder.id.desc()).all()
+    return [_serialize_checkout_order(order) for order in orders]
 
 
 @app.post("/api/projects")
@@ -2296,6 +1902,34 @@ async def get_project(project_id: str, db: Session = Depends(get_db), customer: 
     return _serialize_project(project, db)
 
 
+@app.get("/api/projects/{project_id}/preflight")
+async def get_project_preflight(project_id: str, db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
+    project = _owned_project(project_id, customer, db)
+    report_path = _project_preflight_dir(project) / "site_preflight_report.json"
+    if not report_path.is_file():
+        return {"status": "not_run", "project": _serialize_project(project, db)}
+    try:
+        return json.loads(report_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to read preflight report: {exc}")
+
+
+@app.post("/api/projects/{project_id}/preflight")
+async def run_project_preflight(
+    project_id: str,
+    config: Optional[PreflightRunConfig] = None,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    try:
+        report = await _run_project_preflight(project, output_dir=config.output_dir if config else None)
+        preserve_client_preflight_intelligence(project, report)
+        return report
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Preflight scan failed: {exc}")
+
+
 @app.delete("/api/projects/{project_id}")
 async def delete_project(project_id: str, db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
     project = _owned_project(project_id, customer, db)
@@ -2336,6 +1970,18 @@ async def start_crawl(
 async def get_crawl_job(job_id: str, db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
     crawl_job = _owned_crawl_job(job_id, customer, db)
     return _serialize_crawl_job(crawl_job, db)
+
+
+@app.get("/api/crawl-jobs")
+async def list_crawl_jobs(db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
+    jobs = (
+        db.query(CrawlJob)
+        .join(Project, CrawlJob.project_id == Project.id)
+        .filter(Project.customer_id == customer.id)
+        .order_by(CrawlJob.id.desc())
+        .all()
+    )
+    return [_serialize_crawl_job(job, db) for job in jobs]
 
 
 @app.get("/api/crawl-jobs/{job_id}/pages")
@@ -2541,6 +2187,28 @@ async def report_compiler(project_id: str, db: Session = Depends(get_db), custom
         "latest_audit": _serialize_audit_report(latest_audit) if latest_audit and latest_audit.report_data else None,
         "files": files,
     }
+
+
+@app.get("/api/projects/{project_id}/report-files/{filename}")
+async def open_report_file(
+    project_id: str,
+    filename: str,
+    disposition: str = Query("inline", pattern="^(inline|attachment)$"),
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    report_dir = _project_report_dir(project).resolve()
+    file_path = (report_dir / filename).resolve()
+
+    if report_dir not in file_path.parents or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Report file not found")
+
+    return FileResponse(
+        file_path,
+        media_type="application/json" if file_path.suffix.lower() == ".json" else "application/octet-stream",
+        headers=_content_disposition(file_path.name, disposition),
+    )
 
 
 @app.post("/api/projects/{project_id}/recrawl")
