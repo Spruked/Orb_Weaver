@@ -65,6 +65,8 @@ cloudflared tunnel --config C:\dev\Desktop\Orb_Weaver\deploy\cloudflared\orbweav
 
 ## Local Dev Commands
 
+### Windows
+
 ```powershell
 cd C:\dev\Desktop\Orb_Weaver
 py -3.12 -m venv .venv312
@@ -81,6 +83,45 @@ $env:BROWSER = "none"
 $env:REACT_APP_API_URL = ""
 npm.cmd start
 ```
+
+### WSL Clone
+
+```bash
+git clone https://github.com/Spruked/Orb_Weaver.git
+cd Orb_Weaver
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r backend/requirements.txt
+cp .env.example .env
+```
+
+Backend:
+
+```bash
+cd backend
+../.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 16500
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm install
+REACT_APP_API_URL=http://127.0.0.1:16500 npm run build
+npx serve -s build -l 16510
+```
+
+Validation:
+
+```bash
+python -m compileall backend/main.py backend/app "Preflight Scanner/preflight_site_scan.py"
+cd frontend
+npm run smoke:preflight
+REACT_APP_API_URL=http://127.0.0.1:16500 npm run build
+```
+
+If `cloudflared` runs inside WSL, adapt the config credentials path to the WSL filesystem path for the tunnel JSON. Keep the ingress services on `http://localhost:16500` and `http://localhost:16510` when the backend and frontend are also running inside WSL.
 
 ## Spruked.com Navigation Tab
 
