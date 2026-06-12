@@ -135,6 +135,35 @@ cd frontend
 npm run smoke:preflight
 ```
 
+## Root Docker Image
+
+The repo has a root Dockerfile for WSL/tunnel use. Build from the repository root:
+
+```bash
+docker build -t orb-weaver:latest .
+```
+
+Run the combined container:
+
+```bash
+docker run --rm \
+  -p 16500:16500 \
+  -p 16510:16510 \
+  -v "$PWD/.docker-data:/app/backend/data" \
+  -v "$PWD/.docker-substrate:/app/substrate" \
+  --env-file .env \
+  orb-weaver:latest
+```
+
+Container ports:
+
+```text
+Backend API: 16500
+Frontend UI: 16510
+```
+
+The root image copies `backend/`, `frontend/build`, and `Preflight Scanner/` into one container. The backend runs from `/app/backend`, so the copied scanner resolves at `/app/Preflight Scanner`.
+
 ## API Endpoints
 
 ### Auth and Customer

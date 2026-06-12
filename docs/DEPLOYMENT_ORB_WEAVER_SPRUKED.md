@@ -123,6 +123,28 @@ REACT_APP_API_URL=http://127.0.0.1:16500 npm run build
 
 If `cloudflared` runs inside WSL, adapt the config credentials path to the WSL filesystem path for the tunnel JSON. Keep the ingress services on `http://localhost:16500` and `http://localhost:16510` when the backend and frontend are also running inside WSL.
 
+### WSL Docker
+
+Build the combined root image from the repo root:
+
+```bash
+docker build -t orb-weaver:latest .
+```
+
+Run it:
+
+```bash
+docker run --rm \
+  -p 16500:16500 \
+  -p 16510:16510 \
+  -v "$PWD/.docker-data:/app/backend/data" \
+  -v "$PWD/.docker-substrate:/app/substrate" \
+  --env-file .env \
+  orb-weaver:latest
+```
+
+The root Dockerfile builds the React frontend, runs the FastAPI backend on `16500`, serves the frontend on `16510` with nginx, and copies `Preflight Scanner/` into `/app/Preflight Scanner` for backend preflight imports.
+
 ## Spruked.com Navigation Tab
 
 Add a top-level navigation item on the main Spruked.com website:
