@@ -68,6 +68,67 @@ async function fetchBlob(path: string) {
   };
 }
 
+async function fetchText(path: string) {
+  const token = authStore.getToken();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail || response.statusText);
+  }
+  return {
+    data: await response.text(),
+    filename: filenameFromDisposition(response.headers.get('Content-Disposition'))
+  };
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function openJsonDocument(path: string) {
+  const opened = window.open('', '_blank', 'noopener,noreferrer');
+  if (!opened) return;
+  opened.document.write('<!doctype html><title>Loading report...</title><body style="font-family: system-ui, sans-serif; padding: 18px;">Loading report...</body>');
+  opened.document.close();
+
+  const file = await fetchText(path);
+  let body = file.data;
+  try {
+    body = JSON.stringify(JSON.parse(file.data), null, 2);
+  } catch {
+    // Existing legacy report files may contain non-JSON text. Show them as-is.
+  }
+
+  const title = file.filename || 'report.json';
+  opened.document.open();
+  opened.document.write(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      body { margin: 0; background: #f8fafc; color: #111827; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+      header { position: sticky; top: 0; padding: 14px 18px; background: #ffffff; border-bottom: 1px solid #e5e7eb; font-family: Inter, system-ui, sans-serif; font-weight: 700; }
+      pre { margin: 0; padding: 18px; white-space: pre-wrap; word-break: break-word; line-height: 1.55; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <header>${escapeHtml(title)}</header>
+    <pre>${escapeHtml(body)}</pre>
+  </body>
+</html>`);
+  opened.document.close();
+}
+
 async function openBlob(path: string) {
   const blob = await fetchBlob(path);
   const url = URL.createObjectURL(blob.data);
@@ -92,6 +153,7 @@ export interface Project {
   name: string;
   domain: string;
   ga4_property_id?: string | null;
+  ga4_measurement_id?: string | null;
   created_at?: string;
   latest_crawl_id?: string | null;
   latest_crawl_status?: string;
@@ -141,6 +203,23 @@ export interface Product {
   description: string;
   unit_amount_cents: number;
   currency: string;
+}
+
+export interface MarketplaceItem {
+  item_id: string;
+  market_index_code: string;
+  name: string;
+  price: string;
+  badge: string;
+  description: string;
+  features: string[];
+  href: string;
+  category: string;
+  tier_access: string[];
+  rights_status: string;
+  rarity: string;
+  sku?: string | null;
+  purchasable: boolean;
 }
 
 export interface CartItem {
@@ -410,6 +489,106 @@ export interface ReportCompilerPayload {
   files: string[];
 }
 
+export interface PublicPreflightReport {
+  schema: string;
+  generated_at: string;
+  site_url: string;
+  notice: string;
+  outcome: 'basic_orb_recommended' | 'recommended' | 'needs_browser_verification' | 'needs_further_review' | 'not_recommended' | 'not_ready_any_orb';
+  outcome_title: string;
+  summary: string;
+  premium_status?: string;
+  recommended_next_step?: string;
+  primary_cta?: string;
+  secondary_ctas?: string[];
+  fit_score: number;
+  complexity: 'small' | 'medium' | 'large';
+  install_path: string;
+  reasons: string[];
+  likely_orb_benefits: string[];
+  basic_checks: {
+    site_loaded: boolean;
+    https_checked: boolean;
+    sample_pages_read: number;
+    sitemap_detected: boolean;
+    robots_detected: boolean;
+    contact_or_conversion_signals: boolean;
+    login_or_checkout_detected: boolean;
+    sample_broken_link_count: number;
+  };
+  limited_findings: {
+    cms_or_framework: string;
+    existing_chat_widget: boolean;
+    forms_detected: boolean;
+    products_detected: boolean;
+    booking_detected: boolean;
+    blog_detected: boolean;
+    sitemap_url_count: number;
+    warnings: string[];
+  };
+  next_steps: string[];
+  browser_verification?: {
+    status: string;
+    reason?: string;
+    summary?: {
+      console_message_count?: number;
+      network_request_count?: number;
+      lighthouse_scores?: Record<string, number>;
+    };
+    artifacts?: {
+      screenshot?: string | null;
+      lighthouse_dir?: string | null;
+    };
+  };
+}
+
+export interface BrowserReviewResult {
+  schema?: string;
+  status: string;
+  generated_at?: string;
+  url?: string;
+  label?: string;
+  review_dir?: string;
+  artifacts?: {
+    screenshot?: string | null;
+    lighthouse_dir?: string | null;
+  };
+  summary?: {
+    console_message_count?: number;
+    network_request_count?: number;
+    lighthouse_scores?: Record<string, number>;
+  };
+  error?: string | null;
+}
+
+export interface BrowserLabCatalog {
+  schema: string;
+  enabled: boolean;
+  public_enabled: boolean;
+  product_boundary: string;
+  groups: Record<string, {
+    label: string;
+    tools: Record<string, string>;
+  }>;
+}
+
+export interface BrowserLabResult {
+  schema: string;
+  tool: string;
+  status: string;
+  generated_at: string;
+  run_dir?: string;
+  result?: {
+    command?: string[];
+    returncode?: number;
+    stdout?: unknown;
+    stderr?: string;
+    ok?: boolean;
+    mcp_error?: string | null;
+  };
+  reason?: string;
+}
+
 export interface GA4FullReport {
   traffic_overview?: {
     totals?: Record<string, number>;
@@ -421,6 +600,11 @@ export interface GA4FullReport {
 }
 
 export const api = {
+  publicPreflight: (websiteUrl: string) =>
+    request<PublicPreflightReport>('/api/public/preflight', {
+      method: 'POST',
+      body: JSON.stringify({ website_url: websiteUrl })
+    }),
   signup: (payload: {
     email: string;
     password: string;
@@ -456,6 +640,8 @@ export const api = {
   me: () => request<Customer>('/api/auth/me'),
   logout: () => request<{ status: string }>('/api/auth/logout', { method: 'POST' }),
   listProducts: () => request<Product[]>('/api/products'),
+  listMarketplaceItems: (category?: string) =>
+    request<MarketplaceItem[]>(`/api/marketplace/items${category ? `?category=${encodeURIComponent(category)}` : ''}`),
   getCart: () => request<CartPayload>('/api/cart'),
   upsertCartItem: (payload: { sku: string; quantity: number }) =>
     request<CartPayload>('/api/cart/items', {
@@ -470,12 +656,35 @@ export const api = {
     }),
   listCheckoutOrders: () => request<CheckoutOrder[]>('/api/checkout/orders'),
   adminListCustomers: () => request<AdminCustomer[]>('/api/admin/customers'),
+  adminExportCustomersToCaliCrm: () =>
+    request<{ status: string; record_count: number; path: string; crm_url: string }>('/api/admin/cali-crm/export-customers', {
+      method: 'POST'
+    }),
+  adminBrowserLabTools: () => request<BrowserLabCatalog>('/api/admin/browser-lab/tools'),
+  adminRunBrowserLabTool: (payload: { tool: string; params: Record<string, unknown> }) =>
+    request<BrowserLabResult>('/api/admin/browser-lab/run', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
   listProjects: () => request<Project[]>('/api/projects'),
-  createProject: (project: { name?: string | null; domain: string; ga4_property_id?: string | null }) =>
+  createProject: (project: { name?: string | null; domain: string; ga4_property_id?: string | null; ga4_measurement_id?: string | null }) =>
     request<Project>('/api/projects', {
       method: 'POST',
       body: JSON.stringify(project)
     }),
+  updateProjectGA4Config: (projectId: string, payload: { ga4_property_id?: string | null; ga4_measurement_id?: string | null }) =>
+    request<Project>(`/api/projects/${projectId}/ga4/config`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  importProjectGA4: (projectId: string, payload: { ga4_property_id?: string | null; ga4_measurement_id?: string | null; days?: number } = {}) =>
+    request<{ status: string; imported_page_rows: number; artifact_path: string; traffic_totals: Record<string, number>; project: Project }>(
+      `/api/projects/${projectId}/ga4/import`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      }
+    ),
   deleteProject: (id: string) =>
     request<{ status: string }>(`/api/projects/${id}`, { method: 'DELETE' }),
   startCrawl: (projectId: string, config: CrawlConfig) =>
@@ -498,6 +707,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({})
     }),
+  runProjectBrowserReview: (projectId: string) =>
+    request<BrowserReviewResult>(`/api/projects/${projectId}/browser-review`, {
+      method: 'POST'
+    }),
   getCrawlJob: (jobId: string) => request<CrawlJob>(`/api/crawl-jobs/${jobId}`),
   listCrawlJobs: () => request<CrawlJob[]>('/api/crawl-jobs'),
   getCrawlPages: (jobId: string) => request<PagesResponse>(`/api/crawl-jobs/${jobId}/pages?limit=200`),
@@ -507,6 +720,18 @@ export const api = {
     }),
   getAuditReport: (auditId: string) => request<AuditReportResponse>(`/api/audit-reports/${auditId}`),
   getReportCompiler: (projectId: string) => request<ReportCompilerPayload>(`/api/projects/${projectId}/report-compiler`),
+  createTPCPack: (projectId: string, tier: 'basic' | 'enhanced' | 'premium') =>
+    request<{ status: string; project: Project; pack: Record<string, any>; download_url: string }>(
+      `/api/projects/${projectId}/tpc-pack`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ tier })
+      }
+    ),
+  listTPCPacks: (projectId: string) =>
+    request<{ packs: Array<{ filename: string; size_kb: number; generated_at: string; download_url: string }> }>(
+      `/api/projects/${projectId}/tpc-packs`
+    ),
   getCombinedDashboard: (projectId: string) =>
     request<{
       project: Project;
@@ -525,7 +750,9 @@ export const fileUrls = {
   auditCsv: (auditId: string) => `${API_BASE_URL}/api/audit-reports/${auditId}/export/csv`,
   auditPdf: (auditId: string) => `${API_BASE_URL}/api/audit-reports/${auditId}/export/pdf`,
   reportFile: (projectId: string, filename: string, disposition: 'inline' | 'attachment' = 'inline') =>
-    `${API_BASE_URL}/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=${disposition}`
+    `${API_BASE_URL}/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=${disposition}`,
+  tpcPack: (projectId: string, filename: string) =>
+    `${API_BASE_URL}/api/projects/${projectId}/tpc-pack/download/${encodeURIComponent(filename)}`
 };
 
 export const downloads = {
@@ -533,11 +760,15 @@ export const downloads = {
   auditCsv: (auditId: string) => downloadAuto(`/api/audit-reports/${auditId}/export/csv`),
   auditPdf: (auditId: string) => downloadAuto(`/api/audit-reports/${auditId}/export/pdf`),
   reportFile: (projectId: string, filename: string) =>
-    downloadAuto(`/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=attachment`)
+    downloadAuto(`/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=attachment`),
+  tpcPack: (projectId: string, filename: string) =>
+    downloadAuto(`/api/projects/${projectId}/tpc-pack/download/${encodeURIComponent(filename)}`)
 };
 
 export const openFiles = {
   auditPdf: (auditId: string) => openBlob(`/api/audit-reports/${auditId}/export/pdf?disposition=inline`),
   reportFile: (projectId: string, filename: string) =>
-    openBlob(`/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=inline`)
+    filename.toLowerCase().endsWith('.json')
+      ? openJsonDocument(`/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=inline`)
+      : openBlob(`/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=inline`)
 };

@@ -14,6 +14,7 @@ import Account from './pages/Account';
 import Cart from './pages/Cart';
 import AdminCustomers from './pages/AdminCustomers';
 import LegalPage from './pages/LegalPage';
+import MarketplaceRoutes from './marketplace/MarketplaceRoutes';
 import { api, authStore, Customer } from './services/api';
 import './index.css';
 
@@ -63,15 +64,31 @@ function App() {
   }
 
   const publicPath = window.location.pathname;
+
+  const renderPublicPage = (element: React.ReactNode) => (
+    <QueryClientProvider client={queryClient}>
+      <Router>
+        {element}
+      </Router>
+    </QueryClientProvider>
+  );
+
   if (!customer && publicPath === '/privacy') {
-    return <LegalPage type="privacy" />;
+    return renderPublicPage(<LegalPage type="privacy" />);
   }
   if (!customer && publicPath === '/terms') {
-    return <LegalPage type="terms" />;
+    return renderPublicPage(<LegalPage type="terms" />);
+  }
+  if (!customer && (publicPath === '/marketplace' || publicPath.startsWith('/marketplace/'))) {
+    return renderPublicPage(<MarketplaceRoutes />);
   }
 
   if (!customer) {
     return <AuthPage onAuthenticated={setCustomer} />;
+  }
+
+  if (publicPath === '/marketplace' || publicPath.startsWith('/marketplace/')) {
+    return renderPublicPage(<MarketplaceRoutes />);
   }
 
   return (
