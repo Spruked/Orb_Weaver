@@ -218,6 +218,7 @@ export interface MarketplaceItem {
   tier_access: string[];
   rights_status: string;
   rarity: string;
+  image_src?: string;
   sku?: string | null;
   purchasable: boolean;
 }

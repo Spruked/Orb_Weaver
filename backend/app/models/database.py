@@ -56,6 +56,16 @@ class Customer(Base):
     sessions = relationship("CustomerSession", back_populates="customer")
     cart_items = relationship("CartItem", back_populates="customer")
     checkout_orders = relationship("CheckoutOrder", back_populates="customer")
+    marketplace_products = relationship(
+        "MarketplaceProduct",
+        foreign_keys="MarketplaceProduct.seller_user_id",
+        back_populates="seller",
+    )
+    marketplace_uploaded_images = relationship(
+        "MarketplaceProductImage",
+        foreign_keys="MarketplaceProductImage.uploaded_by_user_id",
+        back_populates="uploader",
+    )
 
 class CustomerSession(Base):
     __tablename__ = "customer_sessions"
@@ -203,6 +213,111 @@ class KeywordRanking(Base):
     url = Column(Text, nullable=True)
     date_checked = Column(DateTime, default=datetime.utcnow)
 
+
+class MarketplaceProduct(Base):
+    __tablename__ = "marketplace_products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    system_number = Column(String(32), nullable=False, unique=True, index=True)
+    seller_user_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    created_by_admin_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    source_type = Column(String(50), nullable=False, default="user_upload")
+    title = Column(String(255), nullable=False)
+    slug = Column(String(255), nullable=False, unique=True, index=True)
+    description = Column(Text, nullable=True)
+    price_cents = Column(Integer, nullable=False, default=0)
+    currency = Column(String(10), nullable=False, default="usd")
+    category = Column(String(100), nullable=False, default="uncategorized")
+    tier = Column(String(50), nullable=True)
+    status = Column(String(50), nullable=False, default="draft")
+    visibility = Column(String(50), nullable=False, default="private")
+    approval_status = Column(String(50), nullable=False, default="pending_review")
+    inventory_type = Column(String(50), nullable=False, default="unlimited")
+    quantity = Column(Integer, nullable=True)
+    is_digital = Column(Boolean, default=True)
+    is_featured = Column(Boolean, default=False)
+    sort_order = Column(Integer, default=0)
+    primary_image_id = Column(Integer, ForeignKey("marketplace_product_images.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    published_at = Column(DateTime, nullable=True)
+
+    seller = relationship("Customer", foreign_keys=[seller_user_id], back_populates="marketplace_products")
+    images = relationship(
+        "MarketplaceProductImage",
+        foreign_keys="MarketplaceProductImage.product_id",
+        back_populates="product",
+        cascade="all, delete-orphan",
+    )
+    primary_image = relationship("MarketplaceProductImage", foreign_keys=[primary_image_id], post_update=True)
+
+
+class MarketplaceProductImage(Base):
+    __tablename__ = "marketplace_product_images"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("marketplace_products.id"), nullable=False, index=True)
+    uploaded_by_user_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    file_path = Column(Text, nullable=True)
+    file_url = Column(Text, nullable=False)
+    alt_text = Column(String(255), nullable=True)
+    sort_order = Column(Integer, default=0)
+    is_primary = Column(Boolean, default=False)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    mime_type = Column(String(120), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    product = relationship("MarketplaceProduct", foreign_keys=[product_id], back_populates="images")
+    uploader = relationship("Customer", foreign_keys=[uploaded_by_user_id], back_populates="marketplace_uploaded_images")
+
+
+class MarketplaceAdSlot(Base):
+    __tablename__ = "marketplace_ad_slots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slot_key = Column(String(120), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    placement = Column(String(120), nullable=False, index=True)
+    title = Column(String(255), nullable=True)
+    image_url = Column(Text, nullable=True)
+    link_url = Column(Text, nullable=True)
+    html_content = Column(Text, nullable=True)
+    active = Column(Boolean, default=True)
+    starts_at = Column(DateTime, nullable=True)
+    ends_at = Column(DateTime, nullable=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class MarketplaceThemeSetting(Base):
+    __tablename__ = "marketplace_theme_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    theme_name = Column(String(120), nullable=False)
+    primary_color = Column(String(30), nullable=True)
+    accent_color = Column(String(30), nullable=True)
+    background_style = Column(Text, nullable=True)
+    card_style = Column(Text, nullable=True)
+    font_family = Column(String(255), nullable=True)
+    hero_image_url = Column(Text, nullable=True)
+    logo_url = Column(Text, nullable=True)
+    custom_css = Column(Text, nullable=True)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class MarketplaceNumberSequence(Base):
+    __tablename__ = "marketplace_number_sequence"
+
+    id = Column(Integer, primary_key=True, index=True)
+    prefix = Column(String(40), nullable=False, unique=True, index=True)
+    last_number = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # Database setup
 def get_engine(database_url: str, **kwargs):
     return create_engine(database_url, **kwargs)
@@ -216,6 +331,7 @@ def init_db(engine):
     _ensure_project_customer_column(engine)
     _ensure_customer_profile_columns(engine)
     _ensure_default_admin_customer(engine)
+    _ensure_marketplace_number_sequence(engine)
 
 
 def _ensure_json_columns(engine):
@@ -314,3 +430,31 @@ def _ensure_default_admin_customer(engine):
         first_id = connection.execute(text("SELECT id FROM customers ORDER BY id ASC LIMIT 1")).scalar()
         if first_id:
             connection.execute(text("UPDATE customers SET is_admin = 1 WHERE id = :id"), {"id": first_id})
+
+
+def _ensure_marketplace_number_sequence(engine):
+    inspector = inspect(engine)
+    if "marketplace_number_sequence" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as connection:
+        existing = connection.execute(
+            text("SELECT id FROM marketplace_number_sequence WHERE prefix = :prefix LIMIT 1"),
+            {"prefix": "OW-MKT"},
+        ).scalar()
+        if existing:
+            return
+        connection.execute(
+            text(
+                """
+                INSERT INTO marketplace_number_sequence (prefix, last_number, created_at, updated_at)
+                VALUES (:prefix, :last_number, :created_at, :updated_at)
+                """
+            ),
+            {
+                "prefix": "OW-MKT",
+                "last_number": 0,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            },
+        )

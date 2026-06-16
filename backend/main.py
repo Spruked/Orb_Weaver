@@ -10,7 +10,7 @@ import secrets
 import sqlite3
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from collections import Counter
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import httpx
 from pydantic import BaseModel, Field
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from app.analytics.ga4 import GA4Connector
@@ -32,6 +33,11 @@ from app.models.database import (
     CrawledPage,
     Customer,
     CustomerSession,
+    MarketplaceAdSlot,
+    MarketplaceNumberSequence,
+    MarketplaceProduct,
+    MarketplaceProductImage,
+    MarketplaceThemeSetting,
     Project,
     get_engine,
     get_session_maker,
@@ -150,6 +156,267 @@ class CheckoutCreate(BaseModel):
 
 class PreflightRunConfig(BaseModel):
     output_dir: Optional[str] = None
+
+
+class MarketplaceProductCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: Optional[str] = None
+    price_cents: int = Field(default=0, ge=0)
+    currency: str = Field(default="usd", min_length=3, max_length=10)
+    category: str = Field(default="uncategorized", min_length=1, max_length=100)
+    tier: Optional[str] = Field(default=None, max_length=50)
+    status: str = Field(default="draft", max_length=50)
+    visibility: str = Field(default="private", max_length=50)
+    approval_status: str = Field(default="pending_review", max_length=50)
+    inventory_type: str = Field(default="unlimited", max_length=50)
+    quantity: Optional[int] = Field(default=None, ge=0)
+    is_digital: bool = True
+    is_featured: bool = False
+    sort_order: int = 0
+    source_type: Optional[str] = Field(default=None, max_length=50)
+    submit_for_approval: bool = False
+
+
+class MarketplaceProductUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    price_cents: Optional[int] = Field(default=None, ge=0)
+    currency: Optional[str] = Field(default=None, min_length=3, max_length=10)
+    category: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    tier: Optional[str] = Field(default=None, max_length=50)
+    status: Optional[str] = Field(default=None, max_length=50)
+    visibility: Optional[str] = Field(default=None, max_length=50)
+    approval_status: Optional[str] = Field(default=None, max_length=50)
+    inventory_type: Optional[str] = Field(default=None, max_length=50)
+    quantity: Optional[int] = Field(default=None, ge=0)
+    is_digital: Optional[bool] = None
+    is_featured: Optional[bool] = None
+    sort_order: Optional[int] = None
+    submit_for_approval: bool = False
+
+
+class MarketplaceProductImageCreate(BaseModel):
+    file_path: Optional[str] = None
+    file_url: str = Field(min_length=1)
+    alt_text: Optional[str] = Field(default=None, max_length=255)
+    sort_order: int = 0
+    is_primary: bool = False
+    width: Optional[int] = Field(default=None, ge=1)
+    height: Optional[int] = Field(default=None, ge=1)
+    mime_type: Optional[str] = Field(default=None, max_length=120)
+
+
+class MarketplaceAdSlotUpsert(BaseModel):
+    slot_key: str = Field(min_length=1, max_length=120)
+    name: str = Field(min_length=1, max_length=255)
+    placement: str = Field(min_length=1, max_length=120)
+    title: Optional[str] = Field(default=None, max_length=255)
+    image_url: Optional[str] = None
+    link_url: Optional[str] = None
+    html_content: Optional[str] = None
+    active: bool = True
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    sort_order: int = 0
+
+
+class MarketplaceThemeUpsert(BaseModel):
+    theme_name: str = Field(min_length=1, max_length=120)
+    primary_color: Optional[str] = Field(default=None, max_length=30)
+    accent_color: Optional[str] = Field(default=None, max_length=30)
+    background_style: Optional[str] = None
+    card_style: Optional[str] = None
+    font_family: Optional[str] = Field(default=None, max_length=255)
+    hero_image_url: Optional[str] = None
+    logo_url: Optional[str] = None
+    custom_css: Optional[str] = None
+    active: bool = True
+
+
+class MarketplaceProductStatusPatch(BaseModel):
+    status: Optional[str] = Field(default=None, max_length=50)
+    visibility: Optional[str] = Field(default=None, max_length=50)
+    approval_status: Optional[str] = Field(default=None, max_length=50)
+    is_featured: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+MARKETPLACE_ALLOWED_STATUS = {
+    "draft",
+    "pending_review",
+    "approved",
+    "active",
+    "hidden",
+    "rejected",
+    "archived",
+}
+
+MARKETPLACE_ALLOWED_VISIBILITY = {"private", "public"}
+MARKETPLACE_ALLOWED_APPROVAL = {"pending_review", "approved", "rejected"}
+
+
+def _slugify(value: str) -> str:
+    candidate = re.sub(r"[^a-zA-Z0-9]+", "-", (value or "").strip().lower()).strip("-")
+    return candidate or "marketplace-item"
+
+
+def _build_unique_marketplace_slug(db: Session, title: str, exclude_id: Optional[int] = None) -> str:
+    base = _slugify(title)
+    candidate = base
+    suffix = 2
+    while True:
+        query = db.query(MarketplaceProduct).filter(MarketplaceProduct.slug == candidate)
+        if exclude_id is not None:
+            query = query.filter(MarketplaceProduct.id != exclude_id)
+        if query.first() is None:
+            return candidate
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+
+
+def _next_marketplace_system_number(db: Session, prefix: str = "OW-MKT") -> str:
+    sequence = db.query(MarketplaceNumberSequence).filter(MarketplaceNumberSequence.prefix == prefix).first()
+    now = datetime.utcnow()
+    if not sequence:
+        sequence = MarketplaceNumberSequence(prefix=prefix, last_number=0, created_at=now, updated_at=now)
+        db.add(sequence)
+        db.flush()
+    sequence.last_number += 1
+    sequence.updated_at = now
+    return f"{prefix}-{sequence.last_number:06d}"
+
+
+def _serialize_marketplace_image(image: MarketplaceProductImage) -> Dict[str, Any]:
+    return {
+        "id": str(image.id),
+        "product_id": str(image.product_id),
+        "uploaded_by_user_id": str(image.uploaded_by_user_id) if image.uploaded_by_user_id else None,
+        "file_path": image.file_path,
+        "file_url": image.file_url,
+        "alt_text": image.alt_text,
+        "sort_order": image.sort_order,
+        "is_primary": bool(image.is_primary),
+        "width": image.width,
+        "height": image.height,
+        "mime_type": image.mime_type,
+        "created_at": image.created_at.isoformat() if image.created_at else None,
+    }
+
+
+def _serialize_marketplace_product(product: MarketplaceProduct, include_images: bool = True) -> Dict[str, Any]:
+    image_payload = []
+    if include_images:
+        ordered_images = sorted(product.images or [], key=lambda img: (img.sort_order, img.id))
+        image_payload = [_serialize_marketplace_image(image) for image in ordered_images]
+
+    return {
+        "id": str(product.id),
+        "system_number": product.system_number,
+        "seller_user_id": str(product.seller_user_id) if product.seller_user_id else None,
+        "created_by_admin_id": str(product.created_by_admin_id) if product.created_by_admin_id else None,
+        "source_type": product.source_type,
+        "title": product.title,
+        "slug": product.slug,
+        "description": product.description,
+        "price_cents": product.price_cents,
+        "currency": product.currency,
+        "category": product.category,
+        "tier": product.tier,
+        "status": product.status,
+        "visibility": product.visibility,
+        "approval_status": product.approval_status,
+        "inventory_type": product.inventory_type,
+        "quantity": product.quantity,
+        "is_digital": bool(product.is_digital),
+        "is_featured": bool(product.is_featured),
+        "sort_order": product.sort_order,
+        "primary_image_id": str(product.primary_image_id) if product.primary_image_id else None,
+        "primary_image_url": product.primary_image.file_url if product.primary_image else None,
+        "images": image_payload,
+        "created_at": product.created_at.isoformat() if product.created_at else None,
+        "updated_at": product.updated_at.isoformat() if product.updated_at else None,
+        "published_at": product.published_at.isoformat() if product.published_at else None,
+    }
+
+
+def _serialize_marketplace_ad_slot(slot: MarketplaceAdSlot) -> Dict[str, Any]:
+    return {
+        "id": str(slot.id),
+        "slot_key": slot.slot_key,
+        "name": slot.name,
+        "placement": slot.placement,
+        "title": slot.title,
+        "image_url": slot.image_url,
+        "link_url": slot.link_url,
+        "html_content": slot.html_content,
+        "active": bool(slot.active),
+        "starts_at": slot.starts_at.isoformat() if slot.starts_at else None,
+        "ends_at": slot.ends_at.isoformat() if slot.ends_at else None,
+        "sort_order": slot.sort_order,
+        "created_at": slot.created_at.isoformat() if slot.created_at else None,
+        "updated_at": slot.updated_at.isoformat() if slot.updated_at else None,
+    }
+
+
+def _serialize_marketplace_theme(theme: MarketplaceThemeSetting) -> Dict[str, Any]:
+    return {
+        "id": str(theme.id),
+        "theme_name": theme.theme_name,
+        "primary_color": theme.primary_color,
+        "accent_color": theme.accent_color,
+        "background_style": theme.background_style,
+        "card_style": theme.card_style,
+        "font_family": theme.font_family,
+        "hero_image_url": theme.hero_image_url,
+        "logo_url": theme.logo_url,
+        "custom_css": theme.custom_css,
+        "active": bool(theme.active),
+        "created_at": theme.created_at.isoformat() if theme.created_at else None,
+        "updated_at": theme.updated_at.isoformat() if theme.updated_at else None,
+    }
+
+
+def _is_public_marketplace_product(product: MarketplaceProduct) -> bool:
+    return bool(
+        product.system_number
+        and product.status == "active"
+        and product.visibility == "public"
+        and product.approval_status == "approved"
+    )
+
+
+def _get_marketplace_product_or_404(product_id: int, db: Session) -> MarketplaceProduct:
+    product = db.get(MarketplaceProduct, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Marketplace product not found")
+    return product
+
+
+def _get_owned_seller_product_or_404(product_id: int, customer: Customer, db: Session) -> MarketplaceProduct:
+    product = db.get(MarketplaceProduct, product_id)
+    if not product or product.seller_user_id != customer.id:
+        raise HTTPException(status_code=404, detail="Marketplace product not found")
+    return product
+
+
+def _set_primary_product_image(product: MarketplaceProduct, image: MarketplaceProductImage, db: Session):
+    images = db.query(MarketplaceProductImage).filter(MarketplaceProductImage.product_id == product.id).all()
+    for entry in images:
+        entry.is_primary = entry.id == image.id
+    product.primary_image_id = image.id
+
+
+def _validate_marketplace_status_fields(
+    status: Optional[str],
+    visibility: Optional[str],
+    approval_status: Optional[str],
+) -> None:
+    if status and status not in MARKETPLACE_ALLOWED_STATUS:
+        raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+    if visibility and visibility not in MARKETPLACE_ALLOWED_VISIBILITY:
+        raise HTTPException(status_code=400, detail=f"Invalid visibility: {visibility}")
+    if approval_status and approval_status not in MARKETPLACE_ALLOWED_APPROVAL:
+        raise HTTPException(status_code=400, detail=f"Invalid approval_status: {approval_status}")
 
 
 SERVICE_CATALOG = {
@@ -1757,6 +2024,406 @@ async def admin_get_customer(
         for order in db.query(CheckoutOrder).filter(CheckoutOrder.customer_id == customer.id).order_by(CheckoutOrder.id.desc()).all()
     ]
     return payload
+
+
+@app.get("/api/marketplace/public/products")
+async def marketplace_public_products(
+    category: Optional[str] = Query(default=None),
+    limit: int = Query(default=60, ge=1, le=250),
+    db: Session = Depends(get_db),
+):
+    query = (
+        db.query(MarketplaceProduct)
+        .filter(
+            and_(
+                MarketplaceProduct.system_number.isnot(None),
+                MarketplaceProduct.status == "active",
+                MarketplaceProduct.visibility == "public",
+                MarketplaceProduct.approval_status == "approved",
+            )
+        )
+        .order_by(MarketplaceProduct.sort_order.asc(), MarketplaceProduct.id.desc())
+    )
+    if category:
+        query = query.filter(MarketplaceProduct.category == category)
+    products = query.limit(limit).all()
+    return [_serialize_marketplace_product(product, include_images=True) for product in products]
+
+
+@app.get("/api/marketplace/public/products/{product_id}")
+async def marketplace_public_product_detail(product_id: int, db: Session = Depends(get_db)):
+    product = _get_marketplace_product_or_404(product_id, db)
+    if not _is_public_marketplace_product(product):
+        raise HTTPException(status_code=404, detail="Marketplace product not found")
+    return _serialize_marketplace_product(product, include_images=True)
+
+
+@app.get("/api/admin/marketplace/sequence")
+async def admin_marketplace_sequence(
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    sequence = db.query(MarketplaceNumberSequence).filter(MarketplaceNumberSequence.prefix == "OW-MKT").first()
+    if not sequence:
+        sequence = MarketplaceNumberSequence(prefix="OW-MKT", last_number=0)
+        db.add(sequence)
+        db.commit()
+        db.refresh(sequence)
+    return {
+        "prefix": sequence.prefix,
+        "last_number": sequence.last_number,
+        "next_number": f"{sequence.prefix}-{int(sequence.last_number or 0) + 1:06d}",
+    }
+
+
+@app.get("/api/admin/marketplace/products")
+async def admin_marketplace_products(
+    status: Optional[str] = Query(default=None),
+    visibility: Optional[str] = Query(default=None),
+    approval_status: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    query = db.query(MarketplaceProduct).order_by(MarketplaceProduct.id.desc())
+    if status:
+        query = query.filter(MarketplaceProduct.status == status)
+    if visibility:
+        query = query.filter(MarketplaceProduct.visibility == visibility)
+    if approval_status:
+        query = query.filter(MarketplaceProduct.approval_status == approval_status)
+    return [_serialize_marketplace_product(product, include_images=True) for product in query.all()]
+
+
+@app.post("/api/admin/marketplace/products")
+async def admin_create_marketplace_product(
+    payload: MarketplaceProductCreate,
+    db: Session = Depends(get_db),
+    admin: Customer = Depends(require_admin),
+):
+    _validate_marketplace_status_fields(payload.status, payload.visibility, payload.approval_status)
+    created = MarketplaceProduct(
+        system_number=_next_marketplace_system_number(db),
+        seller_user_id=payload.source_type == "user_upload" and admin.id or None,
+        created_by_admin_id=admin.id,
+        source_type=(payload.source_type or "admin_manual"),
+        title=payload.title.strip(),
+        slug=_build_unique_marketplace_slug(db, payload.title),
+        description=(payload.description or "").strip() or None,
+        price_cents=payload.price_cents,
+        currency=payload.currency.lower().strip(),
+        category=payload.category.strip(),
+        tier=(payload.tier or "").strip() or None,
+        status=payload.status,
+        visibility=payload.visibility,
+        approval_status=payload.approval_status,
+        inventory_type=payload.inventory_type,
+        quantity=payload.quantity,
+        is_digital=payload.is_digital,
+        is_featured=payload.is_featured,
+        sort_order=payload.sort_order,
+        published_at=datetime.utcnow() if (payload.status == "active" and payload.visibility == "public" and payload.approval_status == "approved") else None,
+    )
+    db.add(created)
+    db.commit()
+    db.refresh(created)
+    return _serialize_marketplace_product(created, include_images=True)
+
+
+@app.patch("/api/admin/marketplace/products/{product_id}")
+async def admin_update_marketplace_product(
+    product_id: int,
+    payload: MarketplaceProductUpdate,
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    product = _get_marketplace_product_or_404(product_id, db)
+    _validate_marketplace_status_fields(payload.status, payload.visibility, payload.approval_status)
+
+    updates = payload.model_dump(exclude_unset=True)
+    if "title" in updates and updates["title"]:
+        updates["title"] = updates["title"].strip()
+        updates["slug"] = _build_unique_marketplace_slug(db, updates["title"], exclude_id=product.id)
+
+    for field, value in updates.items():
+        if field == "submit_for_approval":
+            continue
+        if field == "slug":
+            setattr(product, "slug", value)
+            continue
+        setattr(product, field, value)
+
+    if payload.submit_for_approval:
+        product.status = "pending_review"
+        product.approval_status = "pending_review"
+        product.visibility = "private"
+
+    if product.status == "active" and product.visibility == "public" and product.approval_status == "approved":
+        product.published_at = product.published_at or datetime.utcnow()
+
+    db.commit()
+    db.refresh(product)
+    return _serialize_marketplace_product(product, include_images=True)
+
+
+@app.post("/api/admin/marketplace/products/{product_id}/images")
+async def admin_add_marketplace_product_image(
+    product_id: int,
+    payload: MarketplaceProductImageCreate,
+    db: Session = Depends(get_db),
+    admin: Customer = Depends(require_admin),
+):
+    product = _get_marketplace_product_or_404(product_id, db)
+    image = MarketplaceProductImage(
+        product_id=product.id,
+        uploaded_by_user_id=admin.id,
+        file_path=payload.file_path,
+        file_url=payload.file_url,
+        alt_text=payload.alt_text,
+        sort_order=payload.sort_order,
+        is_primary=payload.is_primary,
+        width=payload.width,
+        height=payload.height,
+        mime_type=payload.mime_type,
+    )
+    db.add(image)
+    db.flush()
+    if payload.is_primary or not product.primary_image_id:
+        _set_primary_product_image(product, image, db)
+    db.commit()
+    db.refresh(image)
+    return _serialize_marketplace_image(image)
+
+
+@app.get("/api/admin/marketplace/ads")
+async def admin_marketplace_ads(
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    slots = db.query(MarketplaceAdSlot).order_by(MarketplaceAdSlot.placement.asc(), MarketplaceAdSlot.sort_order.asc(), MarketplaceAdSlot.id.asc()).all()
+    return [_serialize_marketplace_ad_slot(slot) for slot in slots]
+
+
+@app.post("/api/admin/marketplace/ads")
+async def admin_upsert_marketplace_ad(
+    payload: MarketplaceAdSlotUpsert,
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    slot = db.query(MarketplaceAdSlot).filter(MarketplaceAdSlot.slot_key == payload.slot_key).first()
+    if not slot:
+        slot = MarketplaceAdSlot(slot_key=payload.slot_key)
+        db.add(slot)
+    slot.name = payload.name
+    slot.placement = payload.placement
+    slot.title = payload.title
+    slot.image_url = payload.image_url
+    slot.link_url = payload.link_url
+    slot.html_content = payload.html_content
+    slot.active = payload.active
+    slot.starts_at = payload.starts_at
+    slot.ends_at = payload.ends_at
+    slot.sort_order = payload.sort_order
+    db.commit()
+    db.refresh(slot)
+    return _serialize_marketplace_ad_slot(slot)
+
+
+@app.get("/api/admin/marketplace/theme")
+async def admin_marketplace_theme(
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    active_theme = db.query(MarketplaceThemeSetting).order_by(MarketplaceThemeSetting.active.desc(), MarketplaceThemeSetting.updated_at.desc()).first()
+    if not active_theme:
+        return None
+    return _serialize_marketplace_theme(active_theme)
+
+
+@app.post("/api/admin/marketplace/theme")
+async def admin_upsert_marketplace_theme(
+    payload: MarketplaceThemeUpsert,
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    if payload.active:
+        db.query(MarketplaceThemeSetting).update({MarketplaceThemeSetting.active: False})
+
+    theme = MarketplaceThemeSetting(
+        theme_name=payload.theme_name,
+        primary_color=payload.primary_color,
+        accent_color=payload.accent_color,
+        background_style=payload.background_style,
+        card_style=payload.card_style,
+        font_family=payload.font_family,
+        hero_image_url=payload.hero_image_url,
+        logo_url=payload.logo_url,
+        custom_css=payload.custom_css,
+        active=payload.active,
+    )
+    db.add(theme)
+    db.commit()
+    db.refresh(theme)
+    return _serialize_marketplace_theme(theme)
+
+
+@app.get("/api/account/seller/products")
+async def seller_list_products(
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    products = (
+        db.query(MarketplaceProduct)
+        .filter(MarketplaceProduct.seller_user_id == customer.id)
+        .order_by(MarketplaceProduct.id.desc())
+        .all()
+    )
+    return [_serialize_marketplace_product(product, include_images=True) for product in products]
+
+
+@app.post("/api/account/seller/products")
+async def seller_create_product(
+    payload: MarketplaceProductCreate,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    created = MarketplaceProduct(
+        system_number=_next_marketplace_system_number(db),
+        seller_user_id=customer.id,
+        created_by_admin_id=None,
+        source_type="user_upload",
+        title=payload.title.strip(),
+        slug=_build_unique_marketplace_slug(db, payload.title),
+        description=(payload.description or "").strip() or None,
+        price_cents=payload.price_cents,
+        currency=payload.currency.lower().strip(),
+        category=payload.category.strip(),
+        tier=(payload.tier or "").strip() or None,
+        status="draft",
+        visibility="private",
+        approval_status="pending_review",
+        inventory_type=payload.inventory_type,
+        quantity=payload.quantity,
+        is_digital=payload.is_digital,
+        is_featured=False,
+        sort_order=payload.sort_order,
+    )
+    db.add(created)
+    db.commit()
+    db.refresh(created)
+    return _serialize_marketplace_product(created, include_images=True)
+
+
+@app.patch("/api/account/seller/products/{product_id}")
+async def seller_update_product(
+    product_id: int,
+    payload: MarketplaceProductUpdate,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    product = _get_owned_seller_product_or_404(product_id, customer, db)
+    updates = payload.model_dump(exclude_unset=True)
+
+    allowed_fields = {
+        "title",
+        "description",
+        "price_cents",
+        "currency",
+        "category",
+        "tier",
+        "inventory_type",
+        "quantity",
+        "is_digital",
+        "sort_order",
+    }
+    for field, value in updates.items():
+        if field not in allowed_fields:
+            continue
+        if field == "title" and value:
+            value = value.strip()
+            product.slug = _build_unique_marketplace_slug(db, value, exclude_id=product.id)
+        setattr(product, field, value)
+
+    if payload.submit_for_approval:
+        product.status = "pending_review"
+        product.visibility = "private"
+        product.approval_status = "pending_review"
+
+    db.commit()
+    db.refresh(product)
+    return _serialize_marketplace_product(product, include_images=True)
+
+
+@app.post("/api/account/seller/products/{product_id}/submit")
+async def seller_submit_product_for_review(
+    product_id: int,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    product = _get_owned_seller_product_or_404(product_id, customer, db)
+    product.status = "pending_review"
+    product.visibility = "private"
+    product.approval_status = "pending_review"
+    db.commit()
+    db.refresh(product)
+    return _serialize_marketplace_product(product, include_images=True)
+
+
+@app.post("/api/account/seller/products/{product_id}/images")
+async def seller_add_product_image(
+    product_id: int,
+    payload: MarketplaceProductImageCreate,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    product = _get_owned_seller_product_or_404(product_id, customer, db)
+    image = MarketplaceProductImage(
+        product_id=product.id,
+        uploaded_by_user_id=customer.id,
+        file_path=payload.file_path,
+        file_url=payload.file_url,
+        alt_text=payload.alt_text,
+        sort_order=payload.sort_order,
+        is_primary=payload.is_primary,
+        width=payload.width,
+        height=payload.height,
+        mime_type=payload.mime_type,
+    )
+    db.add(image)
+    db.flush()
+    if payload.is_primary or not product.primary_image_id:
+        _set_primary_product_image(product, image, db)
+    db.commit()
+    db.refresh(image)
+    return _serialize_marketplace_image(image)
+
+
+@app.patch("/api/admin/marketplace/products/{product_id}/status")
+async def admin_patch_marketplace_status(
+    product_id: int,
+    payload: MarketplaceProductStatusPatch,
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    product = _get_marketplace_product_or_404(product_id, db)
+    _validate_marketplace_status_fields(payload.status, payload.visibility, payload.approval_status)
+
+    if payload.status is not None:
+        product.status = payload.status
+    if payload.visibility is not None:
+        product.visibility = payload.visibility
+    if payload.approval_status is not None:
+        product.approval_status = payload.approval_status
+    if payload.is_featured is not None:
+        product.is_featured = payload.is_featured
+    if payload.sort_order is not None:
+        product.sort_order = payload.sort_order
+
+    if product.status == "active" and product.visibility == "public" and product.approval_status == "approved":
+        product.published_at = product.published_at or datetime.utcnow()
+
+    db.commit()
+    db.refresh(product)
+    return _serialize_marketplace_product(product, include_images=True)
 
 
 @app.get("/api/products")

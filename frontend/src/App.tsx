@@ -67,7 +67,7 @@ function App() {
 
   const renderPublicPage = (element: React.ReactNode) => (
     <QueryClientProvider client={queryClient}>
-      <Router>
+      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         {element}
       </Router>
     </QueryClientProvider>
@@ -79,7 +79,7 @@ function App() {
   if (!customer && publicPath === '/terms') {
     return renderPublicPage(<LegalPage type="terms" />);
   }
-  if (!customer && (publicPath === '/marketplace' || publicPath.startsWith('/marketplace/'))) {
+  if (!customer && (publicPath === '/' || publicPath === '/marketplace' || publicPath.startsWith('/marketplace/'))) {
     return renderPublicPage(<MarketplaceRoutes />);
   }
 
@@ -93,7 +93,7 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Router>
+      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Layout customer={customer}>
           <Routes>
             <Route path="/" element={<Dashboard customer={customer} />} />

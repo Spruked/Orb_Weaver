@@ -18,7 +18,12 @@ const MarketplaceHome: React.FC = () => {
     loading,
   } = useMarketplace();
 
-  const featuredItems = items.slice(0, 3);
+  const featuredItems = React.useMemo(() => {
+    const skinItems = items.filter((item) => item.category === 'skins');
+    const prioritizedSkins = [...skinItems].sort((a, b) => Number(Boolean(b.image_src)) - Number(Boolean(a.image_src)));
+    const source = prioritizedSkins.length ? prioritizedSkins : items;
+    return source.slice(0, 3);
+  }, [items]);
   const shelfByCategory = (category: string) => items.filter((item) => item.category === category);
 
   const onSearchSubmit: React.FormEventHandler<HTMLFormElement> = (event) => {

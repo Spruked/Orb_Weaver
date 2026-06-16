@@ -4,27 +4,349 @@ import MarketLayout from '../components/MarketLayout';
 import MarketIndexCode from '../components/MarketIndexCode';
 import { useMarketplace } from '../hooks/useMarketplace';
 
-const MarketplaceProduct: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
-  const { items, addToCart } = useMarketplace();
+type AuthoritySection = {
+  heading: string;
+  body?: string;
+  bullets?: string[];
+};
 
-  const item = items.find((entry) => entry.item_id === id);
+type AuthorityProductContent = {
+  slug: string;
+  itemId: string;
+  heroSummary: string;
+  launchPriceLabel?: string;
+  ctaLabel: string;
+  sections: AuthoritySection[];
+  faq: Array<{ question: string; answer: string }>;
+};
+
+const AUTHORITY_PRODUCTS: AuthorityProductContent[] = [
+  {
+    slug: 'basic-visitor-orb',
+    itemId: 'orb_basic_visitor',
+    heroSummary: 'One-time website ORB installation for visitor guidance.',
+    launchPriceLabel: 'Launch Price: $488.88',
+    ctaLabel: 'Start Basic Visitor ORB Checkout',
+    sections: [
+      {
+        heading: 'What It Is',
+        body: 'A one-time installed website guide ORB powered by Orb Weaver scan intelligence to help visitors reach the right destination faster.',
+      },
+      {
+        heading: 'Who It Is For',
+        bullets: [
+          'Small business websites',
+          'Dealer websites',
+          'Local service sites',
+          'Farms, shops, consultants, and public-facing pages',
+        ],
+      },
+      {
+        heading: 'What Is Included',
+        bullets: [
+          'Basic website ORB install',
+          'Initial target map',
+          'Customer account access',
+          'Basic appearance setup',
+          'Standard handoff behavior',
+        ],
+      },
+      {
+        heading: 'How It Works',
+        bullets: [
+          'Guides visitors to pages, forms, phone numbers, departments, and live chat',
+          'Uses Orb Weaver scan intelligence to map intent and destination paths',
+          'Does not replace your sales team',
+          'Does not block the customer, it adds a guide layer',
+        ],
+      },
+      {
+        heading: 'Installation and Delivery',
+        body: 'Delivery is a one-time installation process with handoff behavior configured to match your site structure and customer journey goals.',
+      },
+      {
+        heading: 'Maintenance and Scan Allowance',
+        body: 'No monthly SaaS fee. Optional annual maintenance is available for ongoing scan refreshes and behavior tuning.',
+      },
+      {
+        heading: 'Upgrade Path',
+        body: 'Upgrade to Enhanced Website ORB for deeper routing precision and additional intelligence mapping.',
+      },
+      {
+        heading: 'Example Use Cases',
+        bullets: [
+          'Guide visitors from homepage to financing/contact forms',
+          'Route service seekers to department-specific pages',
+          'Reduce drop-off before key conversion steps',
+        ],
+      },
+    ],
+    faq: [
+      {
+        question: 'Is there a monthly subscription?',
+        answer: 'No. This is a one-time installed ORB with optional annual maintenance.',
+      },
+      {
+        question: 'Can we upgrade later?',
+        answer: 'Yes. Basic Visitor ORB can be upgraded into Enhanced and Premium tiers.',
+      },
+    ],
+  },
+  {
+    slug: 'enhanced-website-orb',
+    itemId: 'orb_enhanced_website',
+    heroSummary: 'Advanced routing and intent mapping for higher-conversion website guidance.',
+    launchPriceLabel: 'Launch Price: $988',
+    ctaLabel: 'Start Enhanced ORB Checkout',
+    sections: [
+      {
+        heading: 'What It Is',
+        body: 'Enhanced Website ORB extends visitor guidance with deeper service and department precision across more intent paths.',
+      },
+      {
+        heading: 'Who It Is For',
+        bullets: [
+          'Growing businesses with multiple departments',
+          'Dealer and service-heavy websites',
+          'Organizations with frequent visitor decision friction',
+        ],
+      },
+      {
+        heading: 'What Is Included',
+        bullets: [
+          'Enhanced scan mapping',
+          'Priority target routing',
+          'FAQ and content extraction',
+          'Expanded launch scan credits',
+        ],
+      },
+      {
+        heading: 'How It Works',
+        bullets: [
+          'Builds a richer intent map across service and conversion flows',
+          'Routes customers to the most relevant page or handoff point',
+          'Supports clearer department-level guidance logic',
+        ],
+      },
+      {
+        heading: 'Installation and Delivery',
+        body: 'Configured through a structured implementation process that includes route validation and conversion-focused handoff logic.',
+      },
+      {
+        heading: 'Maintenance and Scan Allowance',
+        body: 'No monthly SaaS fee. Optional annual maintenance adds scan refresh cycles and optimization iterations.',
+      },
+      {
+        heading: 'Upgrade Path',
+        body: 'Upgrade to Premium Website ORB for branded behavior profiles and semantic graph-driven intelligence.',
+      },
+      {
+        heading: 'Example Use Cases',
+        bullets: [
+          'Segment visitors by intent before routing to forms',
+          'Accelerate path-to-contact for high-value pages',
+          'Improve service and sales department handoff clarity',
+        ],
+      },
+    ],
+    faq: [
+      {
+        question: 'Is this still one-time installed?',
+        answer: 'Yes. Enhanced Website ORB is one-time installed with optional annual maintenance.',
+      },
+      {
+        question: 'Does this include custom branding?',
+        answer: 'Branding depth increases with Premium Website ORB, which is the next tier upgrade.',
+      },
+    ],
+  },
+  {
+    slug: 'premium-website-orb',
+    itemId: 'orb_premium_website',
+    heroSummary: 'Authority-grade branded ORB with semantic intelligence and custom behavior design.',
+    launchPriceLabel: 'Launch Price: $1,988+',
+    ctaLabel: 'Start Premium ORB Checkout',
+    sections: [
+      {
+        heading: 'What It Is',
+        body: 'Premium Website ORB is the high-authority implementation tier for organizations that need custom behavior and branded intelligence design.',
+      },
+      {
+        heading: 'Who It Is For',
+        bullets: [
+          'Multi-service organizations',
+          'High-traffic websites with conversion bottlenecks',
+          'Teams needing custom ORB behavior and premium routing precision',
+        ],
+      },
+      {
+        heading: 'What Is Included',
+        bullets: [
+          'Branded ORB styling',
+          'Semantic knowledge graph',
+          'Custom behavior profile',
+          'Premium diagnostics eligibility',
+        ],
+      },
+      {
+        heading: 'How It Works',
+        bullets: [
+          'Combines scan intelligence with tailored behavior logic',
+          'Routes visitors using structured semantic context',
+          'Aligns ORB responses with business-specific conversion doctrine',
+        ],
+      },
+      {
+        heading: 'Installation and Delivery',
+        body: 'Implemented as a guided premium deployment with branded integration, testing cycles, and launch handoff standards.',
+      },
+      {
+        heading: 'Maintenance and Scan Allowance',
+        body: 'No monthly SaaS fee. Optional annual maintenance provides continuing scan intelligence refresh and optimization support.',
+      },
+      {
+        heading: 'Upgrade Path',
+        body: 'Includes direct expansion path into enterprise-grade ORB programs, maintenance bundles, and custom scan operations.',
+      },
+      {
+        heading: 'Example Use Cases',
+        bullets: [
+          'Cross-department visitor routing with branded interaction tone',
+          'Complex service matrices with guided decision flows',
+          'High-value lead path acceleration with custom handoff logic',
+        ],
+      },
+    ],
+    faq: [
+      {
+        question: 'Is Premium a subscription?',
+        answer: 'No. Premium is a one-time installed authority package with optional annual maintenance.',
+      },
+      {
+        question: 'Can this support custom enterprise behavior?',
+        answer: 'Yes. Premium is the gateway to advanced and enterprise ORB behavior programs.',
+      },
+    ],
+  },
+];
+
+const MarketplaceProduct: React.FC = () => {
+  const { id, slug } = useParams<{ id: string; slug: string }>();
+  const { items, addToCart } = useMarketplace();
+  const [imageFailed, setImageFailed] = React.useState(false);
+
+  const authorityConfig = AUTHORITY_PRODUCTS.find((entry) => entry.slug === slug);
+  const item = authorityConfig
+    ? items.find((entry) => entry.item_id === authorityConfig.itemId)
+    : items.find((entry) => entry.item_id === id);
+  const imageSrc = React.useMemo(() => {
+    if (!item?.image_src) {
+      return null;
+    }
+    const trimmed = item.image_src.trim();
+    if (!trimmed) {
+      return null;
+    }
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
+      return trimmed;
+    }
+    return `/${trimmed}`;
+  }, [item?.image_src]);
+  const isAuthorityPage = Boolean(authorityConfig && item);
 
   return (
     <MarketLayout
       title={item ? item.name : 'Product not found'}
-      subtitle="Detailed listing card for standalone-ready marketplace routes."
+      subtitle={isAuthorityPage ? authorityConfig?.heroSummary || '' : 'Detailed listing card for standalone-ready marketplace routes.'}
     >
       {!item ? (
         <div className="ow-market-empty">
           Product record was not found. <Link to="/marketplace">Return to marketplace</Link>.
         </div>
+      ) : isAuthorityPage && authorityConfig ? (
+        <article className="ow-market-product-authority">
+          <header className="ow-market-authority-hero">
+            <div>
+              <p className="ow-market-chapter">Authority Product</p>
+              <h2>{item.name}</h2>
+              <p>{authorityConfig.heroSummary}</p>
+              <p className="ow-market-authority-price">{authorityConfig.launchPriceLabel || `Launch Price: ${item.price}`}</p>
+              <p className="ow-market-authority-note">No monthly SaaS fee. Optional annual maintenance available.</p>
+            </div>
+            {imageSrc && !imageFailed ? (
+              <img
+                className="ow-market-authority-image"
+                src={imageSrc}
+                alt={item.name}
+                loading="lazy"
+                onError={() => setImageFailed(true)}
+              />
+            ) : (
+              <div className="ow-market-orb-preview ow-market-product-preview" aria-hidden="true" />
+            )}
+          </header>
+
+          <div className="ow-market-authority-cta-row">
+            <button type="button" disabled={!item.purchasable} onClick={() => addToCart(item)}>
+              {item.purchasable ? authorityConfig.ctaLabel : 'Planned'}
+            </button>
+            <Link to="/marketplace">Back to marketplace shelves</Link>
+          </div>
+
+          <section className="ow-market-authority-blocks">
+            {authorityConfig.sections.map((section) => (
+              <article key={section.heading} className="ow-market-authority-block">
+                <h3>{section.heading}</h3>
+                {section.body ? <p>{section.body}</p> : null}
+                {section.bullets ? (
+                  <ul className="ow-market-feature-list">
+                    {section.bullets.map((bullet) => (
+                      <li key={bullet}>{bullet}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </article>
+            ))}
+          </section>
+
+          <section className="ow-market-authority-block">
+            <h3>FAQ</h3>
+            <div className="ow-market-authority-faq-list">
+              {authorityConfig.faq.map((entry) => (
+                <article key={entry.question} className="ow-market-authority-faq-item">
+                  <h4>{entry.question}</h4>
+                  <p>{entry.answer}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="ow-market-authority-block">
+            <h3>Trust and Delivery Doctrine</h3>
+            <p>
+              Orb Weaver authority products are installed and delivered as controlled implementation packages. They are not SaaS lock-ins,
+              and they preserve operator ownership with optional annual maintenance support.
+            </p>
+            <MarketIndexCode value={item.market_index_code} />
+          </section>
+        </article>
       ) : (
         <article className="ow-market-product-detail">
           <header>
             <p>{item.badge}</p>
             <span>{item.price}</span>
           </header>
+          {imageSrc && !imageFailed ? (
+            <img
+              className="ow-market-product-image"
+              src={imageSrc}
+              alt={item.name}
+              loading="lazy"
+              onError={() => setImageFailed(true)}
+            />
+          ) : (
+            <div className="ow-market-orb-preview ow-market-product-preview" aria-hidden="true" />
+          )}
           <MarketIndexCode value={item.market_index_code} />
           <p>{item.description}</p>
           <ul className="ow-market-feature-list">
