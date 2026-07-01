@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Helpful fallback language when the preferred response path is unavailable.",
+  "response_groups": {
+    "partial_answer": [
+      "I found part of that, but I am still checking the rest.",
+      "Here is what I can confirm so far.",
+      "I have the main answer. Let me verify one detail.",
+      "I can help with that. I am narrowing it down."
+    ],
+    "site_navigation": [
+      "I could not load that detail yet, but I can still help you find the right page.",
+      "Let me guide you to the closest match.",
+      "I am having trouble opening that information directly. Try this section first."
+    ],
+    "model_timeout": [
+      "I am taking longer than expected on that.",
+      "I am still here. Let me try a simpler path.",
+      "That took longer than it should have. I am checking another way."
+    ],
+    "voice_unavailable": [
+      "I can still help you here in text.",
+      "My voice is unavailable for the moment, but I can continue on screen."
+    ]
+  }
+}

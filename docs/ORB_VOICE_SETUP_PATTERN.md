@@ -7,7 +7,8 @@ The setup is not a polished full voice platform yet. It works because it keeps t
 1. The browser listens.
 2. The backend transcribes recorded audio when using the deployable website orb.
 3. The backend runs ORB cognition and optional local LLM articulation.
-4. The browser speaks the final text with `speechSynthesis`.
+4. The backend synthesizes the final spoken text with Qwen TTS first, then Kokoro TTS if Qwen is unavailable.
+5. The browser plays the returned audio file. Browser `speechSynthesis` is not an acceptable voice path for the active website orb.
 
 ## Active Voice Surfaces
 
@@ -31,7 +32,8 @@ click orb
 -> transcript
 -> POST /api/orb/website-text
 -> backend ORB cognition / local LLM fallback
--> browser speechSynthesis speaks spoken_output
+-> backend Qwen TTS, then Kokoro fallback
+-> browser plays returned tts_audio_url
 ```
 
 If browser speech recognition is unavailable, it falls back to a text prompt and sends that text to the same backend route.
@@ -49,7 +51,8 @@ click orb
 -> POST /api/orb/website-voice
 -> backend faster-whisper transcription
 -> backend ORB cognition / local LLM fallback
--> browser speechSynthesis speaks spoken_output
+-> backend Qwen TTS, then Kokoro fallback
+-> browser plays returned tts_audio_url
 ```
 
 It also has a dockstation WebSocket handoff:
@@ -62,41 +65,24 @@ The WebSocket is optional for the voice chain. If the dockstation is offline, th
 
 ## Output Voice
 
-The current output voice is browser-native TTS:
-
-```ts
-const utterance = new SpeechSynthesisUtterance(text);
-window.speechSynthesis.cancel();
-window.speechSynthesis.speak(utterance);
-```
-
-There is no active backend TTS provider in the primary path. No Qwen, Kokoro, Coqui, ElevenLabs, or prerecorded WAV path is currently driving normal responses.
-
-The landing showcase orb chooses a preferred local browser voice if one matches:
+The current output voice is backend TTS audio:
 
 ```text
-female | zira | samantha | google us english | natural
+spoken_output text
+-> _synthesize_orb_tts()
+-> Qwen TTS primary
+-> Kokoro TTS fallback
+-> cached audio file in ORB_TTS_CACHE_DIR
+-> tts_audio_url returned to browser
+-> browser plays audio with HTMLAudioElement
 ```
 
-Then it sets:
+Browser `speechSynthesis` is intentionally not used for the active website orb response path.
+
+When applying this to other orbs, copy one consistent audio playback helper and use it for normal responses, fallback responses, route failures, and dockstation speech pulses. The most important behavior is:
 
 ```text
-rate: 0.98
-pitch: 1.04
-volume: 0.9
-```
-
-The reusable `WebsiteFloatingOrb` does not currently select a named browser voice. It sets:
-
-```text
-rate: 0.96
-pitch: 1.04
-```
-
-When applying this to other orbs, copy one consistent `speak()` helper and use it for normal responses, fallback responses, route failures, and dockstation speech pulses. The most important behavior is:
-
-```text
-cancel current speech before starting the next utterance
+pause current audio before starting the next utterance
 ```
 
 That prevents overlapping utterances and helps avoid the impression that the voice changed mid-response.
@@ -226,6 +212,19 @@ The backend loads the ORB controller from:
 
 ```text
 ORB_ASSISTANT_ROOT=../Orb_Assistant
+ORB_TTS_CACHE_DIR=data/tts_cache
+ORB_TTS_QWEN_URL=
+ORB_TTS_QWEN_API_KEY=
+ORB_TTS_QWEN_MODEL=qwen-tts
+ORB_TTS_QWEN_VOICE=Cherry
+ORB_TTS_QWEN_FORMAT=wav
+ORB_TTS_QWEN_PAYLOAD_MODE=openai
+ORB_TTS_KOKORO_URL=http://127.0.0.1:8880/v1/audio/speech
+ORB_TTS_KOKORO_API_KEY=
+ORB_TTS_KOKORO_MODEL=kokoro
+ORB_TTS_KOKORO_VOICE=af_heart
+ORB_TTS_KOKORO_FORMAT=wav
+ORB_TTS_KOKORO_PAYLOAD_MODE=openai
 ```
 
 The loader imports:
@@ -350,6 +349,8 @@ Docker currently overrides:
 ```text
 ORB_ASSISTANT_ROOT=/app/Orb_Assistant
 FASTER_WHISPER_STT_URL=http://host.docker.internal:9000/stt
+ORB_TTS_CACHE_DIR=/app/backend/data/tts_cache
+ORB_TTS_KOKORO_URL=http://host.docker.internal:8880/v1/audio/speech
 ```
 
 ## Frontend API Methods To Copy
@@ -372,46 +373,45 @@ websiteOrbText: (transcript: string) =>
   })
 ```
 
-For a new orb, keep the same response shape unless there is a strong reason to change it. The UI expects `spoken_output`, optional `cognitive_pulse`, and `llm_source`.
+For a new orb, keep the same response shape unless there is a strong reason to change it. The UI expects `spoken_output`, optional `cognitive_pulse`, `llm_source`, and optional TTS fields: `tts_audio_url`, `tts_provider`, and `tts_error`.
 
 ## Minimal Copy Pattern For Another Orb
 
 Use this as the setup checklist:
 
-1. Add a frontend `speak(text)` helper using `SpeechSynthesisUtterance`.
-2. Always call `window.speechSynthesis.cancel()` before `speak()`.
+1. Add a frontend `speak(text, tts_audio_url, tts_provider)` helper using `HTMLAudioElement`.
+2. Always pause the current audio element before starting the next audio response.
 3. Add click-to-record using `getUserMedia` and `MediaRecorder`.
 4. Record short WebM audio, around 6.5 seconds max.
 5. Upload the blob to `POST /api/orb/website-voice`.
-6. Speak `result.spoken_output`.
+6. Play `result.tts_audio_url` and display `result.spoken_output`.
 7. Show `result.transcript` or `result.spoken_output` in a visible status bubble.
 8. Use `result.cognitive_pulse.glow_intensity` to update orb mood or animation.
-9. On error, use the same `speak()` helper for the recovery message.
+9. On error, call `POST /api/orb/tts` for the recovery message and use the same audio playback helper.
 10. Keep `POST /api/orb/website-text` available as a transcript-only fallback.
 
 ## Known Imperfections
 
 These are part of the current setup and should be considered when cloning it:
 
-1. Browser voices vary by operating system and browser, so the same orb can sound different on different machines.
-2. `WebsiteFloatingOrb` does not select the same preferred voice logic as `AutonomousOrb`.
-3. Voice packs exist but are not wired into the live voice path.
-4. There is no backend-generated TTS audio in the normal path.
+1. Qwen must be configured with `ORB_TTS_QWEN_URL` or the backend will immediately fall through to Kokoro.
+2. Kokoro must be running or reachable at `ORB_TTS_KOKORO_URL` for fallback speech.
+3. If both Qwen and Kokoro fail, the orb displays text and reports TTS unavailable instead of using browser speech.
+4. Voice packs exist but are not wired into the live voice path.
 5. Faster-whisper must be running separately or `/api/orb/website-voice` fails.
 6. If API routing returns the frontend HTML shell instead of JSON, the frontend will treat the voice route as unavailable.
 7. The two frontend orb surfaces use different input strategies: browser transcript versus recorded audio upload.
 
 ## Recommended Next Cleanup
 
-Before applying this to many more orbs, centralize the frontend voice helper:
+Before applying this to many more orbs, centralize the frontend audio helper:
 
 ```text
-select preferred browser voice
-set rate/pitch/volume
-cancel current utterance
-speak normal output
-speak recovery output
-handle onend consistently
+pause current audio
+resolve backend media URL
+play normal output audio
+request recovery-message TTS
+handle onended/onerror consistently
 ```
 
 Then make both `AutonomousOrb` and `WebsiteFloatingOrb` use that helper. That would keep the working setup intact while making cloned orbs more consistent.

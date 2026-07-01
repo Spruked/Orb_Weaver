@@ -18,6 +18,7 @@ function defaultApiBaseUrl() {
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || defaultApiBaseUrl();
 const TOKEN_KEY = 'orb_weaver_customer_token';
+const ORB_RECONNECT_MESSAGE = 'I am reconnecting to my response service. Please try again in a moment.';
 
 export const authStore = {
   getToken: () => localStorage.getItem(TOKEN_KEY),
@@ -25,9 +26,44 @@ export const authStore = {
   clearToken: () => localStorage.removeItem(TOKEN_KEY)
 };
 
+function apiUrl(path: string) {
+  return `${API_BASE_URL}${path}`;
+}
+
+function mediaUrl(path?: string | null) {
+  if (!path) return '';
+  if (/^https?:\/\//i.test(path)) return path;
+  return apiUrl(path);
+}
+
+async function parseJsonResponse<T>(response: Response, requestUrl: string): Promise<T> {
+  const contentType = response.headers.get('Content-Type') || '';
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.debug('[Orb Weaver API]', {
+      requestUrl,
+      status: response.status,
+      contentType,
+    });
+  }
+
+  if (!response.ok) {
+    const body = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
+    const message = body?.detail || body?.message || response.statusText;
+    throw new Error(message || ORB_RECONNECT_MESSAGE);
+  }
+
+  if (!contentType.includes('application/json')) {
+    throw new Error(ORB_RECONNECT_MESSAGE);
+  }
+
+  return response.json();
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const token = authStore.getToken();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const requestUrl = apiUrl(path);
+  const response = await fetch(requestUrl, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -36,13 +72,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options
   });
 
-  if (!response.ok) {
-    const body = await response.json().catch(() => null);
-    const message = body?.detail || body?.message || response.statusText;
-    throw new Error(message);
-  }
-
-  return response.json();
+  return parseJsonResponse<T>(response, requestUrl);
 }
 
 function filenameFromDisposition(disposition: string | null) {
@@ -66,6 +96,81 @@ async function fetchBlob(path: string) {
     data: await response.blob(),
     filename: filenameFromDisposition(response.headers.get('Content-Disposition'))
   };
+}
+
+async function fetchText(path: string) {
+  const token = authStore.getToken();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    }
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new Error(body?.detail || response.statusText);
+  }
+  return {
+    data: await response.text(),
+    filename: filenameFromDisposition(response.headers.get('Content-Disposition'))
+  };
+}
+
+async function uploadForm<T>(path: string, formData: FormData): Promise<T> {
+  const token = authStore.getToken();
+  const requestUrl = apiUrl(path);
+  const response = await fetch(requestUrl, {
+    method: 'POST',
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
+    body: formData
+  });
+
+  return parseJsonResponse<T>(response, requestUrl);
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function openJsonDocument(path: string) {
+  const opened = window.open('', '_blank', 'noopener,noreferrer');
+  if (!opened) return;
+  opened.document.write('<!doctype html><title>Loading report...</title><body style="font-family: system-ui, sans-serif; padding: 18px;">Loading report...</body>');
+  opened.document.close();
+
+  const file = await fetchText(path);
+  let body = file.data;
+  try {
+    body = JSON.stringify(JSON.parse(file.data), null, 2);
+  } catch {
+    // Existing legacy report files may contain non-JSON text. Show them as-is.
+  }
+
+  const title = file.filename || 'report.json';
+  opened.document.open();
+  opened.document.write(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>${escapeHtml(title)}</title>
+    <style>
+      body { margin: 0; background: #f8fafc; color: #111827; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+      header { position: sticky; top: 0; padding: 14px 18px; background: #ffffff; border-bottom: 1px solid #e5e7eb; font-family: Inter, system-ui, sans-serif; font-weight: 700; }
+      pre { margin: 0; padding: 18px; white-space: pre-wrap; word-break: break-word; line-height: 1.55; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <header>${escapeHtml(title)}</header>
+    <pre>${escapeHtml(body)}</pre>
+  </body>
+</html>`);
+  opened.document.close();
 }
 
 async function openBlob(path: string) {
@@ -92,6 +197,7 @@ export interface Project {
   name: string;
   domain: string;
   ga4_property_id?: string | null;
+  ga4_measurement_id?: string | null;
   created_at?: string;
   latest_crawl_id?: string | null;
   latest_crawl_status?: string;
@@ -141,6 +247,68 @@ export interface Product {
   description: string;
   unit_amount_cents: number;
   currency: string;
+}
+
+export interface MarketplaceItem {
+  item_id: string;
+  market_index_code: string;
+  name: string;
+  price: string;
+  badge: string;
+  description: string;
+  features: string[];
+  href: string;
+  category: string;
+  tier_access: string[];
+  rights_status: string;
+  rarity: string;
+  image_src?: string;
+  sku?: string | null;
+  purchasable: boolean;
+}
+
+interface MarketplaceProductResponse {
+  id: string;
+  system_number?: string | null;
+  title: string;
+  slug?: string | null;
+  description?: string | null;
+  price_cents?: number | null;
+  currency?: string | null;
+  category?: string | null;
+  tier?: string | null;
+  primary_image_url?: string | null;
+  images?: Array<{ file_url?: string | null }>;
+}
+
+function formatMarketplacePrice(priceCents?: number | null, currency = 'usd') {
+  const amount = (priceCents || 0) / 100;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: currency.toUpperCase(),
+    maximumFractionDigits: amount % 1 === 0 ? 0 : 2,
+  }).format(amount);
+}
+
+function normalizeMarketplaceProduct(product: MarketplaceProductResponse): MarketplaceItem {
+  const slugOrId = product.slug || product.id;
+  return {
+    item_id: String(product.id),
+    market_index_code: product.system_number || `ORB-MKT.${product.id}`,
+    name: product.title,
+    price: formatMarketplacePrice(product.price_cents, product.currency || 'usd'),
+    badge: product.tier || 'Marketplace',
+    description: product.description || 'Marketplace product listing.',
+    features: ['Live marketplace listing'],
+    href: `/marketplace/products/${slugOrId}`,
+    category: product.category || 'uncategorized',
+    tier_access: product.tier ? [product.tier] : ['basic', 'premium', 'platinum'],
+    rights_status: 'marketplace',
+    rarity: 'standard',
+    image_src: product.primary_image_url || product.images?.find((image) => image.file_url)?.file_url || undefined,
+    sku: product.system_number || null,
+    purchasable: false,
+  };
 }
 
 export interface CartItem {
@@ -410,6 +578,169 @@ export interface ReportCompilerPayload {
   files: string[];
 }
 
+export interface PublicPreflightReport {
+  schema: string;
+  generated_at: string;
+  site_url: string;
+  notice: string;
+  outcome: 'basic_orb_recommended' | 'recommended' | 'needs_browser_verification' | 'needs_further_review' | 'not_recommended' | 'not_ready_any_orb';
+  outcome_title: string;
+  summary: string;
+  premium_status?: string;
+  recommended_next_step?: string;
+  primary_cta?: string;
+  secondary_ctas?: string[];
+  fit_score: number;
+  complexity: 'small' | 'medium' | 'large';
+  install_path: string;
+  reasons: string[];
+  likely_orb_benefits: string[];
+  basic_checks: {
+    site_loaded: boolean;
+    https_checked: boolean;
+    sample_pages_read: number;
+    sitemap_detected: boolean;
+    robots_detected: boolean;
+    contact_or_conversion_signals: boolean;
+    login_or_checkout_detected: boolean;
+    sample_broken_link_count: number;
+  };
+  limited_findings: {
+    cms_or_framework: string;
+    existing_chat_widget: boolean;
+    forms_detected: boolean;
+    products_detected: boolean;
+    booking_detected: boolean;
+    blog_detected: boolean;
+    sitemap_url_count: number;
+    warnings: string[];
+  };
+  next_steps: string[];
+  browser_verification?: {
+    status: string;
+    reason?: string;
+    summary?: {
+      console_message_count?: number;
+      network_request_count?: number;
+      lighthouse_scores?: Record<string, number>;
+    };
+    artifacts?: {
+      screenshot?: string | null;
+      lighthouse_dir?: string | null;
+    };
+  };
+}
+
+export interface BrowserReviewResult {
+  schema?: string;
+  status: string;
+  generated_at?: string;
+  url?: string;
+  label?: string;
+  review_dir?: string;
+  artifacts?: {
+    screenshot?: string | null;
+    lighthouse_dir?: string | null;
+  };
+  summary?: {
+    console_message_count?: number;
+    network_request_count?: number;
+    lighthouse_scores?: Record<string, number>;
+  };
+  error?: string | null;
+}
+
+export interface BrowserLabCatalog {
+  schema: string;
+  enabled: boolean;
+  public_enabled: boolean;
+  product_boundary: string;
+  groups: Record<string, {
+    label: string;
+    tools: Record<string, string>;
+  }>;
+}
+
+export interface BrowserLabResult {
+  schema: string;
+  tool: string;
+  status: string;
+  generated_at: string;
+  run_dir?: string;
+  result?: {
+    command?: string[];
+    returncode?: number;
+    stdout?: unknown;
+    stderr?: string;
+    ok?: boolean;
+    mcp_error?: string | null;
+  };
+  reason?: string;
+}
+
+export interface WebsiteOrbVoiceResponse {
+  transcript: string;
+  spoken_output: string;
+  cognitive_pulse?: Record<string, unknown> | null;
+  llm_source: string;
+  memory_context?: Record<string, unknown> | null;
+  tts_audio_url?: string | null;
+  tts_provider?: string | null;
+  tts_error?: string | null;
+}
+
+export interface WebsiteOrbTtsResponse {
+  text: string;
+  tts_audio_url?: string | null;
+  tts_provider?: string | null;
+  tts_error?: string | null;
+}
+
+export interface WebsiteOrbCapabilities {
+  schema: string;
+  orb_id: string;
+  role: string;
+  cognition_source: string;
+  current_orb_source_available: boolean;
+  legacy_electron_source_available: boolean;
+  tesseract: {
+    available: boolean;
+    binary?: string | null;
+  };
+  chrome_devtools_mcp: {
+    enabled: boolean;
+    public_enabled: boolean;
+    available: boolean;
+    runner: string;
+  };
+  voice: Record<string, string | boolean>;
+  tools: string[];
+}
+
+export interface OrbMemoryItem {
+  id: string;
+  category: string;
+  key: string;
+  value: string;
+  source: string;
+  confidence: number;
+  enabled: boolean;
+  metadata: Record<string, unknown>;
+  created_at?: string | null;
+  updated_at?: string | null;
+  expires_at?: string | null;
+}
+
+export interface OrbMemorySummary {
+  scope: 'authenticated_user' | 'anonymous_session';
+  durable: boolean;
+  user_id?: string;
+  items: OrbMemoryItem[];
+  recent_context?: Record<string, unknown> | null;
+  retention?: Record<string, unknown>;
+  policy?: string;
+}
+
 export interface GA4FullReport {
   traffic_overview?: {
     totals?: Record<string, number>;
@@ -421,6 +752,46 @@ export interface GA4FullReport {
 }
 
 export const api = {
+  websiteOrbVoice: (audio: Blob) => {
+    const formData = new FormData();
+    formData.append('audio', audio, 'website-orb.webm');
+    return uploadForm<WebsiteOrbVoiceResponse>('/api/orb/website-voice', formData);
+  },
+  websiteOrbText: (transcript: string, synthesizeTts = true) =>
+    request<WebsiteOrbVoiceResponse>('/api/orb/website-text', {
+      method: 'POST',
+      body: JSON.stringify({ transcript, synthesize_tts: synthesizeTts })
+    }),
+  websiteOrbTts: (text: string) =>
+    request<WebsiteOrbTtsResponse>('/api/orb/tts', {
+      method: 'POST',
+      body: JSON.stringify({ text })
+    }),
+  orbMediaUrl: mediaUrl,
+  websiteOrbCapabilities: () => request<WebsiteOrbCapabilities>('/api/orb/capabilities'),
+  orbMemory: () => request<OrbMemorySummary>('/api/orb/memory'),
+  upsertOrbMemory: (payload: {
+    category: string;
+    key: string;
+    value: string;
+    source?: string;
+    confidence?: number;
+    enabled?: boolean;
+    metadata?: Record<string, unknown>;
+  }) =>
+    request<OrbMemoryItem>('/api/orb/memory', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  clearOrbMemoryItem: (memoryId: string | number) =>
+    request<{ status: string; id: string }>(`/api/orb/memory/${memoryId}`, { method: 'DELETE' }),
+  clearOrbMemory: () =>
+    request<{ status: string; deleted_memory_items: number }>('/api/orb/memory', { method: 'DELETE' }),
+  publicPreflight: (websiteUrl: string) =>
+    request<PublicPreflightReport>('/api/public/preflight', {
+      method: 'POST',
+      body: JSON.stringify({ website_url: websiteUrl })
+    }),
   signup: (payload: {
     email: string;
     password: string;
@@ -456,6 +827,12 @@ export const api = {
   me: () => request<Customer>('/api/auth/me'),
   logout: () => request<{ status: string }>('/api/auth/logout', { method: 'POST' }),
   listProducts: () => request<Product[]>('/api/products'),
+  listMarketplaceItems: async (category?: string) => {
+    const products = await request<MarketplaceProductResponse[]>(
+      `/api/marketplace/public/products${category ? `?category=${encodeURIComponent(category)}` : ''}`
+    );
+    return products.map(normalizeMarketplaceProduct);
+  },
   getCart: () => request<CartPayload>('/api/cart'),
   upsertCartItem: (payload: { sku: string; quantity: number }) =>
     request<CartPayload>('/api/cart/items', {
@@ -470,12 +847,35 @@ export const api = {
     }),
   listCheckoutOrders: () => request<CheckoutOrder[]>('/api/checkout/orders'),
   adminListCustomers: () => request<AdminCustomer[]>('/api/admin/customers'),
+  adminExportCustomersToCaliCrm: () =>
+    request<{ status: string; record_count: number; path: string; crm_url: string }>('/api/admin/cali-crm/export-customers', {
+      method: 'POST'
+    }),
+  adminBrowserLabTools: () => request<BrowserLabCatalog>('/api/admin/browser-lab/tools'),
+  adminRunBrowserLabTool: (payload: { tool: string; params: Record<string, unknown> }) =>
+    request<BrowserLabResult>('/api/admin/browser-lab/run', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
   listProjects: () => request<Project[]>('/api/projects'),
-  createProject: (project: { name?: string | null; domain: string; ga4_property_id?: string | null }) =>
+  createProject: (project: { name?: string | null; domain: string; ga4_property_id?: string | null; ga4_measurement_id?: string | null }) =>
     request<Project>('/api/projects', {
       method: 'POST',
       body: JSON.stringify(project)
     }),
+  updateProjectGA4Config: (projectId: string, payload: { ga4_property_id?: string | null; ga4_measurement_id?: string | null }) =>
+    request<Project>(`/api/projects/${projectId}/ga4/config`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  importProjectGA4: (projectId: string, payload: { ga4_property_id?: string | null; ga4_measurement_id?: string | null; days?: number } = {}) =>
+    request<{ status: string; imported_page_rows: number; artifact_path: string; traffic_totals: Record<string, number>; project: Project }>(
+      `/api/projects/${projectId}/ga4/import`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      }
+    ),
   deleteProject: (id: string) =>
     request<{ status: string }>(`/api/projects/${id}`, { method: 'DELETE' }),
   startCrawl: (projectId: string, config: CrawlConfig) =>
@@ -498,6 +898,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({})
     }),
+  runProjectBrowserReview: (projectId: string) =>
+    request<BrowserReviewResult>(`/api/projects/${projectId}/browser-review`, {
+      method: 'POST'
+    }),
   getCrawlJob: (jobId: string) => request<CrawlJob>(`/api/crawl-jobs/${jobId}`),
   listCrawlJobs: () => request<CrawlJob[]>('/api/crawl-jobs'),
   getCrawlPages: (jobId: string) => request<PagesResponse>(`/api/crawl-jobs/${jobId}/pages?limit=200`),
@@ -507,6 +911,18 @@ export const api = {
     }),
   getAuditReport: (auditId: string) => request<AuditReportResponse>(`/api/audit-reports/${auditId}`),
   getReportCompiler: (projectId: string) => request<ReportCompilerPayload>(`/api/projects/${projectId}/report-compiler`),
+  createTPCPack: (projectId: string, tier: 'basic' | 'enhanced' | 'premium') =>
+    request<{ status: string; project: Project; pack: Record<string, any>; download_url: string }>(
+      `/api/projects/${projectId}/tpc-pack`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ tier })
+      }
+    ),
+  listTPCPacks: (projectId: string) =>
+    request<{ packs: Array<{ filename: string; size_kb: number; generated_at: string; download_url: string }> }>(
+      `/api/projects/${projectId}/tpc-packs`
+    ),
   getCombinedDashboard: (projectId: string) =>
     request<{
       project: Project;
@@ -525,7 +941,9 @@ export const fileUrls = {
   auditCsv: (auditId: string) => `${API_BASE_URL}/api/audit-reports/${auditId}/export/csv`,
   auditPdf: (auditId: string) => `${API_BASE_URL}/api/audit-reports/${auditId}/export/pdf`,
   reportFile: (projectId: string, filename: string, disposition: 'inline' | 'attachment' = 'inline') =>
-    `${API_BASE_URL}/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=${disposition}`
+    `${API_BASE_URL}/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=${disposition}`,
+  tpcPack: (projectId: string, filename: string) =>
+    `${API_BASE_URL}/api/projects/${projectId}/tpc-pack/download/${encodeURIComponent(filename)}`
 };
 
 export const downloads = {
@@ -533,11 +951,15 @@ export const downloads = {
   auditCsv: (auditId: string) => downloadAuto(`/api/audit-reports/${auditId}/export/csv`),
   auditPdf: (auditId: string) => downloadAuto(`/api/audit-reports/${auditId}/export/pdf`),
   reportFile: (projectId: string, filename: string) =>
-    downloadAuto(`/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=attachment`)
+    downloadAuto(`/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=attachment`),
+  tpcPack: (projectId: string, filename: string) =>
+    downloadAuto(`/api/projects/${projectId}/tpc-pack/download/${encodeURIComponent(filename)}`)
 };
 
 export const openFiles = {
   auditPdf: (auditId: string) => openBlob(`/api/audit-reports/${auditId}/export/pdf?disposition=inline`),
   reportFile: (projectId: string, filename: string) =>
-    openBlob(`/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=inline`)
+    filename.toLowerCase().endsWith('.json')
+      ? openJsonDocument(`/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=inline`)
+      : openBlob(`/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=inline`)
 };

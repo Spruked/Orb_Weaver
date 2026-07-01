@@ -13,6 +13,7 @@ class Project(Base):
     name = Column(String(255), nullable=False)
     domain = Column(String(255), nullable=False)
     ga4_property_id = Column(String(100), nullable=True)
+    ga4_measurement_id = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     is_active = Column(Boolean, default=True)
@@ -56,6 +57,19 @@ class Customer(Base):
     sessions = relationship("CustomerSession", back_populates="customer")
     cart_items = relationship("CartItem", back_populates="customer")
     checkout_orders = relationship("CheckoutOrder", back_populates="customer")
+    orb_memories = relationship("OrbUserMemory", back_populates="customer", cascade="all, delete-orphan")
+    orb_recent_contexts = relationship("OrbRecentContext", back_populates="customer", cascade="all, delete-orphan")
+    orb_tool_caches = relationship("OrbToolCache", back_populates="customer", cascade="all, delete-orphan")
+    marketplace_products = relationship(
+        "MarketplaceProduct",
+        foreign_keys="MarketplaceProduct.seller_user_id",
+        back_populates="seller",
+    )
+    marketplace_uploaded_images = relationship(
+        "MarketplaceProductImage",
+        foreign_keys="MarketplaceProductImage.uploaded_by_user_id",
+        back_populates="uploader",
+    )
 
 class CustomerSession(Base):
     __tablename__ = "customer_sessions"
@@ -68,6 +82,59 @@ class CustomerSession(Base):
     revoked_at = Column(DateTime, nullable=True)
 
     customer = relationship("Customer", back_populates="sessions")
+
+
+class OrbUserMemory(Base):
+    __tablename__ = "orb_user_memory"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    category = Column(String(80), nullable=False, index=True)
+    key = Column(String(160), nullable=False, index=True)
+    value = Column(Text, nullable=False)
+    source = Column(String(255), nullable=False)
+    confidence = Column(Float, nullable=False, default=1.0)
+    enabled = Column(Boolean, default=True)
+    metadata_json = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+
+    customer = relationship("Customer", back_populates="orb_memories")
+
+
+class OrbRecentContext(Base):
+    __tablename__ = "orb_recent_context"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    session_key = Column(String(120), nullable=False, index=True)
+    summary = Column(Text, nullable=False, default="")
+    turn_count = Column(Integer, default=0)
+    last_source = Column(String(255), nullable=False, default="website_orb")
+    metadata_json = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+
+    customer = relationship("Customer", back_populates="orb_recent_contexts")
+
+
+class OrbToolCache(Base):
+    __tablename__ = "orb_tool_cache"
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    scope = Column(String(255), nullable=False, index=True)
+    tool = Column(String(120), nullable=False, index=True)
+    input_hash = Column(String(64), nullable=False, index=True)
+    normalized_input = Column(JSON, default=dict)
+    result_summary = Column(JSON, default=dict)
+    provenance = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+    customer = relationship("Customer", back_populates="orb_tool_caches")
 
 class CartItem(Base):
     __tablename__ = "cart_items"
@@ -203,6 +270,111 @@ class KeywordRanking(Base):
     url = Column(Text, nullable=True)
     date_checked = Column(DateTime, default=datetime.utcnow)
 
+
+class MarketplaceProduct(Base):
+    __tablename__ = "marketplace_products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    system_number = Column(String(32), nullable=False, unique=True, index=True)
+    seller_user_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    created_by_admin_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    source_type = Column(String(50), nullable=False, default="user_upload")
+    title = Column(String(255), nullable=False)
+    slug = Column(String(255), nullable=False, unique=True, index=True)
+    description = Column(Text, nullable=True)
+    price_cents = Column(Integer, nullable=False, default=0)
+    currency = Column(String(10), nullable=False, default="usd")
+    category = Column(String(100), nullable=False, default="uncategorized")
+    tier = Column(String(50), nullable=True)
+    status = Column(String(50), nullable=False, default="draft")
+    visibility = Column(String(50), nullable=False, default="private")
+    approval_status = Column(String(50), nullable=False, default="pending_review")
+    inventory_type = Column(String(50), nullable=False, default="unlimited")
+    quantity = Column(Integer, nullable=True)
+    is_digital = Column(Boolean, default=True)
+    is_featured = Column(Boolean, default=False)
+    sort_order = Column(Integer, default=0)
+    primary_image_id = Column(Integer, ForeignKey("marketplace_product_images.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    published_at = Column(DateTime, nullable=True)
+
+    seller = relationship("Customer", foreign_keys=[seller_user_id], back_populates="marketplace_products")
+    images = relationship(
+        "MarketplaceProductImage",
+        foreign_keys="MarketplaceProductImage.product_id",
+        back_populates="product",
+        cascade="all, delete-orphan",
+    )
+    primary_image = relationship("MarketplaceProductImage", foreign_keys=[primary_image_id], post_update=True)
+
+
+class MarketplaceProductImage(Base):
+    __tablename__ = "marketplace_product_images"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("marketplace_products.id"), nullable=False, index=True)
+    uploaded_by_user_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    file_path = Column(Text, nullable=True)
+    file_url = Column(Text, nullable=False)
+    alt_text = Column(String(255), nullable=True)
+    sort_order = Column(Integer, default=0)
+    is_primary = Column(Boolean, default=False)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    mime_type = Column(String(120), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    product = relationship("MarketplaceProduct", foreign_keys=[product_id], back_populates="images")
+    uploader = relationship("Customer", foreign_keys=[uploaded_by_user_id], back_populates="marketplace_uploaded_images")
+
+
+class MarketplaceAdSlot(Base):
+    __tablename__ = "marketplace_ad_slots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slot_key = Column(String(120), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    placement = Column(String(120), nullable=False, index=True)
+    title = Column(String(255), nullable=True)
+    image_url = Column(Text, nullable=True)
+    link_url = Column(Text, nullable=True)
+    html_content = Column(Text, nullable=True)
+    active = Column(Boolean, default=True)
+    starts_at = Column(DateTime, nullable=True)
+    ends_at = Column(DateTime, nullable=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class MarketplaceThemeSetting(Base):
+    __tablename__ = "marketplace_theme_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    theme_name = Column(String(120), nullable=False)
+    primary_color = Column(String(30), nullable=True)
+    accent_color = Column(String(30), nullable=True)
+    background_style = Column(Text, nullable=True)
+    card_style = Column(Text, nullable=True)
+    font_family = Column(String(255), nullable=True)
+    hero_image_url = Column(Text, nullable=True)
+    logo_url = Column(Text, nullable=True)
+    custom_css = Column(Text, nullable=True)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class MarketplaceNumberSequence(Base):
+    __tablename__ = "marketplace_number_sequence"
+
+    id = Column(Integer, primary_key=True, index=True)
+    prefix = Column(String(40), nullable=False, unique=True, index=True)
+    last_number = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # Database setup
 def get_engine(database_url: str, **kwargs):
     return create_engine(database_url, **kwargs)
@@ -214,8 +386,10 @@ def init_db(engine):
     Base.metadata.create_all(bind=engine)
     _ensure_json_columns(engine)
     _ensure_project_customer_column(engine)
+    _ensure_project_ga4_measurement_column(engine)
     _ensure_customer_profile_columns(engine)
     _ensure_default_admin_customer(engine)
+    _ensure_marketplace_number_sequence(engine)
 
 
 def _ensure_json_columns(engine):
@@ -264,6 +438,19 @@ def _ensure_project_customer_column(engine):
         connection.execute(text("ALTER TABLE projects ADD COLUMN customer_id INTEGER"))
 
 
+def _ensure_project_ga4_measurement_column(engine):
+    inspector = inspect(engine)
+    if "projects" not in inspector.get_table_names():
+        return
+
+    existing = {column["name"] for column in inspector.get_columns("projects")}
+    if "ga4_measurement_id" in existing:
+        return
+
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE projects ADD COLUMN ga4_measurement_id VARCHAR(100)"))
+
+
 def _ensure_customer_profile_columns(engine):
     inspector = inspect(engine)
     if "customers" not in inspector.get_table_names():
@@ -308,9 +495,39 @@ def _ensure_default_admin_customer(engine):
         return
 
     with engine.begin() as connection:
-        admin_count = connection.execute(text("SELECT COUNT(*) FROM customers WHERE is_admin = 1")).scalar() or 0
+        admin_filter = "is_admin IS TRUE" if engine.dialect.name == "postgresql" else "is_admin = 1"
+        admin_count = connection.execute(text(f"SELECT COUNT(*) FROM customers WHERE {admin_filter}")).scalar() or 0
         if admin_count:
             return
         first_id = connection.execute(text("SELECT id FROM customers ORDER BY id ASC LIMIT 1")).scalar()
         if first_id:
-            connection.execute(text("UPDATE customers SET is_admin = 1 WHERE id = :id"), {"id": first_id})
+            admin_value = True if engine.dialect.name == "postgresql" else 1
+            connection.execute(text("UPDATE customers SET is_admin = :is_admin WHERE id = :id"), {"id": first_id, "is_admin": admin_value})
+
+
+def _ensure_marketplace_number_sequence(engine):
+    inspector = inspect(engine)
+    if "marketplace_number_sequence" not in inspector.get_table_names():
+        return
+
+    with engine.begin() as connection:
+        existing = connection.execute(
+            text("SELECT id FROM marketplace_number_sequence WHERE prefix = :prefix LIMIT 1"),
+            {"prefix": "OW-MKT"},
+        ).scalar()
+        if existing:
+            return
+        connection.execute(
+            text(
+                """
+                INSERT INTO marketplace_number_sequence (prefix, last_number, created_at, updated_at)
+                VALUES (:prefix, :last_number, :created_at, :updated_at)
+                """
+            ),
+            {
+                "prefix": "OW-MKT",
+                "last_number": 0,
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            },
+        )

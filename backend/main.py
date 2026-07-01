@@ -5,25 +5,32 @@ import csv
 import hashlib
 import importlib.util
 import json
+import os
 import re
 import secrets
+import shutil
 import sqlite3
 import sys
+import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from collections import Counter
+from urllib.parse import urlparse
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import httpx
 from pydantic import BaseModel, Field
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
 from app.analytics.ga4 import GA4Connector
 from app.audit.engine import SEOAuditor
 from app.core.config import settings
 from app.crawler.engine import OrbWeaverCrawler, PageData
+from app.pack_generator import generate_pack_file
+from app.services.chrome_devtools import ChromeDevToolsReviewRunner
 from app.models.database import (
     AuditReport,
     CartItem,
@@ -32,6 +39,15 @@ from app.models.database import (
     CrawledPage,
     Customer,
     CustomerSession,
+    GA4Data,
+    MarketplaceAdSlot,
+    MarketplaceNumberSequence,
+    MarketplaceProduct,
+    MarketplaceProductImage,
+    MarketplaceThemeSetting,
+    OrbRecentContext,
+    OrbToolCache,
+    OrbUserMemory,
     Project,
     get_engine,
     get_session_maker,
@@ -76,10 +92,13 @@ init_db(ENGINE)
 
 REPORT_COMPILER_ROOT = Path("report_compiler")
 REPORT_COMPILER_ROOT.mkdir(parents=True, exist_ok=True)
+ORB_TTS_CACHE_ROOT = Path(settings.ORB_TTS_CACHE_DIR)
+ORB_TTS_CACHE_ROOT.mkdir(parents=True, exist_ok=True)
 
 SUBSTRATE_ROOT = Path(settings.ORB_WEAVER_SUBSTRATE_ROOT)
 PREFLIGHT_SCANNER_ROOT = Path(__file__).resolve().parent.parent / "Preflight Scanner"
 PREFLIGHT_SCANNER_MODULE = PREFLIGHT_SCANNER_ROOT / "preflight_site_scan.py"
+ORB_CONTROLLER = None
 
 
 def get_db():
@@ -94,6 +113,13 @@ class ProjectCreate(BaseModel):
     name: Optional[str] = None
     domain: str
     ga4_property_id: Optional[str] = None
+    ga4_measurement_id: Optional[str] = None
+
+
+class ProjectGA4Config(BaseModel):
+    ga4_property_id: Optional[str] = None
+    ga4_measurement_id: Optional[str] = None
+    days: int = Field(default=30, ge=1, le=365)
 
 
 class CrawlConfig(BaseModel):
@@ -139,6 +165,43 @@ class CustomerLogin(BaseModel):
     password: str
 
 
+class WebsiteOrbVoiceResponse(BaseModel):
+    transcript: str
+    spoken_output: str
+    cognitive_pulse: Optional[Dict[str, Any]] = None
+    llm_source: str = "local-fallback"
+    memory_context: Optional[Dict[str, Any]] = None
+    tts_audio_url: Optional[str] = None
+    tts_provider: Optional[str] = None
+    tts_error: Optional[str] = None
+
+
+class WebsiteOrbTextRequest(BaseModel):
+    transcript: str = Field(..., min_length=1, max_length=1000)
+    synthesize_tts: bool = True
+
+
+class WebsiteOrbTtsRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=1200)
+
+
+class WebsiteOrbTtsResponse(BaseModel):
+    text: str
+    tts_audio_url: Optional[str] = None
+    tts_provider: Optional[str] = None
+    tts_error: Optional[str] = None
+
+
+class OrbMemoryUpsert(BaseModel):
+    category: str = Field(..., min_length=2, max_length=80)
+    key: str = Field(..., min_length=1, max_length=160)
+    value: str = Field(..., min_length=1, max_length=2000)
+    source: str = Field(default="explicit_user_preference", min_length=2, max_length=255)
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    enabled: bool = True
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class CartItemUpsert(BaseModel):
     sku: str
     quantity: int = Field(default=1, ge=1, le=99)
@@ -150,6 +213,284 @@ class CheckoutCreate(BaseModel):
 
 class PreflightRunConfig(BaseModel):
     output_dir: Optional[str] = None
+
+
+class PublicPreflightRequest(BaseModel):
+    website_url: str = Field(..., min_length=3, max_length=255)
+
+
+class BrowserReviewRequest(BaseModel):
+    website_url: str = Field(..., min_length=3, max_length=255)
+
+
+class BrowserLabToolRequest(BaseModel):
+    tool: str = Field(..., min_length=2, max_length=80)
+    params: Dict[str, Any] = Field(default_factory=dict)
+
+
+class TPCPackRequest(BaseModel):
+    tier: str = Field(default="basic", pattern="^(basic|enhanced|premium)$")
+
+
+class MarketplaceProductCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: Optional[str] = None
+    price_cents: int = Field(default=0, ge=0)
+    currency: str = Field(default="usd", min_length=3, max_length=10)
+    category: str = Field(default="uncategorized", min_length=1, max_length=100)
+    tier: Optional[str] = Field(default=None, max_length=50)
+    status: str = Field(default="draft", max_length=50)
+    visibility: str = Field(default="private", max_length=50)
+    approval_status: str = Field(default="pending_review", max_length=50)
+    inventory_type: str = Field(default="unlimited", max_length=50)
+    quantity: Optional[int] = Field(default=None, ge=0)
+    is_digital: bool = True
+    is_featured: bool = False
+    sort_order: int = 0
+    source_type: Optional[str] = Field(default=None, max_length=50)
+    submit_for_approval: bool = False
+
+
+class MarketplaceProductUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    price_cents: Optional[int] = Field(default=None, ge=0)
+    currency: Optional[str] = Field(default=None, min_length=3, max_length=10)
+    category: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    tier: Optional[str] = Field(default=None, max_length=50)
+    status: Optional[str] = Field(default=None, max_length=50)
+    visibility: Optional[str] = Field(default=None, max_length=50)
+    approval_status: Optional[str] = Field(default=None, max_length=50)
+    inventory_type: Optional[str] = Field(default=None, max_length=50)
+    quantity: Optional[int] = Field(default=None, ge=0)
+    is_digital: Optional[bool] = None
+    is_featured: Optional[bool] = None
+    sort_order: Optional[int] = None
+    submit_for_approval: bool = False
+
+
+class MarketplaceProductImageCreate(BaseModel):
+    file_path: Optional[str] = None
+    file_url: str = Field(min_length=1)
+    alt_text: Optional[str] = Field(default=None, max_length=255)
+    sort_order: int = 0
+    is_primary: bool = False
+    width: Optional[int] = Field(default=None, ge=1)
+    height: Optional[int] = Field(default=None, ge=1)
+    mime_type: Optional[str] = Field(default=None, max_length=120)
+
+
+class MarketplaceAdSlotUpsert(BaseModel):
+    slot_key: str = Field(min_length=1, max_length=120)
+    name: str = Field(min_length=1, max_length=255)
+    placement: str = Field(min_length=1, max_length=120)
+    title: Optional[str] = Field(default=None, max_length=255)
+    image_url: Optional[str] = None
+    link_url: Optional[str] = None
+    html_content: Optional[str] = None
+    active: bool = True
+    starts_at: Optional[datetime] = None
+    ends_at: Optional[datetime] = None
+    sort_order: int = 0
+
+
+class MarketplaceThemeUpsert(BaseModel):
+    theme_name: str = Field(min_length=1, max_length=120)
+    primary_color: Optional[str] = Field(default=None, max_length=30)
+    accent_color: Optional[str] = Field(default=None, max_length=30)
+    background_style: Optional[str] = None
+    card_style: Optional[str] = None
+    font_family: Optional[str] = Field(default=None, max_length=255)
+    hero_image_url: Optional[str] = None
+    logo_url: Optional[str] = None
+    custom_css: Optional[str] = None
+    active: bool = True
+
+
+class MarketplaceProductStatusPatch(BaseModel):
+    status: Optional[str] = Field(default=None, max_length=50)
+    visibility: Optional[str] = Field(default=None, max_length=50)
+    approval_status: Optional[str] = Field(default=None, max_length=50)
+    is_featured: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+MARKETPLACE_ALLOWED_STATUS = {
+    "draft",
+    "pending_review",
+    "approved",
+    "active",
+    "hidden",
+    "rejected",
+    "archived",
+}
+
+MARKETPLACE_ALLOWED_VISIBILITY = {"private", "public"}
+MARKETPLACE_ALLOWED_APPROVAL = {"pending_review", "approved", "rejected"}
+
+
+def _slugify(value: str) -> str:
+    candidate = re.sub(r"[^a-zA-Z0-9]+", "-", (value or "").strip().lower()).strip("-")
+    return candidate or "marketplace-item"
+
+
+def _build_unique_marketplace_slug(db: Session, title: str, exclude_id: Optional[int] = None) -> str:
+    base = _slugify(title)
+    candidate = base
+    suffix = 2
+    while True:
+        query = db.query(MarketplaceProduct).filter(MarketplaceProduct.slug == candidate)
+        if exclude_id is not None:
+            query = query.filter(MarketplaceProduct.id != exclude_id)
+        if query.first() is None:
+            return candidate
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+
+
+def _next_marketplace_system_number(db: Session, prefix: str = "OW-MKT") -> str:
+    sequence = db.query(MarketplaceNumberSequence).filter(MarketplaceNumberSequence.prefix == prefix).first()
+    now = datetime.utcnow()
+    if not sequence:
+        sequence = MarketplaceNumberSequence(prefix=prefix, last_number=0, created_at=now, updated_at=now)
+        db.add(sequence)
+        db.flush()
+    sequence.last_number += 1
+    sequence.updated_at = now
+    return f"{prefix}-{sequence.last_number:06d}"
+
+
+def _serialize_marketplace_image(image: MarketplaceProductImage) -> Dict[str, Any]:
+    return {
+        "id": str(image.id),
+        "product_id": str(image.product_id),
+        "uploaded_by_user_id": str(image.uploaded_by_user_id) if image.uploaded_by_user_id else None,
+        "file_path": image.file_path,
+        "file_url": image.file_url,
+        "alt_text": image.alt_text,
+        "sort_order": image.sort_order,
+        "is_primary": bool(image.is_primary),
+        "width": image.width,
+        "height": image.height,
+        "mime_type": image.mime_type,
+        "created_at": image.created_at.isoformat() if image.created_at else None,
+    }
+
+
+def _serialize_marketplace_product(product: MarketplaceProduct, include_images: bool = True) -> Dict[str, Any]:
+    image_payload = []
+    if include_images:
+        ordered_images = sorted(product.images or [], key=lambda img: (img.sort_order, img.id))
+        image_payload = [_serialize_marketplace_image(image) for image in ordered_images]
+
+    return {
+        "id": str(product.id),
+        "system_number": product.system_number,
+        "seller_user_id": str(product.seller_user_id) if product.seller_user_id else None,
+        "created_by_admin_id": str(product.created_by_admin_id) if product.created_by_admin_id else None,
+        "source_type": product.source_type,
+        "title": product.title,
+        "slug": product.slug,
+        "description": product.description,
+        "price_cents": product.price_cents,
+        "currency": product.currency,
+        "category": product.category,
+        "tier": product.tier,
+        "status": product.status,
+        "visibility": product.visibility,
+        "approval_status": product.approval_status,
+        "inventory_type": product.inventory_type,
+        "quantity": product.quantity,
+        "is_digital": bool(product.is_digital),
+        "is_featured": bool(product.is_featured),
+        "sort_order": product.sort_order,
+        "primary_image_id": str(product.primary_image_id) if product.primary_image_id else None,
+        "primary_image_url": product.primary_image.file_url if product.primary_image else None,
+        "images": image_payload,
+        "created_at": product.created_at.isoformat() if product.created_at else None,
+        "updated_at": product.updated_at.isoformat() if product.updated_at else None,
+        "published_at": product.published_at.isoformat() if product.published_at else None,
+    }
+
+
+def _serialize_marketplace_ad_slot(slot: MarketplaceAdSlot) -> Dict[str, Any]:
+    return {
+        "id": str(slot.id),
+        "slot_key": slot.slot_key,
+        "name": slot.name,
+        "placement": slot.placement,
+        "title": slot.title,
+        "image_url": slot.image_url,
+        "link_url": slot.link_url,
+        "html_content": slot.html_content,
+        "active": bool(slot.active),
+        "starts_at": slot.starts_at.isoformat() if slot.starts_at else None,
+        "ends_at": slot.ends_at.isoformat() if slot.ends_at else None,
+        "sort_order": slot.sort_order,
+        "created_at": slot.created_at.isoformat() if slot.created_at else None,
+        "updated_at": slot.updated_at.isoformat() if slot.updated_at else None,
+    }
+
+
+def _serialize_marketplace_theme(theme: MarketplaceThemeSetting) -> Dict[str, Any]:
+    return {
+        "id": str(theme.id),
+        "theme_name": theme.theme_name,
+        "primary_color": theme.primary_color,
+        "accent_color": theme.accent_color,
+        "background_style": theme.background_style,
+        "card_style": theme.card_style,
+        "font_family": theme.font_family,
+        "hero_image_url": theme.hero_image_url,
+        "logo_url": theme.logo_url,
+        "custom_css": theme.custom_css,
+        "active": bool(theme.active),
+        "created_at": theme.created_at.isoformat() if theme.created_at else None,
+        "updated_at": theme.updated_at.isoformat() if theme.updated_at else None,
+    }
+
+
+def _is_public_marketplace_product(product: MarketplaceProduct) -> bool:
+    return bool(
+        product.system_number
+        and product.status == "active"
+        and product.visibility == "public"
+        and product.approval_status == "approved"
+    )
+
+
+def _get_marketplace_product_or_404(product_id: int, db: Session) -> MarketplaceProduct:
+    product = db.get(MarketplaceProduct, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Marketplace product not found")
+    return product
+
+
+def _get_owned_seller_product_or_404(product_id: int, customer: Customer, db: Session) -> MarketplaceProduct:
+    product = db.get(MarketplaceProduct, product_id)
+    if not product or product.seller_user_id != customer.id:
+        raise HTTPException(status_code=404, detail="Marketplace product not found")
+    return product
+
+
+def _set_primary_product_image(product: MarketplaceProduct, image: MarketplaceProductImage, db: Session):
+    images = db.query(MarketplaceProductImage).filter(MarketplaceProductImage.product_id == product.id).all()
+    for entry in images:
+        entry.is_primary = entry.id == image.id
+    product.primary_image_id = image.id
+
+
+def _validate_marketplace_status_fields(
+    status: Optional[str],
+    visibility: Optional[str],
+    approval_status: Optional[str],
+) -> None:
+    if status and status not in MARKETPLACE_ALLOWED_STATUS:
+        raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+    if visibility and visibility not in MARKETPLACE_ALLOWED_VISIBILITY:
+        raise HTTPException(status_code=400, detail=f"Invalid visibility: {visibility}")
+    if approval_status and approval_status not in MARKETPLACE_ALLOWED_APPROVAL:
+        raise HTTPException(status_code=400, detail=f"Invalid approval_status: {approval_status}")
 
 
 SERVICE_CATALOG = {
@@ -412,6 +753,204 @@ def get_current_customer(
     return customer
 
 
+def get_optional_customer(
+    authorization: Optional[str],
+    db: Session,
+) -> Optional[Customer]:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    try:
+        return get_current_customer(authorization=authorization, db=db)
+    except HTTPException:
+        return None
+
+
+ORB_MEMORY_CATEGORIES = {
+    "preferred_name",
+    "communication_preference",
+    "project_context",
+    "scan_context",
+    "orb_entitlement",
+    "explicit_preference",
+    "conversation_summary",
+}
+ORB_MEMORY_MAX_ITEMS_PER_USER = 80
+ORB_MEMORY_SUMMARY_LIMIT = 12
+ORB_RECENT_CONTEXT_TTL_DAYS = 14
+ORB_RECENT_CONTEXT_MAX_CHARS = 1200
+ORB_TOOL_CACHE_DEFAULT_TTL_SECONDS = 900
+ORB_SENSITIVE_MEMORY_TERMS = {
+    "password",
+    "token",
+    "secret",
+    "payment",
+    "card",
+    "credit_card",
+    "ssn",
+    "tax_id",
+    "recording",
+    "microphone",
+    "raw_document",
+    "browser_history",
+}
+
+
+def _normalize_memory_key(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9_.:-]+", "_", value.strip().lower())
+    return normalized.strip("_")[:160]
+
+
+def _validate_memory_payload(payload: OrbMemoryUpsert) -> tuple[str, str]:
+    category = payload.category.strip().lower()
+    key = _normalize_memory_key(payload.key)
+    if category not in ORB_MEMORY_CATEGORIES:
+        raise HTTPException(status_code=400, detail=f"Unsupported memory category: {payload.category}")
+    if not key:
+        raise HTTPException(status_code=400, detail="Memory key is required")
+    risk_text = f"{category} {key} {payload.source}".lower()
+    if any(term in risk_text for term in ORB_SENSITIVE_MEMORY_TERMS):
+        raise HTTPException(status_code=400, detail="That memory type is not allowed")
+    return category, key
+
+
+def _serialize_orb_memory(item: OrbUserMemory) -> Dict[str, Any]:
+    return {
+        "id": str(item.id),
+        "category": item.category,
+        "key": item.key,
+        "value": item.value,
+        "source": item.source,
+        "confidence": item.confidence,
+        "enabled": bool(item.enabled),
+        "metadata": item.metadata_json or {},
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+        "expires_at": item.expires_at.isoformat() if item.expires_at else None,
+    }
+
+
+def _orb_memory_summary(customer: Optional[Customer], db: Session) -> Dict[str, Any]:
+    if not customer:
+        return {
+            "scope": "anonymous_session",
+            "durable": False,
+            "items": [],
+            "recent_context": None,
+            "policy": "Anonymous visitors receive only request/session context, not durable account memory.",
+        }
+
+    now = datetime.utcnow()
+    memories = (
+        db.query(OrbUserMemory)
+        .filter(
+            OrbUserMemory.customer_id == customer.id,
+            OrbUserMemory.enabled == True,  # noqa: E712
+        )
+        .filter(or_(OrbUserMemory.expires_at == None, OrbUserMemory.expires_at > now))  # noqa: E711
+        .order_by(OrbUserMemory.updated_at.desc(), OrbUserMemory.id.desc())
+        .limit(ORB_MEMORY_SUMMARY_LIMIT)
+        .all()
+    )
+    recent = (
+        db.query(OrbRecentContext)
+        .filter(
+            OrbRecentContext.customer_id == customer.id,
+            OrbRecentContext.expires_at > now,
+        )
+        .order_by(OrbRecentContext.updated_at.desc(), OrbRecentContext.id.desc())
+        .first()
+    )
+    return {
+        "scope": "authenticated_user",
+        "durable": True,
+        "user_id": str(customer.id),
+        "items": [_serialize_orb_memory(item) for item in memories],
+        "recent_context": {
+            "summary": recent.summary,
+            "turn_count": recent.turn_count,
+            "source": recent.last_source,
+            "updated_at": recent.updated_at.isoformat() if recent.updated_at else None,
+        }
+        if recent
+        else None,
+        "retention": {
+            "profile_memory_max_items": ORB_MEMORY_MAX_ITEMS_PER_USER,
+            "memory_summary_limit": ORB_MEMORY_SUMMARY_LIMIT,
+            "recent_context_ttl_days": ORB_RECENT_CONTEXT_TTL_DAYS,
+            "recent_context_max_chars": ORB_RECENT_CONTEXT_MAX_CHARS,
+            "tool_cache_default_ttl_seconds": ORB_TOOL_CACHE_DEFAULT_TTL_SECONDS,
+        },
+    }
+
+
+def _upsert_orb_memory(customer: Customer, payload: OrbMemoryUpsert, db: Session) -> OrbUserMemory:
+    category, key = _validate_memory_payload(payload)
+    item = (
+        db.query(OrbUserMemory)
+        .filter(
+            OrbUserMemory.customer_id == customer.id,
+            OrbUserMemory.category == category,
+            OrbUserMemory.key == key,
+        )
+        .first()
+    )
+    if not item:
+        count = db.query(OrbUserMemory).filter(OrbUserMemory.customer_id == customer.id).count()
+        if count >= ORB_MEMORY_MAX_ITEMS_PER_USER:
+            oldest = (
+                db.query(OrbUserMemory)
+                .filter(OrbUserMemory.customer_id == customer.id)
+                .order_by(OrbUserMemory.updated_at.asc(), OrbUserMemory.id.asc())
+                .first()
+            )
+            if oldest:
+                db.delete(oldest)
+                db.flush()
+        item = OrbUserMemory(customer_id=customer.id, category=category, key=key)
+        db.add(item)
+    item.value = payload.value.strip()[:2000]
+    item.source = payload.source.strip()[:255]
+    item.confidence = float(payload.confidence)
+    item.enabled = bool(payload.enabled)
+    item.metadata_json = dict(payload.metadata or {})
+    item.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+def _update_orb_recent_context(customer: Optional[Customer], transcript: str, spoken_output: str, db: Session) -> None:
+    if not customer:
+        return
+    now = datetime.utcnow()
+    session_key = "website_orb"
+    context = (
+        db.query(OrbRecentContext)
+        .filter(
+            OrbRecentContext.customer_id == customer.id,
+            OrbRecentContext.session_key == session_key,
+        )
+        .first()
+    )
+    if not context:
+        context = OrbRecentContext(customer_id=customer.id, session_key=session_key)
+        db.add(context)
+    addition = f"User asked: {transcript.strip()[:220]} | ORB answered: {spoken_output.strip()[:260]}"
+    summary = f"{context.summary}\n{addition}".strip()
+    context.summary = summary[-ORB_RECENT_CONTEXT_MAX_CHARS:]
+    context.turn_count = int(context.turn_count or 0) + 1
+    context.last_source = "website_orb"
+    context.metadata_json = {"source": "orb_conversation_summary", "bounded": True}
+    context.updated_at = now
+    context.expires_at = now + timedelta(days=ORB_RECENT_CONTEXT_TTL_DAYS)
+    db.commit()
+
+
+def _cache_key_for_tool(scope: str, tool: str, normalized_input: Dict[str, Any]) -> str:
+    payload = json.dumps({"scope": scope, "tool": tool, "input": normalized_input}, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _owned_project(project_id: str, customer: Customer, db: Session) -> Project:
     try:
         project_pk = int(project_id)
@@ -484,6 +1023,7 @@ def _serialize_project(project: Project, db: Session) -> Dict:
         "domain": project.domain,
         "folder_title": report_folder.name,
         "ga4_property_id": project.ga4_property_id,
+        "ga4_measurement_id": project.ga4_measurement_id,
         "created_at": project.created_at.isoformat() if project.created_at else None,
         "latest_crawl_id": str(latest_crawl.id) if latest_crawl else None,
         "latest_crawl_status": latest_crawl.status if latest_crawl else "never_crawled",
@@ -542,6 +1082,544 @@ async def _run_project_preflight(project: Project, output_dir: Optional[str] = N
     }
     _write_json(target_output / "site_preflight_report.json", report)
     return report
+
+
+async def _run_preflight_url(site_url: str, output_dir: str) -> Dict:
+    scanner_cls = _load_preflight_scanner()
+    scanner = scanner_cls(root_url=site_url, output_dir=output_dir)
+    return await scanner.scan()
+
+
+def _normalize_public_site_url(raw_url: str) -> str:
+    candidate = raw_url.strip()
+    if not candidate:
+        raise ValueError("Website URL is required")
+    if not candidate.startswith(("http://", "https://")):
+        candidate = f"https://{candidate}"
+    parsed = urlparse(candidate)
+    if not parsed.netloc or "." not in parsed.netloc:
+        raise ValueError("Enter a valid website domain or URL")
+    return candidate.rstrip("/")
+
+
+def _public_preflight_report(scan: Dict) -> Dict:
+    detected = scan.get("detected") or {}
+    warnings = scan.get("warnings") or []
+    pages_scanned = int(scan.get("pages_scanned") or 0)
+    confidence = float(scan.get("confidence") or 0)
+    fit_score = max(0, min(100, round(confidence * 100)))
+    has_auth = bool(detected.get("has_auth_pages"))
+    has_checkout = bool(detected.get("has_checkout") or detected.get("has_products"))
+
+    if pages_scanned == 0:
+        outcome = "not_ready_any_orb"
+        title = "Not Ready for Any ORB"
+        summary = "The free preflight could not read enough public site structure to recommend an ORB."
+    elif confidence < 0.45 or has_auth or has_checkout:
+        outcome = "needs_browser_verification"
+        title = "Basic ORB Recommended - Premium Review Required"
+        summary = "The site appears ready for a Basic Visitor ORB, but Premium readiness needs browser verification."
+    else:
+        outcome = "basic_orb_recommended"
+        title = "Basic ORB Recommended - Premium Review Required"
+        summary = "The free scan found enough public structure to recommend starting with a Basic Visitor ORB."
+
+    return {
+        "schema": "orb_weaver.public_preflight.v1",
+        "generated_at": datetime.utcnow().isoformat(),
+        "site_url": scan.get("site_url"),
+        "notice": "The free Preflight Scan is not a full audit. It is a basic readiness check.",
+        "outcome": outcome,
+        "outcome_title": title,
+        "summary": summary,
+        "premium_status": "Needs Browser Verification" if outcome == "needs_browser_verification" else title,
+        "recommended_next_step": "Start with Basic ORB" if outcome != "not_ready_any_orb" else "Fix site readiness first",
+        "primary_cta": "Start with Basic ORB" if outcome != "not_ready_any_orb" else "Request Manual Review",
+        "secondary_ctas": ["Request Premium Review", "Create Account to Save Report", "Download Basic Report"],
+        "fit_score": fit_score,
+        "complexity": scan.get("complexity") or "medium",
+        "install_path": "basic_orb_with_browser_verification" if outcome == "needs_browser_verification" else outcome,
+        "reasons": warnings[:6] or ["The free scan completed without a major blocker."],
+        "likely_orb_benefits": [
+            "Guide visitors toward important pages and next actions.",
+            "Answer basic questions from readable public content.",
+            "Create a cleaner path for support, booking, sales, or service questions.",
+        ],
+        "basic_checks": {
+            "site_loaded": pages_scanned > 0,
+            "https_checked": str(scan.get("site_url") or "").startswith("https://"),
+            "sample_pages_read": pages_scanned,
+            "sitemap_detected": bool(detected.get("sitemap_xml")),
+            "robots_detected": bool(detected.get("robots_txt")),
+            "contact_or_conversion_signals": bool(detected.get("has_contact_form") or detected.get("has_booking") or detected.get("has_products")),
+            "login_or_checkout_detected": bool(has_auth or has_checkout),
+            "sample_broken_link_count": len(scan.get("broken_links") or []),
+        },
+        "limited_findings": {
+            "cms_or_framework": detected.get("cms_framework") or "unknown",
+            "existing_chat_widget": bool(detected.get("existing_chat_widget")),
+            "forms_detected": bool(detected.get("has_contact_form")),
+            "products_detected": bool(detected.get("has_products")),
+            "booking_detected": bool(detected.get("has_booking")),
+            "blog_detected": bool(detected.get("has_blog")),
+            "sitemap_url_count": int(scan.get("sitemap_url_count") or 0),
+            "warnings": warnings[:4],
+        },
+        "next_steps": [
+            "Start with the Basic Visitor ORB.",
+            "Request Premium Review to verify browser-rendered content, protected routes, checkout, login, and install safety.",
+            "Create a free Orb Weaver account to save the report.",
+        ],
+    }
+
+
+async def _transcribe_with_faster_whisper(audio: UploadFile) -> str:
+    content = await audio.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="No audio was received")
+
+    filename = audio.filename or "website-orb.webm"
+    content_type = audio.content_type or "application/octet-stream"
+    stt_urls = [settings.FASTER_WHISPER_STT_URL]
+    if settings.FASTER_WHISPER_STT_URL == "http://127.0.0.1:9000/stt":
+        stt_urls.append("http://127.0.0.1:9880/stt")
+
+    last_error = None
+    payload: Dict[str, Any] = {}
+    for stt_url in stt_urls:
+        try:
+            async with httpx.AsyncClient(timeout=45.0) as client:
+                response = await client.post(
+                    stt_url,
+                    files={"file": (filename, content, content_type)},
+                )
+                response.raise_for_status()
+                payload = response.json()
+                break
+        except httpx.HTTPError as exc:
+            last_error = exc
+    else:
+        raise HTTPException(status_code=502, detail=f"Faster-whisper STT failed: {last_error}")
+
+    transcript = str(payload.get("text") or "").strip()
+    if not transcript:
+        raise HTTPException(status_code=422, detail="Faster-whisper did not return a transcript")
+    return transcript
+
+def _load_orb_controller():
+    global ORB_CONTROLLER
+    if ORB_CONTROLLER is not None:
+        return ORB_CONTROLLER
+
+    root = Path(settings.ORB_ASSISTANT_ROOT).expanduser()
+    if not root.is_absolute():
+        root = (Path(__file__).resolve().parent / root).resolve()
+    src = root / "src"
+    if not src.exists():
+        raise RuntimeError(f"ORB cognition path not found: {src}")
+
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
+    if str(root.parent) not in sys.path:
+        sys.path.insert(0, str(root.parent))
+
+    previous_cwd = Path.cwd()
+    try:
+        os.chdir(src)
+        from Orb_Assistant.src.orb_controller import SF_ORB_Controller
+
+        ORB_CONTROLLER = SF_ORB_Controller()
+    finally:
+        os.chdir(previous_cwd)
+    return ORB_CONTROLLER
+
+
+def _orb_capabilities() -> Dict[str, Any]:
+    root = Path(settings.ORB_ASSISTANT_ROOT).expanduser()
+    if not root.is_absolute():
+        root = (Path(__file__).resolve().parent / root).resolve()
+    current_src = root / "src"
+    legacy_electron_src = root / "electron" / "src"
+    chrome_tool = shutil.which(settings.CHROME_DEVTOOLS_CLI) or shutil.which("npx")
+    tesseract_bin = shutil.which("tesseract")
+
+    return {
+        "schema": "orb_weaver.website_orb_capabilities.v1",
+        "orb_id": "ORB_WEAVER_SHOWCASE_ORB_V1",
+        "role": "website_orb_showcase",
+        "cognition_source": str(current_src if current_src.exists() else legacy_electron_src),
+        "current_orb_source_available": current_src.exists(),
+        "legacy_electron_source_available": legacy_electron_src.exists(),
+        "tesseract": {
+            "available": bool(tesseract_bin),
+            "binary": tesseract_bin,
+        },
+        "chrome_devtools_mcp": {
+            "enabled": settings.CHROME_DEVTOOLS_ENABLED,
+            "public_enabled": settings.CHROME_DEVTOOLS_PUBLIC_ENABLED,
+            "available": bool(chrome_tool),
+            "runner": settings.CHROME_DEVTOOLS_CLI,
+        },
+        "voice": {
+            "browser_speech_recognition": "client_detected",
+            "browser_speech_synthesis": False,
+            "recorded_audio_stt_url": settings.FASTER_WHISPER_STT_URL,
+            "text_query_low_latency": True,
+            "tts_primary": "qwen",
+            "tts_primary_configured": bool(settings.ORB_TTS_QWEN_URL),
+            "tts_fallback": "kokoro",
+            "tts_fallback_url": settings.ORB_TTS_KOKORO_URL,
+        },
+        "tools": [
+            "public_preflight",
+            "website_voice",
+            "website_text",
+            "dockstation_websocket_handoff",
+            "chrome_devtools_mcp_optional",
+            "tesseract_ocr_available" if tesseract_bin else "tesseract_ocr_missing_python_binding",
+        ],
+    }
+
+
+def _orb_cognitive_pulse(transcript: str) -> Optional[Dict[str, Any]]:
+    try:
+        controller = _load_orb_controller()
+        thought = controller.cognitively_emerge({
+            "type": "website_voice_query",
+            "content": transcript,
+            "coordinates": [0, 0],
+            "velocity": 0.0,
+            "intent": "visitor_voice_assistance",
+        })
+        if hasattr(thought, "pulse"):
+            pulse = thought.pulse()
+        else:
+            pulse = thought
+        return pulse if isinstance(pulse, dict) else {"result": str(pulse)}
+    except Exception as exc:
+        return {"cognitive_mode": "FALLBACK", "error": str(exc), "glow_intensity": 0.62}
+
+
+def _fallback_orb_spoken_output(
+    transcript: str,
+    pulse: Optional[Dict[str, Any]],
+    memory_context: Optional[Dict[str, Any]] = None,
+) -> str:
+    normalized = transcript.lower()
+    mode = (pulse or {}).get("cognitive_mode") or "GUARD"
+    memory_items = (memory_context or {}).get("items") or []
+    preferred_name = next(
+        (
+            item.get("value")
+            for item in memory_items
+            if item.get("category") == "preferred_name" and item.get("value")
+        ),
+        None,
+    )
+    if preferred_name and any(term in normalized for term in ("remember", "know me", "who am i", "my name")):
+        return f"I remember that you prefer to be addressed as {preferred_name}."
+    if "preflight" in normalized or "scan" in normalized:
+        return "I can run a public Preflight scan now. It checks basic Website ORB readiness without requiring an account."
+    if "tool" in normalized or "mcp" in normalized or "tesseract" in normalized:
+        return "My showcase tools are Preflight, voice cognition, optional Chrome DevTools MCP review, and local Tesseract OCR readiness."
+    if "basic" in normalized or "premium" in normalized:
+        return "Basic ORBs handle public visitor guidance. Premium adds deeper browser verification, install review, and richer owner controls."
+    if "market" in normalized or "product" in normalized:
+        return "Orb Weaver Marketplace sells compatible ORB skins, upgrades, diagnostics, scan bundles, and future approved behavior packs."
+    return f"I am online in {mode} mode. I can demonstrate public Preflight, ORB cognition, voice, and deployment readiness."
+
+
+async def _llm_orb_spoken_output(
+    transcript: str,
+    pulse: Optional[Dict[str, Any]],
+    memory_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, str]:
+    fallback = _fallback_orb_spoken_output(transcript, pulse, memory_context)
+    if not settings.LOCAL_LLM_URL or not settings.LOCAL_LLM_MODEL:
+        return {"spoken_output": fallback, "llm_source": "local-fallback"}
+
+    prompt = (
+        "You are the spoken output of the Orb Weaver website ORB assistant. "
+        "Use the ORB cognitive pulse as advisory cognition. "
+        "Use authenticated ORB account memory only when it is directly relevant. "
+        "Do not invent facts. Do not expose private internals. "
+        "Answer in one short spoken sentence. No markdown. No chat UI language.\n\n"
+        f"Visitor voice transcript: {transcript}\n"
+        f"ORB cognitive pulse: {json.dumps(pulse or {}, ensure_ascii=False)}\n"
+        f"Safe account memory context: {json.dumps(memory_context or {}, ensure_ascii=False)}"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                settings.LOCAL_LLM_URL,
+                json={
+                    "model": settings.LOCAL_LLM_MODEL,
+                    "prompt": prompt,
+                    "stream": False,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        spoken = str(payload.get("response") or payload.get("text") or "").strip()
+        return {"spoken_output": spoken or fallback, "llm_source": "local-llm"}
+    except Exception:
+        return {"spoken_output": fallback, "llm_source": "local-fallback"}
+
+
+def _content_type_for_audio_format(audio_format: str) -> str:
+    normalized = (audio_format or "wav").lower().strip(".")
+    if normalized == "mp3":
+        return "audio/mpeg"
+    if normalized == "ogg":
+        return "audio/ogg"
+    if normalized == "webm":
+        return "audio/webm"
+    if normalized == "flac":
+        return "audio/flac"
+    return "audio/wav"
+
+
+def _audio_extension_for_content(content_type: str, audio_format: str) -> str:
+    normalized_type = (content_type or "").lower()
+    if "mpeg" in normalized_type or "mp3" in normalized_type:
+        return "mp3"
+    if "ogg" in normalized_type:
+        return "ogg"
+    if "webm" in normalized_type:
+        return "webm"
+    if "flac" in normalized_type:
+        return "flac"
+    return (audio_format or "wav").lower().strip(".") or "wav"
+
+
+def _tts_payload(mode: str, text: str, model: str, voice: str, audio_format: str) -> Dict[str, Any]:
+    if (mode or "openai").lower() == "generic":
+        return {
+            "text": text,
+            "model": model,
+            "voice": voice,
+            "format": audio_format,
+        }
+    return {
+        "model": model,
+        "input": text,
+        "voice": voice,
+        "response_format": audio_format,
+    }
+
+
+def _extract_base64_audio(payload: Dict[str, Any]) -> Optional[str]:
+    candidates = [
+        payload.get("audio"),
+        payload.get("audio_base64"),
+        payload.get("audioContent"),
+        (payload.get("data") or {}).get("audio") if isinstance(payload.get("data"), dict) else None,
+        (payload.get("output") or {}).get("audio") if isinstance(payload.get("output"), dict) else None,
+    ]
+    for value in candidates:
+        if not isinstance(value, str) or not value.strip():
+            continue
+        if value.startswith("data:"):
+            return value.split(",", 1)[-1]
+        return value
+    return None
+
+
+def _extract_audio_url(payload: Dict[str, Any]) -> Optional[str]:
+    candidates = [
+        payload.get("audio_url"),
+        payload.get("url"),
+        (payload.get("data") or {}).get("url") if isinstance(payload.get("data"), dict) else None,
+        (payload.get("output") or {}).get("url") if isinstance(payload.get("output"), dict) else None,
+    ]
+    for value in candidates:
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
+async def _call_tts_provider(
+    provider: str,
+    url: Optional[str],
+    api_key: Optional[str],
+    payload_mode: str,
+    text: str,
+    model: str,
+    voice: str,
+    audio_format: str,
+) -> Dict[str, Any]:
+    if not url:
+        raise RuntimeError(f"{provider} TTS URL is not configured")
+
+    headers: Dict[str, str] = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    payload = _tts_payload(payload_mode, text, model, voice, audio_format)
+    async with httpx.AsyncClient(timeout=settings.ORB_TTS_TIMEOUT_SECONDS) as client:
+        response = await client.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        content_type = response.headers.get("content-type") or _content_type_for_audio_format(audio_format)
+
+        if content_type.startswith("audio/") or content_type in {"application/octet-stream"}:
+            return {
+                "provider": provider,
+                "audio": response.content,
+                "content_type": content_type,
+                "extension": _audio_extension_for_content(content_type, audio_format),
+            }
+
+        result = response.json()
+        encoded_audio = _extract_base64_audio(result)
+        if encoded_audio:
+            return {
+                "provider": provider,
+                "audio": base64.b64decode(encoded_audio),
+                "content_type": _content_type_for_audio_format(audio_format),
+                "extension": audio_format.lower().strip(".") or "wav",
+            }
+
+        audio_url = _extract_audio_url(result)
+        if audio_url:
+            audio_response = await client.get(audio_url, headers=headers)
+            audio_response.raise_for_status()
+            fetched_type = audio_response.headers.get("content-type") or _content_type_for_audio_format(audio_format)
+            return {
+                "provider": provider,
+                "audio": audio_response.content,
+                "content_type": fetched_type,
+                "extension": _audio_extension_for_content(fetched_type, audio_format),
+            }
+
+    raise RuntimeError(f"{provider} TTS response did not include audio")
+
+
+async def _synthesize_orb_tts(text: str) -> Dict[str, Optional[str]]:
+    clean_text = text.strip()
+    if not clean_text:
+        return {"tts_audio_url": None, "tts_provider": None, "tts_error": "No text was provided for TTS"}
+
+    providers = [
+        (
+            "qwen",
+            settings.ORB_TTS_QWEN_URL,
+            settings.ORB_TTS_QWEN_API_KEY,
+            settings.ORB_TTS_QWEN_PAYLOAD_MODE,
+            settings.ORB_TTS_QWEN_MODEL,
+            settings.ORB_TTS_QWEN_VOICE,
+            settings.ORB_TTS_QWEN_FORMAT,
+        ),
+        (
+            "kokoro",
+            settings.ORB_TTS_KOKORO_URL,
+            settings.ORB_TTS_KOKORO_API_KEY,
+            settings.ORB_TTS_KOKORO_PAYLOAD_MODE,
+            settings.ORB_TTS_KOKORO_MODEL,
+            settings.ORB_TTS_KOKORO_VOICE,
+            settings.ORB_TTS_KOKORO_FORMAT,
+        ),
+    ]
+
+    errors: List[str] = []
+    for provider, url, api_key, payload_mode, model, voice, audio_format in providers:
+        try:
+            result = await _call_tts_provider(
+                provider=provider,
+                url=url,
+                api_key=api_key,
+                payload_mode=payload_mode,
+                text=clean_text,
+                model=model,
+                voice=voice,
+                audio_format=audio_format,
+            )
+            digest = hashlib.sha256(
+                f"{provider}:{model}:{voice}:{clean_text}".encode("utf-8")
+            ).hexdigest()[:24]
+            extension = result["extension"] or "wav"
+            audio_id = f"{digest}.{extension}"
+            audio_path = ORB_TTS_CACHE_ROOT / audio_id
+            audio_path.write_bytes(result["audio"])
+            return {
+                "tts_audio_url": f"/api/orb/tts/{audio_id}",
+                "tts_provider": provider,
+                "tts_error": None,
+            }
+        except Exception as exc:
+            message = str(exc) or exc.__class__.__name__
+            errors.append(f"{provider}: {message}")
+
+    return {
+        "tts_audio_url": None,
+        "tts_provider": None,
+        "tts_error": "; ".join(errors) or "TTS failed",
+    }
+
+
+def _chrome_devtools_runner() -> ChromeDevToolsReviewRunner:
+    return ChromeDevToolsReviewRunner(
+        cli=settings.CHROME_DEVTOOLS_CLI,
+        output_root=settings.CHROME_DEVTOOLS_OUTPUT_ROOT,
+        timeout_seconds=settings.CHROME_DEVTOOLS_TIMEOUT_SECONDS,
+        start_args=settings.CHROME_DEVTOOLS_START_ARGS,
+        browser_start_cmd=settings.CHROME_DEVTOOLS_BROWSER_START_CMD,
+    )
+
+
+def _cali_crm_import_dir() -> Path:
+    return Path(settings.CALI_CRM_SUBSTRATE_ROOT) / "imports" / "pending"
+
+
+def _customer_crm_import_record(customer: Customer, db: Session) -> Dict:
+    projects = db.query(Project).filter(Project.customer_id == customer.id).all()
+    return {
+        "schema": "orb_weaver.crm_contact_import.v1",
+        "source": "orb_weaver",
+        "source_record_id": str(customer.id),
+        "name": customer.full_name or customer.contact_name or customer.business_name,
+        "type": "orb_weaver_customer",
+        "phone": customer.phone or customer.business_phone,
+        "email": customer.email,
+        "lead_source": "orb_weaver",
+        "tags": ["orb_weaver", "website_orb", "customer_base"],
+        "metadata_payload": {
+            "business_name": customer.business_name,
+            "company_name": customer.company_name,
+            "status": customer.status,
+            "project_count": len(projects),
+            "projects": [_serialize_project(project, db) for project in projects],
+        },
+    }
+
+
+def _tpc_pack_output_dir(project: Project) -> Path:
+    folder = _project_report_dir(project) / "tpc_packs"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def _build_tpc_pack_scan_data(project: Project, db: Session) -> Dict:
+    latest_crawl = db.query(CrawlJob).filter(CrawlJob.project_id == project.id).order_by(CrawlJob.id.desc()).first()
+    pages = []
+    if latest_crawl:
+        pages = [
+            {
+                "url": page.url,
+                "title": page.title,
+                "meta_description": page.meta_description,
+                "h1": page.h1,
+                "word_count": page.word_count,
+                "status_code": page.status_code,
+                "semantic_analysis": page.semantic_analysis or {},
+            }
+            for page in db.query(CrawledPage).filter(CrawledPage.crawl_job_id == latest_crawl.id).limit(250).all()
+        ]
+    return {
+        "project": _serialize_project(project, db),
+        "latest_crawl": _serialize_crawl_job(latest_crawl, db, include_pages=False) if latest_crawl else None,
+        "pages": pages,
+        "generated_at": datetime.utcnow().isoformat(),
+    }
 
 
 def _content_disposition(filename: str, disposition: str = "attachment") -> Dict[str, str]:
@@ -1648,6 +2726,167 @@ async def root():
     }
 
 
+@app.post("/api/public/preflight")
+async def public_preflight(payload: PublicPreflightRequest):
+    try:
+        site_url = _normalize_public_site_url(payload.website_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="orb_public_preflight_") as output_dir:
+            scan = await _run_preflight_url(site_url, output_dir)
+        report = _public_preflight_report(scan)
+        if settings.CHROME_DEVTOOLS_ENABLED and settings.CHROME_DEVTOOLS_PUBLIC_ENABLED:
+            report["browser_verification"] = _chrome_devtools_runner().review(site_url, label="public_preflight")
+        else:
+            report["browser_verification"] = {
+                "status": "not_run",
+                "reason": "Browser verification is reserved for deeper ORB reviews.",
+            }
+        return report
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Preflight scan failed: {exc}")
+
+
+@app.post("/api/orb/website-voice", response_model=WebsiteOrbVoiceResponse)
+async def website_orb_voice(
+    audio: UploadFile = File(...),
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    customer = get_optional_customer(authorization=authorization, db=db)
+    transcript = await _transcribe_with_faster_whisper(audio)
+    memory_context = _orb_memory_summary(customer, db)
+    cognitive_pulse = _orb_cognitive_pulse(transcript)
+    llm_result = await _llm_orb_spoken_output(transcript, cognitive_pulse, memory_context)
+    tts_result = await _synthesize_orb_tts(llm_result["spoken_output"])
+    _update_orb_recent_context(customer, transcript, llm_result["spoken_output"], db)
+    return {
+        "transcript": transcript,
+        "spoken_output": llm_result["spoken_output"],
+        "cognitive_pulse": cognitive_pulse,
+        "llm_source": llm_result["llm_source"],
+        "memory_context": memory_context,
+        **tts_result,
+    }
+
+
+@app.post("/api/orb/website-text", response_model=WebsiteOrbVoiceResponse)
+async def website_orb_text(
+    payload: WebsiteOrbTextRequest,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    customer = get_optional_customer(authorization=authorization, db=db)
+    transcript = payload.transcript.strip()
+    memory_context = _orb_memory_summary(customer, db)
+    cognitive_pulse = _orb_cognitive_pulse(transcript)
+    llm_result = await _llm_orb_spoken_output(transcript, cognitive_pulse, memory_context)
+    tts_result = (
+        await _synthesize_orb_tts(llm_result["spoken_output"])
+        if payload.synthesize_tts
+        else {"tts_audio_url": None, "tts_provider": None, "tts_error": None}
+    )
+    _update_orb_recent_context(customer, transcript, llm_result["spoken_output"], db)
+    return {
+        "transcript": transcript,
+        "spoken_output": llm_result["spoken_output"],
+        "cognitive_pulse": cognitive_pulse,
+        "llm_source": llm_result["llm_source"],
+        "memory_context": memory_context,
+        **tts_result,
+    }
+
+
+@app.get("/api/orb/capabilities")
+async def website_orb_capabilities():
+    return _orb_capabilities()
+
+
+@app.post("/api/orb/tts", response_model=WebsiteOrbTtsResponse)
+async def website_orb_tts(payload: WebsiteOrbTtsRequest):
+    text = payload.text.strip()
+    tts_result = await _synthesize_orb_tts(text)
+    return {"text": text, **tts_result}
+
+
+@app.get("/api/orb/tts/{audio_id}")
+async def website_orb_tts_audio(audio_id: str):
+    if not re.fullmatch(r"[a-f0-9]{24}\.(wav|mp3|ogg|webm|flac)", audio_id):
+        raise HTTPException(status_code=404, detail="TTS audio not found")
+    audio_path = ORB_TTS_CACHE_ROOT / audio_id
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail="TTS audio not found")
+    return FileResponse(
+        audio_path,
+        media_type=_content_type_for_audio_format(audio_path.suffix.lstrip(".")),
+        filename=audio_id,
+    )
+
+
+@app.get("/api/orb/memory")
+async def read_orb_memory(
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    return _orb_memory_summary(customer, db)
+
+
+@app.post("/api/orb/memory")
+async def upsert_orb_memory(
+    payload: OrbMemoryUpsert,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    item = _upsert_orb_memory(customer, payload, db)
+    return _serialize_orb_memory(item)
+
+
+@app.delete("/api/orb/memory/{memory_id}")
+async def clear_orb_memory_item(
+    memory_id: int,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    item = (
+        db.query(OrbUserMemory)
+        .filter(
+            OrbUserMemory.id == memory_id,
+            OrbUserMemory.customer_id == customer.id,
+        )
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Memory item not found")
+    db.delete(item)
+    db.commit()
+    return {"status": "deleted", "id": str(memory_id)}
+
+
+@app.delete("/api/orb/memory")
+async def clear_all_orb_memory(
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    deleted = db.query(OrbUserMemory).filter(OrbUserMemory.customer_id == customer.id).delete()
+    db.query(OrbRecentContext).filter(OrbRecentContext.customer_id == customer.id).delete()
+    db.query(OrbToolCache).filter(OrbToolCache.customer_id == customer.id).delete()
+    db.commit()
+    return {"status": "deleted", "deleted_memory_items": int(deleted)}
+
+
+@app.post("/api/public/browser-review")
+async def public_browser_review(payload: BrowserReviewRequest):
+    if not settings.CHROME_DEVTOOLS_ENABLED or not settings.CHROME_DEVTOOLS_PUBLIC_ENABLED:
+        raise HTTPException(status_code=403, detail="Public browser verification is not enabled")
+    try:
+        site_url = _normalize_public_site_url(payload.website_url)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return _chrome_devtools_runner().review(site_url, label="public")
+
+
 @app.post("/api/auth/signup")
 async def signup_customer(payload: CustomerSignup, db: Session = Depends(get_db)):
     email = _normalize_email(payload.email)
@@ -1759,6 +2998,448 @@ async def admin_get_customer(
     return payload
 
 
+@app.post("/api/admin/cali-crm/export-customers")
+async def admin_export_customers_to_cali_crm(
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    import_dir = _cali_crm_import_dir()
+    import_dir.mkdir(parents=True, exist_ok=True)
+    customers = db.query(Customer).order_by(Customer.created_at.asc(), Customer.id.asc()).all()
+    payload = {
+        "schema": "orb_weaver.cali_crm_customer_export.v1",
+        "generated_at": datetime.utcnow().isoformat(),
+        "source": "orb_weaver",
+        "target": "cali_crm",
+        "record_count": len(customers),
+        "records": [_customer_crm_import_record(customer, db) for customer in customers],
+    }
+    output_path = import_dir / f"orb_weaver_customers_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+    _write_json(output_path, payload)
+    return {"status": "exported", "record_count": len(customers), "path": str(output_path), "crm_url": settings.CALI_CRM_URL}
+
+
+@app.get("/api/admin/browser-lab/tools")
+async def admin_browser_lab_tools(_admin: Customer = Depends(require_admin)):
+    return {
+        "schema": "orb_weaver.chrome_devtools_browser_lab.v1",
+        "enabled": bool(settings.CHROME_DEVTOOLS_ENABLED),
+        "public_enabled": bool(settings.CHROME_DEVTOOLS_PUBLIC_ENABLED),
+        "product_boundary": "Admin/custom ORB install use.",
+        "groups": {"navigation": {"label": "Browser navigation", "tools": {"review": "Run browser review for a URL"}}},
+    }
+
+
+@app.post("/api/admin/browser-lab/run")
+async def admin_browser_lab_run(
+    payload: BrowserLabToolRequest,
+    _admin: Customer = Depends(require_admin),
+):
+    if not settings.CHROME_DEVTOOLS_ENABLED:
+        raise HTTPException(status_code=403, detail="Chrome DevTools browser verification is not enabled")
+    return _chrome_devtools_runner().run_tool(payload.tool, dict(payload.params), label="admin_browser_lab")
+
+
+@app.get("/api/marketplace/public/products")
+async def marketplace_public_products(
+    category: Optional[str] = Query(default=None),
+    limit: int = Query(default=60, ge=1, le=250),
+    db: Session = Depends(get_db),
+):
+    query = (
+        db.query(MarketplaceProduct)
+        .filter(
+            and_(
+                MarketplaceProduct.system_number.isnot(None),
+                MarketplaceProduct.status == "active",
+                MarketplaceProduct.visibility == "public",
+                MarketplaceProduct.approval_status == "approved",
+            )
+        )
+        .order_by(MarketplaceProduct.sort_order.asc(), MarketplaceProduct.id.desc())
+    )
+    if category:
+        query = query.filter(MarketplaceProduct.category == category)
+    products = query.limit(limit).all()
+    return [_serialize_marketplace_product(product, include_images=True) for product in products]
+
+
+@app.get("/api/marketplace/public/products/{product_id}")
+async def marketplace_public_product_detail(product_id: int, db: Session = Depends(get_db)):
+    product = _get_marketplace_product_or_404(product_id, db)
+    if not _is_public_marketplace_product(product):
+        raise HTTPException(status_code=404, detail="Marketplace product not found")
+    return _serialize_marketplace_product(product, include_images=True)
+
+
+@app.get("/api/admin/marketplace/sequence")
+async def admin_marketplace_sequence(
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    sequence = db.query(MarketplaceNumberSequence).filter(MarketplaceNumberSequence.prefix == "OW-MKT").first()
+    if not sequence:
+        sequence = MarketplaceNumberSequence(prefix="OW-MKT", last_number=0)
+        db.add(sequence)
+        db.commit()
+        db.refresh(sequence)
+    return {
+        "prefix": sequence.prefix,
+        "last_number": sequence.last_number,
+        "next_number": f"{sequence.prefix}-{int(sequence.last_number or 0) + 1:06d}",
+    }
+
+
+@app.get("/api/admin/marketplace/products")
+async def admin_marketplace_products(
+    status: Optional[str] = Query(default=None),
+    visibility: Optional[str] = Query(default=None),
+    approval_status: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    query = db.query(MarketplaceProduct).order_by(MarketplaceProduct.id.desc())
+    if status:
+        query = query.filter(MarketplaceProduct.status == status)
+    if visibility:
+        query = query.filter(MarketplaceProduct.visibility == visibility)
+    if approval_status:
+        query = query.filter(MarketplaceProduct.approval_status == approval_status)
+    return [_serialize_marketplace_product(product, include_images=True) for product in query.all()]
+
+
+@app.post("/api/admin/marketplace/products")
+async def admin_create_marketplace_product(
+    payload: MarketplaceProductCreate,
+    db: Session = Depends(get_db),
+    admin: Customer = Depends(require_admin),
+):
+    _validate_marketplace_status_fields(payload.status, payload.visibility, payload.approval_status)
+    created = MarketplaceProduct(
+        system_number=_next_marketplace_system_number(db),
+        seller_user_id=payload.source_type == "user_upload" and admin.id or None,
+        created_by_admin_id=admin.id,
+        source_type=(payload.source_type or "admin_manual"),
+        title=payload.title.strip(),
+        slug=_build_unique_marketplace_slug(db, payload.title),
+        description=(payload.description or "").strip() or None,
+        price_cents=payload.price_cents,
+        currency=payload.currency.lower().strip(),
+        category=payload.category.strip(),
+        tier=(payload.tier or "").strip() or None,
+        status=payload.status,
+        visibility=payload.visibility,
+        approval_status=payload.approval_status,
+        inventory_type=payload.inventory_type,
+        quantity=payload.quantity,
+        is_digital=payload.is_digital,
+        is_featured=payload.is_featured,
+        sort_order=payload.sort_order,
+        published_at=datetime.utcnow() if (payload.status == "active" and payload.visibility == "public" and payload.approval_status == "approved") else None,
+    )
+    db.add(created)
+    db.commit()
+    db.refresh(created)
+    return _serialize_marketplace_product(created, include_images=True)
+
+
+@app.patch("/api/admin/marketplace/products/{product_id}")
+async def admin_update_marketplace_product(
+    product_id: int,
+    payload: MarketplaceProductUpdate,
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    product = _get_marketplace_product_or_404(product_id, db)
+    _validate_marketplace_status_fields(payload.status, payload.visibility, payload.approval_status)
+
+    updates = payload.model_dump(exclude_unset=True)
+    if "title" in updates and updates["title"]:
+        updates["title"] = updates["title"].strip()
+        updates["slug"] = _build_unique_marketplace_slug(db, updates["title"], exclude_id=product.id)
+
+    for field, value in updates.items():
+        if field == "submit_for_approval":
+            continue
+        if field == "slug":
+            setattr(product, "slug", value)
+            continue
+        setattr(product, field, value)
+
+    if payload.submit_for_approval:
+        product.status = "pending_review"
+        product.approval_status = "pending_review"
+        product.visibility = "private"
+
+    if product.status == "active" and product.visibility == "public" and product.approval_status == "approved":
+        product.published_at = product.published_at or datetime.utcnow()
+
+    db.commit()
+    db.refresh(product)
+    return _serialize_marketplace_product(product, include_images=True)
+
+
+@app.post("/api/admin/marketplace/products/{product_id}/images")
+async def admin_add_marketplace_product_image(
+    product_id: int,
+    payload: MarketplaceProductImageCreate,
+    db: Session = Depends(get_db),
+    admin: Customer = Depends(require_admin),
+):
+    product = _get_marketplace_product_or_404(product_id, db)
+    image = MarketplaceProductImage(
+        product_id=product.id,
+        uploaded_by_user_id=admin.id,
+        file_path=payload.file_path,
+        file_url=payload.file_url,
+        alt_text=payload.alt_text,
+        sort_order=payload.sort_order,
+        is_primary=payload.is_primary,
+        width=payload.width,
+        height=payload.height,
+        mime_type=payload.mime_type,
+    )
+    db.add(image)
+    db.flush()
+    if payload.is_primary or not product.primary_image_id:
+        _set_primary_product_image(product, image, db)
+    db.commit()
+    db.refresh(image)
+    return _serialize_marketplace_image(image)
+
+
+@app.get("/api/admin/marketplace/ads")
+async def admin_marketplace_ads(
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    slots = db.query(MarketplaceAdSlot).order_by(MarketplaceAdSlot.placement.asc(), MarketplaceAdSlot.sort_order.asc(), MarketplaceAdSlot.id.asc()).all()
+    return [_serialize_marketplace_ad_slot(slot) for slot in slots]
+
+
+@app.post("/api/admin/marketplace/ads")
+async def admin_upsert_marketplace_ad(
+    payload: MarketplaceAdSlotUpsert,
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    slot = db.query(MarketplaceAdSlot).filter(MarketplaceAdSlot.slot_key == payload.slot_key).first()
+    if not slot:
+        slot = MarketplaceAdSlot(slot_key=payload.slot_key)
+        db.add(slot)
+    slot.name = payload.name
+    slot.placement = payload.placement
+    slot.title = payload.title
+    slot.image_url = payload.image_url
+    slot.link_url = payload.link_url
+    slot.html_content = payload.html_content
+    slot.active = payload.active
+    slot.starts_at = payload.starts_at
+    slot.ends_at = payload.ends_at
+    slot.sort_order = payload.sort_order
+    db.commit()
+    db.refresh(slot)
+    return _serialize_marketplace_ad_slot(slot)
+
+
+@app.get("/api/admin/marketplace/theme")
+async def admin_marketplace_theme(
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    active_theme = db.query(MarketplaceThemeSetting).order_by(MarketplaceThemeSetting.active.desc(), MarketplaceThemeSetting.updated_at.desc()).first()
+    if not active_theme:
+        return None
+    return _serialize_marketplace_theme(active_theme)
+
+
+@app.post("/api/admin/marketplace/theme")
+async def admin_upsert_marketplace_theme(
+    payload: MarketplaceThemeUpsert,
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    if payload.active:
+        db.query(MarketplaceThemeSetting).update({MarketplaceThemeSetting.active: False})
+
+    theme = MarketplaceThemeSetting(
+        theme_name=payload.theme_name,
+        primary_color=payload.primary_color,
+        accent_color=payload.accent_color,
+        background_style=payload.background_style,
+        card_style=payload.card_style,
+        font_family=payload.font_family,
+        hero_image_url=payload.hero_image_url,
+        logo_url=payload.logo_url,
+        custom_css=payload.custom_css,
+        active=payload.active,
+    )
+    db.add(theme)
+    db.commit()
+    db.refresh(theme)
+    return _serialize_marketplace_theme(theme)
+
+
+@app.get("/api/account/seller/products")
+async def seller_list_products(
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    products = (
+        db.query(MarketplaceProduct)
+        .filter(MarketplaceProduct.seller_user_id == customer.id)
+        .order_by(MarketplaceProduct.id.desc())
+        .all()
+    )
+    return [_serialize_marketplace_product(product, include_images=True) for product in products]
+
+
+@app.post("/api/account/seller/products")
+async def seller_create_product(
+    payload: MarketplaceProductCreate,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    created = MarketplaceProduct(
+        system_number=_next_marketplace_system_number(db),
+        seller_user_id=customer.id,
+        created_by_admin_id=None,
+        source_type="user_upload",
+        title=payload.title.strip(),
+        slug=_build_unique_marketplace_slug(db, payload.title),
+        description=(payload.description or "").strip() or None,
+        price_cents=payload.price_cents,
+        currency=payload.currency.lower().strip(),
+        category=payload.category.strip(),
+        tier=(payload.tier or "").strip() or None,
+        status="draft",
+        visibility="private",
+        approval_status="pending_review",
+        inventory_type=payload.inventory_type,
+        quantity=payload.quantity,
+        is_digital=payload.is_digital,
+        is_featured=False,
+        sort_order=payload.sort_order,
+    )
+    db.add(created)
+    db.commit()
+    db.refresh(created)
+    return _serialize_marketplace_product(created, include_images=True)
+
+
+@app.patch("/api/account/seller/products/{product_id}")
+async def seller_update_product(
+    product_id: int,
+    payload: MarketplaceProductUpdate,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    product = _get_owned_seller_product_or_404(product_id, customer, db)
+    updates = payload.model_dump(exclude_unset=True)
+
+    allowed_fields = {
+        "title",
+        "description",
+        "price_cents",
+        "currency",
+        "category",
+        "tier",
+        "inventory_type",
+        "quantity",
+        "is_digital",
+        "sort_order",
+    }
+    for field, value in updates.items():
+        if field not in allowed_fields:
+            continue
+        if field == "title" and value:
+            value = value.strip()
+            product.slug = _build_unique_marketplace_slug(db, value, exclude_id=product.id)
+        setattr(product, field, value)
+
+    if payload.submit_for_approval:
+        product.status = "pending_review"
+        product.visibility = "private"
+        product.approval_status = "pending_review"
+
+    db.commit()
+    db.refresh(product)
+    return _serialize_marketplace_product(product, include_images=True)
+
+
+@app.post("/api/account/seller/products/{product_id}/submit")
+async def seller_submit_product_for_review(
+    product_id: int,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    product = _get_owned_seller_product_or_404(product_id, customer, db)
+    product.status = "pending_review"
+    product.visibility = "private"
+    product.approval_status = "pending_review"
+    db.commit()
+    db.refresh(product)
+    return _serialize_marketplace_product(product, include_images=True)
+
+
+@app.post("/api/account/seller/products/{product_id}/images")
+async def seller_add_product_image(
+    product_id: int,
+    payload: MarketplaceProductImageCreate,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    product = _get_owned_seller_product_or_404(product_id, customer, db)
+    image = MarketplaceProductImage(
+        product_id=product.id,
+        uploaded_by_user_id=customer.id,
+        file_path=payload.file_path,
+        file_url=payload.file_url,
+        alt_text=payload.alt_text,
+        sort_order=payload.sort_order,
+        is_primary=payload.is_primary,
+        width=payload.width,
+        height=payload.height,
+        mime_type=payload.mime_type,
+    )
+    db.add(image)
+    db.flush()
+    if payload.is_primary or not product.primary_image_id:
+        _set_primary_product_image(product, image, db)
+    db.commit()
+    db.refresh(image)
+    return _serialize_marketplace_image(image)
+
+
+@app.patch("/api/admin/marketplace/products/{product_id}/status")
+async def admin_patch_marketplace_status(
+    product_id: int,
+    payload: MarketplaceProductStatusPatch,
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    product = _get_marketplace_product_or_404(product_id, db)
+    _validate_marketplace_status_fields(payload.status, payload.visibility, payload.approval_status)
+
+    if payload.status is not None:
+        product.status = payload.status
+    if payload.visibility is not None:
+        product.visibility = payload.visibility
+    if payload.approval_status is not None:
+        product.approval_status = payload.approval_status
+    if payload.is_featured is not None:
+        product.is_featured = payload.is_featured
+    if payload.sort_order is not None:
+        product.sort_order = payload.sort_order
+
+    if product.status == "active" and product.visibility == "public" and product.approval_status == "approved":
+        product.published_at = product.published_at or datetime.utcnow()
+
+    db.commit()
+    db.refresh(product)
+    return _serialize_marketplace_product(product, include_images=True)
+
+
 @app.get("/api/products")
 async def list_products():
     return list(SERVICE_CATALOG.values())
@@ -1864,6 +3545,9 @@ async def create_project(
     if existing:
         if project.ga4_property_id:
             existing.ga4_property_id = project.ga4_property_id
+        if project.ga4_measurement_id:
+            existing.ga4_measurement_id = project.ga4_measurement_id
+        if project.ga4_property_id or project.ga4_measurement_id:
             db.commit()
             db.refresh(existing)
         return _serialize_project(existing, db)
@@ -1876,13 +3560,21 @@ async def create_project(
                 existing_domain.name = project.name.strip()
             if project.ga4_property_id:
                 existing_domain.ga4_property_id = project.ga4_property_id
+            if project.ga4_measurement_id:
+                existing_domain.ga4_measurement_id = project.ga4_measurement_id
             db.commit()
             db.refresh(existing_domain)
             return _serialize_project(existing_domain, db)
         raise HTTPException(status_code=409, detail="Domain is already registered to another customer")
 
     name = (project.name or "").strip() or _default_project_name(domain)
-    created = Project(name=name, domain=domain, ga4_property_id=project.ga4_property_id, customer_id=customer.id)
+    created = Project(
+        name=name,
+        domain=domain,
+        ga4_property_id=project.ga4_property_id,
+        ga4_measurement_id=project.ga4_measurement_id,
+        customer_id=customer.id,
+    )
     db.add(created)
     db.commit()
     db.refresh(created)
@@ -1900,6 +3592,76 @@ async def list_projects(db: Session = Depends(get_db), customer: Customer = Depe
 async def get_project(project_id: str, db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
     project = _owned_project(project_id, customer, db)
     return _serialize_project(project, db)
+
+
+@app.post("/api/projects/{project_id}/ga4/config")
+async def update_project_ga4_config(
+    project_id: str,
+    config: ProjectGA4Config,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    if config.ga4_property_id is not None:
+        project.ga4_property_id = config.ga4_property_id.strip() or None
+    if config.ga4_measurement_id is not None:
+        project.ga4_measurement_id = config.ga4_measurement_id.strip().upper() or None
+    db.commit()
+    db.refresh(project)
+    return _serialize_project(project, db)
+
+
+@app.post("/api/projects/{project_id}/ga4/import")
+async def import_project_ga4_data(
+    project_id: str,
+    config: ProjectGA4Config = ProjectGA4Config(),
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    if config.ga4_property_id is not None:
+        project.ga4_property_id = config.ga4_property_id.strip() or None
+    if config.ga4_measurement_id is not None:
+        project.ga4_measurement_id = config.ga4_measurement_id.strip().upper() or None
+    if not project.ga4_property_id:
+        raise HTTPException(status_code=400, detail="GA4 property ID is required before importing Google Analytics data")
+
+    try:
+        connector = GA4Connector(property_id=project.ga4_property_id)
+        report = connector.get_full_report(days=config.days)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"GA4 import failed: {exc}")
+
+    end_at = datetime.utcnow()
+    start_at = end_at - timedelta(days=config.days)
+    top_pages = report.get("top_pages") or []
+    db.query(GA4Data).filter(GA4Data.project_id == project.id).delete(synchronize_session=False)
+    for page in top_pages:
+        db.add(
+            GA4Data(
+                project_id=project.id,
+                page_path=page.get("path") or "/",
+                sessions=int(page.get("sessions") or 0),
+                users=int(page.get("users") or 0),
+                pageviews=int(page.get("pageviews") or 0),
+                bounce_rate=page.get("bounce_rate"),
+                avg_session_duration=page.get("avg_session_duration"),
+                date_range_start=start_at,
+                date_range_end=end_at,
+            )
+        )
+    db.commit()
+    db.refresh(project)
+
+    output_path = _project_report_dir(project) / "ga4" / "ga4_import_latest.json"
+    _write_json(output_path, {"project": _serialize_project(project, db), "days": config.days, "report": report})
+    return {
+        "status": "imported",
+        "project": _serialize_project(project, db),
+        "imported_page_rows": len(top_pages),
+        "artifact_path": str(output_path),
+        "traffic_totals": (report.get("traffic_overview") or {}).get("totals", {}),
+    }
 
 
 @app.get("/api/projects/{project_id}/preflight")
@@ -1928,6 +3690,19 @@ async def run_project_preflight(
         return report
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Preflight scan failed: {exc}")
+
+
+@app.post("/api/projects/{project_id}/browser-review")
+async def run_project_browser_review(
+    project_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    if not settings.CHROME_DEVTOOLS_ENABLED:
+        raise HTTPException(status_code=403, detail="Chrome DevTools browser verification is not enabled")
+    project = _owned_project(project_id, customer, db)
+    site_url = project.domain if project.domain.startswith(("http://", "https://")) else f"https://{project.domain}"
+    return _chrome_devtools_runner().review(site_url, label=f"project_{project.id}")
 
 
 @app.delete("/api/projects/{project_id}")
@@ -2209,6 +3984,63 @@ async def open_report_file(
         media_type="application/json" if file_path.suffix.lower() == ".json" else "application/octet-stream",
         headers=_content_disposition(file_path.name, disposition),
     )
+
+
+@app.post("/api/projects/{project_id}/tpc-pack")
+async def create_tpc_pack(
+    project_id: str,
+    payload: TPCPackRequest,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    report = generate_pack_file(
+        scan_data=_build_tpc_pack_scan_data(project, db),
+        site_id=str(project.id),
+        domain=project.domain,
+        tier=payload.tier,
+        output_dir=_tpc_pack_output_dir(project),
+    )
+    return {
+        "status": "created",
+        "project": _serialize_project(project, db),
+        "pack": report,
+        "download_url": f"/api/projects/{project.id}/tpc-pack/download/{report['filename']}",
+    }
+
+
+@app.get("/api/projects/{project_id}/tpc-packs")
+async def list_tpc_packs(
+    project_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    packs = []
+    for pack_path in _tpc_pack_output_dir(project).glob("*.orbpack"):
+        packs.append({
+            "filename": pack_path.name,
+            "size_kb": max(pack_path.stat().st_size // 1024, 1),
+            "generated_at": datetime.fromtimestamp(pack_path.stat().st_mtime).isoformat(),
+            "download_url": f"/api/projects/{project.id}/tpc-pack/download/{pack_path.name}",
+        })
+    return {"packs": sorted(packs, key=lambda item: item["generated_at"], reverse=True)}
+
+
+@app.get("/api/projects/{project_id}/tpc-pack/download/{filename}")
+async def download_tpc_pack(
+    project_id: str,
+    filename: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    if "/" in filename or "\\" in filename or not filename.endswith(".orbpack"):
+        raise HTTPException(status_code=400, detail="Invalid pack filename")
+    pack_path = _tpc_pack_output_dir(project) / filename
+    if not pack_path.is_file():
+        raise HTTPException(status_code=404, detail="TPC pack not found")
+    return FileResponse(pack_path, media_type="application/octet-stream", filename=filename)
 
 
 @app.post("/api/projects/{project_id}/recrawl")

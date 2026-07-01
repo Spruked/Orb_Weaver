@@ -14,6 +14,10 @@ import Account from './pages/Account';
 import Cart from './pages/Cart';
 import AdminCustomers from './pages/AdminCustomers';
 import LegalPage from './pages/LegalPage';
+import RouteScrollReset from './components/RouteScrollReset';
+import LandingPage from './landing/LandingPage';
+import PublicPreflight from './pages/PublicPreflight';
+import MarketplaceRoutes from './marketplace/MarketplaceRoutes';
 import { api, authStore, Customer } from './services/api';
 import './index.css';
 
@@ -58,28 +62,65 @@ function App() {
     setCustomer(null);
   };
 
+  const handleAuthenticated = (nextCustomer: Customer) => {
+    setCustomer(nextCustomer);
+    window.history.replaceState(null, '', '/dashboard');
+  };
+
   if (isCheckingAuth) {
     return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-500">Loading account...</div>;
   }
 
   const publicPath = window.location.pathname;
+
+  const renderPublicPage = (element: React.ReactNode) => (
+    <QueryClientProvider client={queryClient}>
+      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <RouteScrollReset />
+        {element}
+      </Router>
+    </QueryClientProvider>
+  );
+
+  if (publicPath === '/') {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <RouteScrollReset />
+          <LandingPage />
+        </Router>
+      </QueryClientProvider>
+    );
+  }
+
   if (!customer && publicPath === '/privacy') {
-    return <LegalPage type="privacy" />;
+    return renderPublicPage(<LegalPage type="privacy" />);
   }
   if (!customer && publicPath === '/terms') {
-    return <LegalPage type="terms" />;
+    return renderPublicPage(<LegalPage type="terms" />);
+  }
+  if (publicPath === '/preflight') {
+    return renderPublicPage(<PublicPreflight />);
+  }
+  if (publicPath === '/marketplace' || publicPath.startsWith('/marketplace/')) {
+    return renderPublicPage(<MarketplaceRoutes />);
+  }
+  if (!customer && publicPath === '/login') {
+    return renderPublicPage(<AuthPage onAuthenticated={handleAuthenticated} />);
   }
 
   if (!customer) {
-    return <AuthPage onAuthenticated={setCustomer} />;
+    return renderPublicPage(<AuthPage onAuthenticated={handleAuthenticated} />);
   }
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Router>
+      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <RouteScrollReset />
         <Layout customer={customer}>
           <Routes>
             <Route path="/" element={<Dashboard customer={customer} />} />
+            <Route path="/dashboard" element={<Dashboard customer={customer} />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/crawl" element={<CrawlJobs />} />
             <Route path="/crawl/:jobId" element={<CrawlJob />} />

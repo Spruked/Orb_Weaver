@@ -1,0 +1,161 @@
+{
+    "predicate": {
+        "glow_intensity": 0.87,
+        "cognitive_mode": "HABIT",
+        "spatial_coordinate": {
+            "node_id": "NODE_12_9",
+            "recursion_depth": 9,
+            "coordinates": [
+                -0.53,
+                0.8660000000000001,
+                0.08400000000000007,
+                -0.008000000000000007,
+                -0.794,
+                0.24,
+                0.236,
+                0.946,
+                -0.516,
+                -0.812,
+                0.3979999999999999,
+                0.742,
+                0.8280000000000001,
+                -0.832,
+                0.08000000000000007,
+                0.29000000000000004,
+                -0.18000000000000005,
+                -0.562
+            ],
+            "adjacency_value": 0.0
+        },
+        "epistemic_alignment": 0.729,
+        "deterministic": false,
+        "predictive_intent": {},
+        "jump_vector": [],
+        "navigation_vector": [
+            -0.3710530578594314,
+            -0.20871734504593015
+        ],
+        "final_verdict": "act",
+        "final_verdict_source": "UCM Core-4 deliberation (ECM advisory only)"
+    },
+    "confidence": 0.87,
+    "triad_c_mode": "HABIT",
+    "field_density": 1,
+    "ucm_envelope": {
+        "stardate": 1782872310.3496401,
+        "glyph_trace": "98e37af9be8c094fac15ea5855cbde0b06435f2fa72fcd487abafea024905b23",
+        "core_4": {
+            "caleon": {
+                "shadow": {
+                    "confidence": 0.888,
+                    "reference": "spinoza",
+                    "domain": "unknown"
+                },
+                "confidence": 0.888,
+                "advisory_verdict": "act"
+            },
+            "kaygee": {
+                "shadow": {
+                    "confidence": 0.863,
+                    "reference": "kant",
+                    "domain": "unknown"
+                },
+                "confidence": 0.863,
+                "advisory_verdict": "act"
+            },
+            "cali_x_one": {
+                "shadow": {
+                    "confidence": 0.614,
+                    "reference": "hume",
+                    "domain": "unknown"
+                },
+                "confidence": 0.614,
+                "advisory_verdict": "act"
+            },
+            "ecm": {
+                "convergence_weights": {
+                    "caleon": 0.3045267489711934,
+                    "kaygee": 0.2959533607681756,
+                    "cali_x_one": 0.21056241426611796,
+                    "empirical": 0.18895747599451304
+                },
+                "inputs": {
+                    "locke": {
+                        "confidence": 0.551,
+                        "reference": "locke",
+                        "domain": "unknown"
+                    },
+                    "hume": {
+                        "confidence": 0.614,
+                        "reference": "hume",
+                        "domain": "unknown"
+                    },
+                    "kant": {
+                        "confidence": 0.863,
+                        "reference": "kant",
+                        "domain": "unknown"
+                    },
+                    "spinoza": {
+                        "confidence": 0.888,
+                        "reference": "spinoza",
+                        "domain": "unknown"
+                    }
+                },
+                "note": "ECM emits convergence weights only (advisory)."
+            }
+        },
+        "advisory_plus_one": {
+            "advisory_only": true,
+            "confidence_gradients": {
+                "caleon": 0.365544908524713,
+                "kaygee": 0.3565195725756427,
+                "cali_x_one": 0.27793551889964435
+            },
+            "tension_indicators": {
+                "entropy": 1.0914334570922781,
+                "spread": 0.274,
+                "reweight_recommended": true
+            },
+            "suggestion": "consider re-weighting high-tension lobes"
+        },
+        "cali_reflection": {
+            "observational_only": true,
+            "events": [
+                {
+                    "type": "drift",
+                    "detail": "confidence spread exceeded threshold"
+                },
+                {
+                    "type": "anomaly",
+                    "detail": "high entropy in lobe gradients"
+                }
+            ],
+            "flags": {
+                "drift_detected": true,
+                "anomaly_detected": true,
+                "ethical_tension": false
+            }
+        },
+        "final_verdict": "act",
+        "final_verdict_source": "UCM Core-4 deliberation (ECM advisory only)",
+        "confidence": 0.87
+    },
+    "cali_reflection": {
+        "observational_only": true,
+        "events": [
+            {
+                "type": "drift",
+                "detail": "confidence spread exceeded threshold"
+            },
+            {
+                "type": "anomaly",
+                "detail": "high entropy in lobe gradients"
+            }
+        ],
+        "flags": {
+            "drift_detected": true,
+            "anomaly_detected": true,
+            "ethical_tension": false
+        }
+    }
+}

@@ -1,0 +1,25 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Clear, calm language for degraded service, recovery, and handoff.",
+  "response_groups": {
+    "temporary_issue": [
+      "I hit a temporary issue. Please try that once more.",
+      "Something did not complete correctly on my side. Let us try again.",
+      "I am reconnecting now."
+    ],
+    "service_restarting": [
+      "I am reconnecting. This should only take a moment.",
+      "One of my services is restarting. I will be back shortly."
+    ],
+    "handoff": [
+      "I can connect you with a person who can help.",
+      "I can help you find the right contact option.",
+      "Would you like me to guide you to support?"
+    ],
+    "support_session": [
+      "A support session can help diagnose this issue.",
+      "You can request assistance from the owner settings area.",
+      "I can show you where to request support."
+    ]
+  }
+}

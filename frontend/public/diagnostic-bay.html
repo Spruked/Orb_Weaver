@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Diagnostic Bay — Spruked / ORB</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: 11,18,32;          /* #0B1220 */
+    --bg2: 16,24,42;
+    --blue: 61,127,255;      /* #3D7FFF */
+    --green: 34,197,139;     /* #22C58B */
+    --amber: 230,160,40;
+    --red: 235,87,87;
+    --ink: 245,246,250;
+    --ink-dim: 148,160,184;
+    --line: 255,255,255;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: rgb(var(--bg));
+    color: rgb(var(--ink));
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    min-height: 100vh;
+  }
+  .mono { font-family: 'IBM Plex Mono', monospace; }
+  .label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgb(var(--ink-dim));
+  }
+
+  /* ============================================================
+     GATE SCREEN — mock login, stand-in for real account auth
+     ============================================================ */
+  #gate {
+    position: fixed; inset: 0;
+    z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(ellipse at 30% 20%, rgba(var(--blue),0.10), transparent 50%),
+      rgb(var(--bg));
+  }
+  .gate-card {
+    width: min(420px, 90vw);
+    border: 1px solid rgba(var(--line), 0.1);
+    border-radius: 18px;
+    padding: 40px 36px;
+    background: rgba(var(--bg2), 0.7);
+    backdrop-filter: blur(8px);
+  }
+  .gate-eyebrow { color: rgb(var(--blue)); margin-bottom: 14px; }
+  .gate-title { font-size: 26px; margin: 0 0 10px 0; }
+  .gate-sub { font-size: 14px; color: rgb(var(--ink-dim)); line-height: 1.55; margin-bottom: 28px; }
+  .field { margin-bottom: 16px; }
+  .field label { display:block; font-size: 12px; color: rgb(var(--ink-dim)); margin-bottom: 6px; }
+  .field input {
+    width: 100%;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(var(--line), 0.12);
+    border-radius: 9px;
+    padding: 11px 13px;
+    color: rgb(var(--ink));
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    outline: none;
+  }
+  .field input:focus { border-color: rgba(var(--blue), 0.7); }
+  .gate-btn {
+    width: 100%;
+    margin-top: 8px;
+    background: rgb(var(--blue));
+    color: #fff;
+    border: none;
+    border-radius: 9px;
+    padding: 13px;
+    font-size: 14.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s ease;
+  }
+  .gate-btn:hover { filter: brightness(1.1); }
+  .gate-note {
+    margin-top: 18px;
+    font-size: 11.5px;
+    color: rgba(var(--ink-dim), 0.8);
+    text-align: center;
+    line-height: 1.5;
+  }
+  .gate-fineprint {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(var(--line), 0.08);
+    font-size: 10.5px;
+    color: rgba(var(--ink-dim), 0.55);
+    text-align: center;
+  }
+
+  /* ============================================================
+     SHELL — once "logged in"
+     ============================================================ */
+  #shell { display: none; }
+  #shell.active { display: block; }
+
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 28px;
+    background: rgba(var(--bg), 0.88);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(var(--line), 0.08);
+  }
+  .topbar .brand { display:flex; align-items:center; gap: 10px; font-size: 14px; font-weight: 600; }
+  .brand-dot { width: 9px; height: 9px; border-radius: 50%; background: rgb(var(--green)); box-shadow: 0 0 8px rgba(var(--green),0.7); }
+  .topbar .session { display:flex; align-items:center; gap: 14px; font-size: 12.5px; color: rgb(var(--ink-dim)); }
+  .session-pill {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    border: 1px solid rgba(var(--green), 0.4);
+    color: rgb(var(--green));
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+
+  main { max-width: 1240px; margin: 0 auto; padding: 56px 28px 140px; }
+
+  .intro { max-width: 70ch; margin-bottom: 46px; }
+  .intro h1 { font-size: clamp(28px, 4vw, 42px); margin: 10px 0 14px 0; }
+  .intro p { color: rgb(var(--ink-dim)); font-size: 15px; line-height: 1.6; }
+
+  /* ============================================================
+     TARGET PICKER
+     ============================================================ */
+  .topic-panel {
+    border: 1px solid rgba(var(--line), 0.1);
+    border-radius: 16px;
+    padding: 26px 26px 24px;
+    margin-bottom: 40px;
+    background: rgba(var(--bg2), 0.5);
+  }
+  .topic-panel h2 { font-size: 17px; margin: 8px 0 16px 0; }
+  .topic-list { display:flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  .topic-chip {
+    font-size: 13px;
+    padding: 9px 16px;
+    border-radius: 999px;
+    border: 1px solid rgba(var(--line), 0.16);
+    background: rgba(0,0,0,0.2);
+    color: rgb(var(--ink-dim));
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .topic-chip:hover { border-color: rgba(var(--blue),0.5); color: rgb(var(--ink)); }
+  .topic-chip.selected {
+    background: rgba(var(--blue), 0.16);
+    border-color: rgb(var(--blue));
+    color: rgb(var(--ink));
+  }
+  .topic-custom { display:flex; gap: 10px; }
+  .topic-custom input {
+    flex: 1;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(var(--line), 0.14);
+    border-radius: 9px;
+    padding: 10px 13px;
+    color: rgb(var(--ink));
+    font-size: 13.5px;
+    outline: none;
+  }
+  .topic-custom input:focus { border-color: rgba(var(--blue), 0.6); }
+  .topic-custom button {
+    background: rgba(var(--blue), 0.15);
+    border: 1px solid rgba(var(--blue), 0.5);
+    color: rgb(var(--ink));
+    border-radius: 9px;
+    padding: 0 18px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .topic-active {
+    margin-top: 14px;
+    font-size: 12.5px;
+    color: rgb(var(--green));
+  }
+
+  .start-row { display:flex; align-items:center; gap: 16px; flex-wrap: wrap; }
+  .start-btn {
+    background: rgb(var(--green));
+    color: #06241a;
+    border: none;
+    border-radius: 10px;
+    padding: 13px 26px;
+    font-size: 14.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .start-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .start-hint { font-size: 12.5px; color: rgb(var(--ink-dim)); }
+
+  /* ============================================================
+     SCROLL STAGE — the proving ground itself
+     ============================================================ */
+  .stage-wrap {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 980px) { .stage-wrap { grid-template-columns: 1fr; } }
+
+  .scene-track { display: flex; flex-direction: column; gap: 110px; }
+
+  .scene {
+    border: 1px solid rgba(var(--line), 0.1);
+    border-radius: 18px;
+    padding: 30px 30px 32px;
+    background: linear-gradient(165deg, rgba(255,255,255,0.025), rgba(255,255,255,0.005));
+    position: relative;
+    opacity: 0.35;
+    transform: translateY(18px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+  }
+  .scene.in-view { opacity: 1; transform: translateY(0); }
+
+  .scene-step { font-family:'IBM Plex Mono',monospace; font-size: 10.5px; color: rgb(var(--blue)); letter-spacing:0.1em; margin-bottom: 8px; }
+  .scene-title { font-size: 19px; margin: 0 0 18px 0; }
+
+  .scene-status {
+    position: absolute; top: 26px; right: 28px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px; letter-spacing: 0.08em;
+    padding: 4px 10px; border-radius: 999px;
+    border: 1px solid rgba(var(--ink-dim), 0.35);
+    color: rgb(var(--ink-dim));
+  }
+  .scene-status.running { border-color: rgba(var(--blue),0.6); color: rgb(var(--blue)); }
+  .scene-status.done { border-color: rgba(var(--green),0.6); color: rgb(var(--green)); }
+
+  /* --- scene: fill text --- */
+  .demo-field-row { display:flex; flex-direction: column; gap: 8px; max-width: 460px; }
+  .demo-field-row label { font-size: 12px; color: rgb(var(--ink-dim)); }
+  .demo-input {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(var(--line), 0.14);
+    border-radius: 9px;
+    padding: 12px 14px;
+    font-size: 14px;
+    color: rgb(var(--ink));
+    font-family: 'IBM Plex Mono', monospace;
+    position: relative;
+    min-height: 20px;
+  }
+  .demo-cursor {
+    display: inline-block;
+    width: 2px; height: 14px;
+    background: rgb(var(--green));
+    margin-left: 2px;
+    animation: blink 0.9s step-end infinite;
+    vertical-align: -2px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* --- scene: open file --- */
+  .file-viewer {
+    margin-top: 16px;
+    border: 1px solid rgba(var(--line), 0.12);
+    border-radius: 10px;
+    overflow: hidden;
+    max-width: 560px;
+  }
+  .file-viewer-bar {
+    display:flex; align-items:center; gap: 8px;
+    padding: 9px 14px;
+    background: rgba(0,0,0,0.3);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: rgb(var(--ink-dim));
+    border-bottom: 1px solid rgba(var(--line), 0.08);
+  }
+  .file-viewer-body {
+    padding: 16px 18px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.75;
+    color: rgba(var(--ink), 0.85);
+    min-height: 70px;
+    white-space: pre-wrap;
+  }
+  .file-viewer-body .ln { color: rgba(var(--ink-dim),0.5); margin-right: 12px; user-select:none; }
+
+  /* --- scene: error + morb repair --- */
+  .error-banner {
+    display:flex; align-items:flex-start; gap: 12px;
+    border: 1px solid rgba(var(--red), 0.4);
+    background: rgba(var(--red), 0.08);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    max-width: 560px;
+  }
+  .error-banner.resolved {
+    border-color: rgba(var(--green), 0.45);
+    background: rgba(var(--green), 0.08);
+  }
+  .error-banner .icon { font-family:'IBM Plex Mono',monospace; font-weight:700; }
+  .error-banner .body .head { font-size: 13.5px; font-weight: 600; margin-bottom: 3px; }
+  .error-banner .body .detail { font-size: 12.5px; color: rgb(var(--ink-dim)); font-family:'IBM Plex Mono',monospace; }
+
+  .morb-deploy-row { display:flex; gap: 14px; flex-wrap: wrap; margin: 18px 0; }
+  .morb-unit {
+    border: 1px solid rgba(var(--line), 0.14);
+    border-radius: 10px;
+    padding: 12px 14px;
+    width: 150px;
+    opacity: 0.3;
+    transform: translateY(6px);
+    transition: all 0.4s ease;
+  }
+  .morb-unit.active { opacity: 1; transform: translateY(0); border-color: rgba(var(--blue),0.5); }
+  .morb-unit.cleared { border-color: rgba(var(--green),0.5); }
+  .morb-unit .mu-id { font-family:'IBM Plex Mono',monospace; font-size: 10.5px; color: rgb(var(--blue)); margin-bottom: 6px; }
+  .morb-unit.cleared .mu-id { color: rgb(var(--green)); }
+  .morb-unit .mu-state { font-size: 12px; color: rgb(var(--ink-dim)); }
+
+  /* --- scene: research --- */
+  .research-grid { display:flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+  .research-item {
+    display:flex; gap: 10px; align-items:flex-start;
+    opacity: 0; transform: translateX(-8px);
+    transition: all 0.45s ease;
+    font-size: 13.5px;
+    color: rgba(var(--ink), 0.9);
+    line-height: 1.5;
+  }
+  .research-item.shown { opacity: 1; transform: translateX(0); }
+  .research-item .bullet { color: rgb(var(--blue)); margin-top: 2px; }
+
+  /* ============================================================
+     AUDIT TRAIL — sticky side panel
+     ============================================================ */
+  .audit-panel {
+    position: sticky; top: 84px;
+    border: 1px solid rgba(var(--line), 0.1);
+    border-radius: 16px;
+    padding: 20px 18px 18px;
+    background: rgba(var(--bg2), 0.55);
+    max-height: calc(100vh - 110px);
+    display: flex; flex-direction: column;
+  }
+  .audit-head { display:flex; align-items:center; justify-content: space-between; margin-bottom: 14px; }
+  .audit-head h3 { font-size: 13px; margin: 0; }
+  .audit-count { font-family:'IBM Plex Mono',monospace; font-size: 10.5px; color: rgb(var(--ink-dim)); }
+  .audit-log { overflow-y: auto; flex: 1; display:flex; flex-direction:column; gap: 10px; padding-right: 4px; }
+  .audit-entry {
+    border-left: 2px solid rgba(var(--blue), 0.5);
+    padding: 4px 0 4px 12px;
+    font-size: 11.5px;
+    opacity: 0; transform: translateY(4px);
+    animation: auditIn 0.35s ease forwards;
+  }
+  .audit-entry.ok { border-left-color: rgba(var(--green), 0.6); }
+  @keyframes auditIn { to { opacity: 1; transform: translateY(0); } }
+  .audit-entry .a-time { font-family:'IBM Plex Mono',monospace; color: rgba(var(--ink-dim),0.7); font-size: 10px; }
+  .audit-entry .a-action { color: rgb(var(--ink)); font-weight: 600; margin: 2px 0; }
+  .audit-entry .a-target { font-family:'IBM Plex Mono',monospace; color: rgb(var(--ink-dim)); font-size: 10.5px; }
+  .audit-empty { font-size: 12px; color: rgba(var(--ink-dim),0.6); text-align:center; padding: 30px 10px; }
+
+  /* ============================================================
+     PERSISTENT ORB — same creature, working mode
+     ============================================================ */
+  #orb-wrap {
+    position: fixed; left: 0; top: 0;
+    width: 1px; height: 1px;
+    z-index: 60;
+    pointer-events: auto;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    transition: transform 0.6s cubic-bezier(.2,.8,.2,1);
+  }
+  #orb-core {
+    position: absolute; width: 30px; height: 30px;
+    margin-left: -15px; margin-top: -15px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.95), rgba(var(--blue),0.9) 40%, transparent 75%);
+    box-shadow: 0 0 18px rgba(var(--blue),0.55), 0 0 40px rgba(var(--green),0.18);
+  }
+  #orb-focus-ring {
+    position: fixed;
+    width: 0; height: 0;
+    border-radius: 8px;
+    border: 1.5px solid rgba(var(--blue), 0.55);
+    box-shadow: 0 0 0 3px rgba(var(--blue), 0.1);
+    transition: all 0.45s cubic-bezier(.2,.8,.2,1), opacity 0.3s ease;
+    opacity: 0;
+    z-index: 59;
+    pointer-events: none;
+  }
+  #orb-focus-ring.active { opacity: 1; }
+  #orb-speech {
+    position: fixed;
+    z-index: 61;
+    right: 26px;
+    bottom: 26px;
+    width: min(340px, calc(100vw - 52px));
+    border: 1px solid rgba(var(--blue), 0.36);
+    border-radius: 10px;
+    padding: 12px 14px;
+    background: rgba(var(--bg), 0.92);
+    color: rgb(var(--ink));
+    font-size: 13px;
+    line-height: 1.45;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.35), 0 0 26px rgba(var(--blue), 0.12);
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  #orb-speech.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .end-note {
+    max-width: 60ch;
+    margin: 80px auto 0;
+    text-align: center;
+    font-size: 14px;
+    color: rgb(var(--ink-dim));
+    line-height: 1.6;
+  }
+  .end-note a { color: rgb(var(--blue)); text-decoration: none; border-bottom: 1px solid rgba(var(--blue),0.4); }
+</style>
+</head>
+<body>
+
+<!-- ================================================================
+     GATE — mock auth stand-in
+     ================================================================ -->
+<div id="gate">
+  <div class="gate-card">
+    <div class="gate-eyebrow label">Spruked &middot; Account Access</div>
+    <h1 class="gate-title">Diagnostic Bay</h1>
+    <p class="gate-sub">
+      This proving ground is reserved for logged-in customers. Sign in to watch
+      the ORB perform real tasks against a live test environment, with every
+      action recorded to an audit trail.
+    </p>
+    <div class="field">
+      <label for="g-email">Email</label>
+      <input id="g-email" type="email" placeholder="you@company.com" autocomplete="off" />
+    </div>
+    <div class="field">
+      <label for="g-pass">Password</label>
+      <input id="g-pass" type="password" placeholder="••••••••" autocomplete="off" />
+    </div>
+    <button class="gate-btn" id="gate-btn">Sign in &amp; enter</button>
+    <div class="gate-note">Temporary page gate. Any input unlocks the bay &mdash; production account auth wires in here later.</div>
+    <div class="gate-fineprint">No real credentials are checked, stored, or transmitted on this page.</div>
+  </div>
+</div>
+
+<!-- ================================================================
+     PERSISTENT ORB
+     ================================================================ -->
+<button id="orb-wrap" type="button" aria-label="Ask the real Orb Weaver ORB">
+  <div id="orb-core"></div>
+</button>
+<div id="orb-focus-ring"></div>
+<div id="orb-speech" aria-live="polite"></div>
+
+<!-- ================================================================
+     SHELL
+     ================================================================ -->
+<div id="shell">
+
+  <div class="topbar">
+    <div class="brand"><span class="brand-dot"></span> Spruked &middot; ORB Diagnostic Bay</div>
+    <div class="session">
+      <span class="session-pill mono">SESSION ACTIVE</span>
+      <span id="session-user" class="mono">demo@account</span>
+    </div>
+  </div>
+
+  <main>
+    <div class="intro">
+      <div class="label">Customer Proving Ground</div>
+      <h1>Watch the ORB run real site tools.</h1>
+      <p>
+        Enter a public website URL, then scroll. The ORB calls the same backend
+        response path as the live site ORB, runs the public Preflight scanner,
+        checks real MCP/Tesseract readiness, and records the results in the audit trail.
+      </p>
+    </div>
+
+    <!-- TARGET PICKER -->
+    <div class="topic-panel">
+      <div class="label">Step 1</div>
+      <h2>Choose a public site for the ORB to inspect</h2>
+      <div class="topic-list" id="topic-list">
+        <div class="topic-chip" data-topic="https://orbweaver.spruked.com">orbweaver.spruked.com</div>
+        <div class="topic-chip" data-topic="https://spruked.com">spruked.com</div>
+      </div>
+      <div class="topic-custom">
+        <input id="topic-custom-input" type="url" placeholder="Or paste a website URL..." />
+        <button id="topic-custom-btn">Use this</button>
+      </div>
+      <div class="topic-active" id="topic-active" style="display:none;"></div>
+
+      <div class="start-row" style="margin-top:22px;">
+        <button class="start-btn" id="start-btn" disabled>Begin real ORB diagnostic</button>
+        <span class="start-hint">Pick a site, then scroll down to watch each real endpoint run.</span>
+      </div>
+    </div>
+
+    <!-- STAGE -->
+    <div class="stage-wrap">
+      <div class="scene-track">
+
+        <!-- SCENE 1: ORB cognition -->
+        <div class="scene" data-scene="fill">
+          <div class="scene-status" id="status-fill">queued</div>
+          <div class="scene-step">Stage 01 &middot; Real ORB Route</div>
+          <h3 class="scene-title">Ask the live Website ORB backend</h3>
+          <p style="color:rgb(var(--ink-dim)); font-size:13.5px; margin-bottom:16px;">
+            This calls <span class="mono">/api/orb/website-text</span>, the same backend route used by the live showcase ORB.
+          </p>
+          <div class="demo-field-row">
+            <label>ORB response</label>
+            <div class="demo-input" id="fill-target">waiting for live ORB response...</div>
+          </div>
+        </div>
+
+        <!-- SCENE 2: public preflight -->
+        <div class="scene" data-scene="file">
+          <div class="scene-status" id="status-file">queued</div>
+          <div class="scene-step">Stage 02 &middot; Public Preflight</div>
+          <h3 class="scene-title">Run the public ORB readiness scan</h3>
+          <p style="color:rgb(var(--ink-dim)); font-size:13.5px; margin-bottom:4px;">
+            This calls <span class="mono">/api/public/preflight</span> and renders the real returned report.
+          </p>
+          <div class="file-viewer">
+            <div class="file-viewer-bar">REPORT <span id="file-name">awaiting preflight...</span></div>
+            <div class="file-viewer-body" id="file-body"></div>
+          </div>
+        </div>
+
+        <!-- SCENE 3: tool capability check -->
+        <div class="scene" data-scene="repair">
+          <div class="scene-status" id="status-repair">queued</div>
+          <div class="scene-step">Stage 03 &middot; Tool Readiness</div>
+          <h3 class="scene-title">Check MCP and Tesseract availability</h3>
+          <div class="error-banner" id="error-banner">
+            <span class="icon">i</span>
+            <div class="body">
+              <div class="head" id="error-head">Standing by for capability check...</div>
+              <div class="detail" id="error-detail">&nbsp;</div>
+            </div>
+          </div>
+          <div class="morb-deploy-row" id="morb-row"></div>
+        </div>
+
+        <!-- SCENE 4: browser review / synthesis -->
+        <div class="scene" data-scene="research">
+          <div class="scene-status" id="status-research">queued</div>
+          <div class="scene-step">Stage 04 &middot; Browser Review + Synthesis</div>
+          <h3 class="scene-title" id="research-title">ORB synthesis</h3>
+          <p style="color:rgb(var(--ink-dim)); font-size:13.5px; margin-bottom:4px;">
+            If public Chrome DevTools MCP review is enabled, this stage calls it. Either way, the ORB summarizes the real tool state.
+          </p>
+          <div class="research-grid" id="research-grid"></div>
+        </div>
+
+      </div>
+
+      <!-- AUDIT PANEL -->
+      <div class="audit-panel">
+        <div class="audit-head">
+          <h3 class="label" style="margin:0;">Audit Trail</h3>
+          <span class="audit-count mono" id="audit-count">0 events</span>
+        </div>
+        <div class="audit-log" id="audit-log">
+          <div class="audit-empty" id="audit-empty">No actions yet. Pick a site and begin the sequence to populate this trail.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="end-note">
+      This page now calls the real ORB/public diagnostic backend routes where they exist. Browser MCP review only runs
+      when the backend has explicitly enabled the public review endpoint. <a href="circus-page.html">&larr; Back to the circus</a>
+    </div>
+  </main>
+</div>
+
+<script>
+/* ================================================================
+   STATE
+   ================================================================ */
+let auditEvents = [];
+let selectedSite = null;
+let sequenceStarted = false;
+let capabilityResult = null;
+let preflightResult = null;
+let browserReviewResult = null;
+
+const orbWrap = document.getElementById('orb-wrap');
+const focusRing = document.getElementById('orb-focus-ring');
+const orbSpeech = document.getElementById('orb-speech');
+
+async function apiJson(path, options = {}) {
+  const response = await fetch(path, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options,
+  });
+  const contentType = response.headers.get('content-type') || '';
+  if (!response.ok) {
+    const detail = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
+    throw new Error(detail?.detail || `${response.status} ${response.statusText}`);
+  }
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Expected JSON from ${path}; received ${contentType || 'unknown content type'}`);
+  }
+  return response.json();
+}
+
+function normalizeSiteUrl(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : 'https://' + trimmed;
+  return new URL(withProtocol).toString();
+}
+
+let activeOrbAudio = null;
+
+function mediaUrl(path) {
+  if (!path) return '';
+  if (/^https?:\/\//i.test(path)) return path;
+  return path;
+}
+
+async function speak(text, audioUrl) {
+  orbSpeech.textContent = text;
+  orbSpeech.classList.add('visible');
+  window.clearTimeout(speak._timer);
+  speak._timer = window.setTimeout(() => orbSpeech.classList.remove('visible'), 9000);
+
+  if (activeOrbAudio) {
+    activeOrbAudio.pause();
+    activeOrbAudio = null;
+  }
+
+  let finalAudioUrl = audioUrl;
+  if (!finalAudioUrl) {
+    const tts = await apiJson('/api/orb/tts', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    });
+    finalAudioUrl = tts.tts_audio_url;
+  }
+
+  if (finalAudioUrl) {
+    activeOrbAudio = new Audio(mediaUrl(finalAudioUrl));
+    await activeOrbAudio.play();
+  }
+}
+
+orbWrap.addEventListener('click', async () => {
+  const question = window.prompt('Ask the real Orb Weaver ORB');
+  if (!question) return;
+  try {
+    logAudit('orb.website_text', '/api/orb/website-text', true);
+    const result = await apiJson('/api/orb/website-text', {
+      method: 'POST',
+      body: JSON.stringify({ transcript: question }),
+    });
+    void speak(
+      result.spoken_output || 'The ORB response route returned successfully.',
+      result.tts_audio_url
+    );
+    logAudit('orb.website_text → complete', result.llm_source || 'response received', true);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'ORB request failed';
+    void speak('I am reconnecting to my response service. Please try again in a moment.');
+    logAudit('orb.website_text → failed', message, false);
+  }
+});
+
+/* ================================================================
+   GATE
+   ================================================================ */
+document.getElementById('gate-btn').addEventListener('click', () => {
+  const email = document.getElementById('g-email').value.trim();
+  document.getElementById('session-user').textContent = email ? email : 'demo@account';
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('shell').classList.add('active');
+  moveOrbTo(window.innerWidth * 0.5, 90);
+});
+
+/* ================================================================
+   TOPIC PICKER
+   ================================================================ */
+const topicChips = document.querySelectorAll('.topic-chip');
+const customInput = document.getElementById('topic-custom-input');
+const customBtn = document.getElementById('topic-custom-btn');
+const topicActive = document.getElementById('topic-active');
+const startBtn = document.getElementById('start-btn');
+
+function selectTopic(text, chipEl) {
+  try {
+    selectedSite = normalizeSiteUrl(text);
+  } catch {
+    topicActive.style.display = 'block';
+    topicActive.textContent = 'Enter a valid public website URL.';
+    startBtn.disabled = true;
+    return;
+  }
+  topicChips.forEach(c => c.classList.remove('selected'));
+  if (chipEl) chipEl.classList.add('selected');
+  topicActive.style.display = 'block';
+  topicActive.textContent = 'Selected: ' + selectedSite;
+  startBtn.disabled = false;
+}
+
+topicChips.forEach(chip => {
+  chip.addEventListener('click', () => selectTopic(chip.dataset.topic, chip));
+});
+
+customBtn.addEventListener('click', () => {
+  const val = customInput.value.trim();
+  if (val) selectTopic(val, null);
+});
+customInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') customBtn.click();
+});
+
+startBtn.addEventListener('click', () => {
+  if (!selectedSite || sequenceStarted) return;
+  sequenceStarted = true;
+  startBtn.disabled = true;
+  startBtn.textContent = 'Diagnostic running — scroll down';
+  logAudit('Diagnostic initialized', selectedSite, true);
+  speak('Diagnostic Bay is connected to the real ORB route. I will run the available tools for this site now.');
+  document.querySelector('.stage-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+/* ================================================================
+   AUDIT LOG
+   ================================================================ */
+function logAudit(action, target, ok) {
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  auditEvents.push({ time, action, target, ok });
+
+  const empty = document.getElementById('audit-empty');
+  if (empty) empty.remove();
+
+  const log = document.getElementById('audit-log');
+  const entry = document.createElement('div');
+  entry.className = 'audit-entry' + (ok ? ' ok' : '');
+  entry.innerHTML = `
+    <div class="a-time">${time}</div>
+    <div class="a-action">${escapeHtml(action)}</div>
+    <div class="a-target">${escapeHtml(target)}</div>
+  `;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+
+  document.getElementById('audit-count').textContent = auditEvents.length + ' event' + (auditEvents.length === 1 ? '' : 's');
+}
+
+/* ================================================================
+   ORB POSITIONING — moves to whatever it's "working on"
+   ================================================================ */
+function moveOrbTo(x, y) {
+  orbWrap.style.transform = `translate(${x}px, ${y}px)`;
+}
+
+function focusOnElement(el, padding = 10) {
+  const r = el.getBoundingClientRect();
+  moveOrbTo(r.left + r.width - 14, r.top + 14);
+  focusRing.style.left = (r.left - padding) + 'px';
+  focusRing.style.top = (r.top - padding) + 'px';
+  focusRing.style.width = (r.width + padding * 2) + 'px';
+  focusRing.style.height = (r.height + padding * 2) + 'px';
+  focusRing.classList.add('active');
+}
+
+function clearFocus() {
+  focusRing.classList.remove('active');
+}
+
+/* ================================================================
+   SCROLL-TRIGGERED SCENE RUNNER
+   Each scene only runs once, when scrolled into view AND sequence started
+   ================================================================ */
+const sceneState = { fill: false, file: false, repair: false, research: false };
+
+const sceneObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const key = entry.target.dataset.scene;
+    if (entry.isIntersecting) {
+      entry.target.classList.add('in-view');
+      if (sequenceStarted && !sceneState[key]) {
+        sceneState[key] = true;
+        runScene(key, entry.target);
+      }
+    }
+  });
+}, { threshold: 0.45 });
+
+document.querySelectorAll('.scene').forEach(s => sceneObserver.observe(s));
+
+function setStatus(id, state) {
+  const el = document.getElementById(id);
+  el.className = 'scene-status' + (state === 'running' ? ' running' : state === 'done' ? ' done' : '');
+  el.textContent = state;
+}
+
+function runScene(key, el) {
+  if (key === 'fill') runFillScene(el);
+  if (key === 'file') runFileScene(el);
+  if (key === 'repair') runRepairScene(el);
+  if (key === 'research') runResearchScene(el);
+}
+
+/* ---------- SCENE 1: REAL ORB TEXT ROUTE ---------- */
+async function runFillScene(el) {
+  setStatus('status-fill', 'running');
+  const target = document.getElementById('fill-target');
+  focusOnElement(target);
+  target.textContent = 'Calling /api/orb/website-text...';
+  logAudit('orb.website_text', selectedSite, true);
+
+  try {
+    const result = await apiJson('/api/orb/website-text', {
+      method: 'POST',
+      body: JSON.stringify({
+        transcript: `Run Diagnostic Bay orientation for ${selectedSite}. Explain what real ORB tools are available in one short sentence.`,
+      }),
+    });
+    target.textContent = result.spoken_output || 'ORB route returned without spoken output.';
+    speak(result.spoken_output || 'The ORB route returned successfully.');
+    setStatus('status-fill', 'done');
+    logAudit('orb.website_text → complete', result.llm_source || 'response received', true);
+  } catch (error) {
+    target.textContent = 'ORB route unavailable: ' + (error instanceof Error ? error.message : 'request failed');
+    setStatus('status-fill', 'done');
+    logAudit('orb.website_text → failed', target.textContent, false);
+    speak('I am reconnecting to my response service. Please try again in a moment.');
+  } finally {
+    clearFocus();
+  }
+}
+
+/* ---------- SCENE 2: REAL PUBLIC PREFLIGHT ---------- */
+async function runFileScene(el) {
+  setStatus('status-file', 'running');
+  const nameEl = document.getElementById('file-name');
+  const bodyEl = document.getElementById('file-body');
+  focusOnElement(nameEl.closest('.file-viewer'));
+  nameEl.textContent = selectedSite;
+  bodyEl.textContent = 'Running /api/public/preflight...';
+  logAudit('public_preflight', selectedSite, true);
+
+  try {
+    preflightResult = await apiJson('/api/public/preflight', {
+      method: 'POST',
+      body: JSON.stringify({ website_url: selectedSite }),
+    });
+    const lines = [
+      `schema: ${preflightResult.schema || 'unknown'}`,
+      `outcome: ${preflightResult.outcome || 'unknown'}`,
+      `summary: ${preflightResult.summary || 'no summary returned'}`,
+      `pages_scanned: ${preflightResult.pages_scanned ?? 0}`,
+      `confidence: ${preflightResult.confidence ?? 'unknown'}`,
+      `recommended_next_step: ${preflightResult.recommended_next_step || 'none returned'}`,
+      `browser_verification: ${(preflightResult.browser_verification || {}).status || 'not returned'}`,
+    ];
+    bodyEl.innerHTML = lines.map((line, idx) => `<div><span class="ln">${String(idx+1).padStart(2,'0')}</span>${escapeHtml(line)}</div>`).join('');
+    setStatus('status-file', 'done');
+    logAudit('public_preflight → complete', preflightResult.outcome || 'report returned', true);
+  } catch (error) {
+    bodyEl.textContent = 'Preflight failed: ' + (error instanceof Error ? error.message : 'request failed');
+    setStatus('status-file', 'done');
+    logAudit('public_preflight → failed', bodyEl.textContent, false);
+  } finally {
+    clearFocus();
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ---------- SCENE 3: REAL CAPABILITY CHECK ---------- */
+async function runRepairScene(el) {
+  setStatus('status-repair', 'running');
+  const banner = document.getElementById('error-banner');
+  const head = document.getElementById('error-head');
+  const detail = document.getElementById('error-detail');
+  const morbRow = document.getElementById('morb-row');
+  focusOnElement(banner);
+  banner.classList.remove('resolved');
+  head.textContent = 'Checking real ORB capabilities...';
+  detail.textContent = '/api/orb/capabilities';
+  morbRow.innerHTML = '';
+  logAudit('orb.capabilities', '/api/orb/capabilities', true);
+
+  try {
+    capabilityResult = await apiJson('/api/orb/capabilities');
+    const tools = [
+      ['Core-4 source', capabilityResult.current_orb_source_available ? 'available' : 'missing'],
+      ['Tesseract OCR', capabilityResult.tesseract?.available ? `available: ${capabilityResult.tesseract.binary}` : 'not available'],
+      ['Chrome DevTools MCP', capabilityResult.chrome_devtools_mcp?.available ? 'runner available' : 'runner not detected'],
+      ['Public MCP review', capabilityResult.chrome_devtools_mcp?.public_enabled ? 'enabled' : 'gated/off'],
+    ];
+    tools.forEach(([id, state]) => {
+      const u = document.createElement('div');
+      const ok = !/missing|not available|not detected|gated\/off/.test(state);
+      u.className = 'morb-unit active' + (ok ? ' cleared' : '');
+      u.innerHTML = `<div class="mu-id">${escapeHtml(id)}</div><div class="mu-state">${escapeHtml(state)}</div>`;
+      morbRow.appendChild(u);
+      logAudit('tool.readiness', `${id}: ${state}`, ok);
+    });
+    banner.classList.add('resolved');
+    head.textContent = 'Capability check complete';
+    detail.textContent = `ORB source: ${capabilityResult.cognition_source || 'unknown'}`;
+    setStatus('status-repair', 'done');
+  } catch (error) {
+    head.textContent = 'Capability route unavailable';
+    detail.textContent = error instanceof Error ? error.message : 'request failed';
+    setStatus('status-repair', 'done');
+    logAudit('orb.capabilities → failed', detail.textContent, false);
+  } finally {
+    clearFocus();
+  }
+}
+
+/* ---------- SCENE 4: REAL BROWSER REVIEW WHEN ENABLED + ORB SYNTHESIS ---------- */
+async function runResearchScene(el) {
+  setStatus('status-research', 'running');
+  document.getElementById('research-title').textContent = 'ORB synthesis: ' + selectedSite;
+  logAudit('orb.synthesis', selectedSite, true);
+
+  const grid = document.getElementById('research-grid');
+  grid.innerHTML = '';
+  const findings = [];
+
+  if (capabilityResult?.chrome_devtools_mcp?.public_enabled) {
+    try {
+      logAudit('public_browser_review', selectedSite, true);
+      browserReviewResult = await apiJson('/api/public/browser-review', {
+        method: 'POST',
+        body: JSON.stringify({ website_url: selectedSite }),
+      });
+      findings.push(`Browser review status: ${browserReviewResult.status || 'returned'}.`);
+      if (browserReviewResult.summary) findings.push(`Browser summary: ${browserReviewResult.summary}`);
+      logAudit('public_browser_review → complete', browserReviewResult.status || 'review returned', true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'browser review failed';
+      findings.push(`Browser review attempted but failed: ${message}`);
+      logAudit('public_browser_review → failed', message, false);
+    }
+  } else {
+    findings.push('Public Chrome DevTools MCP review is gated or disabled on this backend.');
+    logAudit('public_browser_review → skipped', 'public_enabled=false', false);
+  }
+
+  if (preflightResult) {
+    findings.push(`Preflight outcome: ${preflightResult.outcome || 'unknown'}; pages scanned: ${preflightResult.pages_scanned ?? 0}.`);
+    findings.push(preflightResult.summary || 'Preflight returned without a summary.');
+  }
+  if (capabilityResult) {
+    findings.push(`Tesseract: ${capabilityResult.tesseract?.available ? 'available' : 'not available'}; MCP runner: ${capabilityResult.chrome_devtools_mcp?.available ? 'available' : 'not detected'}.`);
+  }
+
+  try {
+    const result = await apiJson('/api/orb/website-text', {
+      method: 'POST',
+      body: JSON.stringify({
+        transcript: `Summarize the Diagnostic Bay results for ${selectedSite}. Preflight outcome: ${preflightResult?.outcome || 'not run'}. Browser MCP public enabled: ${Boolean(capabilityResult?.chrome_devtools_mcp?.public_enabled)}. Tesseract available: ${Boolean(capabilityResult?.tesseract?.available)}.`,
+      }),
+    });
+    findings.push(`ORB says: ${result.spoken_output}`);
+    speak(result.spoken_output);
+    logAudit('orb.website_text.synthesis → complete', result.llm_source || 'response received', true);
+  } catch (error) {
+    findings.push('ORB synthesis route is unavailable right now.');
+    logAudit('orb.website_text.synthesis → failed', error instanceof Error ? error.message : 'request failed', false);
+  }
+
+  findings.forEach((line, idx) => {
+    const item = document.createElement('div');
+    item.className = 'research-item';
+    item.innerHTML = `<span class="bullet">→</span><span>${escapeHtml(line)}</span>`;
+    grid.appendChild(item);
+    window.setTimeout(() => item.classList.add('shown'), idx * 120);
+  });
+  setStatus('status-research', 'done');
+  logAudit('orb.synthesis → complete', findings.length + ' findings rendered', true);
+}
+</script>
+
+</body>
+</html>

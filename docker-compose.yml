@@ -1,58 +1,49 @@
-version: '3.8'
-
 services:
-  backend:
-    build: ./backend
+  orb-weaver:
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
-      - "16500:8000"
+      - "16500:16500"
+      - "16510:16510"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/orb_weaver
+      - DATABASE_URL=sqlite:///./data/orb_weaver.db
       - REDIS_URL=redis://redis:6379/0
+      - ORB_WEAVER_SUBSTRATE_ROOT=/app/substrate
+      - PUBLIC_BASE_URL=http://127.0.0.1:16510
+      - CHROME_PATH=/usr/bin/chromium
+      - CHROME_BIN=/usr/bin/chromium
+      - CHROME_DEVTOOLS_CLI=chrome-devtools
+      - CHROME_DEVTOOLS_ENABLED=true
+      - CHROME_DEVTOOLS_PUBLIC_ENABLED=false
+      - CHROME_DEVTOOLS_START_ARGS=["--no-sandbox","--disable-dev-shm-usage"]
+      - TESSERACT_CMD=/usr/bin/tesseract
+      - ORB_ASSISTANT_ROOT=/app/Orb_Assistant
+      - FASTER_WHISPER_STT_URL=http://host.docker.internal:9000/stt
+      - ORB_TTS_CACHE_DIR=/app/backend/data/tts_cache
+      - ORB_TTS_TIMEOUT_SECONDS=${ORB_TTS_TIMEOUT_SECONDS:-120}
+      - ORB_TTS_QWEN_URL=${ORB_TTS_QWEN_URL:-http://host.docker.internal:9880/speak}
+      - ORB_TTS_QWEN_API_KEY=${ORB_TTS_QWEN_API_KEY:-}
+      - ORB_TTS_QWEN_MODEL=${ORB_TTS_QWEN_MODEL:-qwen-tts}
+      - ORB_TTS_QWEN_VOICE=${ORB_TTS_QWEN_VOICE:-Cherry}
+      - ORB_TTS_QWEN_FORMAT=${ORB_TTS_QWEN_FORMAT:-wav}
+      - ORB_TTS_QWEN_PAYLOAD_MODE=${ORB_TTS_QWEN_PAYLOAD_MODE:-generic}
+      - ORB_TTS_KOKORO_URL=${ORB_TTS_KOKORO_URL:-http://host.docker.internal:8880/v1/audio/speech}
+      - ORB_TTS_KOKORO_API_KEY=${ORB_TTS_KOKORO_API_KEY:-}
+      - ORB_TTS_KOKORO_MODEL=${ORB_TTS_KOKORO_MODEL:-kokoro}
+      - ORB_TTS_KOKORO_VOICE=${ORB_TTS_KOKORO_VOICE:-af_heart}
+      - ORB_TTS_KOKORO_FORMAT=${ORB_TTS_KOKORO_FORMAT:-wav}
+      - ORB_TTS_KOKORO_PAYLOAD_MODE=${ORB_TTS_KOKORO_PAYLOAD_MODE:-openai}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
-      - ./backend:/app
-      - ./ga4-credentials.json:/app/ga4-credentials.json:ro
+      - ./backend/data:/app/backend/data
+      - ./browser_reviews:/app/backend/browser_reviews
+      - ./substrate:/app/substrate
     depends_on:
-      - db
       - redis
-
-  frontend:
-    build: ./frontend
-    ports:
-      - "16510:3000"
-    environment:
-      - REACT_APP_API_URL=http://localhost:16500
-    volumes:
-      - ./frontend/src:/app/src
-    depends_on:
-      - backend
-
-  db:
-    image: postgres:15
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=orb_weaver
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
-
-  celery:
-    build: ./backend
-    command: celery -A app.core.celery worker --loglevel=info
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/orb_weaver
-      - REDIS_URL=redis://redis:6379/0
-    volumes:
-      - ./backend:/app
-    depends_on:
-      - db
-      - redis
-
-volumes:
-  postgres_data:
+      - "6380:6379"
