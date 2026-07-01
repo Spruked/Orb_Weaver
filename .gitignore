@@ -1,30 +1,84 @@
+# -------------------------
+# Environment Files
+# -------------------------
 .env
 .env.*
 !.env.example
 
+# Python Virtual Environments
 .venv/
 .venv312/
 __pycache__/
 *.py[cod]
 *.pyo
 
+# -------------------------
+# Frontend (Node)
+# -------------------------
 frontend/node_modules/
 frontend/build/
 frontend/test-results/
 frontend/*.log
+
+# -------------------------
+# Backend Logs
+# -------------------------
 backend/*.log
 
-backend/data/
+# -------------------------
+# Intelligence Substrate (DO NOT COMMIT)
+# -------------------------
+# Windows-style paths (escaped)
+backend/R:\R_Drive_Substrate/
+backend/R:/R_Drive_Substrate/
+
+# Linux-style fallback (WSL-safe)
+backend/R_Drive_Substrate/
+backend/**/R_Drive_Substrate/
+
+# Browser review artifacts
+backend/browser_reviews/
+
+# Compiled reports
+reports/
 backend/report_compiler/
 
+# -------------------------
+# Python Caches
+# -------------------------
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 
+# -------------------------
+# Databases
+# -------------------------
 *.sqlite
 *.db
+
+# -------------------------
+# Logs & Temp Files
+# -------------------------
 *.log
 *.tmp
 
+# -------------------------
+# Build Artifacts
+# -------------------------
 dist/
 build/
+
+# -------------------------
+# Node dependency folders anywhere
+# -------------------------
+node_modules/
+**/node_modules/
+tools/chrome-devtools-mcp/node_modules/
+# Local ORB a-posteriori memory — never commit
+/Orb_Assistant/.orb-assistant/
+/Orb_Assistant/vault_system/posteriori/
+/Orb_Assistant/src/vault_system/posteriori/
+/Orb_Assistant/electron/src/vault_system/posteriori/
+
+# Windows downloaded-zip metadata
+*:Zone.Identifier

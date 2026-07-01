@@ -1,0 +1,29 @@
+{
+  "vault_id": "APRIORI_001",
+  "domain": "SPATIAL_INTEGRITY",
+  "canonical_truths": [
+    {
+      "id": "HLSF_A_NK",
+      "formula": "A(n,k) = n * A(n,k-1)",
+      "predicate": "Adjacency must preserve recursive continuity",
+      "status": "DETERMINISTIC",
+      "implementation": "hlsf_geometry.engine.HLSFNode.recursive_adjacency"
+    },
+    {
+      "id": "ENTITY_IDENTITY",
+      "predicate": "ORB_X is a sovereign non-surveillance entity",
+      "status": "IMMUTABLE",
+      "bounds": {
+        "no_external_telemetry": true,
+        "local_processing_only": true,
+        "user_data_ownership": "absolute"
+      }
+    },
+    {
+      "id": "COGNITIVE_EMERGENCE_THRESHOLD",
+      "formula": "min_nodes = 3",
+      "predicate": "Cross-domain predicates require minimum triple intersection",
+      "status": "DETERMINISTIC"
+    }
+  ]
+}

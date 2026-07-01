@@ -1,0 +1,169 @@
+├── electron
+│   ├── main
+│   │   ├── main.js
+│   │   ├── orb-bridge.js
+│   │   └── preload.js
+│   ├── src
+│   │   ├── components
+│   │   │   ├── core_4_minds
+│   │   │   │   ├── bspinoza
+│   │   │   │   │   └── spinoza_monism_skg.json
+│   │   │   │   ├── hhume
+│   │   │   │   │   └── hume_skepticism_skg.json
+│   │   │   │   ├── hlocke
+│   │   │   │   │   └── locke_empiricism_skg.json
+│   │   │   │   ├── ikant
+│   │   │   │   │   └── kant_critical_skg.json
+│   │   │   │   └── tribunal.py
+│   │   │   ├── FloatingOrb.css
+│   │   │   └── LivingOrb.css
+│   │   ├── core-bridges
+│   │   │   ├── caleon.py
+│   │   │   ├── cali_x_one.py
+│   │   │   ├── cali.py
+│   │   │   ├── kaygee.py
+│   │   │   └── ucm_core_ecm.py
+│   │   ├── hlsf_geometry
+│   │   │   ├── block_matrices
+│   │   │   ├── recursive_field
+│   │   │   └── engine.py
+│   │   ├── interface
+│   │   │   ├── assets
+│   │   │   ├── shaders
+│   │   │   ├── gravity_field_2d.py
+│   │   │   └── orb_window.py
+│   │   ├── logic_seeds
+│   │   │   ├── deductive_SKG
+│   │   │   │   ├── job
+│   │   │   │   │   └── execute.py
+│   │   │   │   ├── jobs
+│   │   │   │   │   └── execute.py
+│   │   │   │   ├── logic
+│   │   │   │   │   ├── cognitive_state.py
+│   │   │   │   │   └── deductive_logic.py
+│   │   │   │   ├── vault
+│   │   │   │   │   ├── apriori
+│   │   │   │   │   └── trace
+│   │   │   │   └── worker.json
+│   │   │   ├── deductive_validator
+│   │   │   │   ├── job
+│   │   │   │   │   └── validate.py
+│   │   │   │   ├── logic
+│   │   │   │   │   ├── deductive_validation.py
+│   │   │   │   │   └── validation_state.py
+│   │   │   │   ├── vault
+│   │   │   │   └── worker.json
+│   │   │   ├── inductive
+│   │   │   │   ├── cursor_habit.json
+│   │   │   │   └── moral_habit.json
+│   │   │   ├── inductive_skg
+│   │   │   │   └── logic
+│   │   │   │       ├── cognitive_stat.py
+│   │   │   │       ├── cognitive_state.py
+│   │   │   │       └── inductive_logic.py
+│   │   │   ├── inductive_validator
+│   │   │   │   ├── logic
+│   │   │   │   │   ├── inductive_validation.py
+│   │   │   │   │   └── validation_state.py
+│   │   │   │   └── worker.json
+│   │   │   ├── intuitive
+│   │   │   │   └── pattern_recognition.json
+│   │   │   ├── intuitive_skg
+│   │   │   │   └── logic
+│   │   │   │       ├── cognitive_state.py
+│   │   │   │       └── intuitive_logic.py
+│   │   │   ├── intuitive_validator
+│   │   │   │   ├── logic
+│   │   │   │   │   ├── intuitive_validation.py
+│   │   │   │   │   └── validation_state.py
+│   │   │   │   └── worker.json
+│   │   │   └── validation_pipeline.py
+│   │   ├── ui
+│   │   │   ├── index.html
+│   │   │   └── renderer.js
+│   │   ├── vault_system
+│   │   │   ├── apriori
+│   │   │   │   └── apriori_core.json
+│   │   │   ├── posteriori
+│   │   │   ├── apriori_core.json
+│   │   │   └── manager.py
+│   │   ├── bayesian_engine.py
+│   │   ├── cali-launcher.js
+│   │   ├── dashboard.html
+│   │   ├── floating_assistant_orb.py
+│   │   ├── index.html
+│   │   ├── orb_controller.py
+│   │   ├── orb_skg_manager.py
+│   │   └── settings.html
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── README.md
+│   └── requirements.txt
+├── modules
+│   ├── Adaptive_Cochlear_Processor_1.0
+│   │   ├── acp_1_0
+│   │   │   ├── acp
+│   │   │   │   ├── backend
+│   │   │   │   │   ├── __init__.py
+│   │   │   │   │   └── interface.py
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── cognition.py
+│   │   │   │   ├── core.py
+│   │   │   │   ├── learning.py
+│   │   │   │   ├── metrics.py
+│   │   │   │   ├── perception.py
+│   │   │   │   └── voice.py
+│   │   │   ├── backend
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── interface.py
+│   │   │   │   ├── minimal_decoder.py
+│   │   │   │   └── whisper_teacher.py
+│   │   │   ├── __init__.py
+│   │   │   ├── cognition.py
+│   │   │   ├── core.py
+│   │   │   ├── learning.py
+│   │   │   └── perception.py
+│   │   ├── coqui_baseline
+│   │   │   ├── __init__.py
+│   │   │   ├── create_ref.py
+│   │   │   └── synthesize.py
+│   │   ├── realtime
+│   │   │   ├── keyboard_gate.py
+│   │   │   ├── mic_capture.py
+│   │   │   └── README.md
+│   │   ├── router
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py
+│   │   │   ├── orchestrator.py
+│   │   │   ├── stt_router.py
+│   │   │   └── tts_router.py
+│   │   ├── skg
+│   │   │   ├── default.json
+│   │   │   └── hearing_live.json
+│   │   ├── whisper_baseline
+│   │   │   └── transcribe.py
+│   │   ├── __init__.py
+│   │   ├── check_metrics.py
+│   │   ├── download_audio_model.py
+│   │   ├── orchestrator.py
+│   │   ├── README.md
+│   │   ├── requirements.txt
+│   │   ├── setup.py
+│   │   └── validation_summary.py
+│   ├── Epistemic_Gravity_Field
+│   │   ├── distribution_shift_test.py
+│   │   ├── perturb_test.py
+│   │   ├── README.md
+│   │   ├── space_field.py
+│   │   ├── stress_test.py
+│   │   └── visualize.py
+│   └── Orb
+│       └── floating_assistant_orb.py
+├── vault_system
+│   └── posteriori
+├── folder_tree.txt
+├── IMMUTABLE_LAW.md
+├── package-lock.json
+├── package.json
+├── README.md
+└── tree.txt

@@ -1,0 +1,88 @@
+{
+  "skg_metadata": {
+    "philosopher": "Immanuel Kant",
+    "system": "Transcendental Idealism & Critical Philosophy",
+    "space_field_id": "kant_critical_skg"
+  },
+  "core_axiom": {
+    "node_id": "KANT_001",
+    "label": "Transcendental Idealism",
+    "definition": "Mind actively structures experience; we know phenomena not noumena"
+  },
+  "concept_nodes": [
+    {
+      "node_id": "KANT_002",
+      "label": "Phenomena",
+      "type": "ONTOLOGICAL_CATEGORY",
+      "properties": {"definition": "Things as they appear to us", "knowability": "FULLY_KNOWABLE"}
+    },
+    {
+      "node_id": "KANT_003",
+      "label": "Noumena",
+      "type": "ONTOLOGICAL_CATEGORY",
+      "properties": {"definition": "Things as they are independently", "knowability": "UNKNOWABLE"}
+    },
+    {
+      "node_id": "KANT_004",
+      "label": "Synthetic A Priori Judgments",
+      "type": "KNOWLEDGE_CATEGORY",
+      "properties": {"definition": "Informative and necessary", "examples": ["7+5=12"]}
+    },
+    {
+      "node_id": "KANT_005",
+      "label": "Categories of Understanding",
+      "type": "CONCEPTUAL_SCHEME",
+      "properties": {
+        "quantity": ["Unity", "Plurality", "Totality"],
+        "quality": ["Reality", "Negation", "Limitation"],
+        "relation": ["Inherence", "Causality", "Community"],
+        "modality": ["Possibility", "Existence", "Necessity"]
+      }
+    },
+    {
+      "node_id": "KANT_006",
+      "label": "Forms of Intuition",
+      "type": "SENSORY_STRUCTURE",
+      "properties": {"space": "Form of outer sense", "time": "Form of inner sense"}
+    },
+    {
+      "node_id": "KANT_007",
+      "label": "Transcendental Deduction",
+      "type": "PHILOSOPHICAL_METHOD",
+      "properties": {"goal": "Justify categories' application to experience"}
+    },
+    {
+      "node_id": "KANT_008",
+      "label": "Unity of Apperception",
+      "type": "TRANSCENDENTAL_PRINCIPLE",
+      "properties": {"slogan": "'I think' accompanies all my representations"}
+    },
+    {
+      "node_id": "KANT_009",
+      "label": "Antinomies of Pure Reason",
+      "type": "METAPHYSICAL_PROBLEM",
+      "properties": {"solution": "Distinguish phenomena/noumena"}
+    },
+    {
+      "node_id": "KANT_010",
+      "label": "Categorical Imperative",
+      "type": "MORAL_PRINCIPLE",
+      "properties": {
+        "formulation_1": "Act only on universalizable maxims",
+        "formulation_2": "Treat humanity as end, not means"
+      }
+    },
+    {
+      "node_id": "KANT_011",
+      "label": "Practical Reason",
+      "type": "RATIONAL_FACULTY",
+      "properties": {"domain": "Morality, freedom, God, immortality"}
+    },
+    {
+      "node_id": "KANT_012",
+      "label": "Theoretical Reason",
+      "type": "RATIONAL_FACULTY",
+      "properties": {"domain": "Phenomenal world", "method": "Categories + Intuition"}
+    }
+  ]
+}

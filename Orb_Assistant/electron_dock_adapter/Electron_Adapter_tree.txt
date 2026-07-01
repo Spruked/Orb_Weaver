@@ -1,0 +1,7 @@
+electron_dock_adapter
+|_main
+├── README.md
+├── main.js
+├── orb-bridge.js
+└── preload_adapter.js
+|___Electron_Adapter_tree.txt

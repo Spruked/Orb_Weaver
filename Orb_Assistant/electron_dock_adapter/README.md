@@ -1,0 +1,1 @@
+optional dockstation adapter only

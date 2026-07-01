@@ -1,0 +1,172 @@
+{
+  "skg_metadata": {
+    "philosopher": "John Locke",
+    "system": "Empiricist Logical Reasoning",
+    "version": "1.0",
+    "space_field_id": "locke_empiricism_skg"
+  },
+  "core_axiom": {
+    "node_id": "LOCKE_001",
+    "label": "Tabula Rasa - Mind as Blank Slate",
+    "definition": "All knowledge originates from experience; no innate ideas"
+  },
+  "concept_nodes": [
+    {
+      "node_id": "LOCKE_002",
+      "label": "Simple Ideas",
+      "type": "COGNITIVE_UNIT",
+      "properties": {
+        "origin": "Sensation and Reflection",
+        "divisible": false,
+        "examples": ["solidity", "extension", "number"]
+      },
+      "relationships": {
+        "derived_from": ["LOCKE_004", "LOCKE_005"],
+        "combines_to_form": ["LOCKE_003"]
+      }
+    },
+    {
+      "node_id": "LOCKE_003",
+      "label": "Complex Ideas",
+      "type": "COGNITIVE_UNIT",
+      "properties": {
+        "origin": "Mental Operations on Simple Ideas",
+        "operations": ["combining", "comparing", "abstracting"]
+      },
+      "relationships": {
+        "composed_of": ["LOCKE_002"],
+        "abstracted_to": ["LOCKE_011"]
+      }
+    },
+    {
+      "node_id": "LOCKE_004",
+      "label": "Sensation",
+      "type": "KNOWLEDGE_SOURCE",
+      "properties": {
+        "target": "External Objects",
+        "output": "Simple Ideas"
+      }
+    },
+    {
+      "node_id": "LOCKE_005",
+      "label": "Reflection",
+      "type": "KNOWLEDGE_SOURCE",
+      "properties": {
+        "target": "Mind's own operations",
+        "output": "Simple Ideas"
+      }
+    },
+    {
+      "node_id": "LOCKE_006",
+      "label": "Primary Qualities",
+      "type": "OBJECT_PROPERTY",
+      "properties": {
+        "examples": ["size", "shape", "motion"],
+        "resemblance": true
+      }
+    },
+    {
+      "node_id": "LOCKE_007",
+      "label": "Secondary Qualities",
+      "type": "OBJECT_PROPERTY",
+      "properties": {
+        "examples": ["color", "sound", "taste"],
+        "resemblance": false
+      }
+    },
+    {
+      "node_id": "LOCKE_008",
+      "label": "Intuitive Knowledge",
+      "type": "KNOWLEDGE_DEGREE",
+      "properties": {
+        "certainty": "ABSOLUTE",
+        "examples": ["White is not black"]
+      }
+    },
+    {
+      "node_id": "LOCKE_009",
+      "label": "Demonstrative Knowledge",
+      "type": "KNOWLEDGE_DEGREE",
+      "properties": {
+        "method": "Intermediate ideas/proofs",
+        "certainty": "HIGH"
+      }
+    },
+    {
+      "node_id": "LOCKE_010",
+      "label": "Sensitive Knowledge",
+      "type": "KNOWLEDGE_DEGREE",
+      "properties": {
+        "method": "Reliance on senses only",
+        "certainty": "LIMITED"
+      }
+    },
+    {
+      "node_id": "LOCKE_011",
+      "label": "Abstract Ideas",
+      "type": "COGNITIVE_OPERATION",
+      "properties": {
+        "operation": "Separating ideas from particular circumstances"
+      }
+    },
+    {
+      "node_id": "LOCKE_012",
+      "label": "Words and Language",
+      "type": "SYMBOLIC_SYSTEM",
+      "properties": {
+        "function": "Signify ideas (imperfectly)"
+      }
+    },
+    {
+      "node_id": "LOCKE_013",
+      "label": "Identity and Diversity",
+      "type": "LOGICAL_PRINCIPLE",
+      "properties": {
+        "function": "Distinguish objects and ideas"
+      }
+    },
+    {
+      "node_id": "LOCKE_014",
+      "label": "Probabilistic Reasoning",
+      "type": "REASONING_METHOD",
+      "properties": {
+        "used_when": "Certainty is unattainable"
+      }
+    },
+    {
+      "node_id": "LOCKE_015",
+      "label": "Limits of Understanding",
+      "type": "EPISTEMIC_BOUNDARY",
+      "properties": {
+        "scope": "Human knowledge is finite"
+      }
+    }
+  ],
+  "reasoning_rules": [
+    {
+      "rule_id": "RULE_001",
+      "name": "No Innate Ideas",
+      "condition": "IF idea_claimed_innate THEN require_experiential_source"
+    },
+    {
+      "rule_id": "RULE_002",
+      "name": "Idea Verification",
+      "condition": "IF complex_idea THEN decompose_to_simple_ideas"
+    },
+    {
+      "rule_id": "RULE_003",
+      "name": "Knowledge Degree Assessment",
+      "condition": "EVALUATE_certainty_level"
+    },
+    {
+      "rule_id": "RULE_004",
+      "name": "Quality Type Determination",
+      "condition": "IF quality_in_object AND resembles_idea THEN primary"
+    },
+    {
+      "rule_id": "RULE_005",
+      "name": "Syllogistic Reasoning Validity",
+      "condition": "IF step_between_premises THEN each_step_must_be_intuitive"
+    }
+  ]
+}
