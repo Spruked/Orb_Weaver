@@ -1,4 +1,5 @@
 import React, { FormEvent, useState } from 'react';
+import PublicHeader from '../components/PublicHeader';
 import { api, PublicPreflightReport } from '../services/api';
 
 const PublicPreflight: React.FC = () => {
@@ -24,17 +25,8 @@ const PublicPreflight: React.FC = () => {
 
   return (
     <main className="min-h-screen bg-slate-950 text-white">
+      <PublicHeader theme="dark" />
       <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-8">
-        <header className="flex items-center justify-between gap-4">
-          <a href="/" className="text-sm font-bold tracking-[0.28em] text-cyan-200">
-            ORB WEAVER
-          </a>
-          <nav className="flex items-center gap-4 text-sm text-slate-300">
-            <a href="/marketplace" className="hover:text-white">Marketplace</a>
-            <a href="/login" className="hover:text-white">Login</a>
-          </nav>
-        </header>
-
         <section className="flex flex-1 flex-col justify-center py-16">
           <p className="mb-3 text-sm font-semibold tracking-[0.24em] text-cyan-300">PUBLIC PREFLIGHT</p>
           <h1 className="max-w-3xl text-4xl font-black leading-tight md:text-6xl">

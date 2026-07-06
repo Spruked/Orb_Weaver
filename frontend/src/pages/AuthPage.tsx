@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import PublicHeader from '../components/PublicHeader';
 import { api, authStore, Customer } from '../services/api';
 
 const bannerLogo = '/orbweaver1600.png';
@@ -98,8 +99,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated }) => {
         !form.country.trim()));
 
   return (
-    <div className="min-h-screen bg-[#F2FBFD] px-4 py-4 text-slate-900 sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-5xl flex-col pt-2">
+    <div className="min-h-screen bg-[#F2FBFD] text-slate-900">
+      <PublicHeader theme="light" />
+      <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-4 pt-2 sm:px-6 lg:px-8">
         <header className="mx-auto mb-4 w-full max-w-4xl text-center">
           <img
             src={bannerLogo}

@@ -1,4 +1,5 @@
 import React from "react";
+import PublicHeader from "../components/PublicHeader";
 import "./Landing.css";
 
 const LandingPage: React.FC = () => {
@@ -7,27 +8,7 @@ const LandingPage: React.FC = () => {
       <div className="ow-v2-grid" />
       <div className="ow-v2-noise" />
 
-      <header className="ow-v2-header">
-        <div className="ow-v2-brand">
-          <span className="ow-v2-brand-dot" />
-          <span>ORB WEAVER</span>
-        </div>
-
-        <div className="ow-v2-orb-indicator" aria-label="ORB status">
-          <span />
-          <strong>ORB online</strong>
-        </div>
-
-        <nav className="ow-v2-nav">
-          <a href="#how">How It Works</a>
-          <a href="#intelligence">Intelligence</a>
-          <a href="/marketplace">Marketplace</a>
-          <a className="ow-v2-demo-required" href="/login">
-            Demo: must be logged into an account to use
-          </a>
-          <a href="/login">Launch Dashboard</a>
-        </nav>
-      </header>
+      <PublicHeader theme="dark" />
 
       <section className="ow-v2-hero">
         <div className="ow-v2-copy">

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from io import BytesIO, StringIO
+import asyncio
 import base64
 import csv
 import hashlib
@@ -12,6 +13,8 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import logging
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from collections import Counter
@@ -29,8 +32,11 @@ from app.analytics.ga4 import GA4Connector
 from app.audit.engine import SEOAuditor
 from app.core.config import settings
 from app.crawler.engine import OrbWeaverCrawler, PageData
+from app.orb import scan_semantic_topology
+from app.orb.pointer_plot import pointer_plot_map_from_pages
 from app.pack_generator import generate_pack_file
 from app.services.chrome_devtools import ChromeDevToolsReviewRunner
+from app.services.orb_desktop_mcp import DEFAULT_ORB_MCP_TOOLS, ORBDesktopMCPClient
 from app.models.database import (
     AuditReport,
     CartItem,
@@ -94,11 +100,16 @@ REPORT_COMPILER_ROOT = Path("report_compiler")
 REPORT_COMPILER_ROOT.mkdir(parents=True, exist_ok=True)
 ORB_TTS_CACHE_ROOT = Path(settings.ORB_TTS_CACHE_DIR)
 ORB_TTS_CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+ORB_TTS_INFLIGHT_LOCK = asyncio.Lock()
+ORB_TTS_INFLIGHT: Dict[str, asyncio.Task] = {}
+ORB_TTS_PROVIDER_LOCKS: Dict[str, asyncio.Lock] = {}
+logger = logging.getLogger("orb_weaver")
 
 SUBSTRATE_ROOT = Path(settings.ORB_WEAVER_SUBSTRATE_ROOT)
 PREFLIGHT_SCANNER_ROOT = Path(__file__).resolve().parent.parent / "Preflight Scanner"
 PREFLIGHT_SCANNER_MODULE = PREFLIGHT_SCANNER_ROOT / "preflight_site_scan.py"
 ORB_CONTROLLER = None
+ORB_DESKTOP_MCP_CLIENT: Optional[ORBDesktopMCPClient] = None
 
 
 def get_db():
@@ -126,6 +137,7 @@ class CrawlConfig(BaseModel):
     max_pages: int = Field(default=100, ge=1, le=5000)
     delay: float = Field(default=1.0, ge=0.1, le=10.0)
     max_depth: int = Field(default=5, ge=1, le=10)
+    tier: str = Field(default="authenticated", pattern="^(free|authenticated)$")
     competitor_domains: List[str] = Field(default_factory=list)
     seed_urls: List[str] = Field(default_factory=list)
 
@@ -225,6 +237,15 @@ class BrowserReviewRequest(BaseModel):
 
 class BrowserLabToolRequest(BaseModel):
     tool: str = Field(..., min_length=2, max_length=80)
+    params: Dict[str, Any] = Field(default_factory=dict)
+
+
+class OrbToolRunRequest(BaseModel):
+    tool: str = Field(..., min_length=2, max_length=120)
+    project_id: Optional[str] = None
+    target_url: Optional[str] = Field(default=None, max_length=500)
+    transcript: Optional[str] = Field(default=None, max_length=1000)
+    mcp_tool: Optional[str] = Field(default=None, max_length=120)
     params: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -778,6 +799,7 @@ ORB_MEMORY_MAX_ITEMS_PER_USER = 80
 ORB_MEMORY_SUMMARY_LIMIT = 12
 ORB_RECENT_CONTEXT_TTL_DAYS = 14
 ORB_RECENT_CONTEXT_MAX_CHARS = 1200
+ORB_RECENT_CONTEXT_MAX_LINES = 8
 ORB_TOOL_CACHE_DEFAULT_TTL_SECONDS = 900
 ORB_SENSITIVE_MEMORY_TERMS = {
     "password",
@@ -793,11 +815,40 @@ ORB_SENSITIVE_MEMORY_TERMS = {
     "raw_document",
     "browser_history",
 }
+ORB_PUBLIC_IDENTITY_ANSWER = (
+    "I'm Orb Weaver. I help website owners scan, understand, and improve their websites, "
+    "then build an ORB that can guide visitors through them."
+)
 
 
 def _normalize_memory_key(value: str) -> str:
     normalized = re.sub(r"[^a-z0-9_.:-]+", "_", value.strip().lower())
     return normalized.strip("_")[:160]
+
+
+def _is_orb_identity_question(transcript: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9' ]+", " ", transcript.lower())
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    if not normalized:
+        return False
+    identity_phrases = {
+        "who are you",
+        "what are you",
+        "what is your purpose",
+        "what's your purpose",
+        "what do you do",
+        "what can you do",
+        "tell me about yourself",
+        "introduce yourself",
+    }
+    return any(phrase in normalized for phrase in identity_phrases)
+
+
+def _neutral_recent_context_line(transcript: str) -> str:
+    clean = re.sub(r"\s+", " ", transcript.strip())[:220]
+    if not clean:
+        return "Visitor intent: Asked the ORB for help."
+    return f"Visitor intent: {clean}"
 
 
 def _validate_memory_payload(payload: OrbMemoryUpsert) -> tuple[str, str]:
@@ -935,12 +986,23 @@ def _update_orb_recent_context(customer: Optional[Customer], transcript: str, sp
     if not context:
         context = OrbRecentContext(customer_id=customer.id, session_key=session_key)
         db.add(context)
-    addition = f"User asked: {transcript.strip()[:220]} | ORB answered: {spoken_output.strip()[:260]}"
-    summary = f"{context.summary}\n{addition}".strip()
+
+    existing_lines = [
+        line.strip()
+        for line in (context.summary or "").splitlines()
+        if line.strip().startswith("Visitor intent:")
+    ]
+    existing_lines.append(_neutral_recent_context_line(transcript))
+    summary = "\n".join(existing_lines[-ORB_RECENT_CONTEXT_MAX_LINES:])
     context.summary = summary[-ORB_RECENT_CONTEXT_MAX_CHARS:]
     context.turn_count = int(context.turn_count or 0) + 1
     context.last_source = "website_orb"
-    context.metadata_json = {"source": "orb_conversation_summary", "bounded": True}
+    context.metadata_json = {
+        "source": "orb_conversation_summary",
+        "bounded": True,
+        "format": "neutral_visitor_intent",
+        "stores_generated_answers": False,
+    }
     context.updated_at = now
     context.expires_at = now + timedelta(days=ORB_RECENT_CONTEXT_TTL_DAYS)
     db.commit()
@@ -1242,6 +1304,9 @@ def _orb_capabilities() -> Dict[str, Any]:
     legacy_electron_src = root / "electron" / "src"
     chrome_tool = shutil.which(settings.CHROME_DEVTOOLS_CLI) or shutil.which("npx")
     tesseract_bin = shutil.which("tesseract")
+    desktop_mcp_root = Path(settings.ORB_DESKTOP_MCP_ROOT).expanduser()
+    desktop_mcp_server = desktop_mcp_root / "orb_mcp_server.py"
+    desktop_mcp_available = bool(settings.ORB_DESKTOP_MCP_ENABLED and desktop_mcp_server.exists())
 
     return {
         "schema": "orb_weaver.website_orb_capabilities.v1",
@@ -1260,15 +1325,25 @@ def _orb_capabilities() -> Dict[str, Any]:
             "available": bool(chrome_tool),
             "runner": settings.CHROME_DEVTOOLS_CLI,
         },
+        "orb_desktop_mcp": {
+            "enabled": settings.ORB_DESKTOP_MCP_ENABLED,
+            "available": desktop_mcp_available,
+            "root": str(desktop_mcp_root),
+            "server": str(desktop_mcp_server),
+            "runner": settings.ORB_DESKTOP_MCP_PYTHON,
+            "relay_url": settings.ORB_DESKTOP_MCP_URL,
+            "transport": "http_relay" if settings.ORB_DESKTOP_MCP_URL else "direct_stdio",
+        },
         "voice": {
             "browser_speech_recognition": "client_detected",
             "browser_speech_synthesis": False,
             "recorded_audio_stt_url": settings.FASTER_WHISPER_STT_URL,
             "text_query_low_latency": True,
-            "tts_primary": "qwen",
-            "tts_primary_configured": bool(settings.ORB_TTS_QWEN_URL),
-            "tts_fallback": "kokoro",
-            "tts_fallback_url": settings.ORB_TTS_KOKORO_URL,
+            "tts_primary": "kokoro",
+            "tts_primary_configured": bool(settings.ORB_TTS_KOKORO_URL),
+            "tts_primary_url": settings.ORB_TTS_KOKORO_URL,
+            "tts_fallback": "qwen" if settings.ORB_TTS_QWEN_URL else None,
+            "tts_fallback_url": settings.ORB_TTS_QWEN_URL,
         },
         "tools": [
             "public_preflight",
@@ -1276,9 +1351,256 @@ def _orb_capabilities() -> Dict[str, Any]:
             "website_text",
             "dockstation_websocket_handoff",
             "chrome_devtools_mcp_optional",
+            "rdrive_orb_desktop_mcp" if desktop_mcp_available else "rdrive_orb_desktop_mcp_missing",
             "tesseract_ocr_available" if tesseract_bin else "tesseract_ocr_missing_python_binding",
         ],
     }
+
+
+def _orb_tool_catalog(customer: Customer) -> Dict[str, Any]:
+    capabilities = _orb_capabilities()
+    chrome_enabled = bool(settings.CHROME_DEVTOOLS_ENABLED and capabilities["chrome_devtools_mcp"]["available"])
+    desktop_mcp_enabled = bool(capabilities.get("orb_desktop_mcp", {}).get("available"))
+    desktop_mcp_tools = DEFAULT_ORB_MCP_TOOLS
+    if desktop_mcp_enabled:
+        try:
+            listed = _orb_desktop_mcp_client().list_tools().get("tools") or []
+            names = [tool.get("name") for tool in listed if isinstance(tool, dict) and tool.get("name")]
+            if names:
+                desktop_mcp_tools = names
+        except Exception:
+            desktop_mcp_enabled = False
+    return {
+        "schema": "orb_weaver.orb_tool_catalog.v1",
+        "orb_id": capabilities["orb_id"],
+        "scope": "authenticated_owner",
+        "customer_id": str(customer.id),
+        "tools": [
+            {
+                "id": "capabilities",
+                "label": "ORB Capability Probe",
+                "description": "Inspect current ORB source, voice, OCR, and MCP availability.",
+                "requires_project": False,
+                "available": True,
+            },
+            {
+                "id": "project_preflight",
+                "label": "Project Preflight",
+                "description": "Run the deterministic site readiness scanner for an owned project.",
+                "requires_project": True,
+                "available": True,
+            },
+            {
+                "id": "project_browser_review",
+                "label": "Project Browser Review",
+                "description": "Run the configured Chrome DevTools MCP browser review for an owned project.",
+                "requires_project": True,
+                "available": chrome_enabled,
+            },
+            {
+                "id": "semantic_topology",
+                "label": "Semantic Topology Scan",
+                "description": "Map links, forms, and data-orb targets from a target URL.",
+                "requires_project": False,
+                "available": True,
+            },
+            {
+                "id": "website_text",
+                "label": "ORB Text Cognition",
+                "description": "Ask the real ORB cognition wrapper to answer a text task.",
+                "requires_project": False,
+                "available": True,
+            },
+            {
+                "id": "chrome_devtools_mcp",
+                "label": "Chrome DevTools MCP Tool",
+                "description": "Run an allow-listed Chrome DevTools MCP command.",
+                "requires_project": False,
+                "available": chrome_enabled,
+                "mcp_tools": [
+                    "new_page",
+                    "take_snapshot",
+                    "list_console_messages",
+                    "list_network_requests",
+                    "take_screenshot",
+                    "lighthouse_audit",
+                ],
+            },
+            {
+                "id": "rdrive_orb_mcp",
+                "label": "R-Drive ORB MCP Tool",
+                "description": "Run the real TPC-first ORB Desktop MCP server from the R-drive substrate.",
+                "requires_project": False,
+                "available": desktop_mcp_enabled,
+                "mcp_tools": desktop_mcp_tools,
+            },
+        ],
+        "capabilities": capabilities,
+    }
+
+
+def _cache_orb_tool_result(
+    db: Session,
+    customer: Customer,
+    scope: str,
+    tool: str,
+    normalized_input: Dict[str, Any],
+    result: Dict[str, Any],
+) -> None:
+    try:
+        cache_item = OrbToolCache(
+            customer_id=customer.id,
+            scope=scope,
+            tool=tool,
+            input_hash=_cache_key_for_tool(scope, tool, normalized_input),
+            normalized_input=normalized_input,
+            result_summary={
+                "status": result.get("status"),
+                "summary": result.get("summary") or result.get("spoken_output") or result.get("reason"),
+            },
+            provenance={
+                "source": "orb_tool_dispatcher",
+                "schema": result.get("schema"),
+                "generated_at": result.get("generated_at") or datetime.utcnow().isoformat(),
+            },
+            expires_at=datetime.utcnow() + timedelta(seconds=ORB_TOOL_CACHE_DEFAULT_TTL_SECONDS),
+        )
+        db.add(cache_item)
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
+def _project_target_url(project: Project) -> str:
+    domain = (project.domain or "").strip()
+    if domain.startswith(("http://", "https://")):
+        return domain
+    return f"https://{domain}"
+
+
+async def _run_orb_tool(payload: OrbToolRunRequest, customer: Customer, db: Session) -> Dict[str, Any]:
+    tool = payload.tool.strip()
+    generated_at = datetime.utcnow().isoformat()
+    pulse = _orb_cognitive_pulse(f"Run ORB tool: {tool}")
+    normalized_input = payload.model_dump()
+    project: Optional[Project] = None
+    if payload.project_id:
+        project = _owned_project(payload.project_id, customer, db)
+
+    result: Dict[str, Any]
+    if tool == "capabilities":
+        result = {
+            "schema": "orb_weaver.orb_tool_result.v1",
+            "status": "completed",
+            "tool": tool,
+            "generated_at": generated_at,
+            "result": _orb_capabilities(),
+        }
+    elif tool == "project_preflight":
+        if not project:
+            raise HTTPException(status_code=400, detail="project_id is required for project_preflight")
+        report = await _run_project_preflight(project)
+        preserve_client_preflight_intelligence(project, report)
+        result = {
+            "schema": "orb_weaver.orb_tool_result.v1",
+            "status": "completed",
+            "tool": tool,
+            "generated_at": generated_at,
+            "project_id": str(project.id),
+            "summary": {
+                "pages_scanned": report.get("pages_scanned"),
+                "confidence": report.get("confidence"),
+                "warnings": len(report.get("warnings") or []),
+            },
+            "result": report,
+        }
+    elif tool == "project_browser_review":
+        if not project:
+            raise HTTPException(status_code=400, detail="project_id is required for project_browser_review")
+        if not settings.CHROME_DEVTOOLS_ENABLED:
+            raise HTTPException(status_code=403, detail="Chrome DevTools browser verification is not enabled")
+        review = _chrome_devtools_runner().review(_project_target_url(project), label=f"orb_tool_project_{project.id}")
+        result = {
+            "schema": "orb_weaver.orb_tool_result.v1",
+            "status": review.get("status", "completed"),
+            "tool": tool,
+            "generated_at": generated_at,
+            "project_id": str(project.id),
+            "summary": review.get("summary"),
+            "result": review,
+        }
+    elif tool == "semantic_topology":
+        target_url = payload.target_url or (_project_target_url(project) if project else None)
+        if not target_url:
+            raise HTTPException(status_code=400, detail="target_url or project_id is required for semantic_topology")
+        topology = scan_semantic_topology(target_url)
+        result = {
+            "schema": "orb_weaver.orb_tool_result.v1",
+            "status": "completed" if topology.get("valid") else "failed",
+            "tool": tool,
+            "generated_at": generated_at,
+            "summary": topology.get("counts"),
+            "result": topology,
+        }
+    elif tool == "website_text":
+        transcript = (payload.transcript or "").strip()
+        if not transcript:
+            raise HTTPException(status_code=400, detail="transcript is required for website_text")
+        memory_context = _orb_memory_summary(customer, db)
+        response = await _llm_orb_spoken_output(transcript, pulse, memory_context)
+        result = {
+            "schema": "orb_weaver.orb_tool_result.v1",
+            "status": "completed",
+            "tool": tool,
+            "generated_at": generated_at,
+            "transcript": transcript,
+            "spoken_output": response["spoken_output"],
+            "llm_source": response["llm_source"],
+        }
+    elif tool == "chrome_devtools_mcp":
+        if not settings.CHROME_DEVTOOLS_ENABLED:
+            raise HTTPException(status_code=403, detail="Chrome DevTools MCP is not enabled")
+        allowed = {
+            "new_page",
+            "take_snapshot",
+            "list_console_messages",
+            "list_network_requests",
+            "take_screenshot",
+            "lighthouse_audit",
+        }
+        mcp_tool = (payload.mcp_tool or "").strip()
+        if mcp_tool not in allowed:
+            raise HTTPException(status_code=400, detail=f"Unsupported MCP tool: {mcp_tool}")
+        mcp_result = _chrome_devtools_runner().run_tool(mcp_tool, dict(payload.params), label=f"orb_tool_{mcp_tool}")
+        result = {
+            "schema": "orb_weaver.orb_tool_result.v1",
+            "status": mcp_result.get("status", "completed"),
+            "tool": tool,
+            "mcp_tool": mcp_tool,
+            "generated_at": generated_at,
+            "result": mcp_result,
+        }
+    elif tool == "rdrive_orb_mcp":
+        if not settings.ORB_DESKTOP_MCP_ENABLED:
+            raise HTTPException(status_code=403, detail="R-drive ORB MCP is not enabled")
+        mcp_tool = (payload.mcp_tool or "").strip()
+        if mcp_tool not in set(DEFAULT_ORB_MCP_TOOLS):
+            raise HTTPException(status_code=400, detail=f"Unsupported R-drive ORB MCP tool: {mcp_tool}")
+        mcp_result = _orb_desktop_mcp_client().call_tool(mcp_tool, dict(payload.params))
+        result = {
+            "schema": "orb_weaver.orb_tool_result.v1",
+            "status": "failed" if mcp_result.get("isError") else "completed",
+            "tool": tool,
+            "mcp_tool": mcp_tool,
+            "generated_at": generated_at,
+            "result": mcp_result,
+        }
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown ORB tool: {tool}")
+
+    result["cognitive_pulse"] = pulse
+    _cache_orb_tool_result(db, customer, "authenticated_owner", tool, normalized_input, result)
+    return result
 
 
 def _orb_cognitive_pulse(transcript: str) -> Optional[Dict[str, Any]]:
@@ -1306,7 +1628,7 @@ def _fallback_orb_spoken_output(
     memory_context: Optional[Dict[str, Any]] = None,
 ) -> str:
     normalized = transcript.lower()
-    mode = (pulse or {}).get("cognitive_mode") or "GUARD"
+    mode = (pulse or {}).get("cognitive_mode") or "READY"
     memory_items = (memory_context or {}).get("items") or []
     preferred_name = next(
         (
@@ -1326,7 +1648,7 @@ def _fallback_orb_spoken_output(
         return "Basic ORBs handle public visitor guidance. Premium adds deeper browser verification, install review, and richer owner controls."
     if "market" in normalized or "product" in normalized:
         return "Orb Weaver Marketplace sells compatible ORB skins, upgrades, diagnostics, scan bundles, and future approved behavior packs."
-    return f"I am online in {mode} mode. I can demonstrate public Preflight, ORB cognition, voice, and deployment readiness."
+    return "I am online and ready. I can demonstrate public Preflight, ORB cognition, voice, and deployment readiness."
 
 
 async def _llm_orb_spoken_output(
@@ -1334,10 +1656,25 @@ async def _llm_orb_spoken_output(
     pulse: Optional[Dict[str, Any]],
     memory_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, str]:
+    if _is_orb_identity_question(transcript):
+        return {"spoken_output": ORB_PUBLIC_IDENTITY_ANSWER, "llm_source": "deterministic-identity"}
+
     fallback = _fallback_orb_spoken_output(transcript, pulse, memory_context)
     if not settings.LOCAL_LLM_URL or not settings.LOCAL_LLM_MODEL:
         return {"spoken_output": fallback, "llm_source": "local-fallback"}
 
+    pulse_brief = {
+        "cognitive_mode": (pulse or {}).get("cognitive_mode"),
+        "final_verdict": (pulse or {}).get("final_verdict"),
+        "epistemic_alignment": (pulse or {}).get("epistemic_alignment"),
+        "glow_intensity": (pulse or {}).get("glow_intensity"),
+    }
+    memory_brief = {
+        "scope": (memory_context or {}).get("scope"),
+        "durable": (memory_context or {}).get("durable"),
+        "items": (memory_context or {}).get("items") or [],
+        "recent_context": (memory_context or {}).get("recent_context"),
+    }
     prompt = (
         "You are the spoken output of the Orb Weaver website ORB assistant. "
         "Use the ORB cognitive pulse as advisory cognition. "
@@ -1345,17 +1682,24 @@ async def _llm_orb_spoken_output(
         "Do not invent facts. Do not expose private internals. "
         "Answer in one short spoken sentence. No markdown. No chat UI language.\n\n"
         f"Visitor voice transcript: {transcript}\n"
-        f"ORB cognitive pulse: {json.dumps(pulse or {}, ensure_ascii=False)}\n"
-        f"Safe account memory context: {json.dumps(memory_context or {}, ensure_ascii=False)}"
+        f"ORB cognitive pulse: {json.dumps(pulse_brief, ensure_ascii=False)}\n"
+        f"Safe account memory context: {json.dumps(memory_brief, ensure_ascii=False)}"
     )
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        timeout_seconds = min(120.0, max(5.0, float(settings.LOCAL_LLM_TIMEOUT_SECONDS or 60.0)))
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             response = await client.post(
                 settings.LOCAL_LLM_URL,
                 json={
                     "model": settings.LOCAL_LLM_MODEL,
                     "prompt": prompt,
                     "stream": False,
+                    "keep_alive": settings.LOCAL_LLM_KEEP_ALIVE,
+                    "options": {
+                        "num_ctx": min(4096, max(512, int(settings.LOCAL_LLM_NUM_CTX or 1024))),
+                        "num_predict": min(160, max(16, int(settings.LOCAL_LLM_NUM_PREDICT or 64))),
+                        "temperature": min(1.0, max(0.0, float(settings.LOCAL_LLM_TEMPERATURE or 0.35))),
+                    },
                 },
             )
             response.raise_for_status()
@@ -1393,7 +1737,24 @@ def _audio_extension_for_content(content_type: str, audio_format: str) -> str:
 
 
 def _tts_payload(mode: str, text: str, model: str, voice: str, audio_format: str) -> Dict[str, Any]:
-    if (mode or "openai").lower() == "generic":
+    normalized_mode = (mode or "openai").lower()
+    if normalized_mode in {"kokoro-direct", "kokoro_direct", "kokoro"}:
+        return {
+            "text": text,
+            "voice": voice,
+            "format": audio_format,
+            "speed": 1.05,
+        }
+    if normalized_mode in {"qwen-custom", "qwen_custom", "custom"}:
+        return {
+            "text": text,
+            "mode": "custom",
+            "speaker": voice,
+            "language": settings.ORB_TTS_QWEN_LANGUAGE,
+            "instruct": settings.ORB_TTS_QWEN_INSTRUCT,
+            "format": audio_format,
+        }
+    if normalized_mode == "generic":
         return {
             "text": text,
             "model": model,
@@ -1405,6 +1766,14 @@ def _tts_payload(mode: str, text: str, model: str, voice: str, audio_format: str
         "input": text,
         "voice": voice,
         "response_format": audio_format,
+    }
+
+
+def _visitor_safe_tts_unavailable() -> Dict[str, Optional[str]]:
+    return {
+        "tts_audio_url": None,
+        "tts_provider": None,
+        "tts_error": "Voice is temporarily unavailable, but I can still help here in text.",
     }
 
 
@@ -1456,8 +1825,10 @@ async def _call_tts_provider(
         headers["Authorization"] = f"Bearer {api_key}"
 
     payload = _tts_payload(payload_mode, text, model, voice, audio_format)
+    provider_lock = ORB_TTS_PROVIDER_LOCKS.setdefault(provider, asyncio.Lock())
     async with httpx.AsyncClient(timeout=settings.ORB_TTS_TIMEOUT_SECONDS) as client:
-        response = await client.post(url, json=payload, headers=headers)
+        async with provider_lock:
+            response = await client.post(url, json=payload, headers=headers)
         response.raise_for_status()
         content_type = response.headers.get("content-type") or _content_type_for_audio_format(audio_format)
 
@@ -1494,21 +1865,99 @@ async def _call_tts_provider(
     raise RuntimeError(f"{provider} TTS response did not include audio")
 
 
+def _cached_tts_result(digest: str, provider: str) -> Optional[Dict[str, Optional[str]]]:
+    cached_matches = sorted(ORB_TTS_CACHE_ROOT.glob(f"{digest}.*"))
+    if not cached_matches:
+        return None
+    return {
+        "tts_audio_url": f"/api/orb/tts/{cached_matches[0].name}",
+        "tts_provider": provider,
+        "tts_error": None,
+    }
+
+
+def _tts_cache_probe(text: str) -> Dict[str, Any]:
+    clean_text = text.strip()
+    probes = []
+    for provider, url, _api_key, _payload_mode, model, voice, _audio_format in [
+        (
+            "kokoro",
+            settings.ORB_TTS_KOKORO_URL,
+            settings.ORB_TTS_KOKORO_API_KEY,
+            settings.ORB_TTS_KOKORO_PAYLOAD_MODE,
+            settings.ORB_TTS_KOKORO_MODEL,
+            settings.ORB_TTS_KOKORO_VOICE,
+            settings.ORB_TTS_KOKORO_FORMAT,
+        ),
+    ]:
+        if not url or not clean_text:
+            continue
+        digest = hashlib.sha256(f"{provider}:{model}:{voice}:{clean_text}".encode("utf-8")).hexdigest()[:24]
+        probes.append({
+            "provider": provider,
+            "digest": digest,
+            "hit": bool(_cached_tts_result(digest, provider)),
+        })
+    return {"hit": any(probe["hit"] for probe in probes), "probes": probes}
+
+
+async def _synthesize_orb_tts_uncached(
+    clean_text: str,
+    digest: str,
+    provider: str,
+    url: Optional[str],
+    api_key: Optional[str],
+    payload_mode: str,
+    model: str,
+    voice: str,
+    audio_format: str,
+) -> Dict[str, Optional[str]]:
+    cached = _cached_tts_result(digest, provider)
+    if cached:
+        return cached
+
+    result = await _call_tts_provider(
+        provider=provider,
+        url=url,
+        api_key=api_key,
+        payload_mode=payload_mode,
+        text=clean_text,
+        model=model,
+        voice=voice,
+        audio_format=audio_format,
+    )
+    extension = result["extension"] or "wav"
+    audio_id = f"{digest}.{extension}"
+    audio_path = ORB_TTS_CACHE_ROOT / audio_id
+    audio_path.write_bytes(result["audio"])
+    return {
+        "tts_audio_url": f"/api/orb/tts/{audio_id}",
+        "tts_provider": provider,
+        "tts_error": None,
+    }
+
+
+async def _run_tts_singleflight(key: str, factory) -> Dict[str, Optional[str]]:
+    async with ORB_TTS_INFLIGHT_LOCK:
+        task = ORB_TTS_INFLIGHT.get(key)
+        if task is None:
+            task = asyncio.create_task(factory())
+            ORB_TTS_INFLIGHT[key] = task
+
+    try:
+        return await task
+    finally:
+        async with ORB_TTS_INFLIGHT_LOCK:
+            if ORB_TTS_INFLIGHT.get(key) is task:
+                ORB_TTS_INFLIGHT.pop(key, None)
+
+
 async def _synthesize_orb_tts(text: str) -> Dict[str, Optional[str]]:
     clean_text = text.strip()
     if not clean_text:
-        return {"tts_audio_url": None, "tts_provider": None, "tts_error": "No text was provided for TTS"}
+        return _visitor_safe_tts_unavailable()
 
     providers = [
-        (
-            "qwen",
-            settings.ORB_TTS_QWEN_URL,
-            settings.ORB_TTS_QWEN_API_KEY,
-            settings.ORB_TTS_QWEN_PAYLOAD_MODE,
-            settings.ORB_TTS_QWEN_MODEL,
-            settings.ORB_TTS_QWEN_VOICE,
-            settings.ORB_TTS_QWEN_FORMAT,
-        ),
         (
             "kokoro",
             settings.ORB_TTS_KOKORO_URL,
@@ -1522,38 +1971,43 @@ async def _synthesize_orb_tts(text: str) -> Dict[str, Optional[str]]:
 
     errors: List[str] = []
     for provider, url, api_key, payload_mode, model, voice, audio_format in providers:
+        if not url:
+            continue
+        digest = hashlib.sha256(
+            f"{provider}:{model}:{voice}:{clean_text}".encode("utf-8")
+        ).hexdigest()[:24]
+        cached = _cached_tts_result(digest, provider)
+        if cached:
+            return cached
+
         try:
-            result = await _call_tts_provider(
-                provider=provider,
+            return await _run_tts_singleflight(
+                f"{provider}:{digest}",
+                lambda provider=provider,
                 url=url,
                 api_key=api_key,
                 payload_mode=payload_mode,
-                text=clean_text,
                 model=model,
                 voice=voice,
                 audio_format=audio_format,
+                digest=digest: _synthesize_orb_tts_uncached(
+                    clean_text=clean_text,
+                    digest=digest,
+                    provider=provider,
+                    url=url,
+                    api_key=api_key,
+                    payload_mode=payload_mode,
+                    model=model,
+                    voice=voice,
+                    audio_format=audio_format,
+                ),
             )
-            digest = hashlib.sha256(
-                f"{provider}:{model}:{voice}:{clean_text}".encode("utf-8")
-            ).hexdigest()[:24]
-            extension = result["extension"] or "wav"
-            audio_id = f"{digest}.{extension}"
-            audio_path = ORB_TTS_CACHE_ROOT / audio_id
-            audio_path.write_bytes(result["audio"])
-            return {
-                "tts_audio_url": f"/api/orb/tts/{audio_id}",
-                "tts_provider": provider,
-                "tts_error": None,
-            }
         except Exception as exc:
             message = str(exc) or exc.__class__.__name__
+            logger.warning("ORB TTS provider failed", extra={"provider": provider, "error": message})
             errors.append(f"{provider}: {message}")
 
-    return {
-        "tts_audio_url": None,
-        "tts_provider": None,
-        "tts_error": "; ".join(errors) or "TTS failed",
-    }
+    return _visitor_safe_tts_unavailable()
 
 
 def _chrome_devtools_runner() -> ChromeDevToolsReviewRunner:
@@ -1564,6 +2018,19 @@ def _chrome_devtools_runner() -> ChromeDevToolsReviewRunner:
         start_args=settings.CHROME_DEVTOOLS_START_ARGS,
         browser_start_cmd=settings.CHROME_DEVTOOLS_BROWSER_START_CMD,
     )
+
+
+def _orb_desktop_mcp_client() -> ORBDesktopMCPClient:
+    global ORB_DESKTOP_MCP_CLIENT
+    if ORB_DESKTOP_MCP_CLIENT is None:
+        ORB_DESKTOP_MCP_CLIENT = ORBDesktopMCPClient(
+            root=settings.ORB_DESKTOP_MCP_ROOT,
+            python_bin=settings.ORB_DESKTOP_MCP_PYTHON,
+            timeout_seconds=settings.ORB_DESKTOP_MCP_TIMEOUT_SECONDS,
+            remote_url=settings.ORB_DESKTOP_MCP_URL,
+            remote_token=settings.ORB_DESKTOP_MCP_TOKEN,
+        )
+    return ORB_DESKTOP_MCP_CLIENT
 
 
 def _cali_crm_import_dir() -> Path:
@@ -1771,6 +2238,10 @@ def _index_crawl_pack(project: Project, crawl_job: CrawlJob, payload: Dict, json
             "INSERT OR REPLACE INTO context_documents(key, kind, json_path, updated_at) VALUES (?, ?, ?, ?)",
             ("latest_context", "website_orb_context", str(_client_intelligence_root(project) / "website_orb_context" / "latest_context.json"), payload.get("saved_at")),
         )
+        connection.execute(
+            "INSERT OR REPLACE INTO context_documents(key, kind, json_path, updated_at) VALUES (?, ?, ?, ?)",
+            ("pointer_plot_map", "website_orb_pointer_plot_map", str(_client_intelligence_root(project) / "website_orb_context" / "pointer_plot_map.json"), payload.get("saved_at")),
+        )
 
 
 def _index_audit_pack(project: Project, audit: AuditReport, payload: Dict, json_path: Path, recommendations_path: Path) -> None:
@@ -1831,6 +2302,7 @@ def _bucket_count(value: int) -> str:
 
 def _client_crawl_pack(project: Project, crawl_job: CrawlJob, pages: List[CrawledPage], db: Session) -> Dict:
     crawl_payload = _serialize_crawl_job(crawl_job, db, include_pages=True)
+    pointer_plot_map = pointer_plot_map_from_pages(pages)
     return {
         "schema": "orb_weaver.client_crawl.v1",
         "saved_at": datetime.utcnow().isoformat(),
@@ -1847,12 +2319,14 @@ def _client_crawl_pack(project: Project, crawl_job: CrawlJob, pages: List[Crawle
             "has_ga4": bool(project.ga4_property_id),
         },
         "crawl": crawl_payload,
+        "pointer_plot_map": pointer_plot_map,
         "website_orb_context": {
             "orb_ready_score": crawl_payload.get("stats", {}).get("avg_orb_semantic_score", 0),
             "authority_flow": crawl_payload.get("authority_flow"),
             "knowledge_graph": crawl_payload.get("knowledge_graph"),
             "competitor_gap": crawl_payload.get("competitor_gap"),
             "template_detection": crawl_payload.get("template_detection"),
+            "pointer_plot_map": pointer_plot_map,
         },
     }
 
@@ -1944,6 +2418,7 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
         _write_json(latest_path, payload)
         _write_json(history_path, payload)
         _write_json(root / "website_orb_context" / "latest_context.json", payload["website_orb_context"])
+        _write_json(root / "website_orb_context" / "pointer_plot_map.json", payload["pointer_plot_map"])
         _write_json(root / "crm_context" / "latest_context.json", {"schema": "orb_weaver.crm_context.v0.1", "status": "not_connected"})
         _write_json(root / "mail_context" / "latest_context.json", {"schema": "orb_weaver.mail_context.v0.1", "status": "not_connected"})
         _write_json(root / "dandy_sponsor_pack" / "latest_pack.json", {"schema": "orb_weaver.dandy_sponsor_pack.v0.1", "status": "not_configured"})
@@ -2457,6 +2932,7 @@ async def _crawl_competitors(domains: List[str], config: CrawlConfig) -> List[Di
             max_pages=min(config.max_pages, 50),
             delay=config.delay,
             max_depth=min(config.max_depth, 3),
+            tier="free",
         )
         start_url = f"https://{domain}" if not domain.startswith("http") else domain
         try:
@@ -2577,6 +3053,7 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict):
             max_pages=config.max_pages,
             delay=config.delay,
             max_depth=config.max_depth,
+            tier=config.tier,
             progress_callback=persist_crawl_progress,
         )
 
@@ -2755,13 +3232,59 @@ async def website_orb_voice(
     authorization: Optional[str] = Header(default=None),
     db: Session = Depends(get_db),
 ):
+    route_started = time.perf_counter()
+    timings: Dict[str, float] = {}
+    request_id = secrets.token_hex(4)
+
+    def mark(label: str, started: float) -> None:
+        timings[label] = round((time.perf_counter() - started) * 1000, 1)
+
+    started = time.perf_counter()
     customer = get_optional_customer(authorization=authorization, db=db)
+    mark("auth", started)
+
+    started = time.perf_counter()
     transcript = await _transcribe_with_faster_whisper(audio)
+    mark("transcription", started)
+
+    started = time.perf_counter()
     memory_context = _orb_memory_summary(customer, db)
+    mark("memory_summary", started)
+
+    started = time.perf_counter()
     cognitive_pulse = _orb_cognitive_pulse(transcript)
+    mark("cognitive_pulse", started)
+
+    started = time.perf_counter()
     llm_result = await _llm_orb_spoken_output(transcript, cognitive_pulse, memory_context)
+    mark("answer_selection", started)
+
+    tts_cache_before = _tts_cache_probe(llm_result["spoken_output"])
+    started = time.perf_counter()
     tts_result = await _synthesize_orb_tts(llm_result["spoken_output"])
+    mark("tts", started)
+    tts_cache_after = _tts_cache_probe(llm_result["spoken_output"])
+
+    started = time.perf_counter()
     _update_orb_recent_context(customer, transcript, llm_result["spoken_output"], db)
+    mark("context_update", started)
+
+    timings["total"] = round((time.perf_counter() - route_started) * 1000, 1)
+    logger.warning(
+        "ORB voice timing %s",
+        json.dumps(
+            {
+            "request_id": request_id,
+            "transcript": transcript,
+            "llm_source": llm_result["llm_source"],
+            "tts_cache_before": tts_cache_before,
+            "tts_cache_after": tts_cache_after,
+            "tts_provider": tts_result.get("tts_provider"),
+            "timings_ms": timings,
+            },
+            sort_keys=True,
+        ),
+    )
     return {
         "transcript": transcript,
         "spoken_output": llm_result["spoken_output"],
@@ -2802,6 +3325,20 @@ async def website_orb_text(
 @app.get("/api/orb/capabilities")
 async def website_orb_capabilities():
     return _orb_capabilities()
+
+
+@app.get("/api/orb/tools/catalog")
+async def orb_tool_catalog(customer: Customer = Depends(get_current_customer)):
+    return _orb_tool_catalog(customer)
+
+
+@app.post("/api/orb/tools/run")
+async def orb_tool_run(
+    payload: OrbToolRunRequest,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    return await _run_orb_tool(payload, customer, db)
 
 
 @app.post("/api/orb/tts", response_model=WebsiteOrbTtsResponse)
@@ -3773,6 +4310,22 @@ async def get_crawl_pages(
     total = query.count()
     pages = query.offset(skip).limit(limit).all()
     return {"total": total, "pages": [_page_to_dict(page) for page in pages]}
+
+
+@app.get("/api/crawl-jobs/{job_id}/pointer-plot-map")
+async def get_crawl_pointer_plot_map(
+    job_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    crawl_job = _owned_crawl_job(job_id, customer, db)
+    pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl_job.id).all()
+    pointer_map = pointer_plot_map_from_pages(pages)
+    return {
+        "crawl_id": str(crawl_job.id),
+        "project_id": str(crawl_job.project_id),
+        **pointer_map,
+    }
 
 
 @app.get("/api/crawl-jobs/{job_id}/export/csv")

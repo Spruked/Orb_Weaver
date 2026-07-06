@@ -41,22 +41,29 @@ class Settings(BaseSettings):
     CRAWL_MAX_DEPTH: int = 5
     LOCAL_LLM_URL: Optional[str] = None
     LOCAL_LLM_MODEL: Optional[str] = None
+    LOCAL_LLM_TIMEOUT_SECONDS: float = 60.0
+    LOCAL_LLM_KEEP_ALIVE: str = "30m"
+    LOCAL_LLM_NUM_CTX: int = 512
+    LOCAL_LLM_NUM_PREDICT: int = 32
+    LOCAL_LLM_TEMPERATURE: float = 0.35
     FASTER_WHISPER_STT_URL: str = "http://127.0.0.1:9000/stt"
     ORB_ASSISTANT_ROOT: str = "../Orb_Assistant"
     ORB_TTS_CACHE_DIR: str = "data/tts_cache"
     ORB_TTS_TIMEOUT_SECONDS: float = 45.0
-    ORB_TTS_QWEN_URL: Optional[str] = "http://127.0.0.1:9880/speak"
+    ORB_TTS_QWEN_URL: Optional[str] = None
     ORB_TTS_QWEN_API_KEY: Optional[str] = None
     ORB_TTS_QWEN_MODEL: str = "qwen-tts"
-    ORB_TTS_QWEN_VOICE: str = "Cherry"
+    ORB_TTS_QWEN_VOICE: str = "OrbWeaver"
+    ORB_TTS_QWEN_LANGUAGE: str = "English"
+    ORB_TTS_QWEN_INSTRUCT: str = "A warm, confident adult male assistant voice. Clear, calm, lightly theatrical, friendly, and concise."
     ORB_TTS_QWEN_FORMAT: str = "wav"
-    ORB_TTS_QWEN_PAYLOAD_MODE: str = "generic"
-    ORB_TTS_KOKORO_URL: str = "http://127.0.0.1:8880/v1/audio/speech"
+    ORB_TTS_QWEN_PAYLOAD_MODE: str = "qwen-custom"
+    ORB_TTS_KOKORO_URL: str = "http://127.0.0.1:8880/speak"
     ORB_TTS_KOKORO_API_KEY: Optional[str] = None
     ORB_TTS_KOKORO_MODEL: str = "kokoro"
-    ORB_TTS_KOKORO_VOICE: str = "af_heart"
+    ORB_TTS_KOKORO_VOICE: str = "am_echo"
     ORB_TTS_KOKORO_FORMAT: str = "wav"
-    ORB_TTS_KOKORO_PAYLOAD_MODE: str = "openai"
+    ORB_TTS_KOKORO_PAYLOAD_MODE: str = "kokoro-direct"
 
     # Browser review / install verification
     CHROME_DEVTOOLS_ENABLED: bool = False
@@ -66,6 +73,12 @@ class Settings(BaseSettings):
     CHROME_DEVTOOLS_TIMEOUT_SECONDS: int = 60
     CHROME_DEVTOOLS_START_ARGS: List[str] = []
     CHROME_DEVTOOLS_BROWSER_START_CMD: Optional[str] = None
+    ORB_DESKTOP_MCP_ENABLED: bool = True
+    ORB_DESKTOP_MCP_ROOT: str = "/mnt/r/mpc_server"
+    ORB_DESKTOP_MCP_PYTHON: str = "python3.12"
+    ORB_DESKTOP_MCP_TIMEOUT_SECONDS: float = 20.0
+    ORB_DESKTOP_MCP_URL: Optional[str] = None
+    ORB_DESKTOP_MCP_TOKEN: Optional[str] = None
 
     # Security
     SECRET_KEY: str = "your-secret-key-change-in-production"

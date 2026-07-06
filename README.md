@@ -32,6 +32,14 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 - Account, cart, checkout order, admin customer, project, crawl, audit, GA4, report, and legal pages.
 - Service catalog includes Starter Audit, Growth Audit, and Premium Intelligence Pack.
 
+### Website ORB Voice Runtime
+
+- The live public Website ORB voice runtime is `frontend/src/landing/AutonomousOrb.tsx`.
+- One click starts microphone capture; end-of-speech detection submits automatically through `POST /api/orb/website-voice`.
+- The backend performs Faster Whisper STT, ORB cognition, protected identity answer selection, local LLM answers for ordinary questions, Kokoro TTS/cache, and WAV delivery.
+- Browser `SpeechRecognition` and browser `speechSynthesis` are not the canonical public ORB voice path.
+- Gold-master replication details live in `docs/ORB_VOICE_RUNTIME_REPLICATION_REPORT.md`.
+
 ## Architecture
 
 ```text
@@ -54,6 +62,7 @@ Orb_Weaver/
     public/             # favicon, logo, robots.txt, sitemap.xml
     scripts/            # Playwright smoke tests
     src/
+      landing/           # live AutonomousOrb voice runtime and landing app
       components/
       pages/
       services/
@@ -162,9 +171,23 @@ Backend API: 16500
 Frontend UI: 16510
 ```
 
-The root image copies `backend/`, `frontend/build`, and `Preflight Scanner/` into one container. The backend runs from `/app/backend`, so the copied scanner resolves at `/app/Preflight Scanner`.
+The root image compiles the React frontend during Docker build, copies the resulting `/app/frontend/build` into the final image, and serves it with nginx. Running `npm run build` in the workspace does not update the public container by itself; use `docker compose up -d --build orb-weaver` and verify the served main bundle hash before public browser tests.
+
+Static frontend: `http://127.0.0.1:16510`
+
+Backend API: `http://127.0.0.1:16500`
+
+Public tunnel routing is documented in `deploy/cloudflared/orbweaver.spruked.com.yml`.
 
 ## API Endpoints
+
+### Website ORB Voice
+
+- `POST /api/orb/website-voice` - Upload recorded audio for STT, answer selection, TTS/cache, and one spoken response
+- `POST /api/orb/website-text` - Submit an existing transcript through the same answer/TTS path
+- `POST /api/orb/tts` - Generate/cache TTS for text
+- `GET /api/orb/tts/{audio_id}` - Retrieve cached WAV/audio
+- `GET /api/orb/capabilities` - Current ORB voice/tool capability report
 
 ### Auth and Customer
 

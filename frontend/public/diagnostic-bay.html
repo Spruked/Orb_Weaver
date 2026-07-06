@@ -471,7 +471,7 @@
 <!-- ================================================================
      PERSISTENT ORB
      ================================================================ -->
-<button id="orb-wrap" type="button" aria-label="Ask the real Orb Weaver ORB">
+<button id="orb-wrap" type="button" aria-label="Activate the real Orb Weaver ORB">
   <div id="orb-core"></div>
 </button>
 <div id="orb-focus-ring"></div>
@@ -595,7 +595,7 @@
 
     <div class="end-note">
       This page now calls the real ORB/public diagnostic backend routes where they exist. Browser MCP review only runs
-      when the backend has explicitly enabled the public review endpoint. <a href="circus-page.html">&larr; Back to the circus</a>
+      when the backend has explicitly enabled the public review endpoint. <a href="/circus" target="_top">&larr; Back to the circus</a>
     </div>
   </main>
 </div>
@@ -672,26 +672,144 @@ async function speak(text, audioUrl) {
   }
 }
 
-orbWrap.addEventListener('click', async () => {
-  const question = window.prompt('Ask the real Orb Weaver ORB');
-  if (!question) return;
-  try {
-    logAudit('orb.website_text', '/api/orb/website-text', true);
-    const result = await apiJson('/api/orb/website-text', {
-      method: 'POST',
-      body: JSON.stringify({ transcript: question }),
-    });
-    void speak(
-      result.spoken_output || 'The ORB response route returned successfully.',
-      result.tts_audio_url
-    );
-    logAudit('orb.website_text → complete', result.llm_source || 'response received', true);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'ORB request failed';
-    void speak('I am reconnecting to my response service. Please try again in a moment.');
-    logAudit('orb.website_text → failed', message, false);
+let diagnosticRecorder = null;
+let diagnosticStream = null;
+let diagnosticChunks = [];
+let diagnosticStopTimer = 0;
+let diagnosticCancelled = false;
+
+function stopDiagnosticVoice(cancel = false) {
+  window.clearTimeout(diagnosticStopTimer);
+  diagnosticStopTimer = 0;
+  diagnosticCancelled = cancel;
+
+  if (diagnosticRecorder && diagnosticRecorder.state !== 'inactive') {
+    diagnosticRecorder.stop();
+    return;
   }
-});
+
+  if (diagnosticStream) {
+    diagnosticStream.getTracks().forEach((track) => track.stop());
+    diagnosticStream = null;
+  }
+  diagnosticRecorder = null;
+  if (cancel) {
+    diagnosticChunks = [];
+    orbSpeech.textContent = 'Listening cancelled';
+    orbSpeech.classList.add('visible');
+    window.clearTimeout(speak._timer);
+    speak._timer = window.setTimeout(() => orbSpeech.classList.remove('visible'), 1600);
+  }
+}
+
+async function sendDiagnosticVoice(audio) {
+  if (!audio.size) {
+    void speak('I did not hear enough audio. Tap the ORB and speak after the tone.');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('audio', audio, 'diagnostic-orb.webm');
+
+  const response = await fetch('/api/orb/website-voice', {
+    method: 'POST',
+    body: formData,
+  });
+  const contentType = response.headers.get('content-type') || '';
+  if (!response.ok) {
+    const detail = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
+    throw new Error(detail?.detail || `${response.status} ${response.statusText}`);
+  }
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Expected JSON from /api/orb/website-voice; received ${contentType || 'unknown content type'}`);
+  }
+  return response.json();
+}
+
+async function startDiagnosticVoice() {
+  if (diagnosticRecorder) {
+    stopDiagnosticVoice(true);
+    return;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+    void speak('Voice recording is unavailable on this browser.');
+    logAudit('orb.voice_input → unavailable', 'MediaRecorder or microphone capture is unavailable.', false);
+    return;
+  }
+
+  try {
+    diagnosticStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    diagnosticChunks = [];
+    const recorderOptions =
+      MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? { mimeType: 'audio/webm;codecs=opus' }
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? { mimeType: 'audio/webm' }
+        : undefined;
+    diagnosticRecorder = new MediaRecorder(diagnosticStream, recorderOptions);
+
+    diagnosticRecorder.ondataavailable = (recordEvent) => {
+      if (recordEvent.data.size > 0) {
+        diagnosticChunks.push(recordEvent.data);
+      }
+    };
+
+    diagnosticRecorder.onstop = async () => {
+      const cancelled = diagnosticCancelled;
+      diagnosticCancelled = false;
+      const audio = new Blob(diagnosticChunks, {
+        type: diagnosticRecorder?.mimeType || 'audio/webm',
+      });
+      diagnosticChunks = [];
+      if (diagnosticStream) {
+        diagnosticStream.getTracks().forEach((track) => track.stop());
+        diagnosticStream = null;
+      }
+      diagnosticRecorder = null;
+      if (cancelled) {
+        orbSpeech.textContent = 'Listening cancelled';
+        orbSpeech.classList.add('visible');
+        window.clearTimeout(speak._timer);
+        speak._timer = window.setTimeout(() => orbSpeech.classList.remove('visible'), 1600);
+        return;
+      }
+      orbSpeech.textContent = 'Thinking';
+      orbSpeech.classList.add('visible');
+
+      try {
+        logAudit('orb.website_voice', '/api/orb/website-voice', true);
+        const result = await sendDiagnosticVoice(audio);
+        void speak(
+          result.spoken_output || 'The ORB response route returned successfully.',
+          result.tts_audio_url
+        );
+        logAudit('orb.website_voice → complete', result.llm_source || 'response received', true);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'ORB voice request failed';
+        void speak('I am reconnecting to my response service. Please try again in a moment.');
+        logAudit('orb.website_voice → failed', message, false);
+      }
+    };
+
+    orbSpeech.textContent = 'Listening';
+    orbSpeech.classList.add('visible');
+    diagnosticRecorder.start();
+    diagnosticStopTimer = window.setTimeout(stopDiagnosticVoice, 7000);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Microphone permission is needed for voice input.';
+    void speak('Microphone permission is needed for voice.');
+    logAudit('orb.voice_input → failed', message, false);
+  }
+}
+
+orbWrap.addEventListener('click', startDiagnosticVoice);
 
 /* ================================================================
    GATE

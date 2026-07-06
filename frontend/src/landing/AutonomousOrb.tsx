@@ -6,6 +6,18 @@ import { api } from "../services/api";
 const wait = (ms: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
+const LATENCY_FILLER_PATHS = [
+  "/orb/voice/latency-fillers/ack.wav",
+  "/orb/voice/latency-fillers/thinking.wav",
+  "/orb/voice/latency-fillers/working.wav",
+];
+
+const VOICE_UNAVAILABLE_MESSAGE = "Voice unavailable";
+const MIN_RECORDING_MS = 700;
+const END_SILENCE_MS = 850;
+const ABSOLUTE_RECORDING_LIMIT_MS = 14000;
+const SPEECH_LEVEL_THRESHOLD = 0.018;
+
 type PulseKind = "intro" | "ripple" | "flare";
 
 type PulseState = {
@@ -35,19 +47,32 @@ export const AutonomousOrb: React.FC<Props> = ({
   const activeRef = useRef(true);
   const reducedMotionRef = useRef(false);
   const positionRef = useRef({ x: 0, y: 0 });
-  const recognitionRef = useRef<any>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingStopTimerRef = useRef<number | null>(null);
+  const recordingCancelledRef = useRef(false);
   const speechAudioRef = useRef<HTMLAudioElement | null>(null);
+  const latencyAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const speechSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const audioUnlockedRef = useRef(false);
   const statusTimerRef = useRef<number | null>(null);
   const avoidUntilRef = useRef(0);
   const lastAvoidRef = useRef(0);
+  const voiceRequestInFlightRef = useRef(false);
+  const activeVoiceAbortControllerRef = useRef<AbortController | null>(null);
+  const voiceTurnIdRef = useRef(0);
+  const recordingMonitorTimerRef = useRef<number | null>(null);
+  const recordingStartedAtRef = useRef(0);
+  const speechDetectedRef = useRef(false);
+  const silenceStartedAtRef = useRef<number | null>(null);
 
   const [pulse, setPulse] = useState<PulseState>(null);
   const [voiceState, setVoiceState] = useState<OrbVoiceState>("idle");
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusTitle, setStatusTitle] = useState("ORB online");
-  const [statusLine, setStatusLine] = useState("Click to ask about Preflight, tools, or ORB deployment.");
+  const [statusLine, setStatusLine] = useState("Tap the ORB to speak.");
 
   const bounds = () => {
     const minX = EDGE;
@@ -91,7 +116,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     return candidate;
   };
 
-  const playPulse = async (kind: PulseKind, duration: number) => {
+  const playPulse = useCallback(async (kind: PulseKind, duration: number) => {
     const visibleDuration = Math.max(duration, kind === "ripple" ? 1150 : kind === "flare" ? 1450 : 2100);
 
     setPulse({
@@ -104,7 +129,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     if (activeRef.current) {
       setPulse(null);
     }
-  };
+  }, []);
 
   const playLocalPresence = async () => {
     await presence.start({
@@ -147,207 +172,475 @@ export const AutonomousOrb: React.FC<Props> = ({
       "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA="
     );
     audio.muted = true;
+    speechAudioRef.current = audio;
     void audio.play().catch(() => undefined);
   }, []);
 
-  const summonToSpeechPosition = useCallback(async () => {
-    if (reducedMotionRef.current) return;
+  const playLatencyFiller = useCallback(() => {
+    if (!audioUnlockedRef.current) return;
 
-    avoidUntilRef.current = Date.now() + 4200;
-
-    const target = clampPosition(
-      window.innerWidth / 2 - size / 2,
-      window.innerHeight * 0.48 - size / 2
-    );
-    const current = positionRef.current;
-    const distance = Math.hypot(target.x - current.x, target.y - current.y);
-
-    await move.start({
-      x: target.x,
-      y: target.y,
-      transition: {
-        duration: Math.max(2.2, Math.min(4.8, distance / 165)),
-        ease: [0.34, 0.78, 0.28, 1],
-      },
-    });
-
-    if (activeRef.current) {
-      positionRef.current = target;
+    const src = LATENCY_FILLER_PATHS[Math.floor(Math.random() * LATENCY_FILLER_PATHS.length)];
+    if (latencyAudioRef.current) {
+      latencyAudioRef.current.pause();
+      latencyAudioRef.current = null;
     }
-  }, [move, size]);
+
+    const audio = new Audio(src);
+    audio.volume = 0.72;
+    latencyAudioRef.current = audio;
+    audio.onended = () => {
+      if (latencyAudioRef.current === audio) {
+        latencyAudioRef.current = null;
+      }
+    };
+    audio.onerror = () => {
+      if (latencyAudioRef.current === audio) {
+        latencyAudioRef.current = null;
+      }
+    };
+    void audio.play().catch(() => {
+      if (latencyAudioRef.current === audio) {
+        latencyAudioRef.current = null;
+      }
+    });
+  }, []);
+
+  const playStageScreech = useCallback(() => {
+    const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    const context = audioContextRef.current || new AudioContextCtor();
+    audioContextRef.current = context;
+    void context.resume?.();
+
+    const duration = 0.58;
+    const sampleRate = context.sampleRate;
+    const buffer = context.createBuffer(1, Math.floor(sampleRate * duration), sampleRate);
+    const data = buffer.getChannelData(0);
+
+    for (let index = 0; index < data.length; index += 1) {
+      const progress = index / data.length;
+      const scrape = (Math.random() * 2 - 1) * (1 - progress);
+      const squeal = Math.sin(progress * progress * 2300) * 0.34;
+      data[index] = (scrape * 0.42 + squeal) * Math.sin(progress * Math.PI);
+    }
+
+    const source = context.createBufferSource();
+    const filter = context.createBiquadFilter();
+    const gain = context.createGain();
+
+    source.buffer = buffer;
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(920, context.currentTime);
+    filter.frequency.exponentialRampToValueAtTime(2400, context.currentTime + duration * 0.54);
+    filter.Q.value = 6.5;
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.09, context.currentTime + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
+
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(context.destination);
+    source.start();
+    source.stop(context.currentTime + duration);
+  }, []);
+
+  const playListeningAckTone = useCallback(() => {
+    const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    const context = audioContextRef.current || new AudioContextCtor();
+    audioContextRef.current = context;
+    void context.resume?.();
+
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(440, context.currentTime);
+    oscillator.frequency.exponentialRampToValueAtTime(660, context.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.06, context.currentTime + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.2);
+  }, []);
+
+  const logVoice = useCallback((message: string, turnId: number) => {
+    if (process.env.NODE_ENV !== "production") {
+      console.info(`[ORB voice] ${message} ${turnId}`);
+    }
+  }, []);
+
+  const stopRecordingMonitor = useCallback(() => {
+    if (recordingMonitorTimerRef.current) {
+      window.clearInterval(recordingMonitorTimerRef.current);
+      recordingMonitorTimerRef.current = null;
+    }
+  }, []);
+
+  const freezeOrbInPlace = useCallback((holdMs = 4200) => {
+    avoidUntilRef.current = Date.now() + holdMs;
+    move.stop();
+    presence.stop();
+  }, [move, presence]);
 
   const speak = useCallback(async (text: string, audioUrl?: string | null, provider?: string | null) => {
     showStatus();
     setStatusLine(text);
     setVoiceState("speaking");
-    void summonToSpeechPosition();
+    freezeOrbInPlace(4200);
 
     if (speechAudioRef.current) {
       speechAudioRef.current.pause();
-      speechAudioRef.current = null;
+    }
+    if (latencyAudioRef.current) {
+      latencyAudioRef.current.pause();
+      latencyAudioRef.current = null;
     }
 
     if (!audioUrl) {
-      setStatusTitle("TTS unavailable");
+      setStatusTitle("Voice unavailable");
+      setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
       setVoiceState("idle");
       showStatus(3600);
       return;
     }
 
     try {
-      if (provider) {
-        setStatusTitle(`Speaking with ${provider}`);
-      }
-      const audio = new Audio(api.orbMediaUrl(audioUrl));
+      setStatusTitle("Voice response");
+      const audio = speechAudioRef.current || new Audio();
+      audio.pause();
+      audio.muted = false;
+      audio.src = api.orbMediaUrl(audioUrl);
       speechAudioRef.current = audio;
-      audio.onended = () => {
-        if (speechAudioRef.current === audio) {
-          speechAudioRef.current = null;
-        }
-        setVoiceState("idle");
-        showStatus(1400);
-      };
-      audio.onerror = () => {
-        if (speechAudioRef.current === audio) {
-          speechAudioRef.current = null;
-        }
-        setStatusTitle("TTS playback failed");
-        setVoiceState("idle");
-        showStatus(3600);
-      };
-      await audio.play();
+      await new Promise<void>((resolve, reject) => {
+        audio.onended = () => {
+          if (speechAudioRef.current === audio) {
+            speechAudioRef.current = null;
+          }
+          setVoiceState("idle");
+          showStatus(1400);
+          resolve();
+        };
+        audio.onerror = () => {
+          if (speechAudioRef.current === audio) {
+            speechAudioRef.current = null;
+          }
+          setStatusTitle("Voice unavailable");
+          setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
+          setVoiceState("idle");
+          showStatus(3600);
+          reject(new Error("Audio playback failed"));
+        };
+        audio.play().catch(reject);
+      });
     } catch {
-      setStatusTitle("TTS playback blocked");
+      setStatusTitle("Voice unavailable");
+      setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
       setVoiceState("idle");
       showStatus(3600);
     }
-  }, [showStatus, summonToSpeechPosition]);
+  }, [freezeOrbInPlace, showStatus]);
 
   const speakWithGeneratedAudio = useCallback(async (text: string, audioUrl?: string | null, provider?: string | null) => {
     setStatusTitle("Preparing voice");
     setStatusLine(text);
     setVoiceState("speaking");
     showStatus();
-    void summonToSpeechPosition();
+    freezeOrbInPlace(4200);
 
     if (audioUrl) {
       await speak(text, audioUrl, provider);
       return;
     }
 
-    try {
-      const result = await api.websiteOrbTts(text);
-      if (result.tts_error) {
-        setStatusTitle(`TTS failed: ${result.tts_error}`);
-        setVoiceState("idle");
-        showStatus(5200);
-        return;
-      }
-      await speak(text, result.tts_audio_url, result.tts_provider);
-    } catch {
-      setStatusTitle("TTS unavailable");
-      setVoiceState("idle");
-      showStatus(5200);
-    }
-  }, [showStatus, speak, summonToSpeechPosition]);
+    setStatusTitle("Voice unavailable");
+    setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
+    setVoiceState("idle");
+    showStatus(5200);
+  }, [freezeOrbInPlace, showStatus, speak]);
 
   const speakRecovery = useCallback(async (text: string) => {
-    showStatus();
-    try {
-      const result = await api.websiteOrbTts(text);
-      await speak(text, result.tts_audio_url, result.tts_provider);
-    } catch {
-      setStatusLine(text);
-      setStatusTitle("TTS unavailable");
-      setVoiceState("idle");
-      showStatus(3600);
-    }
-  }, [showStatus, speak]);
+    setStatusLine(text);
+    setStatusTitle("Voice unavailable");
+    setVoiceState("idle");
+    showStatus(3600);
+  }, [showStatus]);
 
-  const askOrb = useCallback(async (transcript: string) => {
-    const cleanTranscript = transcript.trim();
-    if (!cleanTranscript) return;
+  const processRecordedOrbAudio = useCallback(async (audio: Blob) => {
+    if (voiceRequestInFlightRef.current) return;
+    const turnId = voiceTurnIdRef.current;
+    const controller = new AbortController();
+    activeVoiceAbortControllerRef.current = controller;
+    voiceRequestInFlightRef.current = true;
+
+    if (!audio.size) {
+      setStatusTitle("Voice unavailable");
+      setStatusLine("I did not hear enough audio. Tap the ORB and speak after the tone.");
+      setVoiceState("idle");
+      showStatus(3200);
+      voiceRequestInFlightRef.current = false;
+      activeVoiceAbortControllerRef.current = null;
+      return;
+    }
 
     setStatusTitle("Thinking");
     setStatusLine("Preparing a response.");
     setVoiceState("speaking");
     showStatus();
-    void summonToSpeechPosition();
+    freezeOrbInPlace(4200);
+    playLatencyFiller();
 
     try {
-      const result = await api.websiteOrbText(cleanTranscript, false);
+      logVoice("website-voice", turnId);
+      const result = await api.websiteOrbVoice(audio, controller.signal);
       setStatusTitle("Voice response");
       setStatusLine(result.spoken_output);
-      if (result.tts_error) {
-        setStatusTitle(`TTS failed: ${result.tts_error}`);
+      if (result.tts_error && !result.tts_audio_url) {
+        setStatusTitle("Voice unavailable");
+        setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
       }
+      logVoice("playback", turnId);
       await speakWithGeneratedAudio(result.spoken_output, result.tts_audio_url, result.tts_provider);
     } catch (error) {
+      if ((error as Error)?.name === "AbortError") return;
       setStatusTitle("ORB route unavailable");
-      void speakRecovery("I am reconnecting to my response service. Please try again in a moment.");
-    }
-  }, [showStatus, speakRecovery, speakWithGeneratedAudio, summonToSpeechPosition]);
-
-  const handleOrbClick = useCallback(() => {
-    unlockAudio();
-
-    const SpeechRecognitionCtor =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognitionCtor) {
-      const typed = window.prompt("Ask the ORB about Preflight, tools, Marketplace, or deployment.");
-      if (typed) void askOrb(typed);
-      return;
-    }
-
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
+      speakRecovery("I am reconnecting to my response service. Please try again in a moment.");
+    } finally {
+      if (activeVoiceAbortControllerRef.current === controller) {
+        activeVoiceAbortControllerRef.current = null;
+      }
+      voiceRequestInFlightRef.current = false;
       setVoiceState("idle");
-      setStatusVisible(false);
+      logVoice("finalized", turnId);
+    }
+  }, [freezeOrbInPlace, logVoice, playLatencyFiller, showStatus, speakRecovery, speakWithGeneratedAudio]);
+
+  const stopOrbRecording = useCallback((cancel = false) => {
+    if (recordingStopTimerRef.current) {
+      window.clearTimeout(recordingStopTimerRef.current);
+      recordingStopTimerRef.current = null;
+    }
+    stopRecordingMonitor();
+
+    recordingCancelledRef.current = cancel;
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
       return;
     }
 
-    const recognition = new SpeechRecognitionCtor();
-    recognitionRef.current = recognition;
-    recognition.lang = "en-US";
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingStreamRef.current = null;
+    recorderRef.current = null;
+    if (cancel) {
+      audioChunksRef.current = [];
+      setStatusTitle("Listening cancelled");
+      setStatusLine("Tap the ORB when you want to speak.");
+      setVoiceState("idle");
+      showStatus(1800);
+    }
+  }, [showStatus, stopRecordingMonitor]);
 
-    recognition.onstart = () => {
+  const monitorRecordingSilence = useCallback((stream: MediaStream, recorder: MediaRecorder) => {
+    const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextCtor) {
+      return;
+    }
+
+    const context: AudioContext = audioContextRef.current || new AudioContextCtor();
+    audioContextRef.current = context;
+    void context.resume?.();
+
+    const source = context.createMediaStreamSource(stream);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+    const samples = new Float32Array(analyser.fftSize);
+
+    recordingStartedAtRef.current = Date.now();
+    speechDetectedRef.current = false;
+    silenceStartedAtRef.current = null;
+
+    stopRecordingMonitor();
+    recordingMonitorTimerRef.current = window.setInterval(() => {
+      if (recorder.state === "inactive") {
+        stopRecordingMonitor();
+        return;
+      }
+
+      const elapsed = Date.now() - recordingStartedAtRef.current;
+      analyser.getFloatTimeDomainData(samples);
+      let sum = 0;
+      for (let index = 0; index < samples.length; index += 1) {
+        sum += samples[index] * samples[index];
+      }
+      const rms = Math.sqrt(sum / samples.length);
+
+      if (rms >= SPEECH_LEVEL_THRESHOLD) {
+        speechDetectedRef.current = true;
+        silenceStartedAtRef.current = null;
+        return;
+      }
+
+      if (elapsed >= ABSOLUTE_RECORDING_LIMIT_MS) {
+        stopOrbRecording();
+        return;
+      }
+
+      if (!speechDetectedRef.current || elapsed < MIN_RECORDING_MS) {
+        return;
+      }
+
+      if (silenceStartedAtRef.current == null) {
+        silenceStartedAtRef.current = Date.now();
+        return;
+      }
+
+      if (Date.now() - silenceStartedAtRef.current >= END_SILENCE_MS) {
+        stopOrbRecording();
+      }
+    }, 120);
+  }, [stopOrbRecording, stopRecordingMonitor]);
+
+  const startOrbRecording = useCallback(async () => {
+    unlockAudio();
+    if (voiceRequestInFlightRef.current || voiceState === "speaking") return;
+
+    if (recorderRef.current) {
+      stopOrbRecording(true);
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setStatusTitle("Voice unavailable");
+      setStatusLine("Microphone recording is unavailable in this browser.");
+      setVoiceState("idle");
+      showStatus(2600);
+      return;
+    }
+
+    try {
+      const turnId = voiceTurnIdRef.current + 1;
+      voiceTurnIdRef.current = turnId;
+      logVoice("start turn", turnId);
+      activeVoiceAbortControllerRef.current?.abort();
+
+      freezeOrbInPlace(ABSOLUTE_RECORDING_LIMIT_MS + 1800);
       setStatusTitle("Listening");
-      setStatusLine("Speak naturally.");
+      setStatusLine("Speak now.");
       setVoiceState("listening");
       showStatus();
       void playPulse("ripple", 1150);
-    };
 
-    recognition.onresult = (event: any) => {
-      const transcript = event.results?.[0]?.[0]?.transcript || "";
-      recognitionRef.current = null;
-      void askOrb(transcript);
-    };
-
-    recognition.onerror = () => {
-      recognitionRef.current = null;
-      setStatusTitle("Voice unavailable");
-      void speakRecovery("Browser speech recognition is unavailable. You can still use public Preflight and account tools.");
-    };
-
-    recognition.onend = () => {
-      recognitionRef.current = null;
-      setVoiceState((current) => {
-        if (current === "listening") {
-          window.setTimeout(() => setStatusVisible(false), 700);
-          return "idle";
-        }
-        return current;
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
-    };
+      playListeningAckTone();
 
-    recognition.start();
-  }, [askOrb, showStatus, speakRecovery, unlockAudio]);
+      recordingStreamRef.current = stream;
+      audioChunksRef.current = [];
+      recordingCancelledRef.current = false;
+
+      const recorderOptions =
+        MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? { mimeType: "audio/webm;codecs=opus" }
+          : MediaRecorder.isTypeSupported("audio/webm")
+          ? { mimeType: "audio/webm" }
+          : undefined;
+      const recorder = new MediaRecorder(stream, recorderOptions);
+      recorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const cancelled = recordingCancelledRef.current;
+        recordingCancelledRef.current = false;
+        const audio = new Blob(audioChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+        audioChunksRef.current = [];
+        recorderRef.current = null;
+        stream.getTracks().forEach((track) => track.stop());
+        if (recordingStreamRef.current === stream) {
+          recordingStreamRef.current = null;
+        }
+        if (cancelled) {
+          setStatusTitle("Listening cancelled");
+          setStatusLine("Tap the ORB when you want to speak.");
+          setVoiceState("idle");
+          showStatus(1800);
+          return;
+        }
+        void processRecordedOrbAudio(audio);
+      };
+
+      setStatusTitle("Listening");
+      setStatusLine("Speak now.");
+      setVoiceState("listening");
+      showStatus();
+      void playPulse("ripple", 1150);
+      recorder.start();
+      monitorRecordingSilence(stream, recorder);
+    } catch {
+      setStatusTitle("Voice unavailable");
+      setStatusLine("Microphone permission is needed for voice.");
+      setVoiceState("idle");
+      showStatus(3600);
+    }
+  }, [freezeOrbInPlace, logVoice, monitorRecordingSilence, playListeningAckTone, playPulse, processRecordedOrbAudio, showStatus, stopOrbRecording, unlockAudio, voiceState]);
+
+  const interruptOrbSpeech = useCallback(() => {
+    activeVoiceAbortControllerRef.current?.abort();
+    activeVoiceAbortControllerRef.current = null;
+    voiceRequestInFlightRef.current = false;
+    if (speechAudioRef.current) {
+      speechAudioRef.current.pause();
+      speechAudioRef.current.currentTime = 0;
+      speechAudioRef.current = null;
+    }
+    if (speechSourceRef.current) {
+      try {
+        speechSourceRef.current.stop();
+      } catch {
+        // Source may already have ended.
+      }
+      speechSourceRef.current = null;
+    }
+    if (latencyAudioRef.current) {
+      latencyAudioRef.current.pause();
+      latencyAudioRef.current = null;
+    }
+    setStatusTitle("Interrupted");
+    setStatusLine("Tap the ORB when you want to speak.");
+    setVoiceState("idle");
+    showStatus(1600);
+    avoidUntilRef.current = Date.now() + 900;
+  }, [showStatus]);
+
+  const handleOrbClick = useCallback(() => {
+    if (voiceState === "speaking") {
+      interruptOrbSpeech();
+      return;
+    }
+
+    if (recorderRef.current) {
+      stopOrbRecording(true);
+      return;
+    }
+
+    void startOrbRecording();
+  }, [interruptOrbSpeech, startOrbRecording, stopOrbRecording, voiceState]);
 
   useEffect(() => {
     api.websiteOrbCapabilities()
@@ -388,16 +681,19 @@ export const AutonomousOrb: React.FC<Props> = ({
         window.sessionStorage.getItem("orbweaver-intro-played") === "1";
 
       if (!introAlreadyPlayed) {
-        surge.set({ scale: 0.18, opacity: 0 });
+        surge.set({ scale: 0.26, opacity: 0, x: window.innerWidth * 0.42, rotate: 10 });
         setPulse({ id: Date.now(), kind: "intro" });
+        playStageScreech();
 
         await surge.start({
-          scale: [0.18, 1.55, 0.92, 1],
-          opacity: [0, 1, 1, 1],
+          x: [window.innerWidth * 0.42, -28, 10, 0],
+          scale: [0.26, 1.78, 0.88, 1.04, 1],
+          opacity: [0, 1, 1, 1, 1],
+          rotate: [10, -6, 3, 0],
           transition: {
-            duration: 2.1,
-            ease: [0.16, 1, 0.3, 1],
-            times: [0, 0.55, 0.8, 1],
+            duration: 2.65,
+            ease: [0.15, 0.9, 0.18, 1],
+            times: [0, 0.54, 0.74, 0.9, 1],
           },
         });
 
@@ -406,7 +702,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         window.sessionStorage.setItem("orbweaver-intro-played", "1");
         setPulse(null);
       } else {
-        surge.set({ scale: 1, opacity: 1 });
+        surge.set({ scale: 1, opacity: 1, x: 0, rotate: 0 });
       }
 
       glow.start({
@@ -540,9 +836,21 @@ export const AutonomousOrb: React.FC<Props> = ({
       if (speechAudioRef.current) {
         speechAudioRef.current.pause();
       }
-      if (statusTimerRef.current) {
-        window.clearTimeout(statusTimerRef.current);
+    if (statusTimerRef.current) {
+      window.clearTimeout(statusTimerRef.current);
+    }
+    if (recordingStopTimerRef.current) {
+      window.clearTimeout(recordingStopTimerRef.current);
+    }
+    stopRecordingMonitor();
+    activeVoiceAbortControllerRef.current?.abort();
+    activeVoiceAbortControllerRef.current = null;
+    voiceRequestInFlightRef.current = false;
+      if (recorderRef.current && recorderRef.current.state !== "inactive") {
+        recordingCancelledRef.current = true;
+        recorderRef.current.stop();
       }
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("mousemove", handleMouseMove);
     };
@@ -568,10 +876,10 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
 
     return {
-      rings: 4,
+      rings: 5,
       color: "rgba(91,200,230,",
-      maxScale: 8.1,
-      duration: 1.7,
+      maxScale: 9.4,
+      duration: 2.05,
     };
   };
 
@@ -579,14 +887,6 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   return (
     <>
-    <button
-      type="button"
-      className="ow-v2-orb-summon"
-      onClick={handleOrbClick}
-      aria-label="Ask the ORB"
-    >
-      Ask ORB
-    </button>
     <motion.div
       animate={move}
       className={`ow-v2-orb-position ${className}`}
@@ -665,7 +965,11 @@ export const AutonomousOrb: React.FC<Props> = ({
               <span />
               <span />
             </div>
-            <Orb size={size} state={voiceState} onClick={handleOrbClick} />
+            <Orb
+              size={size}
+              state={voiceState}
+              onClick={handleOrbClick}
+            />
           </motion.div>
         </motion.div>
       </motion.div>

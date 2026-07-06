@@ -141,6 +141,9 @@ class ChromeDevToolsReviewRunner:
         run_dir = self.output_root / label / datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         run_dir.mkdir(parents=True, exist_ok=True)
         args = [tool]
+        positional_url = params.pop("url", None) if tool == "new_page" else None
+        if positional_url:
+            args.append(str(positional_url))
         for key, value in params.items():
             flag = f"--{key}"
             if isinstance(value, bool):

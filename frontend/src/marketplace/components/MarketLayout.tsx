@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import PublicHeader from '../../components/PublicHeader';
 import MarketNav from './MarketNav';
 import '../styles/market-theme.css';
 
@@ -12,11 +13,7 @@ type MarketLayoutProps = {
 const MarketLayout: React.FC<MarketLayoutProps> = ({ title, subtitle, children }) => {
   return (
     <div className="ow-market-shell">
-      <header className="ow-market-topbar">
-        <div className="ow-market-topbar-inner">
-          <a href="/" className="ow-market-back-link">Back to Orb Weaver</a>
-        </div>
-      </header>
+      <PublicHeader theme="dark" />
       <main className="ow-market-main">
         <header className="ow-market-hero">
           <div>

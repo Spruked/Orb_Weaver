@@ -115,15 +115,17 @@ async function fetchText(path: string) {
   };
 }
 
-async function uploadForm<T>(path: string, formData: FormData): Promise<T> {
+async function uploadForm<T>(path: string, formData: FormData, options?: RequestInit): Promise<T> {
   const token = authStore.getToken();
   const requestUrl = apiUrl(path);
   const response = await fetch(requestUrl, {
     method: 'POST',
     headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options?.headers
     },
-    body: formData
+    body: formData,
+    signal: options?.signal
   });
 
   return parseJsonResponse<T>(response, requestUrl);
@@ -713,8 +715,46 @@ export interface WebsiteOrbCapabilities {
     available: boolean;
     runner: string;
   };
+  orb_desktop_mcp?: {
+    enabled: boolean;
+    available: boolean;
+    root: string;
+    server: string;
+    runner: string;
+  };
   voice: Record<string, string | boolean>;
   tools: string[];
+}
+
+export interface OrbToolCatalog {
+  schema: string;
+  orb_id: string;
+  scope: string;
+  customer_id: string;
+  tools: Array<{
+    id: string;
+    label: string;
+    description: string;
+    requires_project: boolean;
+    available: boolean;
+    mcp_tools?: string[];
+  }>;
+  capabilities: WebsiteOrbCapabilities;
+}
+
+export interface OrbToolResult {
+  schema: string;
+  status: string;
+  tool: string;
+  mcp_tool?: string;
+  generated_at: string;
+  project_id?: string;
+  summary?: unknown;
+  result?: unknown;
+  transcript?: string;
+  spoken_output?: string;
+  llm_source?: string;
+  cognitive_pulse?: Record<string, unknown> | null;
 }
 
 export interface OrbMemoryItem {
@@ -752,23 +792,38 @@ export interface GA4FullReport {
 }
 
 export const api = {
-  websiteOrbVoice: (audio: Blob) => {
+  websiteOrbVoice: (audio: Blob, signal?: AbortSignal) => {
     const formData = new FormData();
     formData.append('audio', audio, 'website-orb.webm');
-    return uploadForm<WebsiteOrbVoiceResponse>('/api/orb/website-voice', formData);
+    return uploadForm<WebsiteOrbVoiceResponse>('/api/orb/website-voice', formData, { signal });
   },
-  websiteOrbText: (transcript: string, synthesizeTts = true) =>
+  websiteOrbText: (transcript: string, synthesizeTts = true, signal?: AbortSignal) =>
     request<WebsiteOrbVoiceResponse>('/api/orb/website-text', {
       method: 'POST',
-      body: JSON.stringify({ transcript, synthesize_tts: synthesizeTts })
+      body: JSON.stringify({ transcript, synthesize_tts: synthesizeTts }),
+      signal
     }),
-  websiteOrbTts: (text: string) =>
+  websiteOrbTts: (text: string, signal?: AbortSignal) =>
     request<WebsiteOrbTtsResponse>('/api/orb/tts', {
       method: 'POST',
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text }),
+      signal
     }),
   orbMediaUrl: mediaUrl,
   websiteOrbCapabilities: () => request<WebsiteOrbCapabilities>('/api/orb/capabilities'),
+  orbToolCatalog: () => request<OrbToolCatalog>('/api/orb/tools/catalog'),
+  runOrbTool: (payload: {
+    tool: string;
+    project_id?: string | null;
+    target_url?: string | null;
+    transcript?: string | null;
+    mcp_tool?: string | null;
+    params?: Record<string, unknown>;
+  }) =>
+    request<OrbToolResult>('/api/orb/tools/run', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
   orbMemory: () => request<OrbMemorySummary>('/api/orb/memory'),
   upsertOrbMemory: (payload: {
     category: string;

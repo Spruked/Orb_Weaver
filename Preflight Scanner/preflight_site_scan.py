@@ -503,6 +503,84 @@ class PreflightScanner:
                 if flag not in self._custom_behavior_flags:
                     self._custom_behavior_flags.append(flag)
 
+    def _risk_level(self, broken_links: int, cors_risks: int, placeholders: int, auth: bool, checkout: bool) -> str:
+        if broken_links >= 10 or cors_risks >= 5:
+            return "high"
+        if broken_links > 0 or placeholders > 0 or auth or checkout or cors_risks > 0:
+            return "moderate"
+        return "low"
+
+    async def _connection_matrix_check(self, urls: List[str]) -> Dict[str, Any]:
+        matrix: List[Dict[str, Any]] = []
+        seen: Set[str] = set()
+        for raw_url in urls:
+            if len(matrix) >= 40:
+                break
+            if not raw_url or raw_url in seen or not self._is_same_domain(raw_url):
+                continue
+            seen.add(raw_url)
+            resp = await self._fetch(raw_url, method="HEAD")
+            if resp is None or resp.status in (405, 403):
+                resp = await self._fetch(raw_url, method="GET")
+            status = resp.status if resp else 0
+            matrix.append({
+                "url": raw_url,
+                "status": status,
+                "ok": 200 <= status < 400,
+                "risk": "low" if 200 <= status < 400 else "moderate" if status in (401, 403, 405) else "high",
+            })
+        return {
+            "checked": len(matrix),
+            "broken": [item["url"] for item in matrix if not item["ok"]],
+            "matrix": matrix,
+        }
+
+    def _runtime_diagnostic_status(
+        self,
+        cms_framework: Optional[str],
+        has_chat_widget: bool,
+        external_assistant: Optional[str],
+        has_auth: bool,
+        has_checkout: bool,
+        robots_info: Dict[str, Any],
+        sitemap_info: Dict[str, Any],
+        connection_matrix: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        broken_count = len(connection_matrix.get("broken", [])) + len(self._broken_links)
+        risk = self._risk_level(
+            broken_links=broken_count,
+            cors_risks=len(self._cors_risks),
+            placeholders=len(self._placeholder_pages),
+            auth=has_auth,
+            checkout=has_checkout,
+        )
+        return {
+            "platform": {
+                "cms_framework": cms_framework or "unknown",
+                "framework_risk": "moderate" if cms_framework in ("React", "Vue", "Next.js", "Nuxt", "Angular", "Gatsby") else "low",
+            },
+            "widgets": {
+                "existing_chat_widget": has_chat_widget,
+                "external_assistant_endpoint": external_assistant,
+                "widget_risk": "moderate" if has_chat_widget else "low",
+            },
+            "third_party_scripts": {
+                "count": len(self._third_party_scripts),
+                "signatures": self._third_party_scripts[:25],
+                "risk": "moderate" if len(self._third_party_scripts) >= 8 else "low",
+            },
+            "layout_files": {
+                "robots_txt": robots_info,
+                "sitemap_xml": {
+                    "present": sitemap_info.get("present", False),
+                    "url_count": sitemap_info.get("url_count", 0),
+                },
+            },
+            "connection_matrix": connection_matrix,
+            "initialization_risk": risk,
+            "status": "review_required" if risk != "low" else "ready",
+        }
+
     # -----------------------------------------------------------------------
     # Page analysis
     # -----------------------------------------------------------------------
@@ -777,6 +855,7 @@ class PreflightScanner:
             # BFS crawl (same domain, limited depth)
             to_scan = list(dict.fromkeys(seed_urls))  # preserve order, dedupe
             page_results: List[Dict[str, Any]] = []
+            discovered_for_matrix: List[str] = []
 
             while to_scan and self._pages_scanned < 50:
                 batch = to_scan[:10]
@@ -789,6 +868,7 @@ class PreflightScanner:
                         continue
                     page_results.append(res)
                     for link in res.get("links", []):
+                        discovered_for_matrix.append(link)
                         if link not in self._visited and link not in to_scan:
                             to_scan.append(link)
 
@@ -820,6 +900,10 @@ class PreflightScanner:
             has_terms = any(r.get("terms") for r in page_results)
 
             robots_info = await self._check_robots_txt()
+            connection_matrix = await self._connection_matrix_check(
+                [self.root_url, urljoin(self.root_url, "/robots.txt"), urljoin(self.root_url, "/sitemap.xml")]
+                + discovered_for_matrix[:30]
+            )
 
             install_mode = self._determine_install_mode(
                 has_chat_widget, external_assistant, cms_framework
@@ -829,6 +913,16 @@ class PreflightScanner:
             )
             warnings = self._build_warnings(
                 self._broken_links, self._placeholder_pages, self._cors_risks, has_auth, has_checkout
+            )
+            runtime_diagnostics = self._runtime_diagnostic_status(
+                cms_framework=cms_framework,
+                has_chat_widget=has_chat_widget,
+                external_assistant=external_assistant,
+                has_auth=has_auth,
+                has_checkout=has_checkout,
+                robots_info=robots_info,
+                sitemap_info=sitemap_info,
+                connection_matrix=connection_matrix,
             )
 
             # Deduplicate lists
@@ -886,6 +980,7 @@ class PreflightScanner:
                 "recommended_install_mode": install_mode,
                 "required_custom_steps": custom_steps,
                 "warnings": warnings,
+                "runtime_diagnostics": runtime_diagnostics,
                 "pages_scanned": self._pages_scanned,
                 "confidence": confidence,
             }

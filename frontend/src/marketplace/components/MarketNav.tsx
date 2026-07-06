@@ -5,7 +5,6 @@ const navItems = [
   { to: '/marketplace', label: 'Home' },
   { to: '/marketplace/collections', label: 'Collections' },
   { to: '/marketplace/search', label: 'Search' },
-  { to: '/cart', label: 'Cart' },
 ];
 
 const MarketNav: React.FC = () => {

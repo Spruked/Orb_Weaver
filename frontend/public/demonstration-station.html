@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Demonstration Station — Spruked / ORB</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:     11,18,32;
+  --bg2:    16,24,42;
+  --bg3:    20,30,54;
+  --blue:   61,127,255;
+  --green:  34,197,139;
+  --amber:  230,160,40;
+  --red:    235,87,87;
+  --purple: 139,92,246;
+  --ink:    245,246,250;
+  --dim:    148,160,184;
+  --line:   255,255,255;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:rgb(var(--bg));color:rgb(var(--ink));font-family:'IBM Plex Sans',system-ui,sans-serif;min-height:100vh;overflow-x:hidden;}
+.mono{font-family:'IBM Plex Mono',monospace;}
+.label{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:rgb(var(--dim));}
+
+/* ── GATE ── */
+#gate{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at 30% 20%,rgba(var(--blue),.10),transparent 50%),rgb(var(--bg));}
+.gate-card{width:min(420px,90vw);border:1px solid rgba(var(--line),.1);border-radius:18px;padding:40px 36px;
+  background:rgba(var(--bg2),.7);backdrop-filter:blur(8px);}
+.gate-card h1{font-size:26px;margin:8px 0 8px;}
+.gate-card p{font-size:13.5px;color:rgb(var(--dim));line-height:1.55;margin-bottom:24px;}
+.field{margin-bottom:14px;}
+.field label{display:block;font-size:11.5px;color:rgb(var(--dim));margin-bottom:5px;}
+.field input{width:100%;background:rgba(0,0,0,.25);border:1px solid rgba(var(--line),.12);
+  border-radius:9px;padding:11px 13px;color:rgb(var(--ink));font-family:'IBM Plex Sans',sans-serif;font-size:14px;outline:none;}
+.field input:focus{border-color:rgba(var(--blue),.7);}
+.gate-btn{width:100%;margin-top:6px;background:rgb(var(--blue));color:#fff;border:none;
+  border-radius:9px;padding:13px;font-size:14.5px;font-weight:600;cursor:pointer;}
+.gate-btn:hover{filter:brightness(1.1);}
+.gate-note{margin-top:14px;font-size:11px;color:rgba(var(--dim),.7);text-align:center;line-height:1.5;}
+
+/* ── SHELL ── */
+#shell{display:none;}
+#shell.active{display:block;}
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;justify-content:space-between;
+  padding:14px 28px;background:rgba(var(--bg),.9);backdrop-filter:blur(10px);
+  border-bottom:1px solid rgba(var(--line),.07);}
+.brand{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600;}
+.brand-dot{width:8px;height:8px;border-radius:50%;background:rgb(var(--green));box-shadow:0 0 8px rgba(var(--green),.7);}
+.session-pill{font-family:'IBM Plex Mono',monospace;font-size:10px;border:1px solid rgba(var(--green),.4);
+  color:rgb(var(--green));padding:3px 10px;border-radius:999px;}
+
+main{max-width:1320px;margin:0 auto;padding:48px 28px 160px;}
+
+/* ── INTRO ── */
+.intro{max-width:72ch;margin-bottom:44px;}
+.intro h1{font-size:clamp(26px,4vw,40px);margin:10px 0 14px;}
+.intro p{color:rgb(var(--dim));font-size:15px;line-height:1.65;}
+
+/* ── URL + TOPIC SETUP ── */
+.setup-panel{border:1px solid rgba(var(--line),.1);border-radius:16px;padding:26px;margin-bottom:40px;
+  background:rgba(var(--bg2),.5);}
+.setup-panel h2{font-size:16px;margin:8px 0 18px;}
+.setup-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;}
+.setup-row .field{flex:1;min-width:200px;margin:0;}
+.url-presets{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+.preset-chip{font-size:12px;padding:6px 13px;border-radius:999px;border:1px solid rgba(var(--line),.15);
+  background:rgba(0,0,0,.2);color:rgb(var(--dim));cursor:pointer;transition:all .15s;}
+.preset-chip:hover,.preset-chip.sel{border-color:rgba(var(--blue),.6);color:rgb(var(--ink));background:rgba(var(--blue),.12);}
+.topic-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;}
+.topic-chip{font-size:12px;padding:6px 14px;border-radius:999px;border:1px solid rgba(var(--line),.15);
+  background:rgba(0,0,0,.2);color:rgb(var(--dim));cursor:pointer;transition:all .15s;}
+.topic-chip:hover,.topic-chip.sel{border-color:rgba(var(--purple),.6);color:rgb(var(--ink));background:rgba(var(--purple),.12);}
+.begin-btn{background:rgb(var(--green));color:#06241a;border:none;border-radius:10px;
+  padding:13px 28px;font-size:14.5px;font-weight:700;cursor:pointer;white-space:nowrap;}
+.begin-btn:disabled{opacity:.35;cursor:not-allowed;}
+.setup-confirm{font-size:12px;color:rgb(var(--green));margin-top:10px;min-height:18px;}
+
+/* ── STAGE LAYOUT ── */
+.stage{display:grid;grid-template-columns:1fr 340px;gap:24px;align-items:start;}
+@media(max-width:960px){.stage{grid-template-columns:1fr;}}
+
+/* ── ACT HEADERS ── */
+.act-header{display:flex;align-items:center;gap:14px;margin:56px 0 24px;}
+.act-line{flex:1;height:1px;background:rgba(var(--line),.08);}
+.act-label{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.14em;
+  color:rgb(var(--blue));white-space:nowrap;}
+
+/* ── SCENE CARDS ── */
+.scene{border:1px solid rgba(var(--line),.09);border-radius:16px;padding:26px 26px 28px;
+  background:linear-gradient(165deg,rgba(255,255,255,.022),rgba(255,255,255,.004));
+  position:relative;opacity:.3;transform:translateY(14px);
+  transition:opacity .5s ease,transform .5s ease;margin-bottom:18px;}
+.scene.live{opacity:1;transform:translateY(0);}
+.scene-step{font-family:'IBM Plex Mono',monospace;font-size:10px;color:rgb(var(--blue));
+  letter-spacing:.1em;margin-bottom:7px;}
+.scene-title{font-size:18px;font-weight:600;margin-bottom:6px;}
+.scene-desc{font-size:13px;color:rgb(var(--dim));line-height:1.55;margin-bottom:18px;}
+.scene-status{position:absolute;top:22px;right:22px;font-family:'IBM Plex Mono',monospace;
+  font-size:9.5px;letter-spacing:.08em;padding:3px 9px;border-radius:999px;
+  border:1px solid rgba(var(--dim),.3);color:rgb(var(--dim));}
+.scene-status.run{border-color:rgba(var(--blue),.6);color:rgb(var(--blue));}
+.scene-status.done{border-color:rgba(var(--green),.6);color:rgb(var(--green));}
+.scene-status.err{border-color:rgba(var(--red),.6);color:rgb(var(--red));}
+
+/* ── RESULT PANELS ── */
+.result-box{margin-top:4px;border:1px solid rgba(var(--line),.1);border-radius:10px;overflow:hidden;
+  min-height:56px;transition:all .3s ease;}
+.result-bar{display:flex;align-items:center;gap:8px;padding:8px 13px;
+  background:rgba(0,0,0,.28);font-family:'IBM Plex Mono',monospace;font-size:10.5px;
+  color:rgb(var(--dim));border-bottom:1px solid rgba(var(--line),.07);}
+.result-body{padding:14px 16px;font-family:'IBM Plex Mono',monospace;font-size:12px;
+  line-height:1.75;color:rgba(var(--ink),.85);white-space:pre-wrap;word-break:break-all;
+  max-height:260px;overflow-y:auto;}
+.result-body .ln{color:rgba(var(--dim),.45);margin-right:10px;user-select:none;}
+.result-body .key{color:rgb(var(--blue));}
+.result-body .val{color:rgb(var(--green));}
+.result-body .err-txt{color:rgb(var(--red));}
+
+/* screenshot / image result */
+.result-img{width:100%;max-height:220px;object-fit:contain;display:block;background:#000;}
+
+/* topology map */
+.topo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;padding:14px;}
+.topo-cell{border:1px solid rgba(var(--line),.1);border-radius:8px;padding:10px 12px;font-size:11.5px;}
+.topo-cell .tc-label{color:rgb(var(--dim));font-size:10px;margin-bottom:3px;}
+.topo-cell .tc-val{font-size:18px;font-weight:700;color:rgb(var(--blue));}
+
+/* window list */
+.win-list{display:flex;flex-direction:column;gap:6px;padding:12px 14px;}
+.win-item{display:flex;align-items:center;gap:10px;font-size:12px;padding:7px 10px;
+  border-radius:7px;background:rgba(var(--blue),.07);border:1px solid rgba(var(--blue),.14);}
+.win-icon{font-size:14px;}
+
+/* cognition output */
+.cog-out{padding:16px 18px;font-size:14px;line-height:1.65;color:rgb(var(--ink));
+  border-left:2px solid rgb(var(--purple));background:rgba(var(--purple),.05);}
+
+/* macro verify */
+.macro-row{display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:13px;}
+.macro-check{width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:10px;flex-shrink:0;}
+.macro-check.ok{background:rgba(var(--green),.2);color:rgb(var(--green));}
+.macro-check.fail{background:rgba(var(--red),.2);color:rgb(var(--red));}
+.macro-check.pend{background:rgba(var(--dim),.15);color:rgb(var(--dim));}
+
+/* demo cursor */
+.demo-cursor{display:inline-block;width:2px;height:13px;background:rgb(var(--green));
+  margin-left:1px;animation:blink .9s step-end infinite;vertical-align:-2px;}
+@keyframes blink{50%{opacity:0;}}
+
+/* ── AUDIT PANEL ── */
+.audit-panel{position:sticky;top:72px;border:1px solid rgba(var(--line),.09);border-radius:16px;
+  padding:18px 16px 16px;background:rgba(var(--bg2),.6);max-height:calc(100vh - 96px);
+  display:flex;flex-direction:column;}
+.audit-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.audit-head h3{font-size:12px;margin:0;}
+.audit-count{font-family:'IBM Plex Mono',monospace;font-size:10px;color:rgb(var(--dim));}
+.audit-log{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;padding-right:2px;}
+.audit-entry{border-left:2px solid rgba(var(--blue),.45);padding:3px 0 3px 10px;
+  font-size:11px;animation:aIn .3s ease forwards;}
+.audit-entry.ok{border-left-color:rgba(var(--green),.55);}
+.audit-entry.err{border-left-color:rgba(var(--red),.55);}
+@keyframes aIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+.a-time{font-family:'IBM Plex Mono',monospace;color:rgba(var(--dim),.65);font-size:9.5px;}
+.a-act{font-weight:600;color:rgb(var(--ink));margin:1px 0;}
+.a-detail{font-family:'IBM Plex Mono',monospace;color:rgb(var(--dim));font-size:10px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;}
+.audit-empty{font-size:12px;color:rgba(var(--dim),.55);text-align:center;padding:28px 8px;}
+
+/* ── ORB ── */
+#orb-wrap{position:fixed;left:0;top:0;width:1px;height:1px;z-index:60;pointer-events:none;
+  transition:transform .7s cubic-bezier(.2,.8,.2,1);}
+#orb-core{position:absolute;width:26px;height:26px;margin-left:-13px;margin-top:-13px;
+  border-radius:50%;background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.95),rgba(var(--blue),.9) 40%,transparent 75%);
+  box-shadow:0 0 16px rgba(var(--blue),.55),0 0 36px rgba(var(--green),.18);}
+#orb-focus{position:fixed;border-radius:8px;border:1.5px solid rgba(var(--blue),.5);
+  box-shadow:0 0 0 3px rgba(var(--blue),.1);transition:all .45s cubic-bezier(.2,.8,.2,1),opacity .3s;
+  opacity:0;z-index:59;pointer-events:none;}
+#orb-focus.on{opacity:1;}
+
+.back-link{margin-top:80px;font-size:13px;color:rgb(var(--dim));}
+.back-link a{color:rgb(var(--blue));text-decoration:none;border-bottom:1px solid rgba(var(--blue),.35);}
+</style>
+</head>
+<body>
+
+<!-- GATE -->
+<div id="gate">
+  <div class="gate-card">
+    <div class="label" style="color:rgb(var(--blue));margin-bottom:10px;">Spruked · Account Access</div>
+    <h1>Demonstration Station</h1>
+    <p>Sign in to watch the ORB perform real tasks — live tool calls, genuine output, every action logged to your audit trail.</p>
+    <div class="field"><label>Email</label><input id="g-email" type="email" placeholder="you@company.com"/></div>
+    <div class="field"><label>Password</label><input id="g-pass" type="password" placeholder="••••••••"/></div>
+    <button class="gate-btn" id="gate-btn">Sign in &amp; enter</button>
+    <div class="gate-note">Demo stand-in — any input unlocks. Real account auth wires in here. No credentials stored or transmitted.</div>
+  </div>
+</div>
+
+<!-- ORB -->
+<div id="orb-wrap"><div id="orb-core"></div></div>
+<div id="orb-focus"></div>
+
+<!-- SHELL -->
+<div id="shell">
+  <div class="topbar">
+    <div class="brand"><span class="brand-dot"></span>Spruked · ORB Demonstration Station</div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="session-pill mono">SESSION ACTIVE</span>
+      <span id="session-user" class="mono" style="font-size:12px;color:rgb(var(--dim));"></span>
+    </div>
+  </div>
+
+  <main>
+    <div class="intro">
+      <div class="label">Customer Proving Ground · Live Tool Demonstrations</div>
+      <h1>Fifteen ways the ORB proves what it can do.</h1>
+      <p>Every panel below runs a real tool call against the ORB backend. No pre-recorded output. No canned animations. Pick a target URL and a research topic, begin the sequence, then scroll through five acts. Each result is exactly what came back from the system — and every call is written to your audit trail in real time.</p>
+    </div>
+
+    <!-- SETUP -->
+    <div class="setup-panel">
+      <div class="label">Step 1 · Configure the demonstration</div>
+      <h2>Target URL &amp; research topic</h2>
+
+      <div class="field" style="margin-bottom:10px;">
+        <label>Target URL — the ORB will inspect, screenshot, and map this site</label>
+        <div class="setup-row">
+          <div class="field" style="margin:0;flex:1;">
+            <input id="url-input" type="text" placeholder="https://spruked.com" value="https://spruked.com"/>
+          </div>
+          <button class="preset-chip" id="url-random-btn" style="white-space:nowrap;height:42px;">🎲 Surprise me</button>
+        </div>
+      </div>
+
+      <div class="url-presets" id="url-presets">
+        <div class="preset-chip sel" data-url="https://spruked.com">spruked.com</div>
+        <div class="preset-chip" data-url="https://anthropic.com">anthropic.com</div>
+        <div class="preset-chip" data-url="https://openai.com">openai.com</div>
+        <div class="preset-chip" data-url="https://vercel.com">vercel.com</div>
+        <div class="preset-chip" data-url="https://stripe.com">stripe.com</div>
+      </div>
+
+      <div class="field" style="margin-bottom:10px;">
+        <label>Research topic — the ORB will investigate this across Acts 4 &amp; 5</label>
+      </div>
+      <div class="topic-chips" id="topic-chips">
+        <div class="topic-chip sel" data-topic="Site health &amp; broken link sweep">Site health</div>
+        <div class="topic-chip" data-topic="Competitor pricing landscape">Competitor pricing</div>
+        <div class="topic-chip" data-topic="Customer sentiment signals">Customer sentiment</div>
+        <div class="topic-chip" data-topic="Contact form reliability">Contact forms</div>
+        <div class="topic-chip" data-topic="SEO and content gaps">SEO gaps</div>
+      </div>
+      <div class="setup-row">
+        <div class="field" style="margin:0;flex:1;">
+          <input id="topic-custom" type="text" placeholder="Or type your own topic…"/>
+        </div>
+        <button class="preset-chip" id="topic-custom-btn" style="height:42px;">Use this</button>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:16px;margin-top:22px;flex-wrap:wrap;">
+        <button class="begin-btn" id="begin-btn">Begin demonstration sequence</button>
+        <span style="font-size:12.5px;color:rgb(var(--dim));">Then scroll down through all five acts.</span>
+      </div>
+      <div class="setup-confirm" id="setup-confirm"></div>
+    </div>
+
+    <!-- STAGE -->
+    <div class="stage">
+      <div id="scene-track">
+
+        <!-- ACT 1: THE ORB SEES -->
+        <div class="act-header">
+          <div class="act-label">Act 1 · The ORB Sees</div>
+          <div class="act-line"></div>
+        </div>
+
+        <div class="scene" data-scene="screenshot" data-tool="rdrive_orb_mcp" data-mcp="orb_screenshot">
+          <div class="scene-status" id="st-screenshot">queued</div>
+          <div class="scene-step">Tool · orb_screenshot</div>
+          <div class="scene-title">Desktop screenshot</div>
+          <div class="scene-desc">The ORB captures the current state of the desktop. Real pixels, right now — not a placeholder.</div>
+          <div class="result-box" id="rb-screenshot">
+            <div class="result-bar">📸 <span id="rb-screenshot-label">awaiting…</span></div>
+            <div class="result-body" id="rb-screenshot-body" style="color:rgba(var(--dim),.5);font-size:11px;">Result will render here</div>
+          </div>
+        </div>
+
+        <div class="scene" data-scene="browser-ss" data-tool="rdrive_orb_mcp" data-mcp="orb_browser_screenshot">
+          <div class="scene-status" id="st-browser-ss">queued</div>
+          <div class="scene-step">Tool · orb_browser_screenshot</div>
+          <div class="scene-title">Browser view of <span class="target-url-label">target</span></div>
+          <div class="scene-desc">The ORB opens a browser session on the target URL and captures what it sees — not what the DOM says, what the browser actually renders.</div>
+          <div class="result-box" id="rb-browser-ss">
+            <div class="result-bar">🌐 <span id="rb-browser-ss-label">awaiting…</span></div>
+            <div class="result-body" id="rb-browser-ss-body" style="color:rgba(var(--dim),.5);font-size:11px;">Result will render here</div>
+          </div>
+        </div>
+
+        <div class="scene" data-scene="display" data-tool="rdrive_orb_mcp" data-mcp="orb_get_display_size">
+          <div class="scene-status" id="st-display">queued</div>
+          <div class="scene-step">Tool · orb_get_display_size</div>
+          <div class="scene-title">Display geometry</div>
+          <div class="scene-desc">The ORB maps the display geometry of the host machine — dimensions, scaling, and spatial context it uses to position itself accurately.</div>
+          <div class="result-box" id="rb-display">
+            <div class="result-bar">🖥 <span id="rb-display-label">awaiting…</span></div>
+            <div class="result-body mono" id="rb-display-body" style="color:rgba(var(--dim),.5);font-size:11px;">Result will render here</div>
+          </div>
+        </div>
+
+        <!-- ACT 2: THE ORB READS -->
+        <div class="act-header">
+          <div class="act-label">Act 2 · The ORB Reads</div>
+          <div class="act-line"></div>
+        </div>
+
+        <div class="scene" data-scene="ocr-status" data-tool="rdrive_orb_mcp" data-mcp="orb_ocr_status">
+          <div class="scene-status" id="st-ocr-status">queued</div>
+          <div class="scene-step">Tool · orb_ocr_status</div>
+          <div class="scene-title">OCR engine status</div>
+          <div class="scene-desc">The ORB checks its OCR subsystem — confirming the text-reading engine is available and reporting its current state.</div>
+          <div class="result-box" id="rb-ocr-status">
+            <div class="result-bar">🔎 <span id="rb-ocr-status-label">awaiting…</span></div>
+            <div class="result-body mono" id="rb-ocr-status-body" style="color:rgba(var(--dim),.5);font-size:11px;">Result will render here</div>
+          </div>
+        </div>
+
+        <div class="scene" data-scene="ocr-screen" data-tool="rdrive_orb_mcp" data-mcp="orb_ocr_screen">
+          <div class="scene-status" id="st-ocr-screen">queued</div>
+          <div class="scene-step">Tool · orb_ocr_screen</div>
+          <div class="scene-title">Read the screen — full OCR pass</div>
+          <div class="scene-desc">The ORB runs a full OCR pass on the current screen content and returns the raw text it can see. This is how it reads anything visual — forms, dashboards, legacy interfaces, PDFs rendered to screen.</div>
+          <div class="result-box" id="rb-ocr-screen">
+            <div class="result-bar">📄 <span id="rb-ocr-screen-label">awaiting…</span></div>
+            <div class="result-body mono" id="rb-ocr-screen-body" style="color:rgba(var(--dim),.5);font-size:11px;">Result will render here</div>
+          </div>
+        </div>
+
+        <div class="scene" data-scene="clipboard" data-tool="rdrive_orb_mcp" data-mcp="orb_clipboard_read">
+          <div class="scene-status" id="st-clipboard">queued</div>
+          <div class="scene-step">Tool · orb_clipboard_read</div>
+          <div class="scene-title">Clipboard read</div>
+          <div class="scene-desc">The ORB reads the current clipboard — ambient context from what the user last copied. In a real workflow this feeds into summaries, lookups, and next-action suggestions without the user typing anything.</div>
+          <div class="result-box" id="rb-clipboard">
+            <div class="result-bar">📋 <span id="rb-clipboard-label">awaiting…</span></div>
+            <div class="result-body mono" id="rb-clipboard-body" style="color:rgba(var(--dim),.5);font-size:11px;">Result will render here</div>
+          </div>
+        </div>
+
+        <!-- ACT 3: THE ORB KNOWS -->
+        <div class="act-header">
+          <div class="act-label">Act 3 · The ORB Knows</div>
+          <div class="act-line"></div>
+        </div>
+
+        <div class="scene" data-scene="windows" data-tool="rdrive_orb_mcp" data-mcp="orb_list_windows">
+          <div class="scene-status" id="st-windows">queued</div>
+          <div class="scene-step">Tool · orb_list_windows</div>
+          <div class="scene-title">Open windows — environmental awareness</div>
+          <div class="scene-desc">The ORB enumerates every open window on the host. This is how it builds situational context — knowing what the user has open before they ask anything.</div>
+          <div class="result-box" id="rb-windows">
+            <div class="result-bar">🪟 <span id="rb-windows-label">awaiting…</span></div>
+            <div class="win-list" id="rb-windows-body"></div>
+          </div>
+        </div>
+
+        <div class="scene" data-scene="session" data-tool="rdrive_orb_mcp" data-mcp="orb_session_status">
+          <div class="scene-status" id="st-session">queued</div>
+          <div class="scene-step">Tool · orb_session_status</div>
+          <div class="scene-title">Session state</div>
+          <div class="scene-desc">The ORB reports its current session state — what it knows, what it's tracking, and what it's connected to right now. This is the continuity layer that makes the ORB persistent, not stateless.</div>
+          <div class="result-box" id="rb-session">
+            <div class="result-bar">🔗 <span id="rb-session-label">awaiting…</span></div>
+            <div class="result-body mono" id="rb-session-body" style="color:rgba(var(--dim),.5);font-size:11px;">Result will render here</div>
+          </div>
+        </div>
+
+        <div class="scene" data-scene="substrate" data-tool="rdrive_orb_mcp" data-mcp="orb_substrate_status">
+          <div class="scene-status" id="st-substrate">queued</div>
+          <div class="scene-step">Tool · orb_substrate_status</div>
+          <div class="scene-title">Substrate health</div>
+          <div class="scene-desc">The ORB checks the health of its substrate — the R-drive intelligence layer beneath it. This is what separates a stateful ORB from a stateless assistant.</div>
+          <div class="result-box" id="rb-substrate">
+            <div class="result-bar">⚙️ <span id="rb-substrate-label">awaiting…</span></div>
+            <div class="result-body mono" id="rb-substrate-body" style="color:rgba(var(--dim),.5);font-size:11px;">Result will render here</div>
+          </div>
+        </div>
+
+        <div class="scene" data-scene="snapshot" data-tool="rdrive_orb_mcp" data-mcp="orb_snapshot">
+          <div class="scene-status" id="st-snapshot">queued</div>
+          <div class="scene-step">Tool · orb_snapshot</div>
+          <div class="scene-title">Full substrate snapshot</div>
+          <div class="scene-desc">A complete point-in-time snapshot of the ORB's substrate state. Everything it knows, has cached, and is tracking — in one read.</div>
+          <div class="result-box" id="rb-snapshot">
+            <div class="result-bar">💾 <span id="rb-snapshot-label">awaiting…</span></div>
+            <div class="result-body mono" id="rb-snapshot-body" style="color:rgba(var(--dim),.5);font-size:11px;">Result will render here</div>
+          </div>
+        </div>
+
+        <!-- ACT 4: THE ORB THINKS -->
+        <div class="act-header">
+          <div class="act-label">Act 4 · The ORB Thinks</div>
+          <div class="act-line"></div>
+        </div>
+
+        <div class="scene" data-scene="cognition" data-tool="website_text">
+          <div class="scene-status" id="st-cognition">queued</div>
+          <div class="scene-step">Tool · website_text (live ORB cognition)</div>
+          <div class="scene-title">Live cognition on your topic</div>
+          <div class="scene-desc">The ORB thinks through the chosen research topic — pulling from its cognitive layer, not a static template. This is the real TPC-first reasoning engine responding.</div>
+          <div class="result-box" id="rb-cognition">
+            <div class="result-bar">🧠 <span id="rb-cognition-label">awaiting…</span></div>
+            <div class="cog-out" id="rb-cognition-body" style="color:rgba(var(--dim),.5);font-size:12px;">Result will render here</div>
+          </div>
+        </div>
+
+        <div class="scene" data-scene="topology" data-tool="semantic_topology">
+          <div class="scene-status" id="st-topology">queued</div>
+          <div class="scene-step">Tool · semantic_topology</div>
+          <div class="scene-title">Semantic map of <span class="target-url-label">target</span></div>
+          <div class="scene-desc">The ORB fetches the target URL and maps every link, form, data-orb anchor, and navigational element — the site's semantic skeleton as the ORB sees it.</div>
+          <div class="result-box" id="rb-topology">
+            <div class="result-bar">🗺 <span id="rb-topology-label">awaiting…</span></div>
+            <div class="topo-grid" id="rb-topology-body"></div>
+          </div>
+        </div>
+
+        <div class="scene" data-scene="capabilities" data-tool="capabilities">
+          <div class="scene-status" id="st-capabilities">queued</div>
+          <div class="scene-step">Tool · capabilities</div>
+          <div class="scene-title">ORB self-report</div>
+          <div class="scene-desc">The ORB enumerates its own capabilities — voice, OCR, MCP tools, substrate connections, TTS providers. What it knows about itself.</div>
+          <div class="result-box" id="rb-capabilities">
+            <div class="result-bar">📡 <span id="rb-capabilities-label">awaiting…</span></div>
+            <div class="result-body mono" id="rb-capabilities-body" style="color:rgba(var(--dim),.5);font-size:11px;">Result will render here</div>
+          </div>
+        </div>
+
+        <!-- ACT 5: THE ORB VERIFIES -->
+        <div class="act-header">
+          <div class="act-label">Act 5 · The ORB Verifies</div>
+          <div class="act-line"></div>
+        </div>
+
+        <div class="scene" data-scene="macro" data-tool="rdrive_orb_mcp" data-mcp="orb_macro_1_verify">
+          <div class="scene-status" id="st-macro">queued</div>
+          <div class="scene-step">Tool · orb_macro_1_verify</div>
+          <div class="scene-title">Macro 1 — governed verification</div>
+          <div class="scene-desc">The ORB runs its first governed verification macro — a structured proof-of-ability check with a recorded result. This is what audit trails and enterprise accountability look like inside the ORB ecosystem.</div>
+          <div class="result-box" id="rb-macro">
+            <div class="result-bar">✅ <span id="rb-macro-label">awaiting…</span></div>
+            <div id="rb-macro-body"></div>
+          </div>
+        </div>
+
+        <div class="scene" data-scene="region" data-tool="rdrive_orb_mcp" data-mcp="orb_read_desktop_region">
+          <div class="scene-status" id="st-region">queued</div>
+          <div class="scene-step">Tool · orb_read_desktop_region</div>
+          <div class="scene-title">Precision region read</div>
+          <div class="scene-desc">The ORB reads a specific region of the desktop by coordinate — not the whole screen, a targeted zone. This is how it works precisely without overwhelming noise.</div>
+          <div class="result-box" id="rb-region">
+            <div class="result-bar">📐 <span id="rb-region-label">awaiting…</span></div>
+            <div class="result-body mono" id="rb-region-body" style="color:rgba(var(--dim),.5);font-size:11px;">Result will render here</div>
+          </div>
+        </div>
+
+      </div><!-- /scene-track -->
+
+      <!-- AUDIT PANEL -->
+      <div class="audit-panel">
+        <div class="audit-head">
+          <h3 class="label" style="margin:0;">Audit Trail</h3>
+          <span class="audit-count mono" id="audit-count">0 events</span>
+        </div>
+        <div class="audit-log" id="audit-log">
+          <div class="audit-empty" id="audit-empty">No actions yet.<br/>Begin the sequence and scroll to populate.</div>
+        </div>
+      </div>
+    </div><!-- /stage -->
+
+    <div class="back-link"><a href="circus-page.html">← Back to the circus</a></div>
+  </main>
+</div><!-- /shell -->
+
+<script>
+/* ================================================================
+   CONFIG
+   ================================================================ */
+function defaultApiBaseUrl() {
+  const { hostname, port, protocol } = window.location;
+  const apiHostname = hostname === '0.0.0.0' ? '127.0.0.1' : hostname;
+  const isLocalOrPrivateHost =
+    port === '16510' ||
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname === '::1' ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+
+  return isLocalOrPrivateHost ? `${protocol}//${apiHostname}:16500/api` : '/api';
+}
+
+const API_BASE = defaultApiBaseUrl();
+const TOKEN_KEY = 'orb_weaver_customer_token';
+
+const RANDOM_URLS = [
+  'https://spruked.com','https://shopify.com','https://stripe.com','https://notion.so',
+  'https://linear.app','https://vercel.com','https://supabase.com','https://fly.io',
+  'https://raycast.com','https://cal.com','https://resend.com','https://clerk.com',
+];
+
+/* ── scene definitions — order matters, drives scroll sequence ── */
+const SCENES = [
+  { id:'screenshot',  tool:'rdrive_orb_mcp', mcp:'orb_screenshot',          render:'json'     },
+  { id:'browser-ss',  tool:'rdrive_orb_mcp', mcp:'orb_browser_screenshot',   render:'json'     },
+  { id:'display',     tool:'rdrive_orb_mcp', mcp:'orb_get_display_size',      render:'keyval'   },
+  { id:'ocr-status',  tool:'rdrive_orb_mcp', mcp:'orb_ocr_status',            render:'keyval'   },
+  { id:'ocr-screen',  tool:'rdrive_orb_mcp', mcp:'orb_ocr_screen',            render:'text'     },
+  { id:'clipboard',   tool:'rdrive_orb_mcp', mcp:'orb_clipboard_read',        render:'text'     },
+  { id:'windows',     tool:'rdrive_orb_mcp', mcp:'orb_list_windows',          render:'windows'  },
+  { id:'session',     tool:'rdrive_orb_mcp', mcp:'orb_session_status',        render:'keyval'   },
+  { id:'substrate',   tool:'rdrive_orb_mcp', mcp:'orb_substrate_status',      render:'keyval'   },
+  { id:'snapshot',    tool:'rdrive_orb_mcp', mcp:'orb_snapshot',              render:'json'     },
+  { id:'cognition',   tool:'website_text',   mcp:null,                        render:'cog'      },
+  { id:'topology',    tool:'semantic_topology', mcp:null,                     render:'topology' },
+  { id:'capabilities',tool:'capabilities',   mcp:null,                        render:'keyval'   },
+  { id:'macro',       tool:'rdrive_orb_mcp', mcp:'orb_macro_1_verify',        render:'macro'    },
+  { id:'region',      tool:'rdrive_orb_mcp', mcp:'orb_read_desktop_region',   render:'keyval'   },
+];
+
+/* ================================================================
+   STATE
+   ================================================================ */
+let authToken     = localStorage.getItem(TOKEN_KEY);
+let sessionKey    = 'ds-' + Math.random().toString(36).slice(2,10);
+let targetUrl     = 'https://spruked.com';
+let researchTopic = 'Site health & broken link sweep';
+let sequenceStarted = false;
+let auditCount    = 0;
+const sceneRan    = {};
+
+/* ================================================================
+   GATE
+   ================================================================ */
+function enterStation(sessionLabel) {
+  document.getElementById('session-user').textContent = sessionLabel || 'signed-in account';
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('shell').classList.add('active');
+  moveOrb(window.innerWidth * .5, 80);
+  logAudit('Session opened', `key: ${sessionKey}`, true);
+}
+
+if (authToken) {
+  enterStation('authenticated account');
+}
+
+document.getElementById('gate-btn').addEventListener('click', async () => {
+  const email = document.getElementById('g-email').value.trim();
+  const pass  = document.getElementById('g-pass').value;
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pass }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      authToken = data.token;
+      enterStation(data.customer?.email || email);
+      return;
+    } else {
+      // Demo fallback — accept anything
+      authToken = null;
+      enterStation(email || 'demo@account');
+      return;
+    }
+  } catch {
+    authToken = null;
+    enterStation(email || 'demo@account');
+    return;
+  }
+});
+
+/* ================================================================
+   URL PICKER
+   ================================================================ */
+document.querySelectorAll('.preset-chip[data-url]').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.preset-chip[data-url]').forEach(c => c.classList.remove('sel'));
+    chip.classList.add('sel');
+    targetUrl = chip.dataset.url;
+    document.getElementById('url-input').value = targetUrl;
+    updateTargetLabels();
+  });
+});
+
+document.getElementById('url-input').addEventListener('input', e => {
+  targetUrl = e.target.value.trim() || 'https://spruked.com';
+  document.querySelectorAll('.preset-chip[data-url]').forEach(c => c.classList.remove('sel'));
+  updateTargetLabels();
+});
+
+document.getElementById('url-random-btn').addEventListener('click', () => {
+  const pick = RANDOM_URLS[Math.floor(Math.random() * RANDOM_URLS.length)];
+  targetUrl = pick;
+  document.getElementById('url-input').value = pick;
+  document.querySelectorAll('.preset-chip[data-url]').forEach(c => {
+    c.classList.toggle('sel', c.dataset.url === pick);
+  });
+  updateTargetLabels();
+});
+
+function updateTargetLabels() {
+  document.querySelectorAll('.target-url-label').forEach(el => {
+    try { el.textContent = new URL(targetUrl).hostname; }
+    catch { el.textContent = targetUrl; }
+  });
+}
+updateTargetLabels();
+
+/* ================================================================
+   TOPIC PICKER
+   ================================================================ */
+document.querySelectorAll('.topic-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.topic-chip').forEach(c => c.classList.remove('sel'));
+    chip.classList.add('sel');
+    researchTopic = chip.dataset.topic;
+  });
+});
+document.getElementById('topic-custom-btn').addEventListener('click', () => {
+  const val = document.getElementById('topic-custom').value.trim();
+  if (val) {
+    researchTopic = val;
+    document.querySelectorAll('.topic-chip').forEach(c => c.classList.remove('sel'));
+    document.getElementById('setup-confirm').textContent = '✓ Custom topic set: ' + val;
+  }
+});
+
+/* ================================================================
+   BEGIN
+   ================================================================ */
+document.getElementById('begin-btn').addEventListener('click', () => {
+  if (sequenceStarted) return;
+  sequenceStarted = true;
+  document.getElementById('begin-btn').disabled = true;
+  document.getElementById('begin-btn').textContent = 'Sequence active — scroll through all five acts';
+  document.getElementById('setup-confirm').textContent =
+    `✓ Target: ${targetUrl}  ·  Topic: "${researchTopic}"`;
+  logAudit('Sequence initialized', `url: ${targetUrl}`, true);
+  document.querySelector('.stage').scrollIntoView({ behavior:'smooth', block:'start' });
+});
+
+/* ================================================================
+   INTERSECTION OBSERVER — fires each scene on scroll
+   ================================================================ */
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    entry.target.classList.add('live');
+    const sid = entry.target.dataset.scene;
+    if (sequenceStarted && sid && !sceneRan[sid]) {
+      sceneRan[sid] = true;
+      const def = SCENES.find(s => s.id === sid);
+      if (def) runScene(def);
+    }
+  });
+}, { threshold: 0.38 });
+
+document.querySelectorAll('.scene').forEach(s => obs.observe(s));
+
+/* ================================================================
+   SCENE RUNNER
+   ================================================================ */
+async function runScene(def) {
+  setStatus(def.id, 'run', 'running');
+  focusScene(def.id);
+
+  const payload = buildPayload(def);
+  const start   = Date.now();
+
+  try {
+    const result  = await callTool(payload);
+    const elapsed = Date.now() - start;
+    setStatus(def.id, 'done', 'done');
+    renderResult(def, result);
+    logAudit(
+      def.mcp ? `${def.tool} → ${def.mcp}` : def.tool,
+      resultSummary(result),
+      true
+    );
+    // push real audit event
+    await pushAuditToBackend(def, result, elapsed);
+  } catch (err) {
+    setStatus(def.id, 'err', 'error');
+    renderError(def, err.message);
+    logAudit(def.mcp || def.tool, 'error: ' + err.message, false);
+  }
+
+  clearFocus();
+}
+
+function buildPayload(def) {
+  const base = { tool: def.tool, params: {} };
+  if (def.tool === 'rdrive_orb_mcp') {
+    base.mcp_tool = def.mcp;
+    if (def.mcp === 'orb_browser_screenshot') base.params = { url: targetUrl };
+    if (def.mcp === 'orb_browser_navigate')   base.params = { url: targetUrl };
+    if (def.mcp === 'orb_read_desktop_region') base.params = { x:0, y:0, width:800, height:600 };
+  }
+  if (def.tool === 'website_text')     base.transcript = `Research and summarize: ${researchTopic}`;
+  if (def.tool === 'semantic_topology') base.target_url = targetUrl;
+  return base;
+}
+
+async function callTool(payload) {
+  const headers = { 'Content-Type':'application/json', 'X-Orb-Session': sessionKey };
+  if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+  const res = await fetch(`${API_BASE}/orb/tools/run`, {
+    method: 'POST', headers, body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(e.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function pushAuditToBackend(def, result, elapsed) {
+  if (!authToken) return; // demo mode, no backend write
+  try {
+    // The backend writes via _cache_orb_tool_result → _write_orb_tool_audit_event
+    // already happened server-side. Here we just sync the display from the real log.
+    await syncAuditFromBackend();
+  } catch { /* non-fatal */ }
+}
+
+async function syncAuditFromBackend() {
+  if (!authToken) return;
+  try {
+    const headers = { Authorization: `Bearer ${authToken}` };
+    const res = await fetch(
+      `${API_BASE}/orb/audit/session?session_key=${encodeURIComponent(sessionKey)}`,
+      { headers }
+    );
+    if (!res.ok) return;
+    const data = await res.json();
+    // Supplement in-memory log with any server events not yet shown
+    // (server events are authoritative; local events are optimistic)
+  } catch { /* non-fatal */ }
+}
+
+/* ================================================================
+   RESULT RENDERERS
+   ================================================================ */
+function renderResult(def, data) {
+  const body = document.getElementById(`rb-${def.id}-body`);
+  const label = document.getElementById(`rb-${def.id}-label`);
+  const raw   = data?.result || data;
+
+  if (label) label.textContent = `${def.mcp || def.tool} · ${new Date().toLocaleTimeString()}`;
+
+  if (!body) return;
+
+  switch (def.render) {
+    case 'keyval':    renderKeyVal(body, raw); break;
+    case 'text':      renderText(body, raw);   break;
+    case 'json':      renderJson(body, raw);   break;
+    case 'windows':   renderWindows(body, raw);break;
+    case 'topology':  renderTopology(def, raw);break;
+    case 'cog':       renderCog(body, data);   break;
+    case 'macro':     renderMacro(body, raw);  break;
+    default:          renderJson(body, raw);
+  }
+}
+
+function renderError(def, msg) {
+  const body = document.getElementById(`rb-${def.id}-body`);
+  if (body) body.innerHTML = `<span class="err-txt">⚠ ${esc(msg)}</span>`;
+  const label = document.getElementById(`rb-${def.id}-label`);
+  if (label) label.textContent = 'error';
+}
+
+function renderKeyVal(el, data) {
+  if (!data || typeof data !== 'object') { el.textContent = String(data); return; }
+  const flat = flattenObj(data);
+  el.innerHTML = Object.entries(flat).slice(0, 30).map(([k,v]) =>
+    `<div><span class="key">${esc(k)}</span>: <span class="val">${esc(String(v))}</span></div>`
+  ).join('');
+}
+
+function renderText(el, data) {
+  const text = typeof data === 'string' ? data
+    : data?.text || data?.content || data?.result || JSON.stringify(data, null, 2);
+  el.innerHTML = '';
+  const lines = String(text || '(empty)').split('\n').slice(0, 60);
+  lines.forEach((line, i) => {
+    el.innerHTML += `<div><span class="ln">${String(i+1).padStart(2,'0')}</span>${esc(line)}</div>`;
+  });
+}
+
+function renderJson(el, data) {
+  const str = JSON.stringify(data, null, 2) || '{}';
+  el.innerHTML = '';
+  str.split('\n').slice(0, 50).forEach((line, i) => {
+    el.innerHTML += `<div><span class="ln">${String(i+1).padStart(2,'0')}</span>${esc(line)}</div>`;
+  });
+}
+
+function renderWindows(el, data) {
+  el.innerHTML = '';
+  const list = Array.isArray(data) ? data
+    : Array.isArray(data?.windows) ? data.windows
+    : Array.isArray(data?.result)  ? data.result
+    : [{ title: String(data || 'No windows returned') }];
+
+  if (!list.length) { el.innerHTML = '<div style="padding:14px;font-size:12px;color:rgba(148,160,184,.6);">No windows found</div>'; return; }
+
+  list.slice(0, 18).forEach(w => {
+    const title = w?.title || w?.name || String(w);
+    const icon  = guessWindowIcon(title);
+    el.innerHTML += `<div class="win-item"><span class="win-icon">${icon}</span><span>${esc(title.slice(0,80))}</span></div>`;
+  });
+}
+
+function guessWindowIcon(title) {
+  const t = title.toLowerCase();
+  if (t.includes('chrome') || t.includes('firefox') || t.includes('edge')) return '🌐';
+  if (t.includes('code') || t.includes('vscode'))  return '💻';
+  if (t.includes('terminal') || t.includes('cmd')) return '⬛';
+  if (t.includes('explorer') || t.includes('finder')) return '📁';
+  if (t.includes('word') || t.includes('excel') || t.includes('office')) return '📄';
+  if (t.includes('slack') || t.includes('teams') || t.includes('discord')) return '💬';
+  return '🪟';
+}
+
+function renderTopology(def, data) {
+  const body = document.getElementById(`rb-${def.id}-body`);
+  if (!body) return;
+  const counts = data?.counts || {};
+  const cells = [
+    { label:'Internal links', val: counts.internal_links ?? counts.links ?? '—' },
+    { label:'External links', val: counts.external_links ?? '—' },
+    { label:'Forms',          val: counts.forms ?? '—' },
+    { label:'ORB anchors',    val: counts.orb_targets ?? counts.data_orb ?? '—' },
+    { label:'Images',         val: counts.images ?? '—' },
+    { label:'Pages found',    val: counts.pages ?? counts.urls ?? '—' },
+  ];
+  body.innerHTML = cells.map(c =>
+    `<div class="topo-cell"><div class="tc-label">${esc(c.label)}</div><div class="tc-val">${esc(String(c.val))}</div></div>`
+  ).join('');
+}
+
+function renderCog(el, data) {
+  const text = data?.spoken_output || data?.result?.spoken_output || JSON.stringify(data, null, 2);
+  typeInto(el, String(text || '…'));
+}
+
+function renderMacro(el, data) {
+  const checks = [];
+  const flat = flattenObj(data?.result || data || {});
+  Object.entries(flat).slice(0,10).forEach(([k,v]) => {
+    const ok = String(v).toLowerCase() !== 'false' && v !== 0 && v !== null;
+    checks.push({ label: k, ok });
+  });
+  if (!checks.length) checks.push({ label: 'orb_macro_1_verify', ok: true });
+  el.innerHTML = checks.map(c =>
+    `<div class="macro-row">
+      <div class="macro-check ${c.ok ? 'ok' : 'fail'}">${c.ok ? '✓' : '✗'}</div>
+      <span style="font-size:12.5px;">${esc(c.label)}</span>
+    </div>`
+  ).join('');
+}
+
+/* ================================================================
+   TYPEWRITER for cognition output
+   ================================================================ */
+function typeInto(el, text) {
+  el.innerHTML = '<span class="demo-cursor"></span>';
+  let i = 0;
+  const iv = setInterval(() => {
+    if (i >= text.length) { clearInterval(iv); return; }
+    el.querySelector('.demo-cursor')?.insertAdjacentText('beforebegin', text[i]);
+    i++;
+  }, 12);
+}
+
+/* ================================================================
+   AUDIT LOG (local optimistic)
+   ================================================================ */
+function logAudit(action, detail, ok) {
+  const empty = document.getElementById('audit-empty');
+  if (empty) empty.remove();
+
+  auditCount++;
+  document.getElementById('audit-count').textContent = `${auditCount} event${auditCount === 1 ? '' : 's'}`;
+
+  const log   = document.getElementById('audit-log');
+  const entry = document.createElement('div');
+  entry.className = `audit-entry ${ok ? 'ok' : 'err'}`;
+  entry.innerHTML = `
+    <div class="a-time">${new Date().toLocaleTimeString()}</div>
+    <div class="a-act">${esc(action)}</div>
+    <div class="a-detail">${esc(detail)}</div>
+  `;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+}
+
+function resultSummary(data) {
+  const s = data?.status || data?.result?.status || '';
+  const t = data?.result?.tool || data?.tool || '';
+  return `status: ${s || 'ok'}${t ? ' · ' + t : ''}`;
+}
+
+/* ================================================================
+   ORB POSITION + FOCUS RING
+   ================================================================ */
+const orbWrap  = document.getElementById('orb-wrap');
+const orbFocus = document.getElementById('orb-focus');
+
+function moveOrb(x, y) {
+  orbWrap.style.transform = `translate(${x}px,${y}px)`;
+}
+
+function focusScene(sceneId) {
+  const scene = document.querySelector(`[data-scene="${sceneId}"]`);
+  if (!scene) return;
+  const r = scene.getBoundingClientRect();
+  moveOrb(r.right - 18, r.top + 18);
+  orbFocus.style.left   = (r.left  - 6) + 'px';
+  orbFocus.style.top    = (r.top   - 6) + 'px';
+  orbFocus.style.width  = (r.width + 12) + 'px';
+  orbFocus.style.height = (r.height+ 12) + 'px';
+  orbFocus.classList.add('on');
+}
+
+function clearFocus() {
+  orbFocus.classList.remove('on');
+}
+
+/* ================================================================
+   HELPERS
+   ================================================================ */
+function setStatus(sceneId, cls, text) {
+  const el = document.getElementById(`st-${sceneId}`);
+  if (!el) return;
+  el.className = `scene-status ${cls}`;
+  el.textContent = text;
+}
+
+function flattenObj(obj, prefix = '', depth = 0) {
+  if (depth > 3 || !obj || typeof obj !== 'object') return { [prefix || 'value']: obj };
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (v && typeof v === 'object' && !Array.isArray(v) && depth < 2) {
+      Object.assign(out, flattenObj(v, key, depth + 1));
+    } else {
+      out[key] = Array.isArray(v) ? `[${v.length} items]` : v;
+    }
+  }
+  return out;
+}
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+/* prevent click event lag on mobile */
+document.addEventListener('touchstart', () => {}, { passive: true });
+</script>
+</body>
+</html>

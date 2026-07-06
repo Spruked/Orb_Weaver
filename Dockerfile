@@ -11,11 +11,14 @@ ENV REACT_APP_API_URL=${REACT_APP_API_URL}
 RUN npm run build
 
 
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV DATABASE_URL=sqlite:///./data/orb_weaver.db
+ENV LOCAL_LLM_URL=http://host.docker.internal:11434/api/generate
+ENV LOCAL_LLM_MODEL=qwen2.5:3b
+ENV LOCAL_LLM_TIMEOUT_SECONDS=60
 ENV ORB_WEAVER_SUBSTRATE_ROOT=/app/substrate
 ENV PUBLIC_BASE_URL=http://127.0.0.1:16510
 
@@ -58,21 +61,27 @@ ENV CHROME_DEVTOOLS_CLI=chrome-devtools
 ENV CHROME_DEVTOOLS_ENABLED=true
 ENV CHROME_DEVTOOLS_PUBLIC_ENABLED=false
 ENV CHROME_DEVTOOLS_START_ARGS='["--no-sandbox","--disable-dev-shm-usage"]'
+ENV ORB_DESKTOP_MCP_ENABLED=true
+ENV ORB_DESKTOP_MCP_ROOT=/app/rdrive_mpc_server
+ENV ORB_DESKTOP_MCP_PYTHON=python3.12
+ENV ORB_DESKTOP_MCP_TIMEOUT_SECONDS=20
 ENV TESSERACT_CMD=/usr/bin/tesseract
 ENV ORB_ASSISTANT_ROOT=/app/Orb_Assistant
 ENV FASTER_WHISPER_STT_URL=http://host.docker.internal:9000/stt
 ENV ORB_TTS_CACHE_DIR=/app/backend/data/tts_cache
-ENV ORB_TTS_TIMEOUT_SECONDS=120
-ENV ORB_TTS_QWEN_URL=http://host.docker.internal:9880/speak
+ENV ORB_TTS_TIMEOUT_SECONDS=45
+ENV ORB_TTS_QWEN_URL=
 ENV ORB_TTS_QWEN_MODEL=qwen-tts
-ENV ORB_TTS_QWEN_VOICE=Cherry
+ENV ORB_TTS_QWEN_VOICE=OrbWeaver
+ENV ORB_TTS_QWEN_LANGUAGE=English
+ENV ORB_TTS_QWEN_INSTRUCT="A warm, confident adult male assistant voice. Clear, calm, lightly theatrical, friendly, and concise."
 ENV ORB_TTS_QWEN_FORMAT=wav
-ENV ORB_TTS_QWEN_PAYLOAD_MODE=generic
-ENV ORB_TTS_KOKORO_URL=http://host.docker.internal:8880/v1/audio/speech
+ENV ORB_TTS_QWEN_PAYLOAD_MODE=qwen-custom
+ENV ORB_TTS_KOKORO_URL=http://host.docker.internal:8880/speak
 ENV ORB_TTS_KOKORO_MODEL=kokoro
-ENV ORB_TTS_KOKORO_VOICE=af_heart
+ENV ORB_TTS_KOKORO_VOICE=am_echo
 ENV ORB_TTS_KOKORO_FORMAT=wav
-ENV ORB_TTS_KOKORO_PAYLOAD_MODE=openai
+ENV ORB_TTS_KOKORO_PAYLOAD_MODE=kokoro-direct
 
 WORKDIR /app/backend
 

@@ -3,6 +3,9 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
+import Demo from './pages/Demo';
+import DiagnosticsPlaceholder from './pages/DiagnosticsPlaceholder';
+import WebWeave from './pages/WebWeave';
 import Projects from './pages/Projects';
 import CrawlJobs from './pages/CrawlJobs';
 import CrawlJob from './pages/CrawlJob';
@@ -17,6 +20,7 @@ import LegalPage from './pages/LegalPage';
 import RouteScrollReset from './components/RouteScrollReset';
 import LandingPage from './landing/LandingPage';
 import PublicPreflight from './pages/PublicPreflight';
+import PublicStaticPage from './pages/PublicStaticPage';
 import MarketplaceRoutes from './marketplace/MarketplaceRoutes';
 import { api, authStore, Customer } from './services/api';
 import './index.css';
@@ -63,8 +67,13 @@ function App() {
   };
 
   const handleAuthenticated = (nextCustomer: Customer) => {
+    const returnPath = window.location.pathname;
     setCustomer(nextCustomer);
-    window.history.replaceState(null, '', '/dashboard');
+    window.history.replaceState(
+      null,
+      '',
+      returnPath === '/demo' || returnPath === '/diagnostics' ? returnPath : '/dashboard'
+    );
   };
 
   if (isCheckingAuth) {
@@ -82,7 +91,7 @@ function App() {
     </QueryClientProvider>
   );
 
-  if (publicPath === '/') {
+  if (!customer && publicPath === '/') {
     return (
       <QueryClientProvider client={queryClient}>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -102,8 +111,17 @@ function App() {
   if (publicPath === '/preflight') {
     return renderPublicPage(<PublicPreflight />);
   }
+  if (publicPath === '/circus') {
+    return renderPublicPage(<PublicStaticPage title="Orb Weaver Circus" src="/circus-page.html" />);
+  }
   if (publicPath === '/marketplace' || publicPath.startsWith('/marketplace/')) {
     return renderPublicPage(<MarketplaceRoutes />);
+  }
+  if (!customer && publicPath === '/diagnostics') {
+    return renderPublicPage(<AuthPage onAuthenticated={handleAuthenticated} />);
+  }
+  if (!customer && publicPath === '/demo') {
+    return renderPublicPage(<AuthPage onAuthenticated={handleAuthenticated} />);
   }
   if (!customer && publicPath === '/login') {
     return renderPublicPage(<AuthPage onAuthenticated={handleAuthenticated} />);
@@ -121,6 +139,9 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard customer={customer} />} />
             <Route path="/dashboard" element={<Dashboard customer={customer} />} />
+            <Route path="/demo" element={<Demo customer={customer} />} />
+            <Route path="/diagnostics" element={<DiagnosticsPlaceholder customer={customer} />} />
+            <Route path="/web-weave" element={<WebWeave />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/crawl" element={<CrawlJobs />} />
             <Route path="/crawl/:jobId" element={<CrawlJob />} />

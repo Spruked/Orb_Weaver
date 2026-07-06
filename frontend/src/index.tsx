@@ -10,7 +10,7 @@ root.render(
   <React.StrictMode>
     <>
       <App />
-      <AutonomousOrb size={214} />
+      <AutonomousOrb size={190} />
     </>
   </React.StrictMode>
 );

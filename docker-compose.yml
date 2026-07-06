@@ -1,5 +1,6 @@
 services:
   orb-weaver:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile
@@ -9,6 +10,13 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./data/orb_weaver.db
       - REDIS_URL=redis://redis:6379/0
+      - LOCAL_LLM_URL=${LOCAL_LLM_URL:-http://host.docker.internal:11434/api/generate}
+      - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-qwen2.5:1.5b}
+      - LOCAL_LLM_TIMEOUT_SECONDS=${LOCAL_LLM_TIMEOUT_SECONDS:-60}
+      - LOCAL_LLM_KEEP_ALIVE=${LOCAL_LLM_KEEP_ALIVE:-30m}
+      - LOCAL_LLM_NUM_CTX=${LOCAL_LLM_NUM_CTX:-512}
+      - LOCAL_LLM_NUM_PREDICT=${LOCAL_LLM_NUM_PREDICT:-32}
+      - LOCAL_LLM_TEMPERATURE=${LOCAL_LLM_TEMPERATURE:-0.35}
       - ORB_WEAVER_SUBSTRATE_ROOT=/app/substrate
       - PUBLIC_BASE_URL=http://127.0.0.1:16510
       - CHROME_PATH=/usr/bin/chromium
@@ -17,33 +25,43 @@ services:
       - CHROME_DEVTOOLS_ENABLED=true
       - CHROME_DEVTOOLS_PUBLIC_ENABLED=false
       - CHROME_DEVTOOLS_START_ARGS=["--no-sandbox","--disable-dev-shm-usage"]
+      - ORB_DESKTOP_MCP_ENABLED=${ORB_DESKTOP_MCP_ENABLED:-true}
+      - ORB_DESKTOP_MCP_ROOT=/app/rdrive_mpc_server
+      - ORB_DESKTOP_MCP_PYTHON=python3.12
+      - ORB_DESKTOP_MCP_TIMEOUT_SECONDS=${ORB_DESKTOP_MCP_TIMEOUT_SECONDS:-20}
+      - ORB_DESKTOP_MCP_URL=${ORB_DESKTOP_MCP_URL:-http://host.docker.internal:8765}
+      - ORB_DESKTOP_MCP_TOKEN=${ORB_DESKTOP_MCP_TOKEN:-}
       - TESSERACT_CMD=/usr/bin/tesseract
       - ORB_ASSISTANT_ROOT=/app/Orb_Assistant
       - FASTER_WHISPER_STT_URL=http://host.docker.internal:9000/stt
       - ORB_TTS_CACHE_DIR=/app/backend/data/tts_cache
-      - ORB_TTS_TIMEOUT_SECONDS=${ORB_TTS_TIMEOUT_SECONDS:-120}
-      - ORB_TTS_QWEN_URL=${ORB_TTS_QWEN_URL:-http://host.docker.internal:9880/speak}
+      - ORB_TTS_TIMEOUT_SECONDS=${ORB_TTS_TIMEOUT_SECONDS:-45}
+      - ORB_TTS_QWEN_URL=${ORB_TTS_QWEN_URL:-}
       - ORB_TTS_QWEN_API_KEY=${ORB_TTS_QWEN_API_KEY:-}
       - ORB_TTS_QWEN_MODEL=${ORB_TTS_QWEN_MODEL:-qwen-tts}
-      - ORB_TTS_QWEN_VOICE=${ORB_TTS_QWEN_VOICE:-Cherry}
+      - ORB_TTS_QWEN_VOICE=${ORB_TTS_QWEN_VOICE:-OrbWeaver}
+      - ORB_TTS_QWEN_LANGUAGE=${ORB_TTS_QWEN_LANGUAGE:-English}
+      - ORB_TTS_QWEN_INSTRUCT=${ORB_TTS_QWEN_INSTRUCT:-A warm, confident adult male assistant voice. Clear, calm, lightly theatrical, friendly, and concise.}
       - ORB_TTS_QWEN_FORMAT=${ORB_TTS_QWEN_FORMAT:-wav}
-      - ORB_TTS_QWEN_PAYLOAD_MODE=${ORB_TTS_QWEN_PAYLOAD_MODE:-generic}
-      - ORB_TTS_KOKORO_URL=${ORB_TTS_KOKORO_URL:-http://host.docker.internal:8880/v1/audio/speech}
+      - ORB_TTS_QWEN_PAYLOAD_MODE=${ORB_TTS_QWEN_PAYLOAD_MODE:-qwen-custom}
+      - ORB_TTS_KOKORO_URL=${ORB_TTS_KOKORO_URL:-http://host.docker.internal:8880/speak}
       - ORB_TTS_KOKORO_API_KEY=${ORB_TTS_KOKORO_API_KEY:-}
       - ORB_TTS_KOKORO_MODEL=${ORB_TTS_KOKORO_MODEL:-kokoro}
-      - ORB_TTS_KOKORO_VOICE=${ORB_TTS_KOKORO_VOICE:-af_heart}
+      - ORB_TTS_KOKORO_VOICE=${ORB_TTS_KOKORO_VOICE:-am_echo}
       - ORB_TTS_KOKORO_FORMAT=${ORB_TTS_KOKORO_FORMAT:-wav}
-      - ORB_TTS_KOKORO_PAYLOAD_MODE=${ORB_TTS_KOKORO_PAYLOAD_MODE:-openai}
+      - ORB_TTS_KOKORO_PAYLOAD_MODE=${ORB_TTS_KOKORO_PAYLOAD_MODE:-kokoro-direct}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./backend/data:/app/backend/data
       - ./browser_reviews:/app/backend/browser_reviews
       - ./substrate:/app/substrate
+      - /mnt/r/mpc_server:/app/rdrive_mpc_server:ro
     depends_on:
       - redis
 
   redis:
+    restart: unless-stopped
     image: redis:7-alpine
     ports:
       - "6380:6379"

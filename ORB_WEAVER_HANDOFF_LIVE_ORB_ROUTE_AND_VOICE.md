@@ -168,6 +168,8 @@ frontend/src/services/api.ts
 backend/main.py
 ```
 
+Update after the July 6, 2026 voice repair: the verified public Website ORB voice runtime is `frontend/src/landing/AutonomousOrb.tsx`. Treat `frontend/src/orb/WebsiteFloatingOrb.tsx` as legacy/non-live unless a served bundle initiator proves it is mounted. The canonical replication report is `docs/ORB_VOICE_RUNTIME_REPLICATION_REPORT.md`.
+
 Known active showcase mount:
 
 ```text
@@ -175,13 +177,13 @@ frontend/src/index.tsx
 -> <AutonomousOrb size={214} />
 ```
 
-Known reusable/deployable website ORB surface:
+Previously suspected reusable/deployable website ORB surface:
 
 ```text
 frontend/src/orb/WebsiteFloatingOrb.tsx
 ```
 
-This component has its own `speakOutput()` using browser `speechSynthesis`.
+This component has its own historical voice code and must not be treated as the live runtime without fresh browser initiator evidence.
 
 Known landing showcase ORB path:
 

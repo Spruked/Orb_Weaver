@@ -4,6 +4,13 @@ import './WebsiteFloatingOrb.css';
 
 type OrbMode = 'idle' | 'avoiding' | 'assisting' | 'learning';
 
+const LATENCY_FILLER_PATHS = [
+  '/orb/voice/latency-fillers/ack.wav',
+  '/orb/voice/latency-fillers/thinking.wav',
+  '/orb/voice/latency-fillers/working.wav',
+];
+const VOICE_UNAVAILABLE_MESSAGE = 'Voice unavailable';
+
 const WebsiteFloatingOrb: React.FC = () => {
   const [position, setPosition] = useState({ x: window.innerWidth - 180, y: 190 });
   const [targetPos, setTargetPos] = useState({ x: window.innerWidth - 180, y: 190 });
@@ -23,6 +30,9 @@ const WebsiteFloatingOrb: React.FC = () => {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const speechAudioRef = useRef<HTMLAudioElement | null>(null);
+  const latencyAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const speechSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const bubbleTimerRef = useRef<number | null>(null);
   const lastActivityRef = useRef(Date.now());
 
@@ -40,13 +50,101 @@ const WebsiteFloatingOrb: React.FC = () => {
 
   const orbColor = mood >= 0.8 ? 'rgba(45, 212, 255, 0.9)' : mood >= 0.6 ? 'rgba(250, 204, 21, 0.9)' : 'rgba(248, 113, 113, 0.9)';
 
+  const playLatencyFiller = useCallback(() => {
+    const src = LATENCY_FILLER_PATHS[Math.floor(Math.random() * LATENCY_FILLER_PATHS.length)];
+    if (latencyAudioRef.current) {
+      latencyAudioRef.current.pause();
+      latencyAudioRef.current = null;
+    }
+
+    const audio = new Audio(src);
+    audio.volume = 0.72;
+    latencyAudioRef.current = audio;
+    audio.onended = () => {
+      if (latencyAudioRef.current === audio) {
+        latencyAudioRef.current = null;
+      }
+    };
+    audio.onerror = () => {
+      if (latencyAudioRef.current === audio) {
+        latencyAudioRef.current = null;
+      }
+    };
+    void audio.play().catch(() => {
+      if (latencyAudioRef.current === audio) {
+        latencyAudioRef.current = null;
+      }
+    });
+  }, []);
+
+  const unlockAudio = useCallback(() => {
+    const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (AudioContextCtor && !audioContextRef.current) {
+      audioContextRef.current = new AudioContextCtor();
+    }
+    void audioContextRef.current?.resume?.();
+
+    if (!speechAudioRef.current) {
+      const audio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=');
+      audio.muted = true;
+      speechAudioRef.current = audio;
+      void audio.play().catch(() => undefined);
+    }
+  }, []);
+
+  const playDecodedSpeech = useCallback(async (audioUrl: string) => {
+    const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextCtor) {
+      throw new Error('AudioContext unavailable');
+    }
+
+    const context: AudioContext = audioContextRef.current || new AudioContextCtor();
+    audioContextRef.current = context;
+    await context.resume?.();
+
+    if (speechSourceRef.current) {
+      try {
+        speechSourceRef.current.stop();
+      } catch {
+        // Source may already have ended.
+      }
+      speechSourceRef.current = null;
+    }
+
+    const response = await fetch(api.orbMediaUrl(audioUrl), { cache: 'force-cache' });
+    if (!response.ok) {
+      throw new Error('Speech audio unavailable');
+    }
+
+    const buffer = await context.decodeAudioData(await response.arrayBuffer());
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    gain.gain.value = 1;
+    source.connect(gain);
+    gain.connect(context.destination);
+    speechSourceRef.current = source;
+
+    await new Promise<void>((resolve, reject) => {
+      source.onended = () => {
+        if (speechSourceRef.current === source) {
+          speechSourceRef.current = null;
+        }
+        resolve();
+      };
+      try {
+        source.start();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }, []);
+
   const speakOutput = useCallback(async (text: string, audioUrl?: string | null, provider?: string | null) => {
     setSpokenOutput(text);
     setIsSpeaking(true);
     setMode('assisting');
-    if (provider) {
-      setStatusLine(`Speaking with ${provider}`);
-    }
+    setStatusLine(text);
 
     if (bubbleTimerRef.current) {
       window.clearTimeout(bubbleTimerRef.current);
@@ -58,16 +156,22 @@ const WebsiteFloatingOrb: React.FC = () => {
 
     if (speechAudioRef.current) {
       speechAudioRef.current.pause();
-      speechAudioRef.current = null;
+    }
+    if (latencyAudioRef.current) {
+      latencyAudioRef.current.pause();
+      latencyAudioRef.current = null;
     }
 
     if (!audioUrl) {
-      setStatusLine('TTS unavailable');
+      setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
       return;
     }
 
     try {
-      const audio = new Audio(api.orbMediaUrl(audioUrl));
+      const audio = speechAudioRef.current || new Audio();
+      audio.pause();
+      audio.muted = false;
+      audio.src = api.orbMediaUrl(audioUrl);
       speechAudioRef.current = audio;
       audio.onended = () => {
         if (speechAudioRef.current === audio) {
@@ -79,27 +183,33 @@ const WebsiteFloatingOrb: React.FC = () => {
         if (speechAudioRef.current === audio) {
           speechAudioRef.current = null;
         }
-        setStatusLine('TTS playback failed');
+        setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
         setIsSpeaking(false);
       };
       await audio.play();
     } catch {
-      setStatusLine('TTS playback blocked');
-      setIsSpeaking(false);
+      try {
+        await playDecodedSpeech(audioUrl);
+        setIsSpeaking(false);
+      } catch {
+        setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
+        setIsSpeaking(false);
+      }
     }
-  }, []);
+  }, [playDecodedSpeech]);
 
   const speakRecovery = useCallback(async (text: string) => {
     try {
+      playLatencyFiller();
       const result = await api.websiteOrbTts(text);
       await speakOutput(text, result.tts_audio_url, result.tts_provider);
     } catch {
       setSpokenOutput(text);
-      setStatusLine('TTS unavailable');
+      setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
       setIsSpeaking(false);
       setMode('idle');
     }
-  }, [speakOutput]);
+  }, [playLatencyFiller, speakOutput]);
 
   const stopVoiceInput = useCallback(() => {
     if (recorderRef.current && recorderRef.current.state !== 'inactive') {
@@ -109,6 +219,7 @@ const WebsiteFloatingOrb: React.FC = () => {
 
   const startVoiceInput = useCallback(async () => {
     lastActivityRef.current = Date.now();
+    unlockAudio();
 
     if (isListening) {
       stopVoiceInput();
@@ -159,8 +270,8 @@ const WebsiteFloatingOrb: React.FC = () => {
               timestamp: Date.now(),
             }));
           }
-          if (result.tts_error) {
-            setStatusLine(`TTS failed: ${result.tts_error}`);
+          if (result.tts_error && !result.tts_audio_url) {
+            setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
           }
           await speakOutput(result.spoken_output, result.tts_audio_url, result.tts_provider);
         } catch (error) {
@@ -182,7 +293,7 @@ const WebsiteFloatingOrb: React.FC = () => {
       setStatusLine('Mic permission needed');
       void speakRecovery(error instanceof Error ? error.message : 'Microphone permission is needed for voice input.');
     }
-  }, [isListening, speakOutput, speakRecovery, stopVoiceInput]);
+  }, [isListening, speakOutput, speakRecovery, stopVoiceInput, unlockAudio]);
 
   useEffect(() => {
     let reconnectTimer = 0;
@@ -262,6 +373,14 @@ const WebsiteFloatingOrb: React.FC = () => {
       }
       if (speechAudioRef.current) {
         speechAudioRef.current.pause();
+      }
+      if (speechSourceRef.current) {
+        try {
+          speechSourceRef.current.stop();
+        } catch {
+          // Source may already have ended.
+        }
+        speechSourceRef.current = null;
       }
     };
   }, [speakRecovery, stopVoiceInput]);

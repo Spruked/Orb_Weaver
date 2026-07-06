@@ -1,4 +1,5 @@
 import React from 'react';
+import PublicHeader from '../components/PublicHeader';
 
 interface LegalPageProps {
   type: 'privacy' | 'terms';
@@ -10,11 +11,10 @@ const LegalPage: React.FC<LegalPageProps> = ({ type }) => {
   const isPrivacy = type === 'privacy';
 
   return (
-    <div className="min-h-screen bg-[#F2FBFD] px-4 py-10 text-slate-900 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#F2FBFD] text-slate-900">
+      <PublicHeader theme="light" />
+      <div className="px-4 py-10 sm:px-6 lg:px-8">
       <main className="mx-auto max-w-3xl rounded-lg border border-slate-200 bg-white p-7 shadow-sm sm:p-9">
-        <a href="/" className={linkClass}>
-          Back to Orb Weaver
-        </a>
         <h1 className="mt-5 text-3xl font-bold text-slate-950">
           {isPrivacy ? 'Privacy Policy' : 'Terms of Service'}
         </h1>
@@ -79,6 +79,7 @@ const LegalPage: React.FC<LegalPageProps> = ({ type }) => {
           </nav>
         </footer>
       </main>
+      </div>
     </div>
   );
 };
