@@ -33,6 +33,7 @@ CANONICAL_DIRS = (
     VAULT_ROOT / "indexes",
     VAULT_ROOT / "manifests",
     VAULT_ROOT / "schemas",
+    VAULT_ROOT / "integrations" / "cali_crm",
     VAULT_ROOT / "runtime" / "tts_cache",
     VAULT_ROOT / "runtime" / "browser_reviews",
     VAULT_ROOT / "runtime" / "state",
@@ -165,20 +166,17 @@ def migrate_tree(
         )
 
 
-def malformed_client_roots() -> list[Path]:
-    backend = REPO_ROOT / "backend"
-    if not backend.exists():
-        return []
-
+def malformed_roots(named: str) -> list[Path]:
+    """Find Linux directories created from Windows-style R-drive settings."""
     roots: list[Path] = []
-    for candidate in backend.rglob("clients"):
+    for candidate in REPO_ROOT.rglob(named):
         if not candidate.is_dir() or candidate.is_symlink():
             continue
-        relative_text = str(candidate.relative_to(backend))
+        relative_text = str(candidate.relative_to(REPO_ROOT))
         if (
             "R_Drive_Substrate" in relative_text
-            or relative_text.startswith("R:")
-            or relative_text.startswith("R_")
+            or "R:\\" in relative_text
+            or "/R:/" in f"/{relative_text}/"
         ):
             roots.append(candidate)
     return sorted(set(roots))
@@ -230,10 +228,8 @@ def install_symlink(
             return
 
     legacy_path.parent.mkdir(parents=True, exist_ok=True)
-    canonical_path.parent.mkdir(parents=True, exist_ok=True)
-    if canonical_path.suffix == "":
-        canonical_path.mkdir(parents=True, exist_ok=True)
-    legacy_path.symlink_to(canonical_path, target_is_directory=canonical_path.is_dir())
+    canonical_path.mkdir(parents=True, exist_ok=True)
+    legacy_path.symlink_to(canonical_path, target_is_directory=True)
     operations.append(Operation(str(legacy_path), str(canonical_path), "installed-symlink"))
 
 
@@ -242,7 +238,7 @@ def migrate_known_storage(
     apply: bool,
     finalize: bool,
     operations: list[Operation],
-) -> list[Path]:
+) -> tuple[list[Path], list[Path]]:
     backend_data = REPO_ROOT / "backend" / "data"
 
     for database_name in ("orb_weaver.db", "orb_weaver_check.db"):
@@ -281,12 +277,12 @@ def migrate_known_storage(
         operations=operations,
     )
 
-    malformed_roots = malformed_client_roots()
-    for index, source_root in enumerate(malformed_roots, start=1):
+    malformed_client_roots = malformed_roots("clients")
+    for index, source_root in enumerate(malformed_client_roots, start=1):
         migrate_tree(
             source_root,
             VAULT_ROOT / "clients",
-            f"malformed-backend-clients-{index}",
+            f"malformed-client-root-{index}",
             apply=apply,
             finalize=finalize,
             operations=operations,
@@ -294,12 +290,20 @@ def migrate_known_storage(
 
     for source_root, label in (
         (
+            REPO_ROOT / "backend" / "vault_system" / "posteriori",
+            "backend-posteriori",
+        ),
+        (
             REPO_ROOT / "Orb_Assistant" / "vault_system" / "posteriori",
             "orb-assistant-posteriori",
         ),
         (
             REPO_ROOT / "Orb_Assistant" / "src" / "vault_system" / "posteriori",
             "orb-assistant-src-posteriori",
+        ),
+        (
+            REPO_ROOT / "Orb_Assistant" / "electron" / "src" / "vault_system" / "posteriori",
+            "orb-assistant-electron-posteriori",
         ),
     ):
         migrate_tree(
@@ -337,11 +341,23 @@ def migrate_known_storage(
             operations=operations,
         )
 
-    return malformed_roots
+    malformed_crm_roots = malformed_roots("cali_crm")
+    for index, source_root in enumerate(malformed_crm_roots, start=1):
+        migrate_tree(
+            source_root,
+            VAULT_ROOT / "integrations" / "cali_crm",
+            f"malformed-cali-crm-root-{index}",
+            apply=apply,
+            finalize=finalize,
+            operations=operations,
+        )
+
+    return malformed_client_roots, malformed_crm_roots
 
 
 def install_compatibility_links(
-    malformed_roots: list[Path],
+    malformed_client_roots: list[Path],
+    malformed_crm_roots: list[Path],
     operations: list[Operation],
 ) -> None:
     backend_data = REPO_ROOT / "backend" / "data"
@@ -350,11 +366,19 @@ def install_compatibility_links(
         (REPO_ROOT / "data" / "tts_cache", VAULT_ROOT / "runtime" / "tts_cache"),
         (REPO_ROOT / "substrate" / "clients", VAULT_ROOT / "clients"),
         (
+            REPO_ROOT / "backend" / "vault_system" / "posteriori",
+            VAULT_ROOT / "posteriori",
+        ),
+        (
             REPO_ROOT / "Orb_Assistant" / "vault_system" / "posteriori",
             VAULT_ROOT / "posteriori",
         ),
         (
             REPO_ROOT / "Orb_Assistant" / "src" / "vault_system" / "posteriori",
+            VAULT_ROOT / "posteriori",
+        ),
+        (
+            REPO_ROOT / "Orb_Assistant" / "electron" / "src" / "vault_system" / "posteriori",
             VAULT_ROOT / "posteriori",
         ),
         (REPO_ROOT / "backend" / "report_compiler", VAULT_ROOT / "reports"),
@@ -368,15 +392,39 @@ def install_compatibility_links(
             VAULT_ROOT / "runtime" / "browser_reviews",
         ),
     ]
-    links.extend((root, VAULT_ROOT / "clients") for root in malformed_roots)
+    links.extend((root, VAULT_ROOT / "clients") for root in malformed_client_roots)
+    links.extend(
+        (root, VAULT_ROOT / "integrations" / "cali_crm")
+        for root in malformed_crm_roots
+    )
 
     for legacy_path, canonical_path in links:
         install_symlink(legacy_path, canonical_path, operations)
 
     for database_name in ("orb_weaver.db", "orb_weaver_check.db"):
         canonical_database = VAULT_ROOT / "databases" / database_name
-        if canonical_database.exists():
-            install_symlink(backend_data / database_name, canonical_database, operations)
+        legacy_database = backend_data / database_name
+        if not canonical_database.exists():
+            continue
+        if legacy_database.is_symlink():
+            if legacy_database.resolve() == canonical_database.resolve():
+                continue
+            legacy_database.unlink()
+        if legacy_database.exists():
+            operations.append(
+                Operation(
+                    str(legacy_database),
+                    str(canonical_database),
+                    "database-link-blocked",
+                    "Legacy database still contains unverified data.",
+                )
+            )
+            continue
+        legacy_database.parent.mkdir(parents=True, exist_ok=True)
+        legacy_database.symlink_to(canonical_database)
+        operations.append(
+            Operation(str(legacy_database), str(canonical_database), "installed-symlink")
+        )
 
 
 def write_manifest(operations: list[Operation], mode: str) -> Path | None:
@@ -420,14 +468,18 @@ def main() -> int:
 
     ensure_layout(apply)
     operations: list[Operation] = []
-    malformed_roots = migrate_known_storage(
+    malformed_client_roots, malformed_crm_roots = migrate_known_storage(
         apply=apply,
         finalize=finalize,
         operations=operations,
     )
 
     if finalize:
-        install_compatibility_links(malformed_roots, operations)
+        install_compatibility_links(
+            malformed_client_roots,
+            malformed_crm_roots,
+            operations,
+        )
 
     manifest = write_manifest(operations, mode)
 
