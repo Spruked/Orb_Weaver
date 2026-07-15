@@ -1,8 +1,85 @@
 # Orb Weaver Development Log
 
-Purpose: preserve implementation context, decisions, verification results, and next steps between Codex sessions.
+Purpose: preserve implementation context, decisions, verification results, and next steps between development sessions.
 
 Update this file after meaningful code, configuration, runtime, testing, or doctrine changes. Keep entries concise and newest-first. Never record credentials or secrets.
+
+---
+
+## 2026-07-15 — Canonical Root Vault and Website Voice Lifecycle Repair
+
+### Repository checkpoint
+
+* Active development state was committed and pushed to `main` as `8802fb8` before storage consolidation began.
+* Orb Weaver remains in active development and is not in release preparation.
+* Development PDFs, reference records, runtime notes, scan records, and architecture documents remain intentional project material.
+
+### Voice repair verified in development
+
+* The root-mounted Website ORB remains `frontend/src/landing/AutonomousOrb.tsx`.
+* The movement effect previously owned voice cleanup and aborted `/api/orb/website-voice` whenever `voiceState` changed.
+* Voice cancellation was removed from movement-effect cleanup and placed in an unmount-only effect.
+* Frontend production compilation passed.
+* Frontend development server on `http://localhost:16511` compiled successfully.
+* Website voice returned a spoken response on the development port. Some latency remains but the aborted-request regression is repaired.
+* Docker and the public site were intentionally not rebuilt from this development change.
+
+### Current Website ORB defects
+
+* Weaver can enter listening, thinking, and speaking states again on the development port.
+* A request to open the Circus page did not perform a verified browser navigation action.
+* Weaver produced an unsupported generic description of the Circus page instead of answering only from the compiled Site World.
+* The fresh Orb Weaver self-crawl and pointer map need to be loaded from canonical client storage and injected into Weaver.
+* The Circus page is rejected product content and must be removed from routes, navigation, compiled Site World, and pointer data.
+
+### Canonical storage doctrine
+
+* The repository-root `vault_system/` is the only storage authority for Orb Weaver and the standing standard for future repositories.
+* Subsystems may own source code, but they may not maintain independent databases, caches, client records, scans, crawls, Site Worlds, pointer maps, reports, posteriori memory, indexes, manifests, logs, or runtime state.
+* Canonical client records live under `vault_system/clients/<domain>/`.
+* Canonical SQLite databases live under `vault_system/databases/`.
+* Canonical learned memory lives under `vault_system/posteriori/`.
+* Canonical generated speech lives under `vault_system/runtime/tts_cache/`.
+* Canonical browser-review output lives under `vault_system/runtime/browser_reviews/`.
+
+### Storage consolidation implemented on branch
+
+* Added `backend/app/core/storage.py` as the path authority.
+* Added `ORB_WEAVER_VAULT_ROOT` and normalized legacy Windows paths so Linux cannot create folders such as `backend/R:\R_Drive_Substrate/...`.
+* Updated Docker to mount only `./vault_system:/app/vault_system` for Orb Weaver storage.
+* Updated database, TTS-cache, browser-review, and legacy substrate settings to resolve through the root vault.
+* Promoted the real `VaultManager` to `vault_system/manager.py`.
+* Left `Orb_Assistant/vault_system/manager.py` only as a compatibility import; it no longer owns storage.
+* Moved the tracked a-priori seed to `vault_system/apriori/apriori_core.json` and removed duplicate tracked copies.
+* Added `scripts/migrate_to_canonical_vault.py` with dry-run, apply, and finalize modes.
+* Migration preserves conflicting records under `vault_system/backups/migration_conflicts/`, hash-verifies copies, writes a manifest, and installs compatibility symlinks only after verified finalization.
+* Docker build context excludes live client records, databases, posteriori memory, reports, indexes, manifests, caches, and backups.
+
+### Migration sources covered
+
+* `backend/data/orb_weaver.db`
+* `backend/data/orb_weaver_check.db`
+* `backend/data/tts_cache`
+* `data/tts_cache`
+* `Orb_Assistant/audio_cache`
+* `substrate/clients`
+* malformed `backend/R:\R_Drive_Substrate/.../clients` trees
+* `Orb_Assistant/vault_system/posteriori`
+* `Orb_Assistant/src/vault_system/posteriori`
+* `backend/report_compiler`
+* root `reports`
+* root and backend browser-review folders
+
+### Required before activating the new paths
+
+1. Review the consolidation branch diff.
+2. Merge the branch as one storage commit.
+3. Pull the merged commit into the WSL workspace.
+4. Keep the working development frontend available until the backend migration window.
+5. Stop Orb Weaver backend/Docker writers before applying or finalizing data migration.
+6. Run the migration dry-run, then apply, verify, and finalize.
+7. Start an isolated backend against the canonical vault and verify database, voice cache, client Site World, and pointer-map access.
+8. Rebuild Docker only after isolated verification passes.
 
 ---
 
