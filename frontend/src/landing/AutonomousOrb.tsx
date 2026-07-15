@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useAnimationControls } from "framer-motion";
+import { Volume2, VolumeX } from "lucide-react";
 import { Orb } from "./Orb";
-import { api } from "../services/api";
+import { api, type WebsiteOrbPointerRecord } from "../services/api";
+import { OrbRoboticsMovementController } from "../orb/robotics/movementController";
+import type { RobotCommand } from "../orb/robotics/robotMovement.types";
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, ms));
@@ -32,21 +35,44 @@ type Props = {
   className?: string;
 };
 
-const HEADER_SAFE = 28;
-const EDGE = 28;
+const HEADER_SAFE = 0;
+const EDGE = 8;
+const IDLE_TRAVEL_MIN_MS = 6500;
+const IDLE_TRAVEL_MAX_MS = 10500;
+const IDLE_PAUSE_MIN_MS = 1800;
+const IDLE_PAUSE_MAX_MS = 4200;
+const REST_AFTER_INACTIVITY_MS = 5 * 60 * 1000;
+const ACTIVE_ORB_OPACITY = 1;
+const REST_ORB_OPACITY = 0.55;
+const normalizeIntentText = (value: string): string =>
+  (value || "").replace(/\s+/g, " ").trim().toLowerCase();
+
+const routeForUrl = (value?: string | null): string => {
+  if (!value) return "/";
+  try {
+    return new URL(value, window.location.origin).pathname.replace(/\/+$/, "") || "/";
+  } catch {
+    return "/";
+  }
+};
 
 export const AutonomousOrb: React.FC<Props> = ({
-  size = 214,
+  size = 190,
   className = "",
 }) => {
   const move = useAnimationControls();
   const surge = useAnimationControls();
   const glow = useAnimationControls();
   const presence = useAnimationControls();
-
   const activeRef = useRef(true);
   const reducedMotionRef = useRef(false);
   const positionRef = useRef({ x: 0, y: 0 });
+  const idleHeadingRef = useRef(Math.random() * Math.PI * 2);
+  const movementControllerRef = useRef<OrbRoboticsMovementController | null>(null);
+  const worldStateSequenceRef = useRef(1);
+  const lastActivityAtRef = useRef(Date.now());
+  const restModeRef = useRef(false);
+  const pointerRecordsRef = useRef<WebsiteOrbPointerRecord[]>([]);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const recordingStreamRef = useRef<MediaStream | null>(null);
@@ -59,7 +85,6 @@ export const AutonomousOrb: React.FC<Props> = ({
   const audioUnlockedRef = useRef(false);
   const statusTimerRef = useRef<number | null>(null);
   const avoidUntilRef = useRef(0);
-  const lastAvoidRef = useRef(0);
   const voiceRequestInFlightRef = useRef(false);
   const activeVoiceAbortControllerRef = useRef<AbortController | null>(null);
   const voiceTurnIdRef = useRef(0);
@@ -67,54 +92,271 @@ export const AutonomousOrb: React.FC<Props> = ({
   const recordingStartedAtRef = useRef(0);
   const speechDetectedRef = useRef(false);
   const silenceStartedAtRef = useRef<number | null>(null);
-
+  const speakerBoostRef = useRef(false);
+  const pageCapsuleRef = useRef<unknown>(null);
+  const pointerTimerRef = useRef<number | null>(null);
   const [pulse, setPulse] = useState<PulseState>(null);
   const [voiceState, setVoiceState] = useState<OrbVoiceState>("idle");
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusTitle, setStatusTitle] = useState("ORB online");
   const [statusLine, setStatusLine] = useState("Tap the ORB to speak.");
+  const [speakerBoost, setSpeakerBoost] = useState(false);
+  const [lastGuidedTarget, setLastGuidedTarget] = useState<string | null>(null);
+  const [isResting, setIsResting] = useState(false);
+  const [pointerBloom, setPointerBloom] = useState<{
+    targetId: string;
+    label: string;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    originAngle: number;
+  } | null>(null);
 
-  const bounds = () => {
-    const minX = EDGE;
-    const minY = HEADER_SAFE + EDGE;
+ const bounds = useCallback(() => {
+  const sidebar = document.querySelector<HTMLElement>("aside");
+  let minX = EDGE;
 
-    return {
-      minX,
-      minY,
-      maxX: Math.max(minX, window.innerWidth - size - EDGE),
-      maxY: Math.max(minY, window.innerHeight - size - EDGE),
-    };
+  if (sidebar) {
+    const rect = sidebar.getBoundingClientRect();
+    const style = window.getComputedStyle(sidebar);
+
+    const blocksLeftEdge =
+      style.display !== "none" &&
+      style.visibility !== "hidden" &&
+      rect.width > 0 &&
+      rect.left <= EDGE &&
+      rect.right > EDGE;
+
+    if (blocksLeftEdge) {
+      minX = Math.ceil(rect.right) + EDGE;
+    }
+  }
+
+  const minY = HEADER_SAFE + EDGE;
+
+  return {
+    minX,
+    minY,
+    maxX: Math.max(minX, window.innerWidth - size - EDGE),
+    maxY: Math.max(minY, window.innerHeight - size - EDGE),
   };
-
-  const clampPosition = (x: number, y: number) => {
+}, [size]);
+  const clampPosition = useCallback((x: number, y: number) => {
     const { minX, minY, maxX, maxY } = bounds();
 
     return {
       x: Math.max(minX, Math.min(x, maxX)),
       y: Math.max(minY, Math.min(y, maxY)),
     };
-  };
+  }, [bounds]);
 
-  const nextDestination = () => {
-    const current = positionRef.current;
-    const { minX, minY, maxX, maxY } = bounds();
+  const bumpWorldStateSequence = useCallback(() => {
+    worldStateSequenceRef.current += 1;
+  }, []);
 
-    let candidate = current;
+  const markVisitorActivity = useCallback(() => {
+    lastActivityAtRef.current = Date.now();
+    if (restModeRef.current) {
+      restModeRef.current = false;
+      setIsResting(false);
+      avoidUntilRef.current = Date.now() + 900;
+    }
+  }, []);
 
-    for (let tries = 0; tries < 35; tries += 1) {
-      const x = minX + Math.random() * Math.max(1, maxX - minX);
-      const y = minY + Math.random() * Math.max(1, maxY - minY);
+  const upperRightRestDestination = useCallback(() => {
+    const { maxX, minY } = bounds();
+    return clampPosition(maxX, minY + Math.max(16, size * 0.08));
+  }, [bounds, clampPosition, size]);
 
-      const distance = Math.hypot(x - current.x, y - current.y);
+ const nextDestination = useCallback(() => {
+  const current = positionRef.current;
+  const { minX, minY, maxX, maxY } = bounds();
 
-      if (distance > Math.min(window.innerWidth * 0.24, 280)) {
-        candidate = { x, y };
-        break;
+  const minimumTravel = Math.max(70, size * 0.38);
+  const maximumTravel = Math.max(
+    minimumTravel + 30,
+    Math.min(180, window.innerWidth * 0.12)
+  );
+
+  const forbiddenWidth = Math.max(220, size * 1.35);
+  const forbiddenHeight = Math.max(220, size * 1.35);
+
+  for (let attempt = 0; attempt < 18; attempt += 1) {
+    const turnAmount = (Math.random() - 0.5) * 1.25;
+    const heading = idleHeadingRef.current + turnAmount;
+    const distance =
+      minimumTravel + Math.random() * (maximumTravel - minimumTravel);
+
+    const candidate = clampPosition(
+      current.x + Math.cos(heading) * distance,
+      current.y + Math.sin(heading) * distance
+    );
+
+    const insideBottomRightRestZone =
+      candidate.x >= maxX - forbiddenWidth &&
+      candidate.y >= maxY - forbiddenHeight;
+
+    const actualTravel = Math.hypot(
+      candidate.x - current.x,
+      candidate.y - current.y
+    );
+
+    if (!insideBottomRightRestZone && actualTravel >= minimumTravel * 0.7) {
+      idleHeadingRef.current = heading;
+      return candidate;
+    }
+  }
+
+  const centerHeading = Math.atan2(
+    minY + (maxY - minY) * 0.48 - current.y,
+    minX + (maxX - minX) * 0.52 - current.x
+  );
+
+  idleHeadingRef.current = centerHeading;
+
+  return clampPosition(
+    current.x + Math.cos(centerHeading) * minimumTravel,
+    current.y + Math.sin(centerHeading) * minimumTravel
+  );
+}, [bounds, clampPosition, size]);
+
+  const findPointerRecordForIntent = useCallback((intentText: string) => {
+    const query = normalizeIntentText(intentText);
+    const queryTokens = new Set(query.split(" ").filter((token) => token.length > 2));
+    if (!queryTokens.size) return null;
+    const currentRoute = routeForUrl(window.location.href);
+    let best: { record: WebsiteOrbPointerRecord; score: number } | null = null;
+
+    for (const record of pointerRecordsRef.current) {
+      if (routeForUrl(record.page_route) !== currentRoute) continue;
+      const candidates = [
+        record.meaning || "",
+        ...(record.direct_aliases || []),
+        ...(record.intent_aliases || []),
+        ...(record.topic_aliases || []),
+      ].map(normalizeIntentText);
+      const recordTokens = new Set(candidates.join(" ").split(" ").filter((token) => token.length > 2));
+      const overlap = [...queryTokens].filter((token) => recordTokens.has(token)).length;
+      const confidence = typeof record.confidence === "number" ? record.confidence : 0.7;
+      const actionBonus = ["nav", "button", "price_card", "form_field"].includes(record.target_type)
+        ? 0.14
+        : 0;
+      const score =
+        (overlap / Math.max(1, Math.min(queryTokens.size, recordTokens.size))) * confidence +
+        actionBonus;
+      if (score >= 0.34 && (!best || score > best.score)) best = { record, score };
+    }
+    return best?.record || null;
+  }, []);
+
+  const guideToPointerTarget = useCallback(async (intentText: string) => {
+    markVisitorActivity();
+    const record = findPointerRecordForIntent(intentText);
+    if (!record) return false;
+
+    const movementController = movementControllerRef.current;
+    if (!movementController) return false;
+
+    const command: RobotCommand = {
+      commandId: `orb-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      actionType: "NAVIGATE_AND_ILLUMINATE",
+      targetId: record.target_id,
+      intent: "Guide",
+      urgency: "normal",
+      approachBehavior: "decelerate_on_arrive",
+      endEffector: {
+        type: "PING_LIGHT",
+        duration: "standard",
+        intensity: "medium",
+      },
+      reason: intentText.slice(0, 240),
+      worldStateSequence: worldStateSequenceRef.current,
+    };
+
+    const movement = movementController.beginMovement({
+      command,
+      pointerRecord: record,
+      currentWorldStateSequence: worldStateSequenceRef.current,
+      onTelemetry: (event) => {
+        if (process.env.NODE_ENV !== "production") {
+          console.info("[orb-robotics]", event);
+        }
+      },
+    });
+
+    if (!movement.ok) return false;
+
+    let activeRect = movement.targetRect;
+    const targetAlreadyVisible =
+      activeRect.top >= 0 &&
+      activeRect.left >= 0 &&
+      activeRect.bottom <= window.innerHeight &&
+      activeRect.right <= window.innerWidth;
+
+    if (!targetAlreadyVisible) {
+      movement.targetElement.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+      await wait(650);
+      bumpWorldStateSequence();
+      const refreshed = movement.refreshTarget();
+      if (!refreshed) {
+        movement.cancel("target_lost_after_scroll");
+        return false;
       }
+      activeRect = refreshed;
     }
 
-    return candidate;
-  };
+    const latestGoal = movement.getLatestGoal();
+    const targetCenterX = latestGoal.normalizedX * window.innerWidth;
+    const targetCenterY = latestGoal.normalizedY * window.innerHeight;
+    const side = targetCenterX < window.innerWidth / 2 ? 1 : -1;
+    const destination = clampPosition(
+      targetCenterX + side * Math.max(84, size * 0.62) - size / 2,
+      targetCenterY - size / 2,
+    );
+    const current = positionRef.current;
+    const distance = Math.hypot(destination.x - current.x, destination.y - current.y);
+    avoidUntilRef.current = Date.now() + 16000;
+    move.stop();
+    await move.start({
+      x: destination.x,
+      y: destination.y,
+      transition: {
+        duration: Math.max(5.5, Math.min(12, distance / 75)),
+        ease: [0.37, 0, 0.22, 1],
+      },
+    });
+    positionRef.current = destination;
+    if (!activeRef.current) {
+      movement.cancel("orb_unmounted");
+      return false;
+    }
+
+    const finalRect = movement.refreshTarget();
+    if (!finalRect) {
+      movement.cancel("target_lost_before_arrival");
+      return false;
+    }
+    const finalTargetX = finalRect.left + finalRect.width / 2;
+    const finalTargetY = finalRect.top + finalRect.height / 2;
+    const orbCenterX = destination.x + size / 2;
+    const orbCenterY = destination.y + size / 2;
+    movement.complete();
+    setLastGuidedTarget(record.target_id);
+
+    setPointerBloom({
+      targetId: record.target_id,
+      label: (record.meaning || record.target_type || "Guided target").replace(/^[^:]+:\s*/, ""),
+      left: Math.max(4, finalRect.left - 10),
+      top: Math.max(4, finalRect.top - 10),
+      width: finalRect.width + 20,
+      height: finalRect.height + 20,
+      originAngle: Math.atan2(finalTargetY - orbCenterY, finalTargetX - orbCenterX) * 180 / Math.PI,
+    });
+    if (pointerTimerRef.current) window.clearTimeout(pointerTimerRef.current);
+    pointerTimerRef.current = window.setTimeout(() => setPointerBloom(null), 2600);
+    return true;
+  }, [bumpWorldStateSequence, clampPosition, findPointerRecordForIntent, markVisitorActivity, move, size]);
 
   const playPulse = useCallback(async (kind: PulseKind, duration: number) => {
     const visibleDuration = Math.max(duration, kind === "ripple" ? 1150 : kind === "flare" ? 1450 : 2100);
@@ -131,7 +373,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
   }, []);
 
-  const playLocalPresence = async () => {
+  const playLocalPresence = useCallback(async () => {
     await presence.start({
       x: [0, 3, -2, 1, 0],
       y: [0, -4, 2, -1, 0],
@@ -141,7 +383,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         ease: "easeInOut",
       },
     });
-  };
+  }, [presence]);
 
   const showStatus = useCallback((hideAfterMs?: number) => {
     setStatusVisible(true);
@@ -186,7 +428,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
 
     const audio = new Audio(src);
-    audio.volume = 0.72;
+    audio.volume = speakerBoostRef.current ? 1 : 0.72;
     latencyAudioRef.current = audio;
     audio.onended = () => {
       if (latencyAudioRef.current === audio) {
@@ -201,6 +443,54 @@ export const AutonomousOrb: React.FC<Props> = ({
     void audio.play().catch(() => {
       if (latencyAudioRef.current === audio) {
         latencyAudioRef.current = null;
+      }
+    });
+  }, []);
+
+  const playDecodedSpeech = useCallback(async (audioUrl: string) => {
+    const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextCtor) {
+      throw new Error("AudioContext unavailable");
+    }
+
+    const context: AudioContext = audioContextRef.current || new AudioContextCtor();
+    audioContextRef.current = context;
+    await context.resume?.();
+
+    if (speechSourceRef.current) {
+      try {
+        speechSourceRef.current.stop();
+      } catch {
+        // Source may already have ended.
+      }
+      speechSourceRef.current = null;
+    }
+
+    const response = await fetch(api.orbMediaUrl(audioUrl), { cache: "force-cache" });
+    if (!response.ok) {
+      throw new Error("Speech audio unavailable");
+    }
+
+    const buffer = await context.decodeAudioData(await response.arrayBuffer());
+    const source = context.createBufferSource();
+    const gain = context.createGain();
+    source.buffer = buffer;
+    gain.gain.value = speakerBoostRef.current ? 1.85 : 1;
+    source.connect(gain);
+    gain.connect(context.destination);
+    speechSourceRef.current = source;
+
+    await new Promise<void>((resolve, reject) => {
+      source.onended = () => {
+        if (speechSourceRef.current === source) {
+          speechSourceRef.current = null;
+        }
+        resolve();
+      };
+      try {
+        source.start();
+      } catch (error) {
+        reject(error);
       }
     });
   }, []);
@@ -310,9 +600,16 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     try {
       setStatusTitle("Voice response");
+      if (speakerBoostRef.current) {
+        await playDecodedSpeech(audioUrl);
+        setVoiceState("idle");
+        showStatus(1400);
+        return;
+      }
       const audio = speechAudioRef.current || new Audio();
       audio.pause();
       audio.muted = false;
+      audio.volume = speakerBoostRef.current ? 1 : 0.86;
       audio.src = api.orbMediaUrl(audioUrl);
       speechAudioRef.current = audio;
       await new Promise<void>((resolve, reject) => {
@@ -342,7 +639,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       setVoiceState("idle");
       showStatus(3600);
     }
-  }, [freezeOrbInPlace, showStatus]);
+  }, [freezeOrbInPlace, playDecodedSpeech, showStatus]);
 
   const speakWithGeneratedAudio = useCallback(async (text: string, audioUrl?: string | null, provider?: string | null) => {
     setStatusTitle("Preparing voice");
@@ -370,6 +667,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, [showStatus]);
 
   const processRecordedOrbAudio = useCallback(async (audio: Blob) => {
+    markVisitorActivity();
     if (voiceRequestInFlightRef.current) return;
     const turnId = voiceTurnIdRef.current;
     const controller = new AbortController();
@@ -395,13 +693,16 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     try {
       logVoice("website-voice", turnId);
-      const result = await api.websiteOrbVoice(audio, controller.signal);
+      const result = await api.websiteOrbVoice(audio, controller.signal, {
+        target_url: window.location.href,
+      });
       setStatusTitle("Voice response");
       setStatusLine(result.spoken_output);
       if (result.tts_error && !result.tts_audio_url) {
         setStatusTitle("Voice unavailable");
         setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
       }
+      void guideToPointerTarget(`${result.transcript} ${result.spoken_output}`);
       logVoice("playback", turnId);
       await speakWithGeneratedAudio(result.spoken_output, result.tts_audio_url, result.tts_provider);
     } catch (error) {
@@ -416,7 +717,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       setVoiceState("idle");
       logVoice("finalized", turnId);
     }
-  }, [freezeOrbInPlace, logVoice, playLatencyFiller, showStatus, speakRecovery, speakWithGeneratedAudio]);
+  }, [freezeOrbInPlace, guideToPointerTarget, logVoice, markVisitorActivity, playLatencyFiller, showStatus, speakRecovery, speakWithGeneratedAudio]);
 
   const stopOrbRecording = useCallback((cancel = false) => {
     if (recordingStopTimerRef.current) {
@@ -629,6 +930,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, [showStatus]);
 
   const handleOrbClick = useCallback(() => {
+    markVisitorActivity();
     if (voiceState === "speaking") {
       interruptOrbSpeech();
       return;
@@ -640,7 +942,57 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
 
     void startOrbRecording();
-  }, [interruptOrbSpeech, startOrbRecording, stopOrbRecording, voiceState]);
+  }, [interruptOrbSpeech, markVisitorActivity, startOrbRecording, stopOrbRecording, voiceState]);
+
+  const toggleSpeakerBoost = useCallback(() => {
+    markVisitorActivity();
+    const next = !speakerBoostRef.current;
+    speakerBoostRef.current = next;
+    setSpeakerBoost(next);
+    setStatusTitle(next ? "Speaker boost on" : "Speaker boost off");
+    setStatusLine(next ? "Voice playback will be louder." : "Voice playback is back to normal.");
+    showStatus(1800);
+    if (speechAudioRef.current) {
+      speechAudioRef.current.volume = next ? 1 : 0.86;
+    }
+    if (latencyAudioRef.current) {
+      latencyAudioRef.current.volume = next ? 1 : 0.72;
+    }
+    unlockAudio();
+  }, [markVisitorActivity, showStatus, unlockAudio]);
+
+  useEffect(() => {
+    movementControllerRef.current = new OrbRoboticsMovementController();
+    return () => {
+      movementControllerRef.current?.dispose();
+      movementControllerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const activityHandler = () => markVisitorActivity();
+    const sequenceHandler = () => bumpWorldStateSequence();
+
+    window.addEventListener("pointerdown", activityHandler, { passive: true });
+    window.addEventListener("touchstart", activityHandler, { passive: true });
+    window.addEventListener("keydown", activityHandler);
+    window.addEventListener("scroll", activityHandler, { passive: true });
+
+    window.addEventListener("resize", sequenceHandler);
+    window.addEventListener("popstate", sequenceHandler);
+    window.addEventListener("hashchange", sequenceHandler);
+
+    return () => {
+      window.removeEventListener("pointerdown", activityHandler);
+      window.removeEventListener("touchstart", activityHandler);
+      window.removeEventListener("keydown", activityHandler);
+      window.removeEventListener("scroll", activityHandler);
+
+      window.removeEventListener("resize", sequenceHandler);
+      window.removeEventListener("popstate", sequenceHandler);
+      window.removeEventListener("hashchange", sequenceHandler);
+    };
+  }, [bumpWorldStateSequence, markVisitorActivity]);
 
   useEffect(() => {
     api.websiteOrbCapabilities()
@@ -655,6 +1007,61 @@ export const AutonomousOrb: React.FC<Props> = ({
       .catch(() => {
         setStatusLine("ORB online. Capability check unavailable.");
       });
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const pointerDomain = ["127.0.0.1", "localhost"].includes(window.location.hostname)
+      ? "orbweaver.spruked.com"
+      : window.location.hostname;
+    api.websiteOrbPointerMap(pointerDomain, controller.signal)
+      .then((pointerMap) => {
+        pointerRecordsRef.current = Array.isArray(pointerMap.records) ? pointerMap.records : [];
+        bumpWorldStateSequence();
+        if (process.env.NODE_ENV !== "production") {
+          const demoQuery = new URLSearchParams(window.location.search).get("orbPointerDemo");
+          if (demoQuery) {
+            window.setTimeout(() => void guideToPointerTarget(demoQuery), 1200);
+          }
+        }
+      })
+      .catch(() => {
+        pointerRecordsRef.current = [];
+        bumpWorldStateSequence();
+      });
+    return () => controller.abort();
+  }, [bumpWorldStateSequence, guideToPointerTarget]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let lastUrl = "";
+
+    const preloadCapsule = () => {
+      const currentUrl = window.location.href;
+      if (currentUrl === lastUrl) return;
+      lastUrl = currentUrl;
+      api.websiteOrbPageCapsule(currentUrl)
+        .then((capsule) => {
+          if (cancelled) return;
+          pageCapsuleRef.current = capsule;
+        })
+        .catch(() => {
+          if (cancelled) return;
+          pageCapsuleRef.current = null;
+        });
+    };
+
+    preloadCapsule();
+    const interval = window.setInterval(preloadCapsule, 900);
+    window.addEventListener("popstate", preloadCapsule);
+    window.addEventListener("hashchange", preloadCapsule);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("popstate", preloadCapsule);
+      window.removeEventListener("hashchange", preloadCapsule);
+    };
   }, []);
 
   useEffect(() => {
@@ -718,33 +1125,44 @@ export const AutonomousOrb: React.FC<Props> = ({
       await wait(700);
 
       while (activeRef.current) {
-        if (Date.now() < avoidUntilRef.current) {
-          await wait(450);
+        const inactiveForMs = Date.now() - lastActivityAtRef.current;
+        const shouldEnterRest =
+          inactiveForMs >= REST_AFTER_INACTIVITY_MS &&
+          voiceState === "idle" &&
+          !recorderRef.current;
+
+        if (shouldEnterRest) {
+          if (!restModeRef.current) {
+            restModeRef.current = true;
+            setIsResting(true);
+            const restDestination = upperRightRestDestination();
+            await move.start({
+              x: restDestination.x,
+              y: restDestination.y,
+              transition: {
+                duration: 1.8,
+                ease: [0.37, 0, 0.22, 1],
+              },
+            });
+            positionRef.current = restDestination;
+          }
+          await wait(280);
           continue;
         }
 
-        const current = positionRef.current;
-        const destination = nextDestination();
-        const distance = Math.hypot(
-          destination.x - current.x,
-          destination.y - current.y
-        );
-
-        const longMove =
-          distance > Math.min(window.innerWidth * 0.28, 340);
-
-        const departurePulse =
-          longMove && Math.random() < 0.16;
-
-        const arrivalPulse =
-          longMove && Math.random() < 0.42;
-
-        if (departurePulse) {
-          void playPulse("ripple", 920);
-          await wait(260);
-        } else {
-          void playLocalPresence();
+        if (restModeRef.current) {
+          restModeRef.current = false;
+          setIsResting(false);
         }
+
+        if (Date.now() < avoidUntilRef.current) {
+          await wait(160);
+          continue;
+        }
+
+        const destination = nextDestination();
+
+        void playLocalPresence();
 
         if (!activeRef.current) break;
 
@@ -752,8 +1170,10 @@ export const AutonomousOrb: React.FC<Props> = ({
           x: destination.x,
           y: destination.y,
           transition: {
-            duration: Math.max(3.1, Math.min(7.2, distance / 125)),
-            ease: [0.34, 0.78, 0.28, 1],
+            duration:
+              (IDLE_TRAVEL_MIN_MS + Math.random() * (IDLE_TRAVEL_MAX_MS - IDLE_TRAVEL_MIN_MS)) /
+              1000,
+            ease: [0.37, 0, 0.22, 1],
           },
         });
 
@@ -761,15 +1181,11 @@ export const AutonomousOrb: React.FC<Props> = ({
 
         positionRef.current = destination;
 
-        if (arrivalPulse) {
-          void playPulse("flare", 1200);
-        } else {
-          void playLocalPresence();
-        }
+        void playLocalPresence();
 
         if (!activeRef.current) break;
 
-        await wait(850 + Math.random() * 1900);
+        await wait(IDLE_PAUSE_MIN_MS + Math.random() * (IDLE_PAUSE_MAX_MS - IDLE_PAUSE_MIN_MS));
       }
     };
 
@@ -785,76 +1201,46 @@ export const AutonomousOrb: React.FC<Props> = ({
       move.set(corrected);
     };
 
-    const handleMouseMove = (event: MouseEvent) => {
-      if (reducedMotionRef.current) return;
-      const now = Date.now();
-      if (now - lastAvoidRef.current < 1250) return;
-
-      const current = positionRef.current;
-      const orbCenter = {
-        x: current.x + size / 2,
-        y: current.y + size / 2,
-      };
-      const dx = orbCenter.x - event.clientX;
-      const dy = orbCenter.y - event.clientY;
-      const distance = Math.hypot(dx, dy);
-      const avoidRadius = Math.max(220, size * 1.04);
-
-      if (distance > avoidRadius) return;
-
-      lastAvoidRef.current = now;
-      avoidUntilRef.current = now + 2600;
-
-      const angle = distance > 0 ? Math.atan2(dy, dx) : Math.random() * Math.PI * 2;
-      const closeness = 1 - Math.min(1, distance / avoidRadius);
-      const push = 30 + closeness * 76;
-      const sideSlip = (Math.random() - 0.5) * 24;
-      const target = clampPosition(
-        current.x + Math.cos(angle) * push + Math.cos(angle + Math.PI / 2) * sideSlip,
-        current.y + Math.sin(angle) * push + Math.sin(angle + Math.PI / 2) * sideSlip
-      );
-
-      void move.start({
-        x: target.x,
-        y: target.y,
-        transition: {
-          duration: 2.45 + closeness * 1.05,
-          ease: [0.34, 0.78, 0.28, 1],
-        },
-      }).then(() => {
-        if (activeRef.current) {
-          positionRef.current = target;
-        }
-      });
-    };
-
     window.addEventListener("resize", handleResize);
-    window.addEventListener("mousemove", handleMouseMove);
 
     return () => {
       activeRef.current = false;
-      if (speechAudioRef.current) {
-        speechAudioRef.current.pause();
+      restModeRef.current = false;
+      if (pointerTimerRef.current) {
+        window.clearTimeout(pointerTimerRef.current);
       }
-    if (statusTimerRef.current) {
-      window.clearTimeout(statusTimerRef.current);
-    }
-    if (recordingStopTimerRef.current) {
-      window.clearTimeout(recordingStopTimerRef.current);
-    }
-    stopRecordingMonitor();
-    activeVoiceAbortControllerRef.current?.abort();
-    activeVoiceAbortControllerRef.current = null;
-    voiceRequestInFlightRef.current = false;
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [clampPosition, glow, move, nextDestination, playLocalPresence, playStageScreech, presence, size, stopRecordingMonitor, surge, upperRightRestDestination, voiceState]);
+
+  // Voice resources are cancelled only when this ORB component unmounts.
+  useEffect(() => {
+    return () => {
+      speechAudioRef.current?.pause();
+
+      if (statusTimerRef.current) {
+        window.clearTimeout(statusTimerRef.current);
+      }
+
+      if (recordingStopTimerRef.current) {
+        window.clearTimeout(recordingStopTimerRef.current);
+      }
+
+      stopRecordingMonitor();
+      activeVoiceAbortControllerRef.current?.abort();
+      activeVoiceAbortControllerRef.current = null;
+      voiceRequestInFlightRef.current = false;
+
       if (recorderRef.current && recorderRef.current.state !== "inactive") {
         recordingCancelledRef.current = true;
         recorderRef.current.stop();
       }
+
       recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
-      window.removeEventListener("resize", handleResize);
-      window.removeEventListener("mousemove", handleMouseMove);
     };
-  }, [glow, move, presence, size, surge]);
+    // Intentionally unmount-only so voice requests survive state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ringStyle = () => {
     if (pulse?.kind === "ripple") {
@@ -887,9 +1273,25 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   return (
     <>
+    {pointerBloom && (
+      <div
+        className="ow-v2-pointer-bloom"
+        data-orb-pointer-target={pointerBloom.targetId}
+        aria-label={`Weaver is pointing to ${pointerBloom.label}`}
+        style={{
+          left: pointerBloom.left,
+          top: pointerBloom.top,
+          width: pointerBloom.width,
+          height: pointerBloom.height,
+        }}
+      >
+        <span />
+      </div>
+    )}
     <motion.div
       animate={move}
-      className={`ow-v2-orb-position ${className}`}
+      className={`ow-v2-orb-position ${pointerBloom ? "is-pointing" : ""} ${className}`}
+      data-orb-last-guided-target={lastGuidedTarget || undefined}
       style={{
         position: "fixed",
         left: 0,
@@ -898,7 +1300,9 @@ export const AutonomousOrb: React.FC<Props> = ({
         height: size,
         zIndex: 29,
         pointerEvents: "auto",
-      }}
+        opacity: isResting ? REST_ORB_OPACITY : ACTIVE_ORB_OPACITY,
+        "--ow-pointer-angle": `${pointerBloom?.originAngle || 0}deg`,
+      } as React.CSSProperties}
     >
       {pulse && (
         <div className="ow-v2-local-pulse" key={pulse.id}>
@@ -970,6 +1374,16 @@ export const AutonomousOrb: React.FC<Props> = ({
               state={voiceState}
               onClick={handleOrbClick}
             />
+            <button
+              type="button"
+              className={`ow-v2-orb-speaker ${speakerBoost ? "active" : ""}`}
+              onClick={toggleSpeakerBoost}
+              aria-label={speakerBoost ? "Turn speaker boost off" : "Turn speaker boost on"}
+              aria-pressed={speakerBoost}
+              title={speakerBoost ? "Speaker boost on" : "Speaker boost"}
+            >
+              {speakerBoost ? <Volume2 size={17} /> : <VolumeX size={17} />}
+            </button>
           </motion.div>
         </motion.div>
       </motion.div>
@@ -977,6 +1391,11 @@ export const AutonomousOrb: React.FC<Props> = ({
         <div className="ow-v2-orb-status" aria-live="polite">
           <strong>{statusTitle}</strong>
           <span>{statusLine}</span>
+        </div>
+      )}
+      {isResting && (
+        <div className="ow-v2-orb-rest-cue" aria-live="polite">
+          Click me
         </div>
       )}
     </motion.div>

@@ -121,6 +121,8 @@ const AuditReport: React.FC = () => {
   const report = auditData.report;
   const projectName = auditData.project?.name || 'Website audit';
   const projectDomain = auditData.project?.domain || 'Unknown website';
+  const pointerSummary = report.pointer_summary;
+  const plannedToolCalls = report.planned_tool_calls || [];
   const copyShareLink = async () => {
     await navigator.clipboard.writeText(window.location.href);
     setShareStatus('Link copied');
@@ -208,6 +210,45 @@ const AuditReport: React.FC = () => {
             <h3 className="font-bold text-blue-700">Opportunities</h3>
           </div>
           <p className="text-3xl font-bold text-blue-700">{report.summary.opportunity_count}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className={`card ${pointerSummary?.status === 'passed' ? 'border-green-200 bg-green-50' : 'border-yellow-200 bg-yellow-50'}`}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm text-gray-500 mb-1">ORB Pointer Guidance</p>
+              <p className="text-3xl font-bold text-gray-900">{pointerSummary?.record_count ?? 0}</p>
+              <p className="text-sm text-gray-600 mt-1">
+                {pointerSummary?.routes_with_pointers ?? 0} routes · {pointerSummary?.duplicate_target_ids ?? 0} duplicate IDs
+              </p>
+            </div>
+            <span className={`px-3 py-1 rounded-full text-sm font-semibold ${pointerSummary?.status === 'passed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+              {pointerSummary?.status || 'needs_review'}
+            </span>
+          </div>
+        </div>
+
+        <div className="card">
+          <p className="text-sm text-gray-500 mb-3">Planned Tool Calls</p>
+          {plannedToolCalls.length > 0 ? (
+            <div className="space-y-2">
+              {plannedToolCalls.slice(0, 5).map((tool) => (
+                <div key={tool.id} className="flex items-start justify-between gap-3 border-b border-gray-100 pb-2 last:border-b-0 last:pb-0">
+                  <div>
+                    <p className="font-semibold text-gray-900">{tool.tool}</p>
+                    <p className="text-xs text-gray-500">{tool.section || tool.trigger}</p>
+                    {tool.route && <p className="text-xs text-gray-400 truncate max-w-sm">{tool.route}</p>}
+                  </div>
+                  <span className={`text-xs font-semibold ${tool.requires_mcp ? 'text-purple-700' : 'text-green-700'}`}>
+                    {tool.requires_mcp ? 'MCP gated' : tool.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">No planned tool calls were generated for this audit.</p>
+          )}
         </div>
       </div>
 

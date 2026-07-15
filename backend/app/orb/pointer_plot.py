@@ -47,7 +47,9 @@ def extract_pointer_plot_records(
             continue
 
         fingerprint = _fingerprint(text)
-        target_id = _target_id(page_route, target_type, text, element)
+        context = _structural_context(element)
+        target_id = _target_id(page_route, target_type, locator, fingerprint, context)
+        aliases = _alias_groups(text, target_type, semantic_analysis or {}, entity_analysis or {})
         dedupe_key = f"{target_type}:{fingerprint}:{locator}"
         if dedupe_key in seen:
             continue
@@ -59,11 +61,13 @@ def extract_pointer_plot_records(
                 "page_route": page_route,
                 "target_type": target_type,
                 "meaning": _summarize_meaning(text, target_type),
-                "intent_aliases": _intent_aliases(text, target_type, semantic_analysis or {}, entity_analysis or {}),
+                "intent_aliases": aliases["direct_aliases"],
+                "direct_aliases": aliases["direct_aliases"],
+                "topic_aliases": aliases["topic_aliases"],
                 "content_fingerprint": fingerprint,
                 "semantic_locator": locator,
                 "anchor_strategy": _anchor_strategy(element, target_type),
-                "structural_context": _structural_context(element),
+                "structural_context": context,
                 "confidence": _confidence(element, target_type, text),
                 "allowed_actions": _default_actions(target_type),
                 "status": "active",
@@ -272,19 +276,18 @@ def _fingerprint(text: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
 
 
-def _target_id(page_route: str, target_type: str, text: str, element: Tag) -> str:
-    context = _structural_context(element)
+def _target_id(page_route: str, target_type: str, semantic_locator: str, content_fingerprint: str, context: Dict[str, Any]) -> str:
     seed = "|".join(
         [
             _canonical_route(page_route),
             target_type,
-            _slug(context.get("parent_heading") or context.get("landmark") or "page"),
-            str(context.get("ordinal_in_parent") or 1),
-            _slug(text),
+            semantic_locator,
+            str(context.get("parent_locator") or ""),
+            content_fingerprint,
         ]
     )
-    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
-    return f"plot_{digest}"
+    digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:12]
+    return f"target_{digest}"
 
 
 def _canonical_route(page_route: str) -> str:
@@ -301,14 +304,29 @@ def _summarize_meaning(text: str, target_type: str) -> str:
     return f"{target_type.replace('_', ' ')}: {snippet}"
 
 
-def _intent_aliases(
+def _alias_groups(
     text: str,
     target_type: str,
     semantic_analysis: Dict[str, Any],
     entity_analysis: Dict[str, Any],
-) -> List[str]:
-    aliases = [
-        text[:120],
+) -> Dict[str, List[str]]:
+    compact = text[:120]
+    direct_aliases = [
+        compact,
+    ]
+    if target_type in {"button", "nav", "download", "form_field"}:
+        direct_aliases.extend([
+            f"go to {text[:80]}",
+            f"open {text[:80]}",
+            f"find {text[:80]}",
+        ])
+    elif target_type in {"heading", "section", "price_card"}:
+        direct_aliases.extend([
+            f"show {text[:80]}",
+            f"jump to {text[:80]}",
+        ])
+
+    topic_aliases = [
         f"show me {text[:80]}",
         f"where is {text[:80]}",
     ]
@@ -316,13 +334,16 @@ def _intent_aliases(
     for term in (semantic_analysis.get("top_terms") or [])[:4]:
         value = term.get("term") if isinstance(term, dict) else str(term)
         if value:
-            aliases.append(f"information about {value}")
+            topic_aliases.append(f"information about {value}")
 
     for key in ("product_names", "organizations", "locations", "schema_org_entities"):
         for value in (entity_analysis.get(key) or [])[:2]:
-            aliases.append(f"{target_type.replace('_', ' ')} for {value}")
+            topic_aliases.append(f"{target_type.replace('_', ' ')} for {value}")
 
-    return _dedupe([_normalize_text(alias) for alias in aliases if alias])
+    return {
+        "direct_aliases": _dedupe([_normalize_text(alias) for alias in direct_aliases if alias])[:8],
+        "topic_aliases": _dedupe([_normalize_text(alias) for alias in topic_aliases if alias])[:8],
+    }
 
 
 def _confidence(element: Tag, target_type: str, text: str) -> float:

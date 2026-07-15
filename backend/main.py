@@ -16,11 +16,11 @@ import tempfile
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 from collections import Counter
 from urllib.parse import urlparse
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import httpx
@@ -59,6 +59,10 @@ from app.models.database import (
     get_session_maker,
     init_db,
 )
+
+DEFAULT_TESSDATA_PATH = Path("/usr/share/tesseract-ocr/5/tessdata")
+if not os.environ.get("TESSDATA_PREFIX") and (DEFAULT_TESSDATA_PATH / "eng.traineddata").exists():
+    os.environ["TESSDATA_PREFIX"] = str(DEFAULT_TESSDATA_PATH)
 
 
 app = FastAPI(
@@ -104,6 +108,49 @@ ORB_TTS_INFLIGHT_LOCK = asyncio.Lock()
 ORB_TTS_INFLIGHT: Dict[str, asyncio.Task] = {}
 ORB_TTS_PROVIDER_LOCKS: Dict[str, asyncio.Lock] = {}
 logger = logging.getLogger("orb_weaver")
+LLM_WARM_STATUS: Dict[str, Any] = {
+    "configured": bool(settings.LOCAL_LLM_URL and settings.LOCAL_LLM_MODEL),
+    "ready": False,
+    "model": settings.LOCAL_LLM_MODEL,
+    "checked_at": None,
+    "error": None,
+}
+
+
+async def _warm_local_llm() -> None:
+    """Load the configured Ollama model and retain it without delaying app startup."""
+    if not settings.LOCAL_LLM_URL or not settings.LOCAL_LLM_MODEL:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=min(120.0, max(15.0, settings.LOCAL_LLM_TIMEOUT_SECONDS))) as client:
+            response = await client.post(
+                settings.LOCAL_LLM_URL,
+                json={
+                    "model": settings.LOCAL_LLM_MODEL,
+                    "prompt": "",
+                    "stream": False,
+                    "keep_alive": settings.LOCAL_LLM_KEEP_ALIVE,
+                    "options": {"num_predict": 1},
+                },
+            )
+            response.raise_for_status()
+        LLM_WARM_STATUS.update({
+            "ready": True,
+            "checked_at": datetime.utcnow().isoformat(),
+            "error": None,
+        })
+    except Exception as exc:
+        LLM_WARM_STATUS.update({
+            "ready": False,
+            "checked_at": datetime.utcnow().isoformat(),
+            "error": str(exc)[:240],
+        })
+        logger.warning("Local LLM warmup failed: %s", exc)
+
+
+@app.on_event("startup")
+async def warm_local_llm_on_startup() -> None:
+    asyncio.create_task(_warm_local_llm())
 
 SUBSTRATE_ROOT = Path(settings.ORB_WEAVER_SUBSTRATE_ROOT)
 PREFLIGHT_SCANNER_ROOT = Path(__file__).resolve().parent.parent / "Preflight Scanner"
@@ -191,6 +238,8 @@ class WebsiteOrbVoiceResponse(BaseModel):
 class WebsiteOrbTextRequest(BaseModel):
     transcript: str = Field(..., min_length=1, max_length=1000)
     synthesize_tts: bool = True
+    project_id: Optional[str] = None
+    target_url: Optional[str] = Field(default=None, max_length=500)
 
 
 class WebsiteOrbTtsRequest(BaseModel):
@@ -202,6 +251,29 @@ class WebsiteOrbTtsResponse(BaseModel):
     tts_audio_url: Optional[str] = None
     tts_provider: Optional[str] = None
     tts_error: Optional[str] = None
+
+
+class WebsiteOrbPointerMapResponse(BaseModel):
+    schema: str
+    generated_at: Optional[str] = None
+    record_count: int = 0
+    records: List[Dict[str, Any]] = Field(default_factory=list)
+    by_page: Dict[str, List[str]] = Field(default_factory=dict)
+
+
+class WebsiteOrbPageCapsuleResponse(BaseModel):
+    schema: str
+    site_name: Optional[str] = None
+    domain: Optional[str] = None
+    current_url: str
+    route: str
+    page_purpose: str
+    page_summary: Optional[str] = None
+    likely_visitor_tasks: List[str] = Field(default_factory=list)
+    top_pointer_targets: List[Dict[str, Any]] = Field(default_factory=list)
+    secondary_pointer_targets: List[Dict[str, Any]] = Field(default_factory=list)
+    relevant_navigation: Dict[str, str] = Field(default_factory=dict)
+    relevant_guiderails: List[str] = Field(default_factory=list)
 
 
 class OrbMemoryUpsert(BaseModel):
@@ -744,11 +816,12 @@ async def _create_paypal_checkout(order: CheckoutOrder) -> Dict:
 
 def _issue_customer_session(customer: Customer, db: Session) -> Dict:
     token = secrets.token_urlsafe(32)
+    session_days = max(1, settings.CUSTOMER_SESSION_EXPIRE_DAYS)
     db.add(
         CustomerSession(
             customer_id=customer.id,
             token_hash=_hash_token(token),
-            expires_at=datetime.utcnow() + timedelta(days=30),
+            expires_at=datetime.utcnow() + timedelta(days=session_days),
         )
     )
     customer.last_login_at = datetime.utcnow()
@@ -801,6 +874,8 @@ ORB_RECENT_CONTEXT_TTL_DAYS = 14
 ORB_RECENT_CONTEXT_MAX_CHARS = 1200
 ORB_RECENT_CONTEXT_MAX_LINES = 8
 ORB_TOOL_CACHE_DEFAULT_TTL_SECONDS = 900
+ORB_PREFLIGHT_TOOL_CACHE_TTL_DAYS = 14
+ORB_TOOL_CACHE_SCOPE_PREFIX = "project:"
 ORB_SENSITIVE_MEMORY_TERMS = {
     "password",
     "token",
@@ -816,8 +891,7 @@ ORB_SENSITIVE_MEMORY_TERMS = {
     "browser_history",
 }
 ORB_PUBLIC_IDENTITY_ANSWER = (
-    "I'm Orb Weaver. I help website owners scan, understand, and improve their websites, "
-    "then build an ORB that can guide visitors through them."
+    "I'm Weaver, the Orb Weaver website guide. I help visitors understand scans, Website ORBs, pointer maps, marketplace options, and deployment readiness."
 )
 
 
@@ -1011,6 +1085,231 @@ def _update_orb_recent_context(customer: Optional[Customer], transcript: str, sp
 def _cache_key_for_tool(scope: str, tool: str, normalized_input: Dict[str, Any]) -> str:
     payload = json.dumps({"scope": scope, "tool": tool, "input": normalized_input}, sort_keys=True, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _normalize_intent_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9 ]+", " ", (value or "").lower()).strip()
+
+
+def _tokenize_intent(value: str) -> Set[str]:
+    stop_words = {
+        "a",
+        "an",
+        "and",
+        "are",
+        "can",
+        "do",
+        "for",
+        "how",
+        "i",
+        "is",
+        "it",
+        "me",
+        "my",
+        "of",
+        "on",
+        "or",
+        "the",
+        "to",
+        "what",
+        "you",
+    }
+    return {word for word in _normalize_intent_text(value).split() if len(word) > 2 and word not in stop_words}
+
+
+def _project_tool_cache_scope(project_id: str) -> str:
+    return f"{ORB_TOOL_CACHE_SCOPE_PREFIX}{project_id}:website_orb_voice"
+
+
+def _preflight_cache_entries(project: Project, report: Dict[str, Any]) -> List[Dict[str, Any]]:
+    pages_scanned = int(report.get("pages_scanned") or 0)
+    confidence = float(report.get("confidence") or 0)
+    detected = report.get("detected") or {}
+    warnings = report.get("warnings") or []
+    site_url = report.get("site_url") or _project_target_url(project)
+    confidence_percent = max(0, min(100, round(confidence * 100)))
+    has_checkout = bool(detected.get("has_checkout") or detected.get("has_products"))
+    has_contact = bool(detected.get("has_contact_form") or detected.get("has_booking"))
+
+    return [
+        {
+            "id": "preflight_status",
+            "intents": [
+                "what did the scan find",
+                "is this site ready",
+                "preflight status",
+                "scan result",
+            ],
+            "spoken_output": (
+                f"I scanned {pages_scanned} public pages for {project.name or project.domain} "
+                f"and found about {confidence_percent}% basic ORB readiness."
+            ),
+            "facts": {"pages_scanned": pages_scanned, "confidence": confidence, "site_url": site_url},
+        },
+        {
+            "id": "site_boundaries",
+            "intents": [
+                "did you find checkout",
+                "did you find forms",
+                "what boundaries did you find",
+                "login checkout contact",
+            ],
+            "spoken_output": (
+                "I found checkout or product signals, so premium browser verification is recommended."
+                if has_checkout
+                else "I did not find checkout as a public blocker in the preflight sample."
+            ),
+            "facts": {"has_checkout": has_checkout, "has_contact_or_booking": has_contact},
+        },
+        {
+            "id": "recommended_next_step",
+            "intents": [
+                "what should i do next",
+                "next step",
+                "recommendation",
+                "which orb should i use",
+            ],
+            "spoken_output": (
+                "Start with a Basic Website ORB, then add premium browser verification before deeper tool actions."
+                if pages_scanned > 0
+                else "Fix public site readability first, then rerun the preflight scan."
+            ),
+            "facts": {"pages_scanned": pages_scanned, "warnings": warnings[:6]},
+        },
+        {
+            "id": "capability_summary",
+            "intents": [
+                "what tools can you use",
+                "mcp tesseract tools",
+                "can you read the page",
+                "can you call tools",
+            ],
+            "spoken_output": "I can use cached preflight answers instantly, and I can fall back to MCP and Tesseract checks when owner tools are enabled.",
+            "facts": {"source": "preflight_tool_cache"},
+        },
+    ]
+
+
+async def _build_project_tool_cache(
+    project: Project,
+    report: Dict[str, Any],
+    db: Session,
+    synthesize_tts: bool = False,
+) -> Dict[str, Any]:
+    scope = _project_tool_cache_scope(str(project.id))
+    expires_at = datetime.utcnow() + timedelta(days=ORB_PREFLIGHT_TOOL_CACHE_TTL_DAYS)
+    generated_at = datetime.utcnow().isoformat()
+    entries = _preflight_cache_entries(project, report)
+    entry_audio: Dict[str, Dict[str, Optional[str]]] = {}
+
+    if synthesize_tts:
+        for entry in entries:
+            entry_audio[entry["id"]] = await _synthesize_orb_tts(entry["spoken_output"])
+
+    artifact = {
+        "schema": "orb_weaver.preflight_tool_cache.v1",
+        "project_id": str(project.id),
+        "domain": project.domain,
+        "generated_at": generated_at,
+        "expires_at": expires_at.isoformat(),
+        "latency_target_ms": 150,
+        "fallback_strategy": "Say a filler line, then call MCP asynchronously for cache misses.",
+        "entries": [
+            {
+                "id": entry["id"],
+                "intents": entry["intents"],
+                "spoken_output": entry["spoken_output"],
+                "facts": entry.get("facts") or {},
+                "tts_audio_url": entry_audio.get(entry["id"], {}).get("tts_audio_url"),
+                "tts_provider": entry_audio.get(entry["id"], {}).get("tts_provider"),
+            }
+            for entry in entries
+        ],
+    }
+    root = _ensure_client_pack(project)
+    cache_path = root / "website_orb_context" / "tool_cache.json"
+    _write_json(cache_path, artifact)
+    _init_client_index(_client_index_path(project))
+    with sqlite3.connect(_client_index_path(project)) as connection:
+        connection.execute(
+            "INSERT OR REPLACE INTO context_documents(key, kind, json_path, updated_at) VALUES (?, ?, ?, ?)",
+            ("tool_cache", "website_orb_preflight_tool_cache", str(cache_path), generated_at),
+        )
+    if project.customer_id:
+        db.query(OrbToolCache).filter(
+            OrbToolCache.scope == scope,
+            OrbToolCache.tool == "website_voice_answer",
+        ).delete()
+
+        for entry in entries:
+            tts_result = entry_audio.get(entry["id"]) or {"tts_audio_url": None, "tts_provider": None, "tts_error": None}
+            normalized_input = {
+                "entry_id": entry["id"],
+                "intents": entry["intents"],
+                "intent_tokens": sorted(set().union(*[_tokenize_intent(intent) for intent in entry["intents"]])),
+                "project_id": str(project.id),
+                "site_url": report.get("site_url") or _project_target_url(project),
+            }
+            db.add(
+                OrbToolCache(
+                    customer_id=project.customer_id,
+                    scope=scope,
+                    tool="website_voice_answer",
+                    input_hash=_cache_key_for_tool(scope, "website_voice_answer", normalized_input),
+                    normalized_input=normalized_input,
+                    result_summary={
+                        "entry_id": entry["id"],
+                        "spoken_output": entry["spoken_output"],
+                        "facts": entry.get("facts") or {},
+                        **tts_result,
+                    },
+                    provenance={
+                        "source": "preflight_tool_cache",
+                        "schema": "orb_weaver.preflight_tool_cache_entry.v1",
+                        "generated_at": generated_at,
+                    },
+                    expires_at=expires_at,
+                )
+            )
+        db.commit()
+    return {"entries": len(entries), "path": str(cache_path), "scope": scope, "expires_at": expires_at.isoformat()}
+
+
+def _lookup_project_tool_cache(project: Project, transcript: str, db: Session) -> Optional[Dict[str, Any]]:
+    query_tokens = _tokenize_intent(transcript)
+    if not query_tokens:
+        return None
+    now = datetime.utcnow()
+    rows = (
+        db.query(OrbToolCache)
+        .filter(
+            OrbToolCache.scope == _project_tool_cache_scope(str(project.id)),
+            OrbToolCache.tool == "website_voice_answer",
+            OrbToolCache.expires_at > now,
+        )
+        .all()
+    )
+    best: Optional[Tuple[float, OrbToolCache]] = None
+    for row in rows:
+        intent_tokens = set((row.normalized_input or {}).get("intent_tokens") or [])
+        if not intent_tokens:
+            continue
+        overlap = query_tokens & intent_tokens
+        score = len(overlap) / max(1, min(len(query_tokens), len(intent_tokens)))
+        if score >= 0.34 and (best is None or score > best[0]):
+            best = (score, row)
+    if not best:
+        return None
+    summary = best[1].result_summary or {}
+    return {
+        "spoken_output": summary.get("spoken_output") or summary.get("summary"),
+        "llm_source": "preflight-tool-cache",
+        "cache_entry_id": summary.get("entry_id"),
+        "cache_score": round(best[0], 3),
+        "tts_audio_url": summary.get("tts_audio_url"),
+        "tts_provider": summary.get("tts_provider"),
+        "tts_error": summary.get("tts_error"),
+    }
 
 
 def _owned_project(project_id: str, customer: Customer, db: Session) -> Project:
@@ -1304,6 +1603,10 @@ def _orb_capabilities() -> Dict[str, Any]:
     legacy_electron_src = root / "electron" / "src"
     chrome_tool = shutil.which(settings.CHROME_DEVTOOLS_CLI) or shutil.which("npx")
     tesseract_bin = shutil.which("tesseract")
+    tessdata_path = Path(os.environ.get("TESSDATA_PREFIX") or "")
+    website_tesseract_ready = bool(tesseract_bin and (tessdata_path / "eng.traineddata").exists())
+    windows_tesseract_path = Path("/mnt/c/Program Files/Tesseract-OCR/tesseract.exe")
+    windows_tesseract_available = windows_tesseract_path.exists()
     desktop_mcp_root = Path(settings.ORB_DESKTOP_MCP_ROOT).expanduser()
     desktop_mcp_server = desktop_mcp_root / "orb_mcp_server.py"
     desktop_mcp_available = bool(settings.ORB_DESKTOP_MCP_ENABLED and desktop_mcp_server.exists())
@@ -1312,13 +1615,38 @@ def _orb_capabilities() -> Dict[str, Any]:
         "schema": "orb_weaver.website_orb_capabilities.v1",
         "orb_id": "ORB_WEAVER_SHOWCASE_ORB_V1",
         "role": "website_orb_showcase",
+        "product_boundary": {
+            "demo_orb_mcp_access": True,
+            "default_customer_website_orb_mcp_access": False,
+            "advanced_customer_adapters_require_explicit_configuration": True,
+            "desktop_orb_primary_mcp_home": True,
+            "statement": (
+                "Orb Weaver's demo ORB may use Desktop/MCP tools to showcase the ecosystem. "
+                "Installed customer Website ORBs run from their site package, target map, "
+                "compiled intent cache, voice assets, and approved website context unless "
+                "an advanced adapter is deliberately configured."
+            ),
+        },
         "cognition_source": str(current_src if current_src.exists() else legacy_electron_src),
         "current_orb_source_available": current_src.exists(),
         "legacy_electron_source_available": legacy_electron_src.exists(),
         "tesseract": {
-            "available": bool(tesseract_bin),
+            "available": website_tesseract_ready,
             "binary": tesseract_bin,
+            "tessdata_prefix": str(tessdata_path) if website_tesseract_ready else None,
+            "website_runtime": {
+                "available": website_tesseract_ready,
+                "binary": tesseract_bin,
+                "tessdata_prefix": str(tessdata_path) if website_tesseract_ready else None,
+                "purpose": "WSL/Linux website scanning and localized pointer verification",
+            },
+            "windows_app_runtime": {
+                "available": windows_tesseract_available,
+                "binary": str(windows_tesseract_path) if windows_tesseract_available else None,
+                "purpose": "Direct Windows and Tauri application OCR",
+            },
         },
+        "local_llm": dict(LLM_WARM_STATUS),
         "chrome_devtools_mcp": {
             "enabled": settings.CHROME_DEVTOOLS_ENABLED,
             "public_enabled": settings.CHROME_DEVTOOLS_PUBLIC_ENABLED,
@@ -1373,7 +1701,8 @@ def _orb_tool_catalog(customer: Customer) -> Dict[str, Any]:
     return {
         "schema": "orb_weaver.orb_tool_catalog.v1",
         "orb_id": capabilities["orb_id"],
-        "scope": "authenticated_owner",
+        "scope": "orb_weaver_showcase_authenticated_owner",
+        "product_boundary": capabilities.get("product_boundary"),
         "customer_id": str(customer.id),
         "tools": [
             {
@@ -1386,7 +1715,14 @@ def _orb_tool_catalog(customer: Customer) -> Dict[str, Any]:
             {
                 "id": "project_preflight",
                 "label": "Project Preflight",
-                "description": "Run the deterministic site readiness scanner for an owned project.",
+                "description": "Run the deterministic site readiness scanner and refresh the fast ORB voice cache.",
+                "requires_project": True,
+                "available": True,
+            },
+            {
+                "id": "project_tool_cache",
+                "label": "Pre-Flight Tool Cache",
+                "description": "Build page-specific cached voice answers from the latest project preflight report.",
                 "requires_project": True,
                 "available": True,
             },
@@ -1413,8 +1749,8 @@ def _orb_tool_catalog(customer: Customer) -> Dict[str, Any]:
             },
             {
                 "id": "chrome_devtools_mcp",
-                "label": "Chrome DevTools MCP Tool",
-                "description": "Run an allow-listed Chrome DevTools MCP command.",
+                "label": "Showcase Chrome DevTools MCP Tool",
+                "description": "Run an allow-listed Chrome DevTools MCP command for the Orb Weaver demo/development ORB.",
                 "requires_project": False,
                 "available": chrome_enabled,
                 "mcp_tools": [
@@ -1428,11 +1764,19 @@ def _orb_tool_catalog(customer: Customer) -> Dict[str, Any]:
             },
             {
                 "id": "rdrive_orb_mcp",
-                "label": "R-Drive ORB MCP Tool",
-                "description": "Run the real TPC-first ORB Desktop MCP server from the R-drive substrate.",
+                "label": "Showcase Desktop ORB MCP Tool",
+                "description": "Run the real Desktop ORB MCP server for Orb Weaver showcase/development use.",
                 "requires_project": False,
                 "available": desktop_mcp_enabled,
                 "mcp_tools": desktop_mcp_tools,
+            },
+            {
+                "id": "visual_audit",
+                "label": "Showcase Visual OCR Audit",
+                "description": "Capture visible browser state through Desktop MCP/OCR for the Orb Weaver demo ORB or explicitly configured advanced adapters.",
+                "requires_project": False,
+                "available": desktop_mcp_enabled,
+                "mcp_tools": ["orb_browser_screenshot", "orb_ocr_screen"],
             },
         ],
         "capabilities": capabilities,
@@ -1501,6 +1845,12 @@ async def _run_orb_tool(payload: OrbToolRunRequest, customer: Customer, db: Sess
             raise HTTPException(status_code=400, detail="project_id is required for project_preflight")
         report = await _run_project_preflight(project)
         preserve_client_preflight_intelligence(project, report)
+        cache_summary = await _build_project_tool_cache(
+            project,
+            report,
+            db,
+            synthesize_tts=bool(payload.params.get("synthesize_tts")),
+        )
         result = {
             "schema": "orb_weaver.orb_tool_result.v1",
             "status": "completed",
@@ -1511,8 +1861,33 @@ async def _run_orb_tool(payload: OrbToolRunRequest, customer: Customer, db: Sess
                 "pages_scanned": report.get("pages_scanned"),
                 "confidence": report.get("confidence"),
                 "warnings": len(report.get("warnings") or []),
+                "tool_cache": cache_summary,
             },
             "result": report,
+        }
+    elif tool == "project_tool_cache":
+        if not project:
+            raise HTTPException(status_code=400, detail="project_id is required for project_tool_cache")
+        preflight_path = _client_intelligence_root(project) / "website_orb_context" / "site_preflight_report.json"
+        if preflight_path.exists():
+            report = json.loads(preflight_path.read_text(encoding="utf-8"))
+        else:
+            report = await _run_project_preflight(project)
+            preserve_client_preflight_intelligence(project, report)
+        cache_summary = await _build_project_tool_cache(
+            project,
+            report,
+            db,
+            synthesize_tts=bool(payload.params.get("synthesize_tts")),
+        )
+        result = {
+            "schema": "orb_weaver.orb_tool_result.v1",
+            "status": "completed",
+            "tool": tool,
+            "generated_at": generated_at,
+            "project_id": str(project.id),
+            "summary": cache_summary,
+            "result": cache_summary,
         }
     elif tool == "project_browser_review":
         if not project:
@@ -1595,6 +1970,38 @@ async def _run_orb_tool(payload: OrbToolRunRequest, customer: Customer, db: Sess
             "generated_at": generated_at,
             "result": mcp_result,
         }
+    elif tool == "visual_audit":
+        if not settings.ORB_DESKTOP_MCP_ENABLED:
+            raise HTTPException(status_code=403, detail="R-drive ORB MCP is not enabled")
+        client = _orb_desktop_mcp_client()
+        if payload.target_url:
+            client.call_tool("orb_browser_navigate", {"url": payload.target_url})
+        screenshot = client.call_tool("orb_browser_screenshot", dict(payload.params.get("screenshot_args") or {}))
+        ocr = client.call_tool("orb_ocr_screen", dict(payload.params.get("ocr_args") or {}))
+        ocr_text = json.dumps(ocr, default=str)
+        expected_text = str(payload.params.get("expected_text") or "").strip()
+        api_value = str(payload.params.get("api_value") or "").strip()
+        checks = {
+            "expected_text_visible": bool(expected_text and expected_text.lower() in ocr_text.lower()) if expected_text else None,
+            "api_value_visible": bool(api_value and api_value.lower() in ocr_text.lower()) if api_value else None,
+        }
+        mismatch = any(value is False for value in checks.values())
+        result = {
+            "schema": "orb_weaver.orb_tool_result.v1",
+            "status": "warning" if mismatch else "completed",
+            "tool": tool,
+            "generated_at": generated_at,
+            "summary": {
+                "visual_consistency": "mismatch" if mismatch else "not_enough_expected_data" if not expected_text and not api_value else "matched",
+                "checks": checks,
+            },
+            "result": {
+                "target_url": payload.target_url,
+                "screenshot": screenshot,
+                "ocr": ocr,
+                "checks": checks,
+            },
+        }
     else:
         raise HTTPException(status_code=400, detail=f"Unknown ORB tool: {tool}")
 
@@ -1626,10 +2033,13 @@ def _fallback_orb_spoken_output(
     transcript: str,
     pulse: Optional[Dict[str, Any]],
     memory_context: Optional[Dict[str, Any]] = None,
+    website_context: Optional[Dict[str, Any]] = None,
 ) -> str:
     normalized = transcript.lower()
     mode = (pulse or {}).get("cognitive_mode") or "READY"
     memory_items = (memory_context or {}).get("items") or []
+    site_name = (website_context or {}).get("site_name") or (website_context or {}).get("brand")
+    site_role = (website_context or {}).get("orb_role")
     preferred_name = next(
         (
             item.get("value")
@@ -1640,6 +2050,10 @@ def _fallback_orb_spoken_output(
     )
     if preferred_name and any(term in normalized for term in ("remember", "know me", "who am i", "my name")):
         return f"I remember that you prefer to be addressed as {preferred_name}."
+    if site_name and any(term in normalized for term in ("where am i", "what site", "what website", "where are you")):
+        return f"You are on {site_name}, and I am here to help visitors understand and use this site."
+    if site_role and any(term in normalized for term in ("your job", "what do you do", "help me", "what are you for")):
+        return str(site_role).strip()[:240]
     if "preflight" in normalized or "scan" in normalized:
         return "I can run a public Preflight scan now. It checks basic Website ORB readiness without requiring an account."
     if "tool" in normalized or "mcp" in normalized or "tesseract" in normalized:
@@ -1651,15 +2065,179 @@ def _fallback_orb_spoken_output(
     return "I am online and ready. I can demonstrate public Preflight, ORB cognition, voice, and deployment readiness."
 
 
+def _website_weaver_capabilities(website_context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Public-only capability registry supplied to the Website Weaver runtime."""
+    has_pointer_map = bool(
+        website_context
+        and website_context.get("domain")
+        and _load_pointer_records_for_domain(str(website_context["domain"]))
+    )
+    return [
+        {
+            "id": "website_text_answer",
+            "display_name": "Website answer",
+            "description": "Answer from approved website context and the current route record.",
+            "allowed_audience": "public",
+            "required_fields": ["transcript", "target_url"],
+            "safe_to_run_without_confirmation": True,
+            "requires_confirmation": False,
+            "route_or_endpoint": "/api/orb/website-text",
+            "available_now": True,
+            "affects_state": False,
+            "failure_message": "I cannot answer that reliably from the available website context.",
+        },
+        {
+            "id": "website_voice_answer",
+            "display_name": "Website voice answer",
+            "description": "Transcribe a visitor question and return an approved spoken answer.",
+            "allowed_audience": "public",
+            "required_fields": ["audio", "target_url"],
+            "safe_to_run_without_confirmation": True,
+            "requires_confirmation": False,
+            "route_or_endpoint": "/api/orb/website-voice",
+            "available_now": True,
+            "affects_state": False,
+            "failure_message": "Voice is unavailable right now, but the site can still provide visual guidance.",
+        },
+        {
+            "id": "public_preflight_scan",
+            "display_name": "Public Preflight",
+            "description": "Run the public Website ORB readiness scan for a visitor-supplied URL.",
+            "allowed_audience": "public",
+            "required_fields": ["url"],
+            "safe_to_run_without_confirmation": False,
+            "requires_confirmation": True,
+            "route_or_endpoint": "/api/public/preflight",
+            "available_now": True,
+            "affects_state": True,
+            "failure_message": "I could not run Preflight; the visitor can open the Preflight page and try again.",
+        },
+        {
+            "id": "marketplace_guidance",
+            "display_name": "Marketplace guidance",
+            "description": "Explain verified public marketplace products and direct the visitor to the marketplace.",
+            "allowed_audience": "public",
+            "required_fields": [],
+            "safe_to_run_without_confirmation": True,
+            "requires_confirmation": True,
+            "route_or_endpoint": "/marketplace",
+            "available_now": True,
+            "affects_state": False,
+            "failure_message": "I can explain the marketplace, but I cannot complete a purchase for the visitor.",
+        },
+        {
+            "id": "pointer_guidance_if_target_verified",
+            "display_name": "Verified pointer guidance",
+            "description": "Select a known page target; the pointer runtime must verify it before movement.",
+            "allowed_audience": "public",
+            "required_fields": ["target_id", "current_url"],
+            "safe_to_run_without_confirmation": True,
+            "requires_confirmation": True,
+            "route_or_endpoint": "/api/orb/pointer-map",
+            "available_now": has_pointer_map,
+            "affects_state": False,
+            "failure_message": "I can explain where to go, but I cannot verify a safe pointer target on this page.",
+        },
+        {
+            "id": "human_escalation_if_requested",
+            "display_name": "Human escalation",
+            "description": "Offer a governed handoff when the visitor explicitly asks for a person.",
+            "allowed_audience": "public",
+            "required_fields": ["visitor_consent"],
+            "safe_to_run_without_confirmation": False,
+            "requires_confirmation": True,
+            "route_or_endpoint": None,
+            "available_now": False,
+            "affects_state": True,
+            "failure_message": "Human handoff is not connected yet; I can explain the available contact path.",
+        },
+    ]
+
+
+def _build_website_weaver_envelope(
+    website_context: Optional[Dict[str, Any]],
+    page_capsule: Optional[Dict[str, Any]],
+    transcript: str,
+) -> Dict[str, Any]:
+    """Assemble the single source of operational guiderails for public Website Weaver."""
+    context = website_context or {}
+    capsule = page_capsule or {}
+    current_page = {
+        "current_url": capsule.get("current_url") or context.get("current_url"),
+        "route": capsule.get("route") or _route_from_url(context.get("current_url")),
+        "page_purpose": capsule.get("page_purpose"),
+        "page_summary": capsule.get("page_summary"),
+        "likely_visitor_tasks": (capsule.get("likely_visitor_tasks") or [])[:5],
+        "top_pointer_targets": (capsule.get("top_pointer_targets") or [])[:3],
+    }
+    return {
+        "identity": {
+            "name": "Weaver",
+            "role": "Public Website ORB for Orb Weaver; website consultant, guide, and explainer.",
+            "not_roles": ["generic chatbot", "Desktop CALI", "navigation authority"],
+        },
+        "job": context.get("orb_role") or "Help visitors understand and safely use this website.",
+        "current_page": current_page,
+        "site_intelligence": {
+            "site_name": context.get("site_name") or context.get("brand"),
+            "domain": context.get("domain"),
+            "site_summary": context.get("site_summary"),
+            "primary_user_tasks": (context.get("primary_user_tasks") or [])[:8],
+            "key_facts": (context.get("key_facts") or [])[:8],
+            "route_hints": context.get("route_hints") or {},
+            "pointer_matches": _lookup_pointer_context(context, transcript),
+        },
+        "memory_architecture": {
+            "site_world_skg": {
+                "role": "Durable compiled knowledge of the website, routes, facts, targets, permissions, and relationships.",
+                "source": context.get("source") or "compiled_site_world",
+                "lookup_policy": "Load the current route record; do not rebuild the site-world during a visitor turn.",
+            },
+            "user_memory": {
+                "role": "Explicit preferences and bounded recent context for an authenticated account only.",
+                "public_visitor_policy": "Anonymous visitors receive no durable personal memory.",
+                "sensitive_data_policy": "Never store credentials, payment data, raw recordings, or private browsing history.",
+            },
+            "cognitive_vaults": {
+                "apriori": "Protected doctrine and invariant operating laws.",
+                "posteriori": "Reusable resolved cognitive patterns for faster future reasoning.",
+                "authority": "Advisory cognition only; tool permissions and live target verification remain authoritative.",
+            },
+            "improvement_loop": [
+                "Use new approved scans and rescans to refresh the site-world/SKG.",
+                "Use explicit authenticated preferences to improve relevant answers.",
+                "Use bounded interaction summaries and posteriori resolutions to reduce repeated reasoning cost.",
+                "Never promote guessed facts or runtime pointer corrections into authoritative memory automatically.",
+            ],
+        },
+        "capabilities": _website_weaver_capabilities(context),
+        "policy": {
+            "answer_directly_when": "Known context answers the question and no tool or state change is needed.",
+            "use_tools_when": "A matching available public capability is needed and its confirmation rule is satisfied.",
+            "pointer_rule": "Choose only a known target; pointer runtime must verify it. If unverified, answer voice-only.",
+            "navigation_rule": "Require confirmation before cross-page navigation and never click for the visitor.",
+            "escalation_rule": "Escalate only on explicit request; frustration alone triggers an offer.",
+            "prohibitions": [
+                "Never invent tools, routes, prices, targets, reports, scan results, or completed actions.",
+                "Never claim a tool ran unless the runtime returned a successful result.",
+                "Never expose owner or admin data to public visitors.",
+            ],
+            "site_boundaries": context.get("answer_boundaries") or [],
+        },
+    }
+
+
 async def _llm_orb_spoken_output(
     transcript: str,
     pulse: Optional[Dict[str, Any]],
     memory_context: Optional[Dict[str, Any]] = None,
+    website_context: Optional[Dict[str, Any]] = None,
+    page_capsule: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, str]:
     if _is_orb_identity_question(transcript):
         return {"spoken_output": ORB_PUBLIC_IDENTITY_ANSWER, "llm_source": "deterministic-identity"}
 
-    fallback = _fallback_orb_spoken_output(transcript, pulse, memory_context)
+    fallback = _fallback_orb_spoken_output(transcript, pulse, memory_context, website_context)
     if not settings.LOCAL_LLM_URL or not settings.LOCAL_LLM_MODEL:
         return {"spoken_output": fallback, "llm_source": "local-fallback"}
 
@@ -1672,18 +2250,18 @@ async def _llm_orb_spoken_output(
     memory_brief = {
         "scope": (memory_context or {}).get("scope"),
         "durable": (memory_context or {}).get("durable"),
-        "items": (memory_context or {}).get("items") or [],
-        "recent_context": (memory_context or {}).get("recent_context"),
+        "items": ((memory_context or {}).get("items") or [])[:6],
+        "recent_context": (memory_context or {}).get("recent_context") if (memory_context or {}).get("durable") else None,
     }
+    weaver_envelope = _build_website_weaver_envelope(website_context, page_capsule, transcript)
     prompt = (
-        "You are the spoken output of the Orb Weaver website ORB assistant. "
-        "Use the ORB cognitive pulse as advisory cognition. "
-        "Use authenticated ORB account memory only when it is directly relevant. "
-        "Do not invent facts. Do not expose private internals. "
-        "Answer in one short spoken sentence. No markdown. No chat UI language.\n\n"
-        f"Visitor voice transcript: {transcript}\n"
-        f"ORB cognitive pulse: {json.dumps(pulse_brief, ensure_ascii=False)}\n"
-        f"Safe account memory context: {json.dumps(memory_brief, ensure_ascii=False)}"
+        "You are Weaver. Obey the Website Weaver envelope as the authoritative operating contract.\n"
+        f"Website Weaver envelope: {json.dumps(weaver_envelope, ensure_ascii=False)}\n"
+        f"Safe account memory, only if relevant: {json.dumps(memory_brief, ensure_ascii=False)}\n"
+        f"Advisory cognitive pulse: {json.dumps(pulse_brief, ensure_ascii=False)}\n"
+        f"Visitor question: {transcript}\n"
+        "Answer the visitor as Weaver in exactly one short spoken sentence. "
+        "Follow tool availability and confirmation rules, never claim an action ran, and use no markdown or chat-UI language."
     )
     try:
         timeout_seconds = min(120.0, max(5.0, float(settings.LOCAL_LLM_TIMEOUT_SECONDS or 60.0)))
@@ -2100,6 +2678,248 @@ def _safe_pack_name(value: str) -> str:
     return cleaned.strip("._-") or "unknown_site"
 
 
+def _domain_from_url(value: Optional[str]) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    candidate = raw if "://" in raw else f"https://{raw}"
+    parsed = urlparse(candidate)
+    host = (parsed.hostname or "").strip().lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def _route_from_url(value: Optional[str]) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return "/"
+    candidate = raw if "://" in raw else f"https://{raw}"
+    parsed = urlparse(candidate)
+    return (parsed.path or "/").rstrip("/") or "/"
+
+
+def _load_json_if_present(path: Path) -> Optional[Dict[str, Any]]:
+    try:
+        if path.exists():
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
+    return None
+
+
+def _website_context_root(domain: str) -> Optional[Path]:
+    repo_root = Path(__file__).resolve().parent.parent
+    roots = [
+        SUBSTRATE_ROOT,
+        repo_root / "substrate",
+        Path.cwd().parent / "substrate",
+    ]
+    seen: Set[str] = set()
+    for substrate_root in roots:
+        root_key = str(substrate_root.resolve() if substrate_root.exists() else substrate_root)
+        if root_key in seen:
+            continue
+        seen.add(root_key)
+        root = substrate_root / "clients" / _safe_pack_name(domain) / "website_orb_context"
+        if root.exists():
+            return root
+    return None
+
+
+def _load_domain_website_context(target_url: Optional[str]) -> Optional[Dict[str, Any]]:
+    domain = _domain_from_url(target_url)
+    if not domain:
+        return None
+
+    root = _website_context_root(domain)
+    if root:
+        for filename in ("orb_runtime_context.json", "latest_context.json"):
+            payload = _load_json_if_present(root / filename)
+            if payload:
+                payload.setdefault("domain", domain)
+                return payload
+    return None
+
+
+def _score_keyword_match(transcript: str, keywords: List[str]) -> float:
+    query_tokens = _tokenize_intent(transcript)
+    if not query_tokens:
+        return 0.0
+    best = 0.0
+    for keyword in keywords:
+        keyword_tokens = _tokenize_intent(str(keyword))
+        if not keyword_tokens:
+            continue
+        overlap = query_tokens & keyword_tokens
+        score = len(overlap) / max(1, min(len(query_tokens), len(keyword_tokens)))
+        if score > best:
+            best = score
+    return best
+
+
+def _lookup_domain_runtime_tool(
+    website_context: Optional[Dict[str, Any]],
+    transcript: str,
+) -> Optional[Dict[str, Any]]:
+    if not website_context:
+        return None
+
+    candidates: List[Tuple[float, Dict[str, Any], str]] = []
+    for entry in website_context.get("visitor_tools") or []:
+        score = _score_keyword_match(transcript, entry.get("keywords") or [])
+        if score >= 0.34 and entry.get("spoken_output"):
+            candidates.append((score, entry, "orb-runtime-context"))
+
+    domain = website_context.get("domain")
+    if domain:
+        cache_path = SUBSTRATE_ROOT / "clients" / _safe_pack_name(str(domain)) / "website_orb_context" / "tool_cache.json"
+        tool_cache = _load_json_if_present(cache_path) or {}
+        for entry in tool_cache.get("entries") or []:
+            score = _score_keyword_match(transcript, entry.get("keywords") or entry.get("intents") or [])
+            if score >= 0.42 and entry.get("spoken_output"):
+                candidates.append((score, entry, "website-tool-cache"))
+
+    if not candidates:
+        return None
+
+    score, entry, source = sorted(candidates, key=lambda item: item[0], reverse=True)[0]
+    return {
+        "spoken_output": str(entry.get("spoken_output") or "").strip(),
+        "llm_source": source,
+        "cache_entry_id": entry.get("id"),
+        "cache_score": round(score, 3),
+        "suggested_route": entry.get("suggested_route"),
+        "tts_audio_url": entry.get("tts_audio_url"),
+        "tts_provider": entry.get("tts_provider"),
+        "tts_error": entry.get("tts_error"),
+    }
+
+
+def _pointer_record_text(record: Dict[str, Any]) -> str:
+    parts: List[str] = [
+        str(record.get("meaning") or ""),
+        str(record.get("target_type") or ""),
+        str(record.get("page_route") or ""),
+    ]
+    for key in ("intent_aliases", "direct_aliases", "topic_aliases"):
+        parts.extend(str(item) for item in (record.get(key) or []))
+    structural = record.get("structural_context") or {}
+    parts.extend(
+        str(structural.get(key) or "")
+        for key in ("landmark", "parent_heading", "tag")
+    )
+    return " ".join(part for part in parts if part)
+
+
+def _pointer_summary(record: Dict[str, Any], score: float = 0.0) -> Dict[str, Any]:
+    return {
+        "target_id": record.get("target_id"),
+        "page_route": record.get("page_route"),
+        "target_type": record.get("target_type"),
+        "meaning": record.get("meaning"),
+        "semantic_locator": record.get("semantic_locator"),
+        "structural_context": record.get("structural_context") or {},
+        "allowed_actions": record.get("allowed_actions") or [],
+        "confidence": record.get("confidence"),
+        "match_score": round(score, 3),
+    }
+
+
+def _load_pointer_records_for_domain(domain: str) -> List[Dict[str, Any]]:
+    root = _website_context_root(domain)
+    if not root:
+        return []
+    pointer_map = _load_json_if_present(root / "pointer_plot_map.json") or {}
+    return [record for record in (pointer_map.get("records") or []) if isinstance(record, dict)]
+
+
+def _lookup_pointer_context(
+    website_context: Optional[Dict[str, Any]],
+    transcript: str,
+    max_records: int = 6,
+) -> List[Dict[str, Any]]:
+    if not website_context:
+        return []
+    domain = website_context.get("domain")
+    if not domain:
+        return []
+    records = _load_pointer_records_for_domain(str(domain))
+    query_tokens = _tokenize_intent(transcript)
+    if not query_tokens:
+        return []
+
+    scored: List[Tuple[float, Dict[str, Any]]] = []
+    for record in records:
+        if not isinstance(record, dict) or record.get("status") not in (None, "active"):
+            continue
+        record_tokens = _tokenize_intent(_pointer_record_text(record))
+        if not record_tokens:
+            continue
+        overlap = query_tokens & record_tokens
+        if not overlap:
+            continue
+        score = len(overlap) / max(1, min(len(query_tokens), len(record_tokens)))
+        if record.get("target_type") in {"nav", "button", "link", "product"}:
+            score += 0.08
+        if score >= 0.2:
+            scored.append((score, record))
+
+    matches = sorted(scored, key=lambda item: item[0], reverse=True)[:max_records]
+    return [_pointer_summary(record, score) for score, record in matches]
+
+
+def _build_page_capsule(target_url: str) -> Dict[str, Any]:
+    website_context = _load_domain_website_context(target_url) or {}
+    domain = website_context.get("domain") or _domain_from_url(target_url)
+    route = _route_from_url(target_url)
+    records = _load_pointer_records_for_domain(str(domain))
+
+    def record_route(record: Dict[str, Any]) -> str:
+        return _route_from_url(record.get("page_route"))
+
+    route_records = [
+        record for record in records
+        if record.get("status") in (None, "active") and record_route(record) == route
+    ]
+
+    def value_score(record: Dict[str, Any]) -> float:
+        target_type = str(record.get("target_type") or "")
+        meaning = str(record.get("meaning") or "").lower()
+        score = float(record.get("confidence") or 0.5)
+        if target_type in {"nav", "button", "form", "product", "link"}:
+            score += 0.22
+        if any(term in meaning for term in ("preflight", "marketplace", "scan", "pricing", "login", "website orb", "premium", "basic", "diagnostic")):
+            score += 0.28
+        return score
+
+    ranked = sorted(route_records, key=value_score, reverse=True)
+    route_hints = website_context.get("route_hints") or {}
+    visitor_tools = website_context.get("visitor_tools") or []
+    route_text = " ".join([route, *[str(item.get("id") or "") for item in visitor_tools]])
+    likely_tools = [
+        item for item in visitor_tools
+        if _score_keyword_match(route_text, item.get("keywords") or [item.get("id") or ""]) >= 0.2
+    ][:5]
+    return {
+        "schema": "orb_weaver.current_page_capsule.v1",
+        "site_name": website_context.get("site_name"),
+        "domain": domain,
+        "current_url": target_url,
+        "route": route,
+        "page_purpose": "Help visitors understand and use this Orb Weaver page.",
+        "page_summary": website_context.get("site_summary"),
+        "likely_visitor_tasks": [
+            item.get("id", "").replace("_", " ")
+            for item in likely_tools
+            if item.get("id")
+        ] or (website_context.get("primary_user_tasks") or [])[:5],
+        "top_pointer_targets": [_pointer_summary(record, value_score(record)) for record in ranked[:5]],
+        "secondary_pointer_targets": [_pointer_summary(record, value_score(record)) for record in ranked[5:15]],
+        "relevant_navigation": route_hints,
+        "relevant_guiderails": (website_context.get("answer_boundaries") or [])[:8],
+    }
+
+
 def _client_intelligence_root(project: Project) -> Path:
     return SUBSTRATE_ROOT / "clients" / _safe_pack_name(project.domain)
 
@@ -2417,8 +3237,19 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
         history_path = root / "history" / f"crawl_{crawl_job.id}.json"
         _write_json(latest_path, payload)
         _write_json(history_path, payload)
+        pointer_path = root / "website_orb_context" / "pointer_plot_map.json"
+        existing_pointer_map = _load_json_if_present(pointer_path) or {}
+        new_pointer_map = payload["pointer_plot_map"]
+        if int(new_pointer_map.get("record_count") or 0) > 0 or int(existing_pointer_map.get("record_count") or 0) == 0:
+            _write_json(pointer_path, new_pointer_map)
+        else:
+            payload["website_orb_context"]["pointer_plot_map"] = existing_pointer_map
+            payload["website_orb_context"]["pointer_map_preservation"] = {
+                "status": "preserved_previous_verified_map",
+                "rejected_crawl_id": str(crawl_job.id),
+                "reason": "new_crawl_produced_zero_pointer_records",
+            }
         _write_json(root / "website_orb_context" / "latest_context.json", payload["website_orb_context"])
-        _write_json(root / "website_orb_context" / "pointer_plot_map.json", payload["pointer_plot_map"])
         _write_json(root / "crm_context" / "latest_context.json", {"schema": "orb_weaver.crm_context.v0.1", "status": "not_connected"})
         _write_json(root / "mail_context" / "latest_context.json", {"schema": "orb_weaver.mail_context.v0.1", "status": "not_connected"})
         _write_json(root / "dandy_sponsor_pack" / "latest_pack.json", {"schema": "orb_weaver.dandy_sponsor_pack.v0.1", "status": "not_configured"})
@@ -2512,7 +3343,9 @@ def _page_to_dict(page: CrawledPage) -> Dict:
 
 
 def _compute_stats(pages: List[CrawledPage]) -> Dict:
+    pointer_summary = _pointer_summary_from_pages(pages)
     if not pages:
+        planned_tool_calls = _planned_tool_calls(pointer_summary, pages=pages)
         return {
             "total_pages": 0,
             "visited_urls": 0,
@@ -2534,12 +3367,14 @@ def _compute_stats(pages: List[CrawledPage]) -> Dict:
             "low_orb_semantic_pages": 0,
             "avg_mobile_ux_score": 0,
             "mobile_ux_problem_pages": 0,
+            "pointer_summary": pointer_summary,
+            "planned_tool_calls": planned_tool_calls,
         }
 
     load_times = [p.load_time_ms for p in pages if p.load_time_ms is not None]
     content_hashes = [p.content_hash for p in pages if p.content_hash]
     duplicate_hashes = {h for h in content_hashes if content_hashes.count(h) > 1}
-    return {
+    stats = {
         "total_pages": len(pages),
         "visited_urls": len(pages),
         "sitemap_urls_found": 0,
@@ -2563,6 +3398,206 @@ def _compute_stats(pages: List[CrawledPage]) -> Dict:
         "low_orb_semantic_pages": sum(1 for p in pages if (p.semantic_analysis or {}).get("orb_semantic_score", {}).get("overall", 0) < 65),
         "avg_mobile_ux_score": sum((p.mobile_ux_analysis or {}).get("score", 0) for p in pages) / len(pages),
         "mobile_ux_problem_pages": sum(1 for p in pages if (p.mobile_ux_analysis or {}).get("score", 100) < 70),
+        "pointer_summary": pointer_summary,
+    }
+    stats["planned_tool_calls"] = _planned_tool_calls(pointer_summary, stats, pages)
+    return stats
+
+
+def _pointer_summary_from_pages(pages: List[CrawledPage]) -> Dict:
+    records = []
+    route_ids: Dict[str, List[str]] = {}
+    type_counts: Dict[str, int] = {}
+    for page in pages:
+        page_records = (page.semantic_analysis or {}).get("pointer_plot_records") or []
+        if not isinstance(page_records, list):
+            continue
+        for record in page_records:
+            if not isinstance(record, dict) or not record.get("target_id"):
+                continue
+            target_id = str(record.get("target_id"))
+            records.append(record)
+            route_ids.setdefault(page.url, []).append(target_id)
+            target_type = str(record.get("target_type") or "other")
+            type_counts[target_type] = type_counts.get(target_type, 0) + 1
+
+    duplicate_count = sum(1 for count in Counter(str(record.get("target_id")) for record in records).values() if count > 1)
+    return {
+        "schema": "orb_weaver.pointer_summary.v1",
+        "record_count": len(records),
+        "routes_with_pointers": len(route_ids),
+        "duplicate_target_ids": duplicate_count,
+        "target_type_counts": type_counts,
+        "status": "passed" if records and duplicate_count == 0 else "needs_review",
+    }
+
+
+def _planned_tool_calls(pointer_summary: Dict, stats: Optional[Dict] = None, pages: Optional[List[CrawledPage]] = None) -> List[Dict[str, Any]]:
+    stats = stats or {}
+    record_count = int(pointer_summary.get("record_count") or 0)
+    duplicate_count = int(pointer_summary.get("duplicate_target_ids") or 0)
+    depth_limit_hit = bool(stats.get("depth_limit_hit"))
+    max_page_limit_hit = bool(stats.get("max_page_limit_hit"))
+
+    planned = [
+        {
+            "id": "load_pointer_plot_map",
+            "tool": "pointer_plot_map",
+            "scope": "basic_customer_orb",
+            "trigger": "website_orb_boot",
+            "purpose": "Load verified pointable targets for the current site package.",
+            "status": "ready" if record_count > 0 and duplicate_count == 0 else "needs_review",
+            "requires_mcp": False,
+        },
+        {
+            "id": "resolve_pointer_target",
+            "tool": "runtime_pointer_resolver",
+            "scope": "basic_customer_orb",
+            "trigger": "visitor_intent_match",
+            "purpose": "Resolve a cached target record against the live DOM before moving or blooming.",
+            "status": "ready" if record_count > 0 and duplicate_count == 0 else "blocked_until_pointer_map_passes",
+            "requires_mcp": False,
+        },
+        {
+            "id": "build_preflight_tool_cache",
+            "tool": "build_preflight_tool_cache",
+            "scope": "basic_customer_orb",
+            "trigger": "post_scan_or_pack_build",
+            "purpose": "Compile fast static voice answers and route hints without live tool dependencies.",
+            "status": "ready",
+            "requires_mcp": False,
+        },
+    ]
+
+    if duplicate_count > 0 or record_count == 0:
+        planned.append(
+            {
+                "id": "repair_pointer_map",
+                "tool": "self_scan_or_pointer_extraction",
+                "scope": "owner_build_pipeline",
+                "trigger": "pointer_summary_needs_review",
+                "purpose": "Rerun rendered extraction or repair duplicate/missing target identities before deployment.",
+                "status": "recommended",
+                "requires_mcp": False,
+            }
+        )
+
+    if depth_limit_hit or max_page_limit_hit:
+        planned.append(
+            {
+                "id": "expanded_route_scan",
+                "tool": "authenticated_crawler",
+                "scope": "owner_build_pipeline",
+                "trigger": "crawl_limit_hit",
+                "purpose": "Increase page/depth coverage for a denser pointer map on important routes.",
+                "status": "recommended",
+                "requires_mcp": False,
+            }
+        )
+
+    planned.append(
+        {
+            "id": "visual_audit",
+            "tool": "visual_audit",
+            "scope": "orb_weaver_showcase_or_advanced_adapter",
+            "trigger": "owner_enabled_visual_verification",
+            "purpose": "Compare API/DOM expectations with rendered visual text for high-confidence diagnostics.",
+            "status": "gated",
+            "requires_mcp": True,
+        }
+    )
+    return planned + _planned_pointer_tool_calls_from_pages(pages or [])
+
+
+def _planned_pointer_tool_calls_from_pages(pages: List[CrawledPage], limit: int = 80) -> List[Dict[str, Any]]:
+    planned: List[Dict[str, Any]] = []
+    seen: Set[Tuple[str, str, str]] = set()
+
+    for page in pages:
+        page_records = (page.semantic_analysis or {}).get("pointer_plot_records") or []
+        if not isinstance(page_records, list):
+            continue
+        for record in page_records:
+            if len(planned) >= limit:
+                return planned
+            if not isinstance(record, dict) or not record.get("target_id"):
+                continue
+
+            target_type = str(record.get("target_type") or "other")
+            meaning = str(record.get("meaning") or "")
+            context = record.get("structural_context") if isinstance(record.get("structural_context"), dict) else {}
+            section = str(context.get("parent_heading") or context.get("landmark") or "page")
+            route = str(record.get("page_route") or page.url)
+            plan = _planned_tool_for_pointer_target(target_type, meaning)
+            key = (route, section, plan["tool"])
+            if key in seen:
+                continue
+            seen.add(key)
+
+            planned.append(
+                {
+                    "id": f"pointer_{hashlib.sha256('|'.join(key).encode('utf-8')).hexdigest()[:12]}",
+                    "tool": plan["tool"],
+                    "scope": plan["scope"],
+                    "trigger": plan["trigger"],
+                    "purpose": plan["purpose"],
+                    "status": plan["status"],
+                    "requires_mcp": plan["requires_mcp"],
+                    "route": route,
+                    "section": section[:120],
+                    "target_type": target_type,
+                    "target_id": str(record.get("target_id")),
+                    "anchor_strategy": record.get("anchor_strategy"),
+                }
+            )
+    return planned
+
+
+def _planned_tool_for_pointer_target(target_type: str, meaning: str) -> Dict[str, Any]:
+    text = f"{target_type} {meaning}".lower()
+    if target_type == "form_field" or any(term in text for term in ("contact", "support", "email", "phone", "quote", "lead")):
+        return {
+            "tool": "contact_or_lead_context",
+            "scope": "advanced_customer_adapter",
+            "trigger": "visitor_intent_on_form_or_contact_section",
+            "purpose": "Prepare a verified handoff/contact context for the visitor without submitting forms by default.",
+            "status": "anticipated",
+            "requires_mcp": False,
+        }
+    if any(term in text for term in ("price", "pricing", "cart", "checkout", "product", "marketplace")):
+        return {
+            "tool": "commerce_context_lookup",
+            "scope": "advanced_customer_adapter",
+            "trigger": "visitor_intent_on_pricing_product_or_checkout_section",
+            "purpose": "Lookup approved pricing/cart/product context when the deployment has a commerce adapter.",
+            "status": "gated",
+            "requires_mcp": True,
+        }
+    if target_type in {"faq_answer", "policy_line"} or any(term in text for term in ("faq", "privacy", "terms", "policy")):
+        return {
+            "tool": "knowledge_base_answer",
+            "scope": "basic_customer_orb",
+            "trigger": "visitor_question_on_policy_or_faq_section",
+            "purpose": "Answer from the installed website context and point to the verified section.",
+            "status": "ready",
+            "requires_mcp": False,
+        }
+    if target_type in {"button", "nav", "download"}:
+        return {
+            "tool": "pointer_guidance",
+            "scope": "basic_customer_orb",
+            "trigger": "visitor_intent_on_navigation_or_action_target",
+            "purpose": "Move, point, and bloom at the verified target without clicking for the visitor by default.",
+            "status": "ready",
+            "requires_mcp": False,
+        }
+    return {
+        "tool": "section_context_guidance",
+        "scope": "basic_customer_orb",
+        "trigger": "visitor_intent_on_verified_section",
+        "purpose": "Guide the visitor to the verified section and answer from cached website context.",
+        "status": "ready",
+        "requires_mcp": False,
     }
 
 
@@ -2963,6 +3998,8 @@ def _serialize_crawl_job(crawl_job: CrawlJob, db: Session, include_pages: bool =
         "pages_found": crawl_job.pages_found,
         "errors_count": crawl_job.errors_count,
         "stats": stats,
+        "pointer_summary": stats.get("pointer_summary") or _pointer_summary_from_pages(pages),
+        "planned_tool_calls": stats.get("planned_tool_calls") or _planned_tool_calls(stats.get("pointer_summary") or {}, stats),
         "historical": config.get("historical"),
         "trend_model": config.get("trend_model"),
         "internal_link_graph": config.get("internal_link_graph"),
@@ -3164,6 +4201,8 @@ async def run_audit_job(audit_id: int, crawl_job_id: int):
 
         auditor = SEOAuditor()
         report_payload = auditor.audit(page_data, stats)
+        report_payload["pointer_summary"] = stats.get("pointer_summary") or _pointer_summary_from_pages(pages)
+        report_payload["planned_tool_calls"] = stats.get("planned_tool_calls") or _planned_tool_calls(report_payload["pointer_summary"], stats)
 
         audit.report_data = report_payload
         audit.overall_score = report_payload["scores"].get("overall")
@@ -3229,6 +4268,7 @@ async def public_preflight(payload: PublicPreflightRequest):
 @app.post("/api/orb/website-voice", response_model=WebsiteOrbVoiceResponse)
 async def website_orb_voice(
     audio: UploadFile = File(...),
+    target_url: Optional[str] = Form(default=None),
     authorization: Optional[str] = Header(default=None),
     db: Session = Depends(get_db),
 ):
@@ -3249,14 +4289,66 @@ async def website_orb_voice(
 
     started = time.perf_counter()
     memory_context = _orb_memory_summary(customer, db)
+    website_context = _load_domain_website_context(target_url)
+    if website_context is not None:
+        website_context["current_url"] = target_url
+    page_capsule = _build_page_capsule(target_url) if target_url else None
     mark("memory_summary", started)
 
     started = time.perf_counter()
     cognitive_pulse = _orb_cognitive_pulse(transcript)
     mark("cognitive_pulse", started)
 
+    pointer_matches = _lookup_pointer_context(website_context, transcript)
+    domain_cache_hit = _lookup_domain_runtime_tool(website_context, transcript)
+    if domain_cache_hit and domain_cache_hit.get("spoken_output"):
+        spoken_output = domain_cache_hit["spoken_output"]
+        tts_cache_before = _tts_cache_probe(spoken_output)
+        started = time.perf_counter()
+        tts_result = await _synthesize_orb_tts(spoken_output)
+        mark("tts", started)
+        tts_cache_after = _tts_cache_probe(spoken_output)
+        started = time.perf_counter()
+        _update_orb_recent_context(customer, transcript, spoken_output, db)
+        mark("context_update", started)
+        timings["answer_selection"] = 0.0
+        timings["total"] = round((time.perf_counter() - route_started) * 1000, 1)
+        logger.warning(
+            "ORB voice timing %s",
+            json.dumps(
+                {
+                    "request_id": request_id,
+                    "transcript": transcript,
+                    "target_url": target_url,
+                    "llm_source": domain_cache_hit["llm_source"],
+                    "cache_entry_id": domain_cache_hit.get("cache_entry_id"),
+                    "tts_cache_before": tts_cache_before,
+                    "tts_cache_after": tts_cache_after,
+                    "tts_provider": tts_result.get("tts_provider"),
+                    "timings_ms": timings,
+                },
+                sort_keys=True,
+            ),
+        )
+        return {
+            "transcript": transcript,
+            "spoken_output": spoken_output,
+            "cognitive_pulse": {
+                **(cognitive_pulse or {}),
+                "cognitive_mode": "RUNTIME_TOOL_HIT",
+                "cache_entry_id": domain_cache_hit.get("cache_entry_id"),
+                "cache_score": domain_cache_hit.get("cache_score"),
+                "suggested_route": domain_cache_hit.get("suggested_route"),
+                "pointer_matches": pointer_matches,
+                "glow_intensity": 0.78,
+            },
+            "llm_source": domain_cache_hit["llm_source"],
+            "memory_context": memory_context,
+            **tts_result,
+        }
+
     started = time.perf_counter()
-    llm_result = await _llm_orb_spoken_output(transcript, cognitive_pulse, memory_context)
+    llm_result = await _llm_orb_spoken_output(transcript, cognitive_pulse, memory_context, website_context, page_capsule)
     mark("answer_selection", started)
 
     tts_cache_before = _tts_cache_probe(llm_result["spoken_output"])
@@ -3276,6 +4368,7 @@ async def website_orb_voice(
             {
             "request_id": request_id,
             "transcript": transcript,
+            "target_url": target_url,
             "llm_source": llm_result["llm_source"],
             "tts_cache_before": tts_cache_before,
             "tts_cache_after": tts_cache_after,
@@ -3288,7 +4381,10 @@ async def website_orb_voice(
     return {
         "transcript": transcript,
         "spoken_output": llm_result["spoken_output"],
-        "cognitive_pulse": cognitive_pulse,
+        "cognitive_pulse": {
+            **(cognitive_pulse or {}),
+            "pointer_matches": pointer_matches,
+        },
         "llm_source": llm_result["llm_source"],
         "memory_context": memory_context,
         **tts_result,
@@ -3304,8 +4400,62 @@ async def website_orb_text(
     customer = get_optional_customer(authorization=authorization, db=db)
     transcript = payload.transcript.strip()
     memory_context = _orb_memory_summary(customer, db)
+    project = _owned_project(payload.project_id, customer, db) if customer and payload.project_id else None
+    website_context = _load_domain_website_context(payload.target_url or (_project_target_url(project) if project else None))
+    page_capsule = _build_page_capsule(payload.target_url or (_project_target_url(project) if project else "")) if (payload.target_url or project) else None
+    if website_context is not None:
+        website_context["current_url"] = payload.target_url or (_project_target_url(project) if project else None)
+    pointer_matches = _lookup_pointer_context(website_context, transcript)
+    cache_hit = _lookup_project_tool_cache(project, transcript, db) if project else None
+    if cache_hit and cache_hit.get("spoken_output"):
+        tts_result = {
+            "tts_audio_url": cache_hit.get("tts_audio_url"),
+            "tts_provider": cache_hit.get("tts_provider"),
+            "tts_error": cache_hit.get("tts_error"),
+        }
+        if payload.synthesize_tts and not tts_result["tts_audio_url"]:
+            tts_result = await _synthesize_orb_tts(cache_hit["spoken_output"])
+        _update_orb_recent_context(customer, transcript, cache_hit["spoken_output"], db)
+        return {
+            "transcript": transcript,
+            "spoken_output": cache_hit["spoken_output"],
+            "cognitive_pulse": {
+                "cognitive_mode": "TOOL_CACHE_HIT",
+                "cache_entry_id": cache_hit.get("cache_entry_id"),
+                "cache_score": cache_hit.get("cache_score"),
+                "glow_intensity": 0.72,
+            },
+            "llm_source": cache_hit["llm_source"],
+            "memory_context": memory_context,
+            **tts_result,
+        }
+    domain_cache_hit = _lookup_domain_runtime_tool(website_context, transcript)
+    if domain_cache_hit and domain_cache_hit.get("spoken_output"):
+        tts_result = {
+            "tts_audio_url": domain_cache_hit.get("tts_audio_url"),
+            "tts_provider": domain_cache_hit.get("tts_provider"),
+            "tts_error": domain_cache_hit.get("tts_error"),
+        }
+        if payload.synthesize_tts and not tts_result["tts_audio_url"]:
+            tts_result = await _synthesize_orb_tts(domain_cache_hit["spoken_output"])
+        _update_orb_recent_context(customer, transcript, domain_cache_hit["spoken_output"], db)
+        return {
+            "transcript": transcript,
+            "spoken_output": domain_cache_hit["spoken_output"],
+            "cognitive_pulse": {
+                "cognitive_mode": "RUNTIME_TOOL_HIT",
+                "cache_entry_id": domain_cache_hit.get("cache_entry_id"),
+                "cache_score": domain_cache_hit.get("cache_score"),
+                "suggested_route": domain_cache_hit.get("suggested_route"),
+                "pointer_matches": pointer_matches,
+                "glow_intensity": 0.78,
+            },
+            "llm_source": domain_cache_hit["llm_source"],
+            "memory_context": memory_context,
+            **tts_result,
+        }
     cognitive_pulse = _orb_cognitive_pulse(transcript)
-    llm_result = await _llm_orb_spoken_output(transcript, cognitive_pulse, memory_context)
+    llm_result = await _llm_orb_spoken_output(transcript, cognitive_pulse, memory_context, website_context, page_capsule)
     tts_result = (
         await _synthesize_orb_tts(llm_result["spoken_output"])
         if payload.synthesize_tts
@@ -3315,7 +4465,10 @@ async def website_orb_text(
     return {
         "transcript": transcript,
         "spoken_output": llm_result["spoken_output"],
-        "cognitive_pulse": cognitive_pulse,
+        "cognitive_pulse": {
+            **(cognitive_pulse or {}),
+            "pointer_matches": pointer_matches,
+        },
         "llm_source": llm_result["llm_source"],
         "memory_context": memory_context,
         **tts_result,
@@ -3325,6 +4478,80 @@ async def website_orb_text(
 @app.get("/api/orb/capabilities")
 async def website_orb_capabilities():
     return _orb_capabilities()
+
+
+@app.get("/api/orb/pointer-map", response_model=WebsiteOrbPointerMapResponse)
+async def website_orb_pointer_map(
+    domain: Optional[str] = Query(default=None, max_length=255),
+    host: Optional[str] = Header(default=None),
+    x_forwarded_host: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    raw_domain = domain or x_forwarded_host or host or ""
+    raw_domain = raw_domain.split(",")[0].split(":")[0].strip()
+    if not raw_domain:
+        raise HTTPException(status_code=404, detail="Pointer map domain is unknown")
+
+    context_root = _website_context_root(raw_domain)
+    pointer_map: Dict[str, Any] = {}
+    if context_root:
+        pointer_path = context_root / "pointer_plot_map.json"
+        if pointer_path.is_file():
+            try:
+                pointer_map = json.loads(pointer_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                raise HTTPException(status_code=500, detail="Pointer map is unreadable")
+
+    if int(pointer_map.get("record_count") or 0) == 0:
+        project = db.query(Project).filter(Project.domain == raw_domain).first()
+        if project:
+            completed_crawls = (
+                db.query(CrawlJob)
+                .filter(CrawlJob.project_id == project.id, CrawlJob.status == "completed")
+                .order_by(CrawlJob.id.desc())
+                .limit(12)
+                .all()
+            )
+            for crawl in completed_crawls:
+                recovered = pointer_plot_map_from_pages(
+                    db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl.id).all()
+                )
+                if int(recovered.get("record_count") or 0) == 0:
+                    continue
+                seen_ids: Set[str] = set()
+                unique_records = []
+                for record in recovered.get("records") or []:
+                    target_id = str(record.get("target_id") or "")
+                    if not target_id or target_id in seen_ids:
+                        continue
+                    seen_ids.add(target_id)
+                    unique_records.append(record)
+                recovered["records"] = unique_records
+                recovered["record_count"] = len(unique_records)
+                recovered["by_page"] = {}
+                for record in unique_records:
+                    recovered["by_page"].setdefault(str(record.get("page_route") or ""), []).append(record["target_id"])
+                recovered["recovered_from_crawl_id"] = str(crawl.id)
+                pointer_map = recovered
+                break
+
+    if int(pointer_map.get("record_count") or 0) == 0:
+        raise HTTPException(status_code=404, detail="Pointer map not found")
+
+    return {
+        "schema": pointer_map.get("schema") or "orb_weaver.pointer_plot_map.v1",
+        "generated_at": pointer_map.get("generated_at"),
+        "record_count": int(pointer_map.get("record_count") or 0),
+        "records": pointer_map.get("records") if isinstance(pointer_map.get("records"), list) else [],
+        "by_page": pointer_map.get("by_page") if isinstance(pointer_map.get("by_page"), dict) else {},
+    }
+
+
+@app.get("/api/orb/page-capsule", response_model=WebsiteOrbPageCapsuleResponse)
+async def website_orb_page_capsule(
+    target_url: str = Query(..., min_length=1, max_length=500),
+):
+    return _build_page_capsule(target_url)
 
 
 @app.get("/api/orb/tools/catalog")
@@ -4468,6 +5695,43 @@ async def export_audit_pdf(audit_id: str, db: Session = Depends(get_db), custome
     summary = data.get("summary", {})
     pdf.drawString(40, y, f"Critical: {summary.get('critical_count', 0)}  Warnings: {summary.get('warning_count', 0)}  Opportunities: {summary.get('opportunity_count', 0)}")
     y -= 30
+
+    pointer_summary = data.get("pointer_summary") or {}
+    if pointer_summary:
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawString(40, y, "ORB Pointer Guidance")
+        y -= 18
+        pdf.setFont("Helvetica", 10)
+        pdf.drawString(
+            40,
+            y,
+            (
+                f"Targets: {pointer_summary.get('record_count', 0)}  "
+                f"Routes: {pointer_summary.get('routes_with_pointers', 0)}  "
+                f"Duplicate IDs: {pointer_summary.get('duplicate_target_ids', 0)}  "
+                f"Status: {pointer_summary.get('status', 'needs_review')}"
+            )[:110],
+        )
+        y -= 30
+
+    planned_tool_calls = data.get("planned_tool_calls") or []
+    if planned_tool_calls:
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawString(40, y, "Planned ORB Tool Calls")
+        y -= 18
+        pdf.setFont("Helvetica", 9)
+        for item in planned_tool_calls[:5]:
+            line = (
+                f"- {item.get('tool', '')}: {item.get('status', '')} "
+                f"({item.get('scope', '')})"
+            )
+            pdf.drawString(40, y, line[:120])
+            y -= 14
+            if y < 50:
+                pdf.showPage()
+                y = height - 50
+                pdf.setFont("Helvetica", 9)
+        y -= 16
 
     pdf.setFont("Helvetica-Bold", 12)
     pdf.drawString(40, y, "Top Issues")

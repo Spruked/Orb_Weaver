@@ -90,12 +90,12 @@ def _target_id(page_route: str, target_type: TargetType, text: str, element: dic
         [
             page_route.rstrip("/") or "/",
             target_type.value,
-            str(context.get("parent_locator") or context.get("parent_heading") or "page"),
-            str(context.get("ordinal_in_parent") or 1),
+            str(element.get("semantic_locator") or ""),
+            str(context.get("parent_locator") or ""),
             _fingerprint(text),
         ]
     )
-    return f"plot_{hashlib.sha256(seed.encode('utf-8')).hexdigest()[:16]}"
+    return f"target_{hashlib.sha256(seed.encode('utf-8')).hexdigest()[:12]}"
 
 
 def _map_element_type(raw_type: str) -> TargetType | None:

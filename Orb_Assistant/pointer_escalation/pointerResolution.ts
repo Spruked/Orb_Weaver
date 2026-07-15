@@ -37,7 +37,7 @@ export async function resolveTarget(record: PlotRecord): Promise<ResolutionResul
   }
 
   // Tier 1: semantic_locator (the stored, presumed-current locator)
-  const bySemanticLocator = trySemanticLocator(record.semantic_locator);
+  const bySemanticLocator = trySemanticLocator(record);
   if (bySemanticLocator) {
     return {
       status: "resolved",
@@ -78,15 +78,68 @@ export async function resolveTarget(record: PlotRecord): Promise<ResolutionResul
   return { status: "unresolved" };
 }
 
-function trySemanticLocator(locator: string): Element | null {
-  // TODO(integration): replace with your actual locator query strategy
-  // (e.g. data-orb-target attribute, accessibility tree path, stable
-  // selector scheme). Must NOT be raw pixel coordinates.
-  try {
-    return document.querySelector(locator);
-  } catch {
-    return null;
+function trySemanticLocator(record: PlotRecord): Element | null {
+  const parent = String(record.structural_context?.parent_locator || "").trim();
+  const child = String(record.semantic_locator || "").trim();
+  const scopedSelector = parent ? `${parent} ${child}` : child;
+
+  for (const element of queryElements(scopedSelector)) {
+    if (matchesRecordIdentity(element, record)) {
+      return element;
+    }
   }
+
+  for (const element of queryElements(child)) {
+    if (matchesRecordIdentity(element, record)) {
+      return element;
+    }
+  }
+
+  return null;
+}
+
+function queryElements(selector: string): Element[] {
+  if (!selector) return [];
+  try {
+    return Array.from(document.querySelectorAll(selector));
+  } catch {
+    return [];
+  }
+}
+
+function matchesRecordIdentity(element: Element, record: PlotRecord): boolean {
+  const expectedTag = String(record.structural_context?.tag || "").toLowerCase();
+  if (expectedTag && element.tagName.toLowerCase() !== expectedTag) {
+    return false;
+  }
+
+  const text = normalizedVisibleText(element);
+  const aliases = record.direct_aliases || record.intent_aliases || [];
+  const meaningText = (record.meaning || "").replace(/^[^:]+:\s*/, "");
+  const fragments = [meaningText, ...aliases]
+    .map((value) => normalizeText(value).slice(0, 120))
+    .filter((value) => value.length >= 2);
+
+  return !fragments.length || fragments.some((fragment) => text.includes(fragment) || fragment.includes(text));
+}
+
+function normalizedVisibleText(element: Element): string {
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName)) {
+    const htmlElement = element as HTMLElement;
+    return normalizeText(
+      [
+        htmlElement.getAttribute("aria-label") || "",
+        htmlElement.getAttribute("placeholder") || "",
+        htmlElement.getAttribute("name") || "",
+        htmlElement.textContent || "",
+      ].join(" "),
+    );
+  }
+  return normalizeText(element.textContent || "");
+}
+
+function normalizeText(value: string): string {
+  return (value || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 function tryContentFingerprint(fingerprint: string): Element | null {

@@ -101,18 +101,20 @@ Tesseract/OCR requirements:
 - Prefer detecting with shutil.which("tesseract") and allow TESSERACT_CMD=/usr/bin/tesseract for processes that need an explicit path.
 - OCR operations must go through backend/MCP tools, never directly from browser to host OCR.
 
-R-drive MCP/MPC server requirements:
-- Treat the existing server as /mnt/r/mpc_server/orb_mcp_server.py.
-- Add or reuse an ORBDesktopMCPClient that supports direct stdio and optional HTTP relay.
-- Env:
+Desktop MCP/MPC server boundary:
+- Basic customer Website ORBs must not require Desktop MCP, host OCR, or an MCP relay.
+- Build customer ORBs from pointer_plot_map.json, runtime_intent_manifest.json, voice_manifest.json, tool_cache.json, and approved website context.
+- Orb Weaver's own showcase/development ORB may use the repo-local MCP server slot at .runtime/rdrive_mpc_server/orb_mcp_server.py.
+- Advanced customer adapters may use an ORBDesktopMCPClient only when explicitly configured.
+- Env for showcase/advanced adapter use only:
   ORB_DESKTOP_MCP_ENABLED=true
-  ORB_DESKTOP_MCP_ROOT=/mnt/r/mpc_server
+  ORB_DESKTOP_MCP_ROOT=.runtime/rdrive_mpc_server
   ORB_DESKTOP_MCP_PYTHON=python3.12
   ORB_DESKTOP_MCP_TIMEOUT_SECONDS=20
   ORB_DESKTOP_MCP_URL=http://host.docker.internal:8765
   ORB_DESKTOP_MCP_TOKEN=
 - The browser must never call the MCP server directly.
-- The backend should expose MCP capability/status and authenticated owner tool execution only.
+- The backend should expose MCP capability/status and authenticated owner/showcase tool execution only.
 - Use a read-only clamp by default for relay-hosted MCP calls. Mutating actions require explicit enablement.
 
 Electron adapter requirements:

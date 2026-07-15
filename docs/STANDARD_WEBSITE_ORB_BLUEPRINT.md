@@ -15,10 +15,12 @@ The Website ORB is a browser resident assistant that:
 - receives a short spoken answer
 - plays backend-generated TTS audio
 - uses short filler clips to cover response latency
-- can report local capability status for Tesseract OCR, MCP tools, STT, TTS, and dockstation handoff
+- can report local capability status for STT, TTS, pointer cache, and optional dockstation handoff
 - can optionally handshake with the Electron/Desktop dock adapter
 
 The Desktop ORB is separate. It owns desktop overlay behavior, host control, screen automation, and deeper local machine access. The Website ORB may hand off to it, but should not become it.
+
+Basic customer Website ORBs do not inherit Orb Weaver showcase Desktop MCP tools. They run from the installed site package, pointer plot map, runtime intent manifest, voice manifest, static tool cache, and approved website context. Advanced adapters require explicit configuration.
 
 ## Current Repo Modules
 
@@ -256,7 +258,9 @@ Recommended standard:
 
 ### Tesseract OCR
 
-The Website ORB backend currently checks Tesseract through:
+Orb Weaver's own showcase ORB can report and use Tesseract through backend or Desktop MCP tools. A Basic customer Website ORB should not depend on local OCR at runtime.
+
+The showcase backend currently checks Tesseract through:
 
 ```py
 shutil.which("tesseract")
@@ -281,15 +285,17 @@ For OCR work, the backend capability route should say:
 }
 ```
 
-Tesseract belongs behind backend or MCP tools. The browser should not call local OCR directly.
+Tesseract belongs behind backend or MCP tools. The browser should not call local OCR directly. Customer deployments only receive OCR-backed behavior when an advanced adapter is deliberately configured.
 
-### R-Drive MCP / MPC Server
+### Desktop MCP / MPC Server Boundary
 
-The local desktop MCP server is expected at:
+For Orb Weaver showcase/development, the repo-local MCP server slot is:
 
 ```text
-/mnt/r/mpc_server/orb_mcp_server.py
+.runtime/rdrive_mpc_server/orb_mcp_server.py
 ```
+
+The legacy Desktop ORB/R-drive fallback may still exist at `/mnt/r/mpc_server/orb_mcp_server.py`.
 
 Relevant backend client:
 
@@ -308,7 +314,7 @@ Environment variables:
 
 ```text
 ORB_DESKTOP_MCP_ENABLED=true
-ORB_DESKTOP_MCP_ROOT=/mnt/r/mpc_server
+ORB_DESKTOP_MCP_ROOT=.runtime/rdrive_mpc_server
 ORB_DESKTOP_MCP_PYTHON=python3.12
 ORB_DESKTOP_MCP_TIMEOUT_SECONDS=20
 ORB_DESKTOP_MCP_URL=http://host.docker.internal:8765
@@ -318,17 +324,31 @@ ORB_DESKTOP_MCP_TOKEN=
 Preferred architecture:
 
 ```text
-Website ORB browser
+Orb Weaver showcase ORB browser
 -> Orb Weaver backend
 -> ORBDesktopMCPClient
 -> HTTP relay on host or direct stdio
--> R-drive /mnt/r/mpc_server/orb_mcp_server.py
+-> repo-local .runtime/rdrive_mpc_server/orb_mcp_server.py
 -> allowed ORB MCP tools
 ```
 
 The browser must not call the MCP server directly.
 
 The host relay has a read-only clamp by default. Mutating tools require explicit relay startup with mutation enabled.
+
+Basic customer Website ORB architecture:
+
+```text
+Website ORB browser
+-> installed static package
+-> pointer_plot_map.json
+-> runtime_intent_manifest.json
+-> voice_manifest.json
+-> tool_cache.json
+-> optional backend answer route
+```
+
+No MCP relay is required for this path.
 
 ### Electron Dock Adapter
 

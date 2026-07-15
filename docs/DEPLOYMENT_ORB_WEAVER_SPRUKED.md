@@ -116,6 +116,7 @@ Validation:
 
 ```bash
 python -m compileall backend/main.py backend/app "Preflight Scanner/preflight_site_scan.py"
+python3 scripts/build_preflight_tool_cache.py --domain orbweaver.spruked.com --backend-url ""
 cd frontend
 npm run smoke:preflight
 REACT_APP_API_URL=http://127.0.0.1:16500 npm run build
@@ -139,11 +140,32 @@ docker run --rm \
   -p 16510:16510 \
   -v "$PWD/.docker-data:/app/backend/data" \
   -v "$PWD/.docker-substrate:/app/substrate" \
+  -v "$PWD/.runtime/rdrive_mpc_server:/app/rdrive_mpc_server:ro" \
   --env-file .env \
   orb-weaver:latest
 ```
 
 The root Dockerfile builds the React frontend, runs the FastAPI backend on `16500`, serves the frontend on `16510` with nginx, and copies `Preflight Scanner/` into `/app/Preflight Scanner` for backend preflight imports.
+
+Orb Weaver's own showcase ORB may use the repo-local Desktop MCP server slot at `.runtime/rdrive_mpc_server`. Basic customer Website ORB builds must not require this folder or the MCP relay.
+
+### Self-Scan / Pointer Verification
+
+Run a local self-scan so Orb Weaver scans its own public site and regenerates the pointer map:
+
+```bash
+python3 scripts/self_scan_orbweaver.py --url https://orbweaver.spruked.com --max-pages 50
+python3 scripts/build_preflight_tool_cache.py --domain orbweaver.spruked.com --backend-url ""
+```
+
+Expected artifacts:
+
+```text
+substrate/clients/orbweaver.spruked.com/website_orb_context/pointer_plot_map.json
+substrate/clients/orbweaver.spruked.com/website_orb_context/tool_cache.json
+```
+
+The pointer map should report nonzero `record_count`, no duplicate `target_id` values, and scoped locator data in each record's `semantic_locator` and `structural_context`.
 
 ## Spruked.com Navigation Tab
 

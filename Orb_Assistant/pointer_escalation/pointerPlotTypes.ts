@@ -37,6 +37,8 @@ export interface PlotRecord {
   target_type: TargetType;
   meaning: string;
   intent_aliases: string[];
+  direct_aliases?: string[];
+  topic_aliases?: string[];
   content_fingerprint: string;
   semantic_locator: string;
   anchor_strategy: AnchorStrategy;

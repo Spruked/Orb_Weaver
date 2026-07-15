@@ -39,6 +39,16 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 - The backend performs Faster Whisper STT, ORB cognition, protected identity answer selection, local LLM answers for ordinary questions, Kokoro TTS/cache, and WAV delivery.
 - Browser `SpeechRecognition` and browser `speechSynthesis` are not the canonical public ORB voice path.
 - Gold-master replication details live in `docs/ORB_VOICE_RUNTIME_REPLICATION_REPORT.md`.
+- Pointer/runtime intent details live in `docs/ORB_POINTER_RUNTIME_MODEL.md`.
+
+### ORB Product Boundary
+
+- Orb Weaver's own demo ORB is the showcase/development ORB. It may use Desktop MCP, OCR, browser review, and visual audit tools to prove the ceiling of the ecosystem.
+- Installed customer Website ORBs are website-native packages: target map, compiled intent cache, voice assets, approved website context, and deployment files.
+- Pointer guidance is core to every ORB. Every Website ORB gets a Pointer Plot Map, runtime pointer resolution, and verified visual guidance; tiers change coverage, density, maintenance, branding, and adaptation.
+- Basic customer ORBs do not inherit Desktop MCP tools from the Orb Weaver demo.
+- Advanced customer deployments can receive explicit tool adapters only when the customer, tier, environment, and confirmation policy justify them.
+- The Desktop ORB and DockStation remain the primary home for the deeper MCP tool system.
 
 ## Architecture
 
@@ -184,10 +194,10 @@ Public tunnel routing is documented in `deploy/cloudflared/orbweaver.spruked.com
 ### Website ORB Voice
 
 - `POST /api/orb/website-voice` - Upload recorded audio for STT, answer selection, TTS/cache, and one spoken response
-- `POST /api/orb/website-text` - Submit an existing transcript through the same answer/TTS path
+- `POST /api/orb/website-text` - Submit an existing transcript through the same answer/TTS path, with optional project cache lookup for authenticated Orb Weaver showcase usage
 - `POST /api/orb/tts` - Generate/cache TTS for text
 - `GET /api/orb/tts/{audio_id}` - Retrieve cached WAV/audio
-- `GET /api/orb/capabilities` - Current ORB voice/tool capability report
+- `GET /api/orb/capabilities` - Current ORB voice/tool capability report, including the demo-vs-customer product boundary
 
 ### Auth and Customer
 

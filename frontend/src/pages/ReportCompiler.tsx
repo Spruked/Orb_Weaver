@@ -82,6 +82,8 @@ const ReportCompiler: React.FC = () => {
 
   const latestAuditId = data.latest_audit?.id;
   const latestCrawlId = data.latest_crawl?.id;
+  const pointerSummary = data.latest_audit?.report.pointer_summary || data.latest_crawl?.pointer_summary;
+  const plannedToolCalls = data.latest_audit?.report.planned_tool_calls || data.latest_crawl?.planned_tool_calls || [];
 
   return (
     <div className="space-y-6">
@@ -115,6 +117,45 @@ const ReportCompiler: React.FC = () => {
         <div className="card">
           <p className="text-sm text-gray-500">Compiled Files</p>
           <p className="text-lg font-bold text-gray-900 mt-1">{data.files.length}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className={`card ${pointerSummary?.status === 'passed' ? 'border-green-200 bg-green-50' : 'border-yellow-200 bg-yellow-50'}`}>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm text-gray-500">ORB Pointer Guidance</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{pointerSummary?.record_count ?? 0}</p>
+              <p className="text-sm text-gray-600 mt-1">
+                {pointerSummary?.routes_with_pointers ?? 0} routes · {pointerSummary?.duplicate_target_ids ?? 0} duplicate IDs
+              </p>
+            </div>
+            <span className={`px-3 py-1 rounded-full text-sm font-semibold ${pointerSummary?.status === 'passed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+              {pointerSummary?.status || 'needs_review'}
+            </span>
+          </div>
+        </div>
+
+        <div className="card">
+          <p className="text-sm text-gray-500 mb-3">Planned Site/Section Tool Calls</p>
+          {plannedToolCalls.length > 0 ? (
+            <div className="space-y-2">
+              {plannedToolCalls.slice(0, 5).map((tool) => (
+                <div key={tool.id} className="flex items-start justify-between gap-3 border-b border-gray-100 pb-2 last:border-b-0 last:pb-0">
+                  <div>
+                    <p className="font-semibold text-gray-900">{tool.tool}</p>
+                    <p className="text-xs text-gray-500">{tool.section || tool.trigger}</p>
+                    {tool.route && <p className="text-xs text-gray-400 truncate max-w-sm">{tool.route}</p>}
+                  </div>
+                  <span className={`text-xs font-semibold ${tool.requires_mcp ? 'text-purple-700' : 'text-green-700'}`}>
+                    {tool.requires_mcp ? 'MCP gated' : tool.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">No planned tool calls generated yet.</p>
+          )}
         </div>
       </div>
 

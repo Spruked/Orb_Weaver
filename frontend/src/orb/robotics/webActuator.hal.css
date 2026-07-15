@@ -1,0 +1,23 @@
+.orb-target-ping {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 999999;
+  will-change: transform, left, top, opacity;
+}
+.orb-pointer-image { width: 32px; height: 32px; display: block; }
+.orb-target-ping::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 10px; height: 10px;
+  background: rgba(0, 229, 255, var(--ping-alpha, 0.4));
+  border: 2px solid #00E5FF;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: robotic-ping-pulse 1.5s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+}
+@keyframes robotic-ping-pulse {
+  0% { width: 10px; height: 10px; opacity: 1; }
+  100% { width: 120px; height: 120px; opacity: 0; }
+}

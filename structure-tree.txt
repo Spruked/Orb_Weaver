@@ -1,0 +1,1178 @@
+.
+├── Codex_correction_SKG_architecture.txt
+├── Dockerfile
+├── ORB_Robotics_Architecture_Build_Summary.md
+├── ORB_WEAVER_ARCHITECTURE_TREE.txt
+├── ORB_WEAVER_BLUEPRINT_TREE.txt
+├── ORB_WEAVER_HANDOFF_LIVE_ORB_ROUTE_AND_VOICE.md
+├── ORB_WEAVER_SOURCE_MANIFEST.txt
+├── Orb_Assistant
+│   ├── Doctrine v1 Governance Baselineshe 256.pdf
+│   ├── README.md
+│   ├── audio_cache
+│   ├── electron_dock_adapter
+│   │   ├── Electron_Adapter_tree.txt
+│   │   ├── README.md
+│   │   ├── main.js
+│   │   ├── orb-bridge.js
+│   │   └── preload_adapter.js
+│   ├── generate_tree.ps1
+│   ├── launch.sh
+│   ├── orbskin-scaffold-v0.1
+│   │   └── orbskin
+│   │       ├── README.md
+│   │       ├── README.md:Zone.Identifier
+│   │       ├── docs
+│   │       │   ├── ORB_SKIN_CONTRACT_v1.md
+│   │       │   └── ORB_SKIN_CONTRACT_v1.md:Zone.Identifier
+│   │       ├── loaders
+│   │       │   ├── Skins_Assets
+│   │       │   │   ├── tuxorb.png
+│   │       │   │   └── tuxorb312.png
+│   │       │   ├── electron
+│   │       │   │   ├── skin.bridge.electron.ts
+│   │       │   │   ├── skin.bridge.electron.ts:Zone.Identifier
+│   │       │   │   ├── skin.loader.electron.ts
+│   │       │   │   ├── skin.loader.electron.ts:Zone.Identifier
+│   │       │   │   ├── skin.preload.electron.ts
+│   │       │   │   └── skin.preload.electron.ts:Zone.Identifier
+│   │       │   ├── tauri
+│   │       │   │   ├── skin.bridge.tauri.ts
+│   │       │   │   ├── skin.bridge.tauri.ts:Zone.Identifier
+│   │       │   │   ├── skin_loader.rs
+│   │       │   │   └── skin_loader.rs:Zone.Identifier
+│   │       │   └── web
+│   │       │       ├── skin.bridge.web.ts
+│   │       │       ├── skin.bridge.web.ts:Zone.Identifier
+│   │       │       ├── skin_loader.py
+│   │       │       └── skin_loader.py:Zone.Identifier
+│   │       ├── packer
+│   │       │   ├── pack.py
+│   │       │   └── pack.py:Zone.Identifier
+│   │       ├── renderer
+│   │       │   ├── OrbSkinRenderer.tsx
+│   │       │   ├── OrbSkinRenderer.tsx:Zone.Identifier
+│   │       │   ├── useSkinAssets.ts
+│   │       │   └── useSkinAssets.ts:Zone.Identifier
+│   │       └── shared
+│   │           ├── hash
+│   │           │   ├── orbskin.hash.ts
+│   │           │   └── orbskin.hash.ts:Zone.Identifier
+│   │           ├── types
+│   │           │   ├── orbskin.types.ts
+│   │           │   └── orbskin.types.ts:Zone.Identifier
+│   │           └── validator
+│   │               ├── orbskin.validator.ts
+│   │               └── orbskin.validator.ts:Zone.Identifier
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── pointer_escalation
+│   │   ├── README.md
+│   │   ├── __init__.py
+│   │   ├── orbEscalation.ts
+│   │   ├── orbState.ts
+│   │   ├── pointerPlotTypes.ts
+│   │   ├── pointerResolution.ts
+│   │   ├── pointerRuntime.ts
+│   │   ├── pointer_plot_schema.py
+│   │   ├── promotion.py
+│   │   └── scan_extraction.py
+│   ├── preload.js
+│   ├── reference_file
+│   ├── src
+│   │   ├── bayesian_engine.py
+│   │   ├── cali-launcher.js
+│   │   ├── components
+│   │   │   ├── FloatingOrb.css
+│   │   │   ├── FloatingOrb.jsx
+│   │   │   ├── LivingOrb.css
+│   │   │   ├── LivingOrb.jsx
+│   │   │   └── core_4_minds
+│   │   │       ├── bspinoza
+│   │   │       │   └── spinoza_monism_skg.json
+│   │   │       ├── hhume
+│   │   │       │   └── hume_skepticism_skg.json
+│   │   │       ├── hlocke
+│   │   │       │   └── locke_empiricism_skg.json
+│   │   │       ├── ikant
+│   │   │       │   └── kant_critical_skg.json
+│   │   │       └── tribunal.py
+│   │   ├── core-bridges
+│   │   │   ├── caleon.py
+│   │   │   ├── cali.py
+│   │   │   ├── cali_x_one.py
+│   │   │   ├── kaygee.py
+│   │   │   └── ucm_core_ecm.py
+│   │   ├── dashboard.html
+│   │   ├── floating_assistant_orb.py
+│   │   ├── hlsf_geometry
+│   │   │   └── engine.py
+│   │   ├── index.html
+│   │   ├── interface
+│   │   │   ├── gravity_field_2d.py
+│   │   │   └── orb_window.py
+│   │   ├── logic_seeds
+│   │   │   ├── deductive_SKG
+│   │   │   │   ├── job
+│   │   │   │   │   └── execute.py
+│   │   │   │   ├── jobs
+│   │   │   │   │   └── execute.py
+│   │   │   │   ├── logic
+│   │   │   │   │   ├── cognitive_state.py
+│   │   │   │   │   └── deductive_logic.py
+│   │   │   │   └── worker.json
+│   │   │   ├── deductive_validator
+│   │   │   │   ├── job
+│   │   │   │   │   └── validate.py
+│   │   │   │   ├── logic
+│   │   │   │   │   ├── deductive_validation.py
+│   │   │   │   │   └── validation_state.py
+│   │   │   │   ├── vault
+│   │   │   │   │   └── observation_log.jsonl
+│   │   │   │   └── worker.json
+│   │   │   ├── inductive
+│   │   │   │   ├── cursor_habit.json
+│   │   │   │   └── moral_habit.json
+│   │   │   ├── inductive_skg
+│   │   │   │   └── logic
+│   │   │   │       ├── cognitive_stat.py
+│   │   │   │       ├── cognitive_state.py
+│   │   │   │       └── inductive_logic.py
+│   │   │   ├── inductive_validator
+│   │   │   │   ├── logic
+│   │   │   │   │   ├── inductive_validation.py
+│   │   │   │   │   └── validation_state.py
+│   │   │   │   └── worker.json
+│   │   │   ├── intuitive
+│   │   │   │   └── pattern_recognition.json
+│   │   │   ├── intuitive_skg
+│   │   │   │   └── logic
+│   │   │   │       ├── cognitive_state.py
+│   │   │   │       └── intuitive_logic.py
+│   │   │   ├── intuitive_validator
+│   │   │   │   ├── logic
+│   │   │   │   │   ├── intuitive_validation.py
+│   │   │   │   │   └── validation_state.py
+│   │   │   │   └── worker.json
+│   │   │   └── validation_pipeline.py
+│   │   ├── main.jsx
+│   │   ├── orb_controller.py
+│   │   ├── orb_skg_manager.py
+│   │   ├── settings.html
+│   │   ├── test_bridge.py
+│   │   ├── test_full_pipeline.py
+│   │   ├── test_pipeline.py
+│   │   ├── ui
+│   │   │   ├── index.html
+│   │   │   └── renderer.js
+│   │   └── voice
+│   │       ├── README.md
+│   │       ├── fallback_responses.json
+│   │       ├── latency
+│   │       ├── latency_fillers.json
+│   │       └── recovery_and_status.json
+│   ├── test_skg_manager.py
+│   ├── tpc_structure.txt
+│   ├── tpc_website_orb
+│   │   ├── backend
+│   │   │   └── main.py
+│   │   ├── core_structure.txt
+│   │   ├── engines
+│   │   │   ├── cochlear_processor_3.0
+│   │   │   │   └── adapter.py
+│   │   │   ├── kokoro_engine
+│   │   │   │   └── adapter.py
+│   │   │   ├── phonatory_output_bridge
+│   │   │   │   └── phonatory_bridge.py
+│   │   │   └── qwen_engine
+│   │   │       └── adapter.py
+│   │   ├── frontend
+│   │   │   ├── index.html
+│   │   │   ├── package.json
+│   │   │   ├── postcss.config.js
+│   │   │   ├── src
+│   │   │   │   ├── App.tsx
+│   │   │   │   ├── components
+│   │   │   │   │   ├── orb
+│   │   │   │   │   │   └── OrbLayout.tsx
+│   │   │   │   │   └── pipeline_visualizer
+│   │   │   │   │       └── PipelineDashboard.tsx
+│   │   │   │   ├── main.tsx
+│   │   │   │   └── styles
+│   │   │   │       └── index.css
+│   │   │   ├── tailwind.config.js
+│   │   │   ├── tsconfig.json
+│   │   │   ├── tsconfig.node.json
+│   │   │   └── vite.config.ts
+│   │   ├── rust_substrate
+│   │   │   ├── Cargo.toml
+│   │   │   └── src
+│   │   │       ├── beams.rs
+│   │   │       ├── drift.rs
+│   │   │       ├── geometry.rs
+│   │   │       ├── lib.rs
+│   │   │       ├── main.rs
+│   │   │       ├── memory.rs
+│   │   │       ├── recursion.rs
+│   │   │       ├── sync.rs
+│   │   │       └── vault.rs
+│   │   └── tpc_core
+│   │       ├── axis1_input_trinity
+│   │       │   ├── acp
+│   │       │   │   └── acp_processor.py
+│   │       │   ├── egf
+│   │       │   │   └── egf_engine.py
+│   │       │   ├── hlsf
+│   │       │   │   └── hlsf_engine.py
+│   │       │   └── input_gateway
+│   │       │       └── faster_whisper_gateway.py
+│   │       ├── axis2_reasoning_trinity
+│   │       │   ├── coherence
+│   │       │   │   └── phase_coherence.py
+│   │       │   ├── depth_recursion
+│   │       │   │   └── depth_engine.py
+│   │       │   └── philosopher_loops
+│   │       │       └── philosopher_beams.py
+│   │       ├── axis3_resolution_trinity
+│   │       │   ├── a_posteriori_vault
+│   │       │   │   └── a_posteriori_vault.py
+│   │       │   ├── a_priori_vault
+│   │       │   │   └── a_priori_vault.py
+│   │       │   └── ecm_gate
+│   │       │       └── ecm_gate.py
+│   │       ├── drift_ping
+│   │       │   └── drift_ping.py
+│   │       ├── four_beam
+│   │       │   ├── hume_beam
+│   │       │   │   └── hume_beam.py
+│   │       │   ├── kant_beam
+│   │       │   │   └── kant_beam.py
+│   │       │   ├── locke_beam
+│   │       │   │   └── locke_beam.py
+│   │       │   └── spinoza_beam
+│   │       │       └── spinoza_beam.py
+│   │       ├── geometric_glyph
+│   │       │   ├── retrieval
+│   │       │   │   └── geometric_retrieval.py
+│   │       │   └── signatures
+│   │       │       └── glyph_signatures.py
+│   │       ├── pipeline
+│   │       │   └── tpc_pipeline.py
+│   │       └── tribunal_synthesizer
+│   │           └── tribunal_synthesizer.py
+│   └── vault_system
+│       ├── apriori
+│       │   └── apriori_core.json
+│       ├── apriori_core.json
+│       ├── manager.py
+│       └── posteriori
+│           ├── 0004d662987e7c667de0e2914e07d7bfbd0b7de32806be2babfad08e7acf711b.json
+│           ├── 000f78af53961261e5a7f033e4ddd38bef5bde9d61fe92c46cf1be3b6611794f.json
+│           ├── 000fc55176405c2f55331c30b30666d926c2c2dd9db0bce1143a99a6151edd2f.json
+│        
+├── Orb_Weaver_feature_board_v2.md
+├── Preflight Scanner
+│   ├── orbs_preflight.py
+│   ├── preflight_site_scan.py
+│   ├── setup_orb.sh
+│   └── ssi_fastapi.py
+├── README.md
+├── backend
+│   ├── Dockerfile
+│   ├── R:\R_Drive_Substrate\orb_weaver
+│   │   ├── clients
+│   │   │   ├── pops.spruked.com
+│   │   │   │   ├── approved_claims
+│   │   │   │   ├── banned_claims
+│   │   │   │   ├── claims
+│   │   │   │   │   ├── banned_claims.json
+│   │   │   │   │   └── safe_claims.json
+│   │   │   │   ├── crm_context
+│   │   │   │   │   └── latest_context.json
+│   │   │   │   ├── current
+│   │   │   │   │   ├── latest_audit.json
+│   │   │   │   │   └── latest_crawl.json
+│   │   │   │   ├── dandy_packs
+│   │   │   │   ├── dandy_sponsor_pack
+│   │   │   │   │   └── latest_pack.json
+│   │   │   │   ├── history
+│   │   │   │   │   ├── audit_1.json
+│   │   │   │   │   └── crawl_1.json
+│   │   │   │   ├── local_index
+│   │   │   │   │   └── client_index.sqlite
+│   │   │   │   ├── mail_context
+│   │   │   │   │   └── latest_context.json
+│   │   │   │   ├── owner_seed_changes
+│   │   │   │   ├── recommendations
+│   │   │   │   │   └── audit_1_recommendations.json
+│   │   │   │   ├── reports
+│   │   │   │   │   └── audit_1_report.json
+│   │   │   │   ├── visitor_questions
+│   │   │   │   └── website_orb_context
+│   │   │   │       └── latest_context.json
+│   │   │   ├── www.pinterest.com
+│   │   │   │   ├── approved_claims
+│   │   │   │   ├── banned_claims
+│   │   │   │   ├── claims
+│   │   │   │   ├── crm_context
+│   │   │   │   │   └── latest_context.json
+│   │   │   │   ├── current
+│   │   │   │   │   └── latest_crawl.json
+│   │   │   │   ├── dandy_packs
+│   │   │   │   ├── dandy_sponsor_pack
+│   │   │   │   │   └── latest_pack.json
+│   │   │   │   ├── history
+│   │   │   │   │   └── crawl_2.json
+│   │   │   │   ├── local_index
+│   │   │   │   │   └── client_index.sqlite
+│   │   │   │   ├── mail_context
+│   │   │   │   │   └── latest_context.json
+│   │   │   │   ├── owner_seed_changes
+│   │   │   │   ├── recommendations
+│   │   │   │   ├── reports
+│   │   │   │   ├── visitor_questions
+│   │   │   │   └── website_orb_context
+│   │   │   │       └── latest_context.json
+│   │   │   └── www.superiorpowersports.com
+│   │   │       ├── approved_claims
+│   │   │       ├── banned_claims
+│   │   │       ├── claims
+│   │   │       ├── crm_context
+│   │   │       │   └── latest_context.json
+│   │   │       ├── current
+│   │   │       │   └── latest_crawl.json
+│   │   │       ├── dandy_packs
+│   │   │       ├── dandy_sponsor_pack
+│   │   │       │   └── latest_pack.json
+│   │   │       ├── history
+│   │   │       │   └── crawl_3.json
+│   │   │       ├── local_index
+│   │   │       │   └── client_index.sqlite
+│   │   │       ├── mail_context
+│   │   │       │   └── latest_context.json
+│   │   │       ├── owner_seed_changes
+│   │   │       ├── recommendations
+│   │   │       ├── reports
+│   │   │       ├── visitor_questions
+│   │   │       └── website_orb_context
+│   │   │           └── latest_context.json
+│   │   └── global_intelligence
+│   │       ├── audit_patterns.jsonl
+│   │       └── crawl_patterns.jsonl
+│   ├── app
+│   │   ├── __init__.py
+│   │   ├── analytics
+│   │   │   ├── __init__.py
+│   │   │   └── ga4.py
+│   │   ├── api
+│   │   │   └── __init__.py
+│   │   ├── audit
+│   │   │   ├── __init__.py
+│   │   │   └── engine.py
+│   │   ├── core
+│   │   │   ├── __init__.py
+│   │   │   └── config.py
+│   │   ├── crawler
+│   │   │   ├── __init__.py
+│   │   │   └── engine.py
+│   │   ├── models
+│   │   │   ├── __init__.py
+│   │   │   └── database.py
+│   │   ├── orb
+│   │   │   ├── __init__.py
+│   │   │   ├── execution_clamp.py
+│   │   │   ├── pointer_plot.py
+│   │   │   └── topology.py
+│   │   ├── pack_generator
+│   │   │   ├── __init__.py
+│   │   │   └── generator.py
+│   │   └── services
+│   │       ├── __init__.py
+│   │       ├── chrome_devtools.py
+│   │       └── orb_desktop_mcp.py
+│   ├── browser_reviews
+│   ├── data
+│   │   ├── kokoro_tts.log
+│   │   ├── kokoro_tts.pid
+│   │   ├── orb_mcp_host_relay.log
+│   │   ├── orb_mcp_host_relay.pid
+│   │   ├── orb_mcp_host_relay_audit.jsonl
+│   │   ├── orb_mcp_test_pad.log
+│   │   ├── orb_mcp_test_pad.pid
+│   │   ├── orb_weaver.db
+│   │   ├── orb_weaver_check.db
+│   │   └── tts_cache
+│   │       ├── 01e77c83ea2f0f618851c271.wav
+│   │       ├── 01ee431a9632e61c8fc00b6e.wav
+│   │       ├── 0235e7ec2fb02f720d0d801e.wav
+│   │       ├── 023c69d1d651f986809f3a40.wav
+│   │       ├── 08b05b5b6c48ca75cf41afbb.wav
+│   │       ├── 08c6823137e1bae4671e1a5e.wav
+│   │       ├── 0ad9667a942424aa963b4066.wav
+│   │       ├── 0bda4b5e578716816002a345.wav
+│   │       ├── 0fd85cfe1753350f7c856004.wav
+│   │       ├── 103680eb45aa5d80e51ef91e.wav
+│   │       ├── 138ea9ba72f156f6d5902d79.wav
+│   │       ├── 147f605472ff76bf6a997384.wav
+│   │       ├── 14d1653ec4d7299229b32a3d.wav
+│   │       ├── 14ee8d8dc5e860e45e72b113.wav
+│   │       ├── 15d941a0a7da104d37e8867f.wav
+│   │       ├── 174cd88b24db85e1fde3700a.wav
+│   │       ├── 185df9111e0bc90f5466cda6.wav
+│   │       ├── 1899f0994875329e54acc9af.wav
+│   │       ├── 196169191da93545ba906abd.wav
+│   │       ├── 1a3c716b1ec5c56632aece33.wav
+│   │       ├── 1b4581c8217143525e33dcec.wav
+│   │       ├── 1bdb923ecc7de79960d2c416.wav
+│   │       ├── 1cd04beeb058c15cb9c0c07e.wav
+│   │       ├── 1d457414e5b547b385539529.wav
+│   │       ├── 1f43c09764e1fa22c5f60b81.wav
+│   │       ├── 21ba2de51262edc8f05d9adb.wav
+│   │       ├── 221ad321e6e21f47c2b56279.wav
+│   │       ├── 22508584c983be8f07aba275.wav
+│   │       ├── 228e043c066cae108658c66a.wav
+│   │       ├── 265f3e064db155a8b1e18be1.wav
+│   │       ├── 27328e28f7f9a25975d3e5b9.wav
+│   │       ├── 273a3b5348f0e6ddebed1a5f.wav
+│   │       ├── 274589a53dc0d41fea113996.wav
+│   │       ├── 2869c06ab1fcadb847da9538.wav
+│   │       ├── 2add08d734ef64f91ce6ee6b.wav
+│   │       ├── 2b5cb1f653d8e52144306989.wav
+│   │       ├── 2c15656b45db8d217d34e59c.wav
+│   │       ├── 2c55f34df51d25784e804cd9.wav
+│   │       ├── 2d48556a50f760638a33664e.wav
+│   │       ├── 2e7e3ae305bcd5e2c0577120.wav
+│   │       ├── 30b5f3382823028bbd8a0212.wav
+│   │       ├── 319ef803c79ea1a8fceced1c.wav
+│   │       ├── 31a06d5195e7cf4c482f4a15.wav
+│   │       ├── 31a2c02b450e3cde7ec4d1f0.wav
+│   │       ├── 34341a8fa1d589e44ee35f0a.wav
+│   │       ├── 3533f0e5169b679ebcb884ad.wav
+│   │       ├── 3832b468e9f82df1745cb63d.wav
+│   │       ├── 386c9e08fa36ce1487cbe20f.wav
+│   │       ├── 38eb87db82d0489a7d8f7e16.wav
+│   │       ├── 3cef67ba0c531c0bfff50d87.wav
+│   │       ├── 3d395ff342fd9215cdc3e85c.wav
+│   │       ├── 3d9f49350f7be2de25a3fd8b.wav
+│   │       ├── 418b14f2a2cbed0d1ccd05ce.wav
+│   │       ├── 420245c1a9390af6e3b8ba17.wav
+│   │       ├── 451dad446fc556a231f672a5.wav
+│   │       ├── 455ac54004a5c9bf70871fac.wav
+│   │       ├── 46fd64245275c65d83e56120.wav
+│   │       ├── 48a91e28515e857277ffaf96.wav
+│   │       ├── 49e7ee8a062630de89b6242e.wav
+│   │       ├── 4a749f86f8e0387e93b38185.wav
+│   │       ├── 4b3195936f272df928a7284f.wav
+│   │       ├── 4b6d49cfe728a4a6b1c3a6f0.wav
+│   │       ├── 4c458582fd8ca86843226677.wav
+│   │       ├── 4c51d3d0d2bc86b2a3fdffd6.wav
+│   │       ├── 4d5f903c0c42d0a894b076dd.wav
+│   │       ├── 4d8d72ae9a08514a7e02bdd5.wav
+│   │       ├── 4f71b4a566f2ac3967c08d6e.wav
+│   │       ├── 50d59c1430abff986fd7b101.wav
+│   │       ├── 5182922d1843ba5873157485.wav
+│   │       ├── 521d256e441293d44cd09ed4.wav
+│   │       ├── 5485aec401fe9428ef37cd21.wav
+│   │       ├── 5541cfbd5777ed580e4ebe67.wav
+│   │       ├── 58879462d36e182f4dada213.wav
+│   │       ├── 58d9e813cda25720d60d4296.wav
+│   │       ├── 58ff82f3c0b975c0354f967b.wav
+│   │       ├── 591839c14f8357b80a2dcd31.wav
+│   │       ├── 5a538dc5ab7a500aa0473b22.wav
+│   │       ├── 5acfcd4e12647ab1c0a11b62.wav
+│   │       ├── 5cb64b2e91df860625aa9100.wav
+│   │       ├── 5da510abe96bcbb12d3203d8.wav
+│   │       ├── 5de68135973f4647cef578b8.wav
+│   │       ├── 5e3e4ff9f99cd96d506ba269.wav
+│   │       ├── 6044cbc18f31beba4730e516.wav
+│   │       ├── 622e03b618fdaad6978d0bd0.wav
+│   │       ├── 657de8bc2b85b9ce19f7031e.wav
+│   │       ├── 65da77c529e5639faee519f4.wav
+│   │       ├── 6743b5c7be5be6691a663a5b.wav
+│   │       ├── 681888f2e7d1bc075c1c039b.wav
+│   │       ├── 683e8eac518e53fdadc1199f.wav
+│   │       ├── 68f1143fc8e7b1ee6c9b675c.wav
+│   │       ├── 691f668c4ed2f8b14050a498.wav
+│   │       ├── 6ae03cfd9355a7bfe080bcb0.wav
+│   │       ├── 6b38dcba8f23fc25f54b8f7c.wav
+│   │       ├── 6caf62a64af5b7bdbcc9866c.wav
+│   │       ├── 6d16f97295eea5f6bd4d4d9b.wav
+│   │       ├── 6e2946708227012cbdff8c4b.wav
+│   │       ├── 6e3bfa23b533bbfcd84594a2.wav
+│   │       ├── 6f6f0e349b17d3a2f8a1abd1.wav
+│   │       ├── 7600bd7466bbc2c91ae7b8a1.wav
+│   │       ├── 76f8edb934a830f44f140187.wav
+│   │       ├── 7703b542d19fee57bd84695d.wav
+│   │       ├── 77376fd8c272bf58d0090000.wav
+│   │       ├── 7a25e62af9c321c5a67335a0.wav
+│   │       ├── 7ae4736bd60ce080889762ea.wav
+│   │       ├── 7af5c699caafe98d74563045.wav
+│   │       ├── 7b26281ff106e2cf64ccdef8.wav
+│   │       ├── 7b4ed147580dd36c67f01901.wav
+│   │       ├── 7d26e87a2d10e527b06d6eba.wav
+│   │       ├── 7ee4c84e3f798c0114512390.wav
+│   │       ├── 7f059675dfd5adec14419646.wav
+│   │       ├── 7faf64d0c2be55102e114ba0.wav
+│   │       ├── 7fc741aa49bb2484c4edb33c.wav
+│   │       ├── 7fe179967056718c37aae62d.wav
+│   │       ├── 80c1766a0a5568a3d82250e5.wav
+│   │       ├── 82b1b8d65d81814aa25faa92.wav
+│   │       ├── 83f17766508ccfb608be4fc0.wav
+│   │       ├── 87184ad59d5bbb605480068e.wav
+│   │       ├── 875187a6789c4cde5506a931.wav
+│   │       ├── 876495d67d52f46def7b593e.wav
+│   │       ├── 8786ba5d29980a011a3a1ddf.wav
+│   │       ├── 8b8cefae99d00a5476a93519.wav
+│   │       ├── 8c1e520c56fd435a4d66b9b9.wav
+│   │       ├── 8c8305f35c2ea8c38ed8f546.wav
+│   │       ├── 8c830b87b8a22ac7f034f315.wav
+│   │       ├── 8c8efec992c2a9285317ea3c.wav
+│   │       ├── 8d465d79beeff3bdc4119609.wav
+│   │       ├── 8d9bf4760a395001e12a2ded.wav
+│   │       ├── 8eec6a64ef77b7ea31f32094.wav
+│   │       ├── 90898bb9527dd2c835e72232.wav
+│   │       ├── 9169af003f96d312e9e4ec4b.wav
+│   │       ├── 91cbe99f20fb4dd9441749d0.wav
+│   │       ├── 921b07e60678715e2e729504.wav
+│   │       ├── 92c9b45a65c2c286a564c5ec.wav
+│   │       ├── 93f8359c0eb462eb6020bdbb.wav
+│   │       ├── 971bc3aa917e18bdb0817182.wav
+│   │       ├── 981ed220d3ed150967500871.wav
+│   │       ├── 98616e053337f202c55f3083.wav
+│   │       ├── 98ca72b5aea1ca2deb2f9c99.wav
+│   │       ├── 9954a3376ecebe6f88692414.wav
+│   │       ├── 99dbf4d242374011760c6f6e.wav
+│   │       ├── 9a121714eca186ac31450724.wav
+│   │       ├── 9b002ca6da99952fdea0bd09.wav
+│   │       ├── 9bffabdd16a195240eca613c.wav
+│   │       ├── 9d08c1375f043e65f46417b7.wav
+│   │       ├── 9d37fe05aa2adddb3574fe9f.wav
+│   │       ├── 9d8a34517f69ca292982c3b1.wav
+│   │       ├── 9eb781dd1282b6ce2ef15058.wav
+│   │       ├── a0ee6079d10ffe6e85378ea0.wav
+│   │       ├── a1a929207f8393bcac24724f.wav
+│   │       ├── a3e26a7f7b69ba4c4e943833.wav
+│   │       ├── a4e5875fcb98dafbf988a921.wav
+│   │       ├── a60dae58d0023806d30e82b6.wav
+│   │       ├── a8884ad94c7c6a4de8624e09.wav
+│   │       ├── a8c6c5ab64da9a2b028b71be.wav
+│   │       ├── a9666f1f2f43f57373a06cc5.wav
+│   │       ├── ab3089db98e1f2de87e9a613.wav
+│   │       ├── ac5843ef8eff8a6bb2eb1fc6.wav
+│   │       ├── ac72a8a59c942f6408359723.wav
+│   │       ├── ace97e8418837040d10cedf3.wav
+│   │       ├── ad8ccbcdd9b914e6d1560dfc.wav
+│   │       ├── adc4137f761896e8c9a285d1.wav
+│   │       ├── ae4d72f4fc925daa07d07558.wav
+│   │       ├── afe59f5848f6eb9b54845f87.wav
+│   │       ├── b1139b007bf5ae3a4661e81e.wav
+│   │       ├── b1dbabab1714584d2d6cfc9f.wav
+│   │       ├── b2775129493e97696d5ef974.wav
+│   │       ├── b41c0c80157ea7acdef8d0b7.wav
+│   │       ├── b6c84ee3fe76f9bac9c1570f.wav
+│   │       ├── b8f48fa1abb909b6d27cf961.wav
+│   │       ├── bba6724f917f5c7e011da715.wav
+│   │       ├── bbfba6e98db28610d8365e33.wav
+│   │       ├── bf3002533a670ae24e13c9fe.wav
+│   │       ├── bf35f041ca98509cd0919120.wav
+│   │       ├── bf5ee8cdbc4370ddcbed92fc.wav
+│   │       ├── c0461a16270d2a25922e1167.wav
+│   │       ├── c5845858dbffcd7feda72aad.wav
+│   │       ├── c5b3953bd2b91e06aeb89fa4.wav
+│   │       ├── c62d55cf94ea1e55cf0b4bd2.wav
+│   │       ├── c6bf29fee12083d5aae80756.wav
+│   │       ├── c75dfcf6d95a561f27dd6de1.wav
+│   │       ├── c783103313d26ed6915f4271.wav
+│   │       ├── c7b3d59ed499f0ece4b496e0.wav
+│   │       ├── ca2ee1b83b0859b411ee4ed6.wav
+│   │       ├── ce81332ee0ef4358352f529a.wav
+│   │       ├── cefc4364a385eb00e8846865.wav
+│   │       ├── d0192d157e5d79177ca170b2.wav
+│   │       ├── d01a5459e5968942eae889cc.wav
+│   │       ├── d3aca301e6a9eeff3213dd97.wav
+│   │       ├── d3f6aec3332d5c93dec3fd1f.wav
+│   │       ├── d4237f1e1164177c1efbc4d0.wav
+│   │       ├── d5f92cbad7e720006a376e05.wav
+│   │       ├── d7eefa8ca535fdbd7b06738d.wav
+│   │       ├── d805c7f82b1db3699bcec1b1.wav
+│   │       ├── da719c6f65a5aa613c9aed4e.wav
+│   │       ├── df384dd1b35f50cbe47489d2.wav
+│   │       ├── dfd594164d99c2a6bfe6c85f.wav
+│   │       ├── e15fe6e0fc9967263cf052eb.wav
+│   │       ├── e396e72137b359e42a518b59.wav
+│   │       ├── e470f568cafd1cb343ab1269.wav
+│   │       ├── e5279c6607fffcf18c0278a3.wav
+│   │       ├── e552bd2412d5a9ab4d71ae4c.wav
+│   │       ├── e6f5a13f5c736b14dd666d69.wav
+│   │       ├── e768d51e64d1cec3e907bb66.wav
+│   │       ├── e9328106229f91936a4a9428.wav
+│   │       ├── eaa2488258fbe3dc485c8069.wav
+│   │       ├── ebeec78e2c48435aaf359b44.wav
+│   │       ├── eca2b2eebdd78518b81e550c.wav
+│   │       ├── eed2bb087a2a200a1500e4b0.wav
+│   │       ├── f0d0b2185b29c3b361e3fc4c.wav
+│   │       ├── f1cddf52834fb6e6e8cdbd0d.wav
+│   │       ├── f26e37bc39621980744efc2d.wav
+│   │       ├── f3203f2a2d3e69b0b5a0afba.wav
+│   │       ├── f3375e987d564100d58983a2.wav
+│   │       ├── f5f3f0150b4c238aaffad24a.wav
+│   │       ├── f628154255583906223576f4.wav
+│   │       ├── f6709adbbe6fc2a6c5e9d1e4.wav
+│   │       ├── f6e2fb9082669a9b054d3f8f.wav
+│   │       ├── f736cb5ab6cdbfbc76b45741.wav
+│   │       ├── f7b317f4b981e2ccc281e043.wav
+│   │       └── fee8e23314d77b41602b66b3.wav
+│   ├── main.py
+│   ├── report_compiler
+│   │   ├── 1_pops
+│   │   │   ├── audit_1.json
+│   │   │   ├── crawl_1.json
+│   │   │   ├── latest_report.json
+│   │   │   └── preflight
+│   │   ├── 2_pinterest
+│   │   │   ├── crawl_2.json
+│   │   │   └── preflight
+│   │   └── 3_superior_powersports
+│   │       ├── crawl_3.json
+│   │       └── preflight
+│   ├── requirements.txt
+│   ├── scanner.log
+│   ├── tests
+│   │   └── test_orb_user_memory.py
+│   └── vault_system
+│       └── posteriori
+│           ├── 00f6d5b7c660a671f4219abf5b4e584ef9994130de77ec4e30607a5ae1577ec2.json
+│           ├── 04428e7e0f6d701c2c0054c279a6e6668cb4c849c3a8ac0bed736675b70d1b75.json
+│           ├── 05696eef5be643327d3b52ef52ade2dff61287ccbd2788ef782a7f8f57c27568.json
+│           ├── 0822d484a4fea1038942fb83cf9b69a182834f4eeebcee4825a900fe63cda912.json
+│           ├── 088b3b237005ccf7f8d97adace084a3edf69f2c1a9d51e2f3190d49b738e564e.json
+│           ├── 0bd79ff3c3e49c1bfa7773a2b0c320eba4f82cf318623e1a3daa23cb7d844b98.json
+│           ├── 1127ea07b728748a1ed544589fbbfef5986fc303f58b24461836fcece8a68c86.json
+│           ├── 11b0753928011f36938a68c5b6a17290b299a55ea606cc0f26d95bf4ccac93fd.json
+│           ├── 1448551e2e1640655542989e1732ac388046374edf71ffcb63b642b6be37ab27.json
+│           ├── 1b8c94d2d3b6877f353d9416a60da4b22cd5693edd03843d3626f74cba85c487.json
+│           ├── 1c9b5b87fa432c6f6145903ebdb1b54b4ea740921887423277a88ec22c121e02.json
+│           ├── 1defbe67accee164e30247de676d564cb6fa1689a5556abc6a4662cc808f4737.json
+│           ├── 1e897369c4e397ecbaba683da281c6a0342179c9b6ceaf24f4dcdd7b2d0f9779.json
+│           ├── 21b62b942724c1cf78891c057545152fe5bdd4c29811131c04696786ddf136be.json
+│           ├── 264c4b571dbec4432937dcb019372acf3b13d1ee8a8e7260065e878e9c28e5c6.json
+│           ├── 28b5e60a8e42490667f57bfa919efa8ae644ad4a9540a23fa8c72b08042663df.json
+│           ├── 2b87efceecc6105141f9782e9a5faf9eb240f4b7307e7c0ffabfa45e032b8339.json
+│           ├── 305a48c76332027ce3f1e56deb7114fa669e14fc9a958e07f95624edead6550b.json
+│           ├── 30c9b99eccc5b710aee2e3c05c2a24906721e23e4337389ba831f8f7054baa0f.json
+│           ├── 30db40608ae2c1951fa4361c75d2af092284656689415abe638cdcd80c67c5a4.json
+│           ├── 32153e6f1ff6b93893edc3a2625834bcb4e10779bed5c6f773d1a51e2acce431.json
+│           ├── 33ae32e412db367577092a7e431129ba927e115c382d62f3169b4ee6e72343d6.json
+│           ├── 343a94d789176aba211c2c788ac5bd84b23f08af5467a28ae594072eaff3e4b2.json
+│           ├── 39ba445ebe6188101209a76746803b16b64f8463911501ccadd54aad76b62a46.json
+│           ├── 3bdda666db88cd593e14b05015df8d97e8e8659c79fe130e5ecadfb862acdbff.json
+│           ├── 3c3d06821f41cb622655a908767507cf266ddc0e604b87a6bca0bfe3fd947d5a.json
+│           ├── 3c74e6fb56ae977d187fa7845331a7cc2150303cf40e7da56990ba07204ae14d.json
+│           ├── 3feb9669fc6bff6097c034fd1fc2136aa09be740b1e699245ed399e3d0aa92b1.json
+│           ├── 425d3853d13157f41c91d83e7267254c9696b077da41469fb46dd7e153214660.json
+│           ├── 4611b6a09d435719a6c792eeec7938b7ea9b97db0b5d1173ff76807a6c3ca392.json
+│           ├── 4d0f7902407a429a5f7737ec46cde6b7a3fa6b116b9e5f1c5282d6a6f51f7112.json
+│           ├── 4d37e86f5c6d5763b38548ac839aff98f101e6e16d2700daa1fdd05cbe1fcf5d.json
+│           ├── 5634035157c3f6dc0b51c82129ad854abfed7a8f85d6536a53a4bd4d8354e2ce.json
+│           ├── 5788581b96338a3364a261872d5897ae5d88f5462f753b1e817eaba5afc5e848.json
+│           ├── 5fd09c33b88f8431a416898e1fd883c5d0daf929c39961dd62f8aaafb27d6a13.json
+│           ├── 61ab37ff6ff1cb4883895a1e097bb011dd542daccef98ba34de374d6055e2d6a.json
+│           ├── 63302a4b1e8539354e89a84d01cea985817fb177a4050a3d9868bdce5e3ccfe8.json
+│           ├── 65bf068e25eb23547e84024723d734f83292a8f868a673d065014587d866633e.json
+│           ├── 660b4406b13cce3471b623f3b281d0483e185c3ef3a838e21a19feb41657d059.json
+│           ├── 6704ff8152f07d9090f7bf4f64d89858f2685eaeed59d735ebea2ac9203ff254.json
+│           ├── 6761f52f8758aecb1fd4860ec11597c395449d33af62cd3b027bd48f92b22e6e.json
+│           ├── 6bde16c4eea07f3576733a1b2bb9d0db6dc6340511fbbe252889fc55ee3373a2.json
+│           ├── 6ce2105b239534c0fb75d8fbbb187280552bfba91814313989e6895d47559320.json
+│           ├── 6e6fc7da4d26a699c414064a17200d3b288111dfe5ce9f13cbe8aca2d6954c33.json
+│           ├── 6ea909e30c67028ac33a57596ff65f64bb2884d8e98b51238019e7ebda994241.json
+│           ├── 6ff6d9d23ddb1d63a7f7a4f90009a33ee8ebdc46ee90e044cbd8bcb07e09568e.json
+│           ├── 7446cf902ea95afa4ac04a87f17ed0675527efa42deaa5143824162e61c0831e.json
+│           ├── 754a82aee85266a1460d88edf6ef427fc5eab8c18247ce12778c685c95ed935f.json
+│           ├── 77ee0780652431f5c0f1b313ba2289c287f6091bb86da33b811b15a9a4bb7727.json
+│           ├── 7afae02dd2ccdf37c283ed9d656a4689bffaad0bae388ec617e98baebedb5263.json
+│           ├── 7b24a9b0dd6ef2b2ae90dd2c69c619e490cc99a0b2fa336a53bcdd0ab220eb61.json
+│           ├── 819a4f4befa713a41d0da52dae0062c3729b3ca945e4c5c5ed656bd9c0c5e199.json
+│           ├── 88d9a34a914ed9c2144973894de804b2262c984ffed8208b82956a37502a3ffe.json
+│           ├── 88fcf20ccf9798ac10cc476e5c47f359d2f6471d52abe3458c35ba16c87ca233.json
+│           ├── 92931d3dfcfc934713b59b548484428108599f6fea2f1873bc2315d5b552e26a.json
+│           ├── 93ba86d1136d5e2a151bad6981e1f4bf65c616df2e2b50983cae6705dfb669ec.json
+│           ├── 94cdb8f1137957dd4cbd164a0fefb59c35be5f6c771c04b8a6e2ce29e7f075d1.json
+│           ├── 9a8a88ffe11588f04972f87a35eda4f373a73996b93bf0198b16228576d95f50.json
+│           ├── 9d828a696826d2d5bf8ae74972f2dfc85a69d47d0963a2a230e667c82b9f41fe.json
+│           ├── 9e4bc698af606e4a8945642b3d94ad68143c63477e68b9ebdd9351357acb8eb8.json
+│           ├── a0dfa4cab20a555ca6e62a5c3f0c5e3be3e05e4b90e833d56d2e3a39778d21d6.json
+│           ├── a415ec640471b905d825fc56550b33d57d3e8f63319cefac782f0f09ec349e89.json
+│           ├── a78ff5d6a4d0f5cf3dc979318e461201bd5bc2e6f79dc937f21af92f1fa1bcae.json
+│           ├── ab621c4fdd7caf0c4a5939a826d54f405a3329659af473670ae0f3d327b4d687.json
+│           ├── ae879ff4ced4d6abb86fd7da2691d4beeb4ab526f467ac932694e85bbe2f74be.json
+│           ├── b9f79c7cd39eed005ce27fa140dc24229478d7b8fd2384bd54abd5b44b56e1b7.json
+│           ├── c0e72aaa1dff9d94ad9d570e64c955d0e8b2b02efdc0da318ac64b479c40ebf9.json
+│           ├── c451df3147ebb1aa242dde4b985d5e5c454dc6bcfc470b9997778aee06a88063.json
+│           ├── c4651117a9091c18d35d9a115a24adfc9a6533ef1ff14ad366f23798f0420059.json
+│           ├── c6463a974e408ec7e2e3b152f1823c7cfe39dd4314c075726c89e8ab733214fd.json
+│           ├── c71b391fd85d77d79102e786cbc2351ea53adcbf68a455779763d7d3c38a26f4.json
+│           ├── c7377dadbc1e0a02a49ce7c6c12bd453b0711888a2ac51612cc0f92aed309eb4.json
+│           ├── c9c33531b60af7eee38542597ddc58c07917843eb84742a18c9a4b6757487554.json
+│           ├── ca4ed92fc9e42c4ac435adb105d26b1f03d51c21aba58be1d2114be5583623d9.json
+│           ├── ce7048f13f5a4c24deeaf34d6fe6ac6890afa2c5c6c04dcab2b75084c6b93a1a.json
+│           ├── cf3a0c08763042baa15f6cc5a094f6565ceb53c7fab124601e27f11e00ce5070.json
+│           ├── d2304071194cd8108ee7763d348ab20f2970737ef9cc792954c64b90aee17f98.json
+│           ├── d372afd87421b6506d4d3dd6cd105891fb3e4c5a6cfd6bbaaa487e0efcf9fa6e.json
+│           ├── d3a1f3926718c7e54852af2ad1de1156321ab43efb8e308216bccb0fde990c2e.json
+│           ├── dd4c7b902d6d557dc174840b924ae75930e155e6ee52253a6c1e6033517f3492.json
+│           ├── e178f02444eb9171fd2449a389323f44600425b21478ac78957785e9440576a7.json
+│           ├── e39d9e8653bf0f22db6be9cc0a8660df04135eaecbd38b270c9b1d491a9bc153.json
+│           ├── e3e71a0f38fe2b373d19e9e43f83edbf5340a2879fffd7817074377c15eeb556.json
+│           ├── e73fec16945337af55e8c92e98a3b1f7f6c98bf1ab4ba7395e5c0773d30d3dac.json
+│           ├── e8a120100f35435253b391ade67d988bba6285dcd03612a8f2ff7c23fe3aa443.json
+│           ├── e902b9c0e66a168214da8bf99fe5316a7453df22c613a5a49a419349be1484d5.json
+│           ├── ec2d6230399423ae235c1ace21f975af640cfb0a8994d30851a2e66ea337da16.json
+│           ├── ef549410eeff8803d28622af2ed93bce0e456ef425f9498e64cee81dbe2823c0.json
+│           ├── f339a7d153276b3c788914032a6b645d351bde4ebbd6a0bc86aeaec3db421b9c.json
+│           ├── f59ae8c514990454f4ad03c820bf914d236377ea1db298ae7d3ef3b527a217b8.json
+│           ├── f6e3966db86ba616b841c492376182498e135581ed11e3e698f35df5f83b5799.json
+│           ├── f8a556179d5488da7b5bf3d0ee7237fd5890fb4871ee4778b18f4eeb7cfafaf2.json
+│           ├── fc11309e74902254aeaca54b0e76226b368f2729fcce583ad2acdb1ab70873bd.json
+│           ├── fefad86d2f515cf32f31fe4f26015b5ff084bc67356bf1af15e5152bf1b3fbe6.json
+│           ├── ff3b8028e981565ff079aeaba173713dfc0d941577bccf27b966cd2a60f50826.json
+│           └── ff91af2f5e60fd28f0ef87d2e6a50e6f9089446774fd1c966b7a7206eca15cf6.json
+├── browser_reviews
+├── circus-page.html
+├── data
+│   ├── orb_weaver.db
+│   └── tts_cache
+│       ├── 971bc3aa917e18bdb0817182.wav
+│       ├── 99dbf4d242374011760c6f6e.wav
+│       └── f628154255583906223576f4.wav
+├── demonstration_Station.html
+├── deploy
+│   ├── cloudflared
+│   │   └── orbweaver.spruked.com.yml
+│   ├── docker
+│   │   └── start-orb-weaver.sh
+│   └── nginx
+│       └── orb-weaver.conf
+├── diagnostic-bay.html
+├── docker-compose.local-runtime.yml
+├── docker-compose.yml
+├── docs
+│   ├── DEPLOYMENT_ORB_WEAVER_SPRUKED.md
+│   ├── DEV_LOG.md
+│   ├── INTELLIGENCE_PRESERVATION.md
+│   ├── ORB_POINTER_RUNTIME_MODEL.md
+│   ├── ORB_VOICE_RUNTIME_REPLICATION_REPORT.md
+│   ├── ORB_VOICE_SETUP_PATTERN.md
+│   ├── ORB_WEAVER_FAILURE_INVENTORY.md
+│   ├── ORB_WEAVER_INTELLIGENCE_GRAPH_SPEC.md
+│   ├── PACK_CONTRACT_V0_1.md
+│   ├── STANDARD_WEBSITE_ORB_BLUEPRINT.md
+│   └── STANDARD_WEBSITE_ORB_REBUILD_PROMPT.md
+├── engineering-plan.md
+├── frontend
+│   ├── Dockerfile
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── public
+│   │   ├── ORBWEAVERLOGOFINAL.PNG
+│   │   ├── apple-touch-icon.png
+│   │   ├── circus-page.html
+│   │   ├── demonstration-station.html
+│   │   ├── diagnostic-bay.html
+│   │   ├── favicon.ico
+│   │   ├── index.html
+│   │   ├── marketplace-basic-orb-infographic.png
+│   │   ├── orb
+│   │   │   └── voice
+│   │   │       ├── README.md
+│   │   │       ├── fallback_responses.json
+│   │   │       ├── latency
+│   │   │       ├── latency-fillers
+│   │   │       │   └── README.md
+│   │   │       ├── latency_fillers.json
+│   │   │       └── recovery_and_status.json
+│   │   ├── orb-skins
+│   │   │   ├── blueorbsampl1024.png
+│   │   │   ├── natureorb1.png
+│   │   │   ├── orbexample2.png
+│   │   │   └── tuxorb.png
+│   │   ├── orbweaver1600.png
+│   │   ├── orbweaverfavicon-source-512.png
+│   │   ├── orbweaverlogo1024.png
+│   │   ├── robots.txt
+│   │   └── sitemap.xml
+│   ├── scripts
+│   │   └── preflight-dashboard-smoke.js
+│   ├── src
+│   │   ├── App.tsx
+│   │   ├── App.tsx.before-route-cleanup
+│   │   ├── App.tsx.before-scroll-reset
+│   │   ├── App.tsx.before-v2-landing
+│   │   ├── App.tsx.marketplace-root-backup
+│   │   ├── assets
+│   │   │   ├── 12orbsamples.png
+│   │   │   ├── ORBWEAVERLOGOFINAL.PNG
+│   │   │   ├── ORBWEAVERLOGOFINAL2.PNG
+│   │   │   ├── Untitled.xcf
+│   │   │   ├── blueorbsampl1024.png
+│   │   │   ├── infographicbasicorb.png
+│   │   │   ├── natureorb1.png
+│   │   │   ├── orbexample2.png
+│   │   │   ├── orbweaver1600.png
+│   │   │   ├── orbweaver1600.xcf
+│   │   │   ├── orbweaver2.xcf
+│   │   │   ├── orbweaver48.ico
+│   │   │   ├── orbweaver48.xcf
+│   │   │   ├── orbweaverfavicon-source-512.png
+│   │   │   └── orbweaverlogo1024.png
+│   │   ├── components
+│   │   │   ├── IssueCard.tsx
+│   │   │   ├── Layout.tsx
+│   │   │   ├── PublicHeader.tsx
+│   │   │   ├── RouteScrollReset.tsx
+│   │   │   └── ScoreCircle.tsx
+│   │   ├── index.css
+│   │   ├── index.tsx
+│   │   ├── landing
+│   │   │   ├── AutonomousOrb.tsx
+│   │   │   ├── AutonomousOrb.tsx.before-alignment-fix
+│   │   │   ├── AutonomousOrb.tsx.before-intro-session-fix
+│   │   │   ├── AutonomousOrb.tsx.before-session-intro-fix
+│   │   │   ├── Landing.css
+│   │   │   ├── LandingPage.tsx
+│   │   │   ├── Orb.jsx
+│   │   │   ├── Orb.tsx
+│   │   │   └── OrbBurst.jsx
+│   │   ├── marketplace
+│   │   │   ├── MarketplaceRoutes.tsx
+│   │   │   ├── README.md
+│   │   │   ├── components
+│   │   │   │   ├── MarketCard.tsx
+│   │   │   │   ├── MarketCollectionRail.tsx
+│   │   │   │   ├── MarketIndexCode.tsx
+│   │   │   │   ├── MarketLayout.tsx
+│   │   │   │   ├── MarketLayout.tsx.before-back-fix
+│   │   │   │   ├── MarketNav.tsx
+│   │   │   │   └── MarketShelf.tsx
+│   │   │   ├── data
+│   │   │   │   └── marketplaceData.ts
+│   │   │   ├── hooks
+│   │   │   │   └── useMarketplace.ts
+│   │   │   ├── pages
+│   │   │   │   ├── MarketplaceCategory.tsx
+│   │   │   │   ├── MarketplaceCollections.tsx
+│   │   │   │   ├── MarketplaceHome.tsx
+│   │   │   │   ├── MarketplaceProduct.tsx
+│   │   │   │   └── MarketplaceSearch.tsx
+│   │   │   ├── services
+│   │   │   │   └── marketplaceApi.ts
+│   │   │   └── styles
+│   │   │       └── market-theme.css
+│   │   ├── orb
+│   │   │   ├── WebsiteFloatingOrb.css
+│   │   │   ├── WebsiteFloatingOrb.tsx
+│   │   │   ├── kineticTransit.ts
+│   │   │   ├── robotics
+│   │   │   │   ├── movementController.ts
+│   │   │   │   ├── robotMovement.types.ts
+│   │   │   │   ├── webActuator.hal.css
+│   │   │   │   └── webActuator.hal.ts
+│   │   │   ├── skin
+│   │   │   ├── targetValidation.test.ts
+│   │   │   └── targetValidation.ts
+│   │   ├── pages
+│   │   │   ├── Account.tsx
+│   │   │   ├── AdminCustomers.tsx
+│   │   │   ├── AuditReport.tsx
+│   │   │   ├── AuthPage.tsx
+│   │   │   ├── Cart.tsx
+│   │   │   ├── CrawlJob.tsx
+│   │   │   ├── CrawlJobs.tsx
+│   │   │   ├── Dashboard.tsx
+│   │   │   ├── Demo.tsx
+│   │   │   ├── DiagnosticsPlaceholder.tsx
+│   │   │   ├── GA4Dashboard.tsx
+│   │   │   ├── LegalPage.tsx
+│   │   │   ├── Projects.tsx
+│   │   │   ├── PublicPreflight.tsx
+│   │   │   ├── PublicPreflight.tsx.before-result-content-20260706-030401
+│   │   │   ├── PublicStaticPage.tsx
+│   │   │   ├── ReportCompiler.tsx
+│   │   │   ├── WebWeave.tsx
+│   │   │   └── marketplace
+│   │   │       └── MarketplacePage.tsx
+│   │   └── services
+│   │       └── api.ts
+│   ├── tailwind.config.js
+│   └── tsconfig.json
+├── movement_decision_wrapper.py
+├── movement_skg.owl
+├── package-lock.json
+├── package.json
+├── report_compiler
+├── reports
+│   └── c-drive-space-recovery-report.md
+├── scanner.log
+├── scripts
+│   ├── build_preflight_tool_cache.py
+│   ├── self_scan_orbweaver.py
+│   └── setup.sh
+├── src
+│   └── landing
+├── structure-tree.txt
+├── substrate
+│   ├── clients
+│   │   ├── 127.0.0.1_16510
+│   │   │   ├── approved_claims
+│   │   │   ├── banned_claims
+│   │   │   ├── claims
+│   │   │   │   ├── banned_claims.json
+│   │   │   │   └── safe_claims.json
+│   │   │   ├── crm_context
+│   │   │   │   └── latest_context.json
+│   │   │   ├── current
+│   │   │   │   ├── latest_audit.json
+│   │   │   │   └── latest_crawl.json
+│   │   │   ├── dandy_packs
+│   │   │   ├── dandy_sponsor_pack
+│   │   │   │   └── latest_pack.json
+│   │   │   ├── history
+│   │   │   │   ├── audit_2.json
+│   │   │   │   └── crawl_2.json
+│   │   │   ├── local_index
+│   │   │   │   └── client_index.sqlite
+│   │   │   ├── mail_context
+│   │   │   │   └── latest_context.json
+│   │   │   ├── owner_seed_changes
+│   │   │   ├── recommendations
+│   │   │   │   └── audit_2_recommendations.json
+│   │   │   ├── reports
+│   │   │   │   └── audit_2_report.json
+│   │   │   ├── visitor_questions
+│   │   │   └── website_orb_context
+│   │   │       └── latest_context.json
+│   │   ├── chumbacasino.com
+│   │   │   ├── approved_claims
+│   │   │   ├── banned_claims
+│   │   │   ├── claims
+│   │   │   │   ├── banned_claims.json
+│   │   │   │   └── safe_claims.json
+│   │   │   ├── crm_context
+│   │   │   │   └── latest_context.json
+│   │   │   ├── current
+│   │   │   │   ├── latest_audit.json
+│   │   │   │   └── latest_crawl.json
+│   │   │   ├── dandy_packs
+│   │   │   ├── dandy_sponsor_pack
+│   │   │   │   └── latest_pack.json
+│   │   │   ├── history
+│   │   │   │   ├── audit_7.json
+│   │   │   │   ├── crawl_8.json
+│   │   │   │   └── crawl_9.json
+│   │   │   ├── local_index
+│   │   │   │   └── client_index.sqlite
+│   │   │   ├── mail_context
+│   │   │   │   └── latest_context.json
+│   │   │   ├── owner_seed_changes
+│   │   │   ├── recommendations
+│   │   │   │   └── audit_7_recommendations.json
+│   │   │   ├── reports
+│   │   │   │   └── audit_7_report.json
+│   │   │   ├── visitor_questions
+│   │   │   └── website_orb_context
+│   │   │       └── latest_context.json
+│   │   ├── http_127.0.0.1_16510
+│   │   │   ├── approved_claims
+│   │   │   ├── banned_claims
+│   │   │   ├── claims
+│   │   │   │   ├── banned_claims.json
+│   │   │   │   └── safe_claims.json
+│   │   │   ├── crm_context
+│   │   │   │   └── latest_context.json
+│   │   │   ├── current
+│   │   │   │   ├── latest_audit.json
+│   │   │   │   └── latest_crawl.json
+│   │   │   ├── dandy_packs
+│   │   │   ├── dandy_sponsor_pack
+│   │   │   │   └── latest_pack.json
+│   │   │   ├── history
+│   │   │   │   ├── audit_3.json
+│   │   │   │   ├── audit_4.json
+│   │   │   │   ├── audit_5.json
+│   │   │   │   ├── audit_6.json
+│   │   │   │   ├── crawl_3.json
+│   │   │   │   ├── crawl_4.json
+│   │   │   │   ├── crawl_5.json
+│   │   │   │   └── crawl_6.json
+│   │   │   ├── local_index
+│   │   │   │   └── client_index.sqlite
+│   │   │   ├── mail_context
+│   │   │   │   └── latest_context.json
+│   │   │   ├── owner_seed_changes
+│   │   │   ├── recommendations
+│   │   │   │   ├── audit_3_recommendations.json
+│   │   │   │   ├── audit_4_recommendations.json
+│   │   │   │   ├── audit_5_recommendations.json
+│   │   │   │   └── audit_6_recommendations.json
+│   │   │   ├── reports
+│   │   │   │   ├── audit_3_report.json
+│   │   │   │   ├── audit_4_report.json
+│   │   │   │   ├── audit_5_report.json
+│   │   │   │   └── audit_6_report.json
+│   │   │   ├── visitor_questions
+│   │   │   └── website_orb_context
+│   │   │       └── latest_context.json
+│   │   ├── orbweaver.spruked.com
+│   │   │   ├── approved_claims
+│   │   │   ├── banned_claims
+│   │   │   ├── claims
+│   │   │   │   ├── banned_claims.json
+│   │   │   │   └── safe_claims.json
+│   │   │   ├── crm_context
+│   │   │   │   └── latest_context.json
+│   │   │   ├── current
+│   │   │   │   ├── latest_audit.json
+│   │   │   │   ├── latest_crawl.json
+│   │   │   │   ├── latest_preflight.json
+│   │   │   │   └── latest_self_scan.json
+│   │   │   ├── dandy_packs
+│   │   │   ├── dandy_sponsor_pack
+│   │   │   │   └── latest_pack.json
+│   │   │   ├── history
+│   │   │   │   ├── audit_1.json
+│   │   │   │   ├── audit_10.json
+│   │   │   │   ├── audit_11.json
+│   │   │   │   ├── crawl_1.json
+│   │   │   │   ├── crawl_11.json
+│   │   │   │   ├── crawl_12.json
+│   │   │   │   └── crawl_17.json
+│   │   │   ├── local_index
+│   │   │   │   └── client_index.sqlite
+│   │   │   ├── mail_context
+│   │   │   │   └── latest_context.json
+│   │   │   ├── owner_seed_changes
+│   │   │   ├── recommendations
+│   │   │   │   ├── audit_10_recommendations.json
+│   │   │   │   ├── audit_11_recommendations.json
+│   │   │   │   └── audit_1_recommendations.json
+│   │   │   ├── reports
+│   │   │   │   ├── audit_10_report.json
+│   │   │   │   ├── audit_11_report.json
+│   │   │   │   └── audit_1_report.json
+│   │   │   ├── visitor_questions
+│   │   │   └── website_orb_context
+│   │   │       ├── latest_context.json
+│   │   │       ├── orb_runtime_context.json
+│   │   │       ├── pointer_plot_map.json
+│   │   │       ├── self_scan_summary.json
+│   │   │       ├── site_preflight_report.json
+│   │   │       └── tool_cache.json
+│   │   ├── pops.spruked.com
+│   │   │   ├── approved_claims
+│   │   │   ├── banned_claims
+│   │   │   ├── claims
+│   │   │   │   ├── banned_claims.json
+│   │   │   │   └── safe_claims.json
+│   │   │   ├── crm_context
+│   │   │   │   └── latest_context.json
+│   │   │   ├── current
+│   │   │   │   ├── latest_audit.json
+│   │   │   │   ├── latest_crawl.json
+│   │   │   │   └── latest_preflight.json
+│   │   │   ├── dandy_packs
+│   │   │   ├── dandy_sponsor_pack
+│   │   │   │   └── latest_pack.json
+│   │   │   ├── history
+│   │   │   │   ├── audit_8.json
+│   │   │   │   ├── audit_9.json
+│   │   │   │   ├── crawl_10.json
+│   │   │   │   ├── crawl_13.json
+│   │   │   │   └── crawl_7.json
+│   │   │   ├── local_index
+│   │   │   │   └── client_index.sqlite
+│   │   │   ├── mail_context
+│   │   │   │   └── latest_context.json
+│   │   │   ├── owner_seed_changes
+│   │   │   ├── recommendations
+│   │   │   │   ├── audit_8_recommendations.json
+│   │   │   │   └── audit_9_recommendations.json
+│   │   │   ├── reports
+│   │   │   │   ├── audit_8_report.json
+│   │   │   │   └── audit_9_report.json
+│   │   │   ├── visitor_questions
+│   │   │   └── website_orb_context
+│   │   │       ├── latest_context.json
+│   │   │       ├── pointer_plot_map.json
+│   │   │       └── site_preflight_report.json
+│   │   ├── shilohridgekatahdins.com
+│   │   │   ├── approved_claims
+│   │   │   ├── banned_claims
+│   │   │   ├── claims
+│   │   │   ├── crm_context
+│   │   │   │   └── latest_context.json
+│   │   │   ├── current
+│   │   │   │   ├── latest_crawl.json
+│   │   │   │   └── latest_preflight.json
+│   │   │   ├── dandy_packs
+│   │   │   ├── dandy_sponsor_pack
+│   │   │   │   └── latest_pack.json
+│   │   │   ├── history
+│   │   │   │   ├── crawl_15.json
+│   │   │   │   ├── crawl_16.json
+│   │   │   │   └── crawl_18.json
+│   │   │   ├── local_index
+│   │   │   │   └── client_index.sqlite
+│   │   │   ├── mail_context
+│   │   │   │   └── latest_context.json
+│   │   │   ├── owner_seed_changes
+│   │   │   ├── recommendations
+│   │   │   ├── reports
+│   │   │   ├── visitor_questions
+│   │   │   └── website_orb_context
+│   │   │       ├── latest_context.json
+│   │   │       ├── pointer_plot_map.json
+│   │   │       └── site_preflight_report.json
+│   │   └── spruked.com
+│   │       ├── approved_claims
+│   │       ├── banned_claims
+│   │       ├── claims
+│   │       │   ├── banned_claims.json
+│   │       │   └── safe_claims.json
+│   │       ├── crm_context
+│   │       │   └── latest_context.json
+│   │       ├── current
+│   │       │   ├── latest_audit.json
+│   │       │   └── latest_crawl.json
+│   │       ├── dandy_packs
+│   │       ├── dandy_sponsor_pack
+│   │       │   └── latest_pack.json
+│   │       ├── history
+│   │       │   ├── audit_12.json
+│   │       │   └── crawl_14.json
+│   │       ├── local_index
+│   │       │   └── client_index.sqlite
+│   │       ├── mail_context
+│   │       │   └── latest_context.json
+│   │       ├── owner_seed_changes
+│   │       ├── recommendations
+│   │       │   └── audit_12_recommendations.json
+│   │       ├── reports
+│   │       │   └── audit_12_report.json
+│   │       ├── visitor_questions
+│   │       └── website_orb_context
+│   │           ├── latest_context.json
+│   │           └── pointer_plot_map.json
+│   └── global_intelligence
+│       ├── audit_patterns.jsonl
+│       └── crawl_patterns.jsonl
+├── tools
+│   ├── check_weaver_runtime.sh
+│   ├── kokoro_openai_tts_server.py
+│   ├── orb_mcp_host_relay.py
+│   ├── orb_mcp_test_pad.py
+│   ├── start_kokoro_tts.sh
+│   └── start_orb_mcp_host_relay.sh
+└── tree.txt
+
+324 directories, 9344 files

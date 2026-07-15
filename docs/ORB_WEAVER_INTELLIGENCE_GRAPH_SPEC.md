@@ -202,6 +202,8 @@ clients/<domain>/
     answer_sources.json
     safe_claims.json
     unsupported_claims.json
+    pointer_plot_map.json
+    tool_cache.json
   history/
     crawl_<id>.json
     graph_<id>.json
@@ -218,7 +220,13 @@ latest_audit.json
 latest_site_graph.json
 latest_change_log.json
 latest_orb_context.json
+website_orb_context/pointer_plot_map.json
+website_orb_context/tool_cache.json
 ```
+
+`pointer_plot_map.json` is produced by the crawler from page DOM targets. It is the ORB's pointable target map: headings, nav items, buttons, forms, policy lines, pricing cards, and other stable visible targets. Each record includes a semantic locator, intent aliases, allowed actions, and confidence.
+
+`tool_cache.json` is produced during the scan/build phase. Basic customer Website ORBs use this as a static, website-native voice cache: `intent_keyword -> cached response/audio`. It must not require Desktop MCP, local OCR, or host tools. Orb Weaver's own showcase ORB may build an enhanced cache only when `ORB_BUILD_ALLOW_MCP=true` or `--allow-mcp` is supplied to `scripts/build_preflight_tool_cache.py`.
 
 ## 8. ORB-Facing API Endpoints
 

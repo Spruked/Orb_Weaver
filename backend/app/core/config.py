@@ -84,6 +84,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    CUSTOMER_SESSION_EXPIRE_DAYS: int = 365
 
     # Audit Thresholds
     MIN_PAGE_SPEED_SCORE: int = 50

@@ -1,0 +1,100 @@
+Correction to the guiderails/Website ORB architecture. This replaces the
+previous instruction. Do not continue building the "Current Page Capsule"
+as a live, request-time assembly step.
+
+WHAT WAS WRONG
+
+The prior direction described a Current Page Capsule that gets built (or
+rebuilt) at page-load / route-change time, and an endpoint
+(/api/orb/page-capsule or equivalent) that assembles page context, ranks
+targets, and pulls site-world slices on demand. That is live compute sitting
+in the navigation hot path. It does not matter that it was called
+"lightweight" or "preloaded" — if it runs per route-change, it is latency.
+
+THE CORRECTION
+
+There is no page-capsule build step, live or otherwise. The per-page context
+that the capsule was trying to assemble does not get assembled at all after
+build time — it is written once, directly into the Semantic Knowledge Graph,
+when Orb Weaver scans/compiles the site.
+
+Each page's SKG record must contain, as precompiled fields:
+- page purpose and summary
+- target tiering: top-value targets, secondary targets, full route-scoped map
+- permitted action boundaries for that route
+- applicable Doctrine V1 conditions, hash-verified against the canonical
+  doctrine hash
+- which TPC output classes are pre-cleared vs. require escalation on this
+  route
+- applicable playbooks and guiderail conditions
+
+This is the only place any of this gets figured out. Nothing about page
+context, target ranking, or governance boundary is computed later.
+
+CORRECTED RUNTIME SHAPE
+
+BUILD TIME (Orb Weaver scan / SKG compile)
+    Full crawl, page meaning, product language, doctrine/TPC boundary
+    conditions, playbooks -- all written directly into per-page SKG
+    records as listed above.
+                    |
+        One compiled SKG. Nothing left to assemble later.
+
+ROUTE CHANGE
+    Lookup only. The SKG record for this route already IS the page
+    context. No capsule object is built, derived, or ranked at this
+    point. Zero compute cost beyond a key lookup.
+
+VISITOR SPEAKS
+    1. Intent classification
+    2. TPC cognition (Locke/Hume/Kant/Spinoza, K0->K2 recursion) reasons
+       against the resident SKG record only. Doctrine is never fed into
+       the philosopher nodes -- it is not a reasoning input.
+    3. Fifth Mind resolves the four philosopher verdicts into one
+       candidate answer/action.
+    4. Doctrine gate: fast match of that candidate against the
+       precompiled boundary conditions already sitting in the SKG
+       record. This is a lookup against work already done at build
+       time, not a live doctrine re-derivation.
+    5. Pointer resolves in the live DOM before any point/guide action
+       fires. Unresolved targets remain honest voice-only guidance --
+       never a guessed point.
+
+REQUIRED ACTIONS ON EXISTING CODE
+
+1. Locate the current /api/orb/page-capsule endpoint (or equivalent) in
+   backend/main.py. Determine whether it performs assembly (building page
+   summary, ranking targets, pulling context slices) or pure lookup against
+   an already-compiled record.
+   - If it assembles: convert it to a lookup against a precompiled SKG
+     field. The assembly logic moves to scan/compile time, not request
+     time.
+   - If it already only looks up a precompiled field: confirm this in
+     writing and no further change is needed here.
+
+2. Check orb_runtime_context.json: confirm whether it is loaded once at
+   process startup or re-read/re-parsed per request. It must be loaded
+   once and held in memory; per-request re-parsing is a latency cost to
+   remove.
+
+3. Check the pointer_plot_map.json target retrieval path: confirm it is
+   loaded once and indexed, not re-read or re-ranked per request.
+
+4. Do not add scan/crawl logic to any consumer-side pointer or guide
+   controller. Scanning and package generation stay in Orb Weaver's
+   scan pipeline only.
+
+5. Report back specifically on items 1-3 above before writing any new
+   capsule-related code. If the existing implementation already matches
+   the corrected shape, say so plainly and stop -- do not rework working
+   code to match this document's prose if it already satisfies the
+   lookup-only requirement.
+
+UNRELATED OPEN ITEM (flag only, do not resolve without instruction)
+
+frontend/src/landing/AutonomousOrb.tsx and frontend/src/orb/WebsiteFloatingOrb.tsx
+both appear to implement ORB-on-page behavior. Do not merge, remove, or
+prefer one over the other without explicit direction. Report which one is
+currently mounted/active in the live site so a decision can be made.
+
+Do not commit or push.

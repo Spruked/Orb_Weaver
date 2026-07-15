@@ -56,7 +56,7 @@ services:
       - ./backend/data:/app/backend/data
       - ./browser_reviews:/app/backend/browser_reviews
       - ./substrate:/app/substrate
-      - /mnt/r/mpc_server:/app/rdrive_mpc_server:ro
+      - ./.runtime/rdrive_mpc_server:/app/rdrive_mpc_server:ro
     depends_on:
       - redis
 

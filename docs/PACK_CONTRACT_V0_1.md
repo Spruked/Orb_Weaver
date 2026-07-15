@@ -37,6 +37,8 @@ R:\R_Drive_Substrate\orb_weaver\clients\<domain>\
     audit_<id>_recommendations.json
   website_orb_context\
     latest_context.json
+    pointer_plot_map.json
+    tool_cache.json
   dandy_sponsor_pack\
     latest_pack.json
   crm_context\
@@ -68,6 +70,24 @@ Current tables:
 
 Do not store cross-client global data in this database. It is client-pack local.
 
+## Website ORB Runtime Artifacts
+
+`website_orb_context/pointer_plot_map.json` is the pointable target map generated from the crawl. It contains stable target ids, semantic locators, intent aliases, allowed actions, and confidence values for visible website targets.
+
+`website_orb_context/tool_cache.json` is the low-latency voice cache generated during the build phase. Basic customer ORBs must be able to run from this file, approved static context, and pre-generated audio without probing Desktop MCP or host OCR.
+
+Enhanced/showcase caches may include MCP tool metadata only when built with explicit intent:
+
+```bash
+ORB_BUILD_ALLOW_MCP=true python3 scripts/build_preflight_tool_cache.py --allow-mcp
+```
+
+The default build is customer-safe:
+
+```bash
+python3 scripts/build_preflight_tool_cache.py --domain example.com
+```
+
 ## Privacy Boundary
 
 Private pack data may include domains, URLs, recommendations, Website ORB context, owner claims, and client-specific history.
@@ -87,24 +107,33 @@ Global intelligence must not include:
 
 ## Tier Boundary
 
+Pointer capability is universal. Every ORB tier receives a Pointer Plot Map and runtime pointer resolution. Tiers control coverage, density, maintenance, verification depth, branded behavior, and adaptive recovery; tiers do not control whether pointing exists.
+
 Basic:
 
 - project/site history
 - scan history
 - site recommendations
+- pointer map for important visitor routes, navigation, forms, service/contact paths, and major conversions
+- static tool cache and voice manifest
 - no customer-specific visitor memory
+- no Desktop MCP dependency
 
 Premium:
 
 - customer-aware context only when login integration exists
 - approved customer pointers only
+- denser maintained pointer coverage and richer route-specific intents
 - governance layer required
+- explicit adapters only; no implicit inheritance from the Orb Weaver showcase ORB
 
 Platinum:
 
 - owner DockStation
 - richer memory controls
 - advanced history and recommendation timeline
+- desktop/app-window pointer targets where applicable
+- deeper MCP/Desktop workflows through DockStation or deliberately configured adapters
 
 ## Scoring Weights
 

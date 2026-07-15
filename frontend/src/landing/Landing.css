@@ -42,6 +42,47 @@
   background-size: 90px 90px, 130px 130px;
 }
 
+.ow-v2-pointer-bloom {
+  position: fixed;
+  z-index: 28;
+  pointer-events: none;
+  border: 1px solid rgba(91, 200, 230, .66);
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 1px rgba(232, 247, 253, .28),
+    0 0 22px rgba(91, 200, 230, .72),
+    inset 0 0 20px rgba(91, 200, 230, .12);
+  animation: ow-v2-pointer-ping 2.6s ease-out forwards;
+}
+
+.ow-v2-pointer-bloom span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  background: rgba(255, 244, 184, .98);
+  clip-path: polygon(50% 0%, 59% 38%, 100% 50%, 59% 62%, 50% 100%, 41% 62%, 0% 50%, 41% 38%);
+  box-shadow: 0 0 10px rgba(255, 244, 184, .98), 0 0 24px rgba(215, 180, 59, .9);
+  transform: translate(-50%, -50%);
+  animation: ow-v2-target-star 2.6s ease-out forwards;
+}
+
+@keyframes ow-v2-pointer-ping {
+  0% { opacity: 0; transform: scale(.94); }
+  18% { opacity: .42; transform: scale(.98); }
+  46% { opacity: .92; transform: scale(1); }
+  72% { opacity: .48; transform: scale(1.015); }
+  100% { opacity: 0; transform: scale(1.05); }
+}
+
+@keyframes ow-v2-target-star {
+  0%, 22% { opacity: 0; transform: translate(-50%, -50%) scale(.15) rotate(0deg); }
+  44% { opacity: 1; transform: translate(-50%, -50%) scale(1.25) rotate(24deg); }
+  62% { opacity: .94; transform: translate(-50%, -50%) scale(.88) rotate(42deg); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(.35) rotate(70deg); }
+}
+
 .ow-v2-header,
 .ow-v2-hero,
 .ow-v2-lower {
@@ -370,6 +411,54 @@
   color: rgba(186, 230, 253, .88);
 }
 
+.ow-v2-orb-rest-cue {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(91,200,230,.32);
+  background: rgba(4, 14, 24, .84);
+  color: rgba(232, 247, 253, .95);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  pointer-events: none;
+}
+
+.ow-v2-orb-speaker {
+  position: absolute;
+  right: -4px;
+  bottom: -8px;
+  z-index: 8;
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(91,200,230,.42);
+  border-radius: 999px;
+  background: rgba(3, 10, 22, .92);
+  color: rgba(232, 247, 253, .9);
+  box-shadow: 0 12px 30px rgba(0,0,0,.34), 0 0 22px rgba(91,200,230,.18);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform .16s ease, background .16s ease, color .16s ease;
+}
+
+.ow-v2-orb-speaker:hover {
+  transform: scale(1.06);
+  color: #ffffff;
+}
+
+.ow-v2-orb-speaker.active {
+  border-color: rgba(215,180,59,.74);
+  background: rgba(61, 46, 7, .94);
+  color: #fff3b0;
+  box-shadow: 0 12px 30px rgba(0,0,0,.34), 0 0 24px rgba(215,180,59,.36);
+}
+
 .ow-v2-orb-halo {
   position: absolute;
   inset: 11%;
@@ -484,6 +573,35 @@
   content: none;
 }
 
+.ow-v2-orb-position.is-pointing .ow-v2-deploy-effect {
+  animation-duration: 3.2s;
+}
+
+.ow-v2-orb-position.is-pointing .ow-v2-deploy-effect::before {
+  content: "";
+  display: block;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(42vw, 520px);
+  height: 22px;
+  transform-origin: left center;
+  transform: rotate(calc(var(--ow-pointer-angle) - 0deg));
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(215, 180, 59, .7), rgba(91, 200, 230, .3), transparent 92%);
+  filter: blur(7px);
+  opacity: 0;
+  animation: ow-v2-pointer-origin 2.6s ease-in-out forwards;
+}
+
+@keyframes ow-v2-pointer-origin {
+  0% { opacity: .18; height: 12px; filter: brightness(1); }
+  24% { opacity: .58; height: 18px; filter: brightness(1.28); }
+  44% { opacity: .94; height: 24px; filter: brightness(1.7); }
+  66% { opacity: .52; height: 17px; filter: brightness(1.18); }
+  100% { opacity: 0; height: 12px; filter: brightness(1); }
+}
+
 .ow-v2-deploy-effect::after {
   content: "";
   position: absolute;
@@ -591,6 +709,11 @@
     width: min(280px, 82vw);
     transform: translateX(-50%);
     text-align: center;
+  }
+
+  .ow-v2-orb-speaker {
+    right: -2px;
+    bottom: -4px;
   }
 
   .ow-v2-lower {

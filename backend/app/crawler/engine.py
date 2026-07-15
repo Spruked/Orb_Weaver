@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from urllib.parse import urljoin, urlparse, urldefrag
 from bs4 import BeautifulSoup
 from typing import Set, Dict, List, Optional, Tuple
@@ -171,6 +172,7 @@ class OrbWeaverCrawler:
         chrome = self._chrome_executable()
         if not chrome:
             return None
+        profile_dir = tempfile.mkdtemp(prefix="orb_chrome_profile_")
         try:
             result = subprocess.run(
                 [
@@ -178,7 +180,10 @@ class OrbWeaverCrawler:
                     "--headless",
                     "--no-sandbox",
                     "--disable-gpu",
+                    "--disable-crash-reporter",
+                    "--disable-crashpad",
                     "--disable-dev-shm-usage",
+                    f"--user-data-dir={profile_dir}",
                     "--dump-dom",
                     "--virtual-time-budget=5000",
                     url,
@@ -191,6 +196,8 @@ class OrbWeaverCrawler:
             )
         except Exception:
             return None
+        finally:
+            shutil.rmtree(profile_dir, ignore_errors=True)
         rendered = result.stdout.strip()
         if result.returncode != 0 or "<html" not in rendered.lower():
             return None

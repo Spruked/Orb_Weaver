@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '../services/api';
+import { api, type WebsiteOrbPointerRecord } from '../services/api';
+import { validateOrbPointerTarget } from './targetValidation';
 import './WebsiteFloatingOrb.css';
 
 type OrbMode = 'idle' | 'avoiding' | 'assisting' | 'learning';
+type OrbPoint = { x: number; y: number };
+type BloomRect = { left: number; top: number; width: number; height: number };
 
 const LATENCY_FILLER_PATHS = [
   '/orb/voice/latency-fillers/ack.wav',
@@ -10,6 +13,30 @@ const LATENCY_FILLER_PATHS = [
   '/orb/voice/latency-fillers/working.wav',
 ];
 const VOICE_UNAVAILABLE_MESSAGE = 'Voice unavailable';
+
+const normalizeIntentText = (value: string): string =>
+  (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+const routeForUrl = (value?: string | null): string => {
+  if (!value) return '/';
+  try {
+    return new URL(value, window.location.origin).pathname.replace(/\/+$/, '') || '/';
+  } catch {
+    return '/';
+  }
+};
+
+const recordTextCandidates = (record: WebsiteOrbPointerRecord): string[] => {
+  const meaning = (record.meaning || '').replace(/^[^:]+:\s*/, '');
+  return [
+    meaning,
+    ...(record.direct_aliases || []),
+    ...(record.intent_aliases || []),
+    ...(record.topic_aliases || []),
+  ]
+    .map(normalizeIntentText)
+    .filter((value) => value.length >= 2);
+};
 
 const WebsiteFloatingOrb: React.FC = () => {
   const [position, setPosition] = useState({ x: window.innerWidth - 180, y: 190 });
@@ -19,13 +46,16 @@ const WebsiteFloatingOrb: React.FC = () => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [statusLine, setStatusLine] = useState('Greeting visitor');
-  const [spokenOutput, setSpokenOutput] = useState('Caleon is present.');
+  const [spokenOutput, setSpokenOutput] = useState('Weaver is present.');
   const [dockStatus, setDockStatus] = useState<'searching' | 'linked' | 'offline'>('searching');
   const [mood, setMood] = useState(0.86);
+  const [pointingTargetId, setPointingTargetId] = useState<string | null>(null);
+  const [bloomRect, setBloomRect] = useState<BloomRect | null>(null);
 
   const positionRef = useRef(position);
   const targetRef = useRef(targetPos);
   const modeRef = useRef<OrbMode>(mode);
+  const pointerRecordsRef = useRef<WebsiteOrbPointerRecord[]>([]);
   const dockRef = useRef<WebSocket | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
@@ -34,6 +64,7 @@ const WebsiteFloatingOrb: React.FC = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const speechSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const bubbleTimerRef = useRef<number | null>(null);
+  const bloomTimerRef = useRef<number | null>(null);
   const lastActivityRef = useRef(Date.now());
 
   useEffect(() => {
@@ -49,6 +80,81 @@ const WebsiteFloatingOrb: React.FC = () => {
   }, [mode]);
 
   const orbColor = mood >= 0.8 ? 'rgba(45, 212, 255, 0.9)' : mood >= 0.6 ? 'rgba(250, 204, 21, 0.9)' : 'rgba(248, 113, 113, 0.9)';
+
+  const pointNearRect = useCallback((rect: DOMRect): OrbPoint => {
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const side = centerX < window.innerWidth / 2 ? 1 : -1;
+    return {
+      x: Math.max(80, Math.min(window.innerWidth - 80, centerX + side * 112)),
+      y: Math.max(100, Math.min(window.innerHeight - 100, centerY)),
+    };
+  }, []);
+
+  const findPointerRecordForIntent = useCallback((intentText: string): WebsiteOrbPointerRecord | null => {
+    const query = normalizeIntentText(intentText);
+    if (!query) return null;
+
+    const currentRoute = routeForUrl(window.location.href);
+    let best: { record: WebsiteOrbPointerRecord; score: number } | null = null;
+
+    for (const record of pointerRecordsRef.current) {
+      const recordRoute = routeForUrl(record.page_route);
+      if (recordRoute !== currentRoute) continue;
+
+      let score = 0;
+      for (const candidate of recordTextCandidates(record)) {
+        if (candidate.length < 2) continue;
+        if (query === candidate) score = Math.max(score, 1);
+        else if (query.includes(candidate)) score = Math.max(score, Math.min(0.92, candidate.length / Math.max(query.length, 1)));
+        else if (candidate.includes(query) && query.length >= 4) score = Math.max(score, Math.min(0.84, query.length / candidate.length));
+      }
+
+      const confidence = typeof record.confidence === 'number' ? record.confidence : 0.7;
+      score *= Math.max(0.55, Math.min(1, confidence));
+      if (score >= 0.42 && (!best || score > best.score)) {
+        best = { record, score };
+      }
+    }
+
+    return best?.record || null;
+  }, []);
+
+  const guideToPointerTarget = useCallback(async (intentText: string) => {
+    const record = findPointerRecordForIntent(intentText);
+    if (!record) return;
+
+    const firstPass = validateOrbPointerTarget(record, { logger: console });
+    if (!firstPass.ok) return;
+
+    firstPass.element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    await new Promise((resolve) => window.setTimeout(resolve, 420));
+
+    const validation = validateOrbPointerTarget(record, { logger: console });
+    if (!validation.ok) return;
+
+    const rect = validation.rect;
+    const nextTarget = pointNearRect(rect);
+    setTargetPos(nextTarget);
+    setMode('assisting');
+    setIsMoving(true);
+    setPointingTargetId(record.target_id);
+    setStatusLine(`Pointing: ${(record.meaning || record.target_type || 'target').replace(/^[^:]+:\s*/, '').slice(0, 54)}`);
+    setBloomRect({
+      left: Math.max(0, rect.left - 8),
+      top: Math.max(0, rect.top - 8),
+      width: rect.width + 16,
+      height: rect.height + 16,
+    });
+
+    if (bloomTimerRef.current) {
+      window.clearTimeout(bloomTimerRef.current);
+    }
+    bloomTimerRef.current = window.setTimeout(() => {
+      setBloomRect(null);
+      setPointingTargetId(null);
+    }, 1800);
+  }, [findPointerRecordForIntent, pointNearRect]);
 
   const playLatencyFiller = useCallback(() => {
     const src = LATENCY_FILLER_PATHS[Math.floor(Math.random() * LATENCY_FILLER_PATHS.length)];
@@ -255,7 +361,9 @@ const WebsiteFloatingOrb: React.FC = () => {
         audioChunksRef.current = [];
 
         try {
-          const result = await api.websiteOrbVoice(audio);
+          const result = await api.websiteOrbVoice(audio, undefined, {
+            target_url: window.location.href,
+          });
           setStatusLine(result.llm_source === 'local-llm' ? 'ORB cognition + LLM' : 'ORB cognition');
           const glowIntensity = result.cognitive_pulse?.glow_intensity;
           if (typeof glowIntensity === 'number') {
@@ -273,6 +381,7 @@ const WebsiteFloatingOrb: React.FC = () => {
           if (result.tts_error && !result.tts_audio_url) {
             setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
           }
+          void guideToPointerTarget(`${result.transcript} ${result.spoken_output}`);
           await speakOutput(result.spoken_output, result.tts_audio_url, result.tts_provider);
         } catch (error) {
           setStatusLine('Voice pipeline failed');
@@ -293,7 +402,22 @@ const WebsiteFloatingOrb: React.FC = () => {
       setStatusLine('Mic permission needed');
       void speakRecovery(error instanceof Error ? error.message : 'Microphone permission is needed for voice input.');
     }
-  }, [isListening, speakOutput, speakRecovery, stopVoiceInput, unlockAudio]);
+  }, [guideToPointerTarget, isListening, speakOutput, speakRecovery, stopVoiceInput, unlockAudio]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api.websiteOrbPointerMap(window.location.hostname, controller.signal)
+      .then((pointerMap) => {
+        pointerRecordsRef.current = Array.isArray(pointerMap.records) ? pointerMap.records : [];
+        if (pointerRecordsRef.current.length > 0) {
+          setStatusLine('Pointer map ready');
+        }
+      })
+      .catch(() => {
+        pointerRecordsRef.current = [];
+      });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     let reconnectTimer = 0;
@@ -370,6 +494,9 @@ const WebsiteFloatingOrb: React.FC = () => {
       stopVoiceInput();
       if (bubbleTimerRef.current) {
         window.clearTimeout(bubbleTimerRef.current);
+      }
+      if (bloomTimerRef.current) {
+        window.clearTimeout(bloomTimerRef.current);
       }
       if (speechAudioRef.current) {
         speechAudioRef.current.pause();
@@ -483,6 +610,7 @@ const WebsiteFloatingOrb: React.FC = () => {
   }, []);
 
   return (
+    <>
     <div
       className={`ow-website-orb-shell ${mode} ${dockStatus}`}
       style={{
@@ -492,13 +620,13 @@ const WebsiteFloatingOrb: React.FC = () => {
     >
       <button
         type="button"
-        className={`ow-website-orb-core ${isMoving ? 'moving' : ''} ${isSpeaking ? 'speaking' : ''} ${isListening ? 'listening' : ''}`}
+        className={`ow-website-orb-core ${isMoving ? 'moving' : ''} ${isSpeaking ? 'speaking' : ''} ${isListening ? 'listening' : ''} ${pointingTargetId ? 'pointing' : ''}`}
         style={{
           background: `radial-gradient(circle at 32% 28%, rgba(255,255,255,0.92), ${orbColor} 24%, #111827 72%)`,
           boxShadow: `0 0 34px ${orbColor}, inset 0 0 22px rgba(255,255,255,0.24)`,
         }}
         onClick={startVoiceInput}
-        aria-label="Speak to Caleon ORB"
+        aria-label="Speak to Weaver ORB"
       >
         <span className="ow-website-orb-aura" style={{ background: `radial-gradient(circle, ${orbColor}, transparent 68%)` }} />
         <span className="ow-website-orb-ring" />
@@ -507,7 +635,7 @@ const WebsiteFloatingOrb: React.FC = () => {
       </button>
 
       <div className="ow-website-orb-label">
-        <strong>Caleon (CALI)</strong>
+        <strong>Weaver</strong>
         <span>{statusLine}</span>
       </div>
 
@@ -515,6 +643,18 @@ const WebsiteFloatingOrb: React.FC = () => {
         {spokenOutput}
       </div>
     </div>
+    {bloomRect && (
+      <div
+        className="ow-website-orb-target-bloom"
+        style={{
+          left: `${bloomRect.left}px`,
+          top: `${bloomRect.top}px`,
+          width: `${bloomRect.width}px`,
+          height: `${bloomRect.height}px`,
+        }}
+      />
+    )}
+    </>
   );
 };
 

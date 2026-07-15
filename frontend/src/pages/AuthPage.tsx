@@ -85,10 +85,9 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated }) => {
   const linkClass = 'font-semibold text-[#0E7490] hover:text-[#075985]';
   const primaryDisabled =
     isSubmitting ||
-    !legal.terms ||
-    !legal.privacy ||
     !form.email.trim() ||
     !form.password.trim() ||
+    (isSignup && (!legal.terms || !legal.privacy)) ||
     (isSignup &&
       (!form.full_name.trim() ||
         !form.phone.trim() ||
