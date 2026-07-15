@@ -14,45 +14,50 @@ Consumers:
 
 ## Storage Model
 
-Orb Weaver uses a hybrid storage model:
+Orb Weaver uses one repository-native storage authority:
 
-- PostgreSQL or SQLite app database for customers, projects, jobs, ownership, access, and status metadata.
-- R: drive filesystem packs for durable intelligence artifacts.
-- Per-client SQLite index for fast local reads.
-- Append-only JSONL for global anonymized intelligence.
+- `vault_system/databases/` for SQLite application databases.
+- `vault_system/clients/<domain>/` for durable client intelligence artifacts.
+- per-client SQLite indexes inside each client pack for fast local reads.
+- append-only JSONL under `vault_system/indexes/global_intelligence/` for global anonymized intelligence.
+- `vault_system/runtime/` for generated caches, browser-review output, logs and temporary runtime state.
 
-Vector DBs are deferred until the pack and reader contract are stable.
+PostgreSQL may replace SQLite as the application database when deliberately configured, but all repository-owned filesystem storage still resolves through `vault_system/`.
+
+Vector databases are deferred until the pack and reader contract are stable.
 
 ## Client Pack Layout
 
 ```text
-R:\R_Drive_Substrate\orb_weaver\clients\<domain>\
-  current\
+vault_system/clients/<domain>/
+  current/
     latest_crawl.json
     latest_audit.json
-  history\
+  history/
     crawl_<id>.json
     audit_<id>.json
-  recommendations\
+  recommendations/
     audit_<id>_recommendations.json
-  website_orb_context\
+  website_orb_context/
     latest_context.json
     pointer_plot_map.json
+    pointer_manifest.json
+    site_world.json
     tool_cache.json
-  dandy_sponsor_pack\
+  dandy_sponsor_pack/
     latest_pack.json
-  crm_context\
+  crm_context/
     latest_context.json
-  mail_context\
+  mail_context/
     latest_context.json
-  claims\
+  claims/
     safe_claims.json
     banned_claims.json
-  reports\
+  reports/
     audit_<id>_report.json
-  visitor_questions\
-  owner_seed_changes\
-  local_index\
+  visitor_questions/
+  owner_seed_changes/
+  local_index/
     client_index.sqlite
 ```
 
@@ -72,7 +77,9 @@ Do not store cross-client global data in this database. It is client-pack local.
 
 ## Website ORB Runtime Artifacts
 
-`website_orb_context/pointer_plot_map.json` is the pointable target map generated from the crawl. It contains stable target ids, semantic locators, intent aliases, allowed actions, and confidence values for visible website targets.
+`website_orb_context/pointer_plot_map.json` is the pointable target map generated from the crawl. It contains stable target IDs, semantic locators, intent aliases, allowed actions, and confidence values for visible website targets.
+
+`website_orb_context/site_world.json` is the compiled website truth used to ground answers, route selection, tools and pointer guidance. The ORB must not invent information outside this compiled record.
 
 `website_orb_context/tool_cache.json` is the low-latency voice cache generated during the build phase. Basic customer ORBs must be able to run from this file, approved static context, and pre-generated audio without probing Desktop MCP or host OCR.
 
