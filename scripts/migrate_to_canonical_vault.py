@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Consolidate every Orb Weaver storage root into repo-root vault_system.
+"""Consolidate Orb Weaver storage into repository-root vault_system.
 
-Dry-run is the default. Use --apply to copy/merge data into the canonical vault.
-Use --finalize only after Orb Weaver services are stopped; it removes legacy
-files only after an identical canonical copy has been verified.
+Dry-run is the default. Stop Orb Weaver services before using --apply or
+--finalize so databases and active cache files cannot change while copied.
+
+--apply copies and hash-verifies every recognized legacy record.
+--finalize additionally removes only verified legacy copies and replaces
+necessary old paths with compatibility symlinks into the canonical vault.
 """
 
 from __future__ import annotations
@@ -11,9 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import shutil
-import sqlite3
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -57,9 +58,13 @@ def sha256(path: Path) -> str:
 
 
 def files_under(root: Path) -> Iterable[Path]:
-    if not root.exists():
+    if not root.exists() or root.is_symlink():
         return ()
-    return (path for path in root.rglob("*") if path.is_file() and not path.is_symlink())
+    return (
+        path
+        for path in root.rglob("*")
+        if path.is_file() and not path.is_symlink()
+    )
 
 
 def ensure_layout(apply: bool) -> None:
@@ -67,13 +72,6 @@ def ensure_layout(apply: bool) -> None:
         return
     for directory in CANONICAL_DIRS:
         directory.mkdir(parents=True, exist_ok=True)
-
-
-def sqlite_backup(source: Path, destination: Path) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as source_db:
-        with sqlite3.connect(destination) as destination_db:
-            source_db.backup(destination_db)
 
 
 def conflict_destination(source_label: str, relative_path: Path) -> Path:
@@ -130,10 +128,7 @@ def migrate_file(
         return
 
     destination.parent.mkdir(parents=True, exist_ok=True)
-    if source.suffix.lower() in {".db", ".sqlite", ".sqlite3"}:
-        sqlite_backup(source, destination)
-    else:
-        shutil.copy2(source, destination)
+    shutil.copy2(source, destination)
 
     if sha256(source) != sha256(destination):
         raise RuntimeError(f"Verification failed after copying {source} to {destination}")
@@ -152,7 +147,9 @@ def migrate_tree(
     finalize: bool,
     operations: list[Operation],
 ) -> None:
-    if not source_root.exists() or source_root.resolve() == destination_root.resolve():
+    if not source_root.exists() or source_root.is_symlink():
+        return
+    if source_root.resolve() == destination_root.resolve():
         return
 
     for source in files_under(source_root):
@@ -170,12 +167,12 @@ def migrate_tree(
 
 def malformed_client_roots() -> list[Path]:
     backend = REPO_ROOT / "backend"
-    roots: list[Path] = []
     if not backend.exists():
-        return roots
+        return []
 
+    roots: list[Path] = []
     for candidate in backend.rglob("clients"):
-        if not candidate.is_dir():
+        if not candidate.is_dir() or candidate.is_symlink():
             continue
         relative_text = str(candidate.relative_to(backend))
         if (
@@ -187,31 +184,199 @@ def malformed_client_roots() -> list[Path]:
     return sorted(set(roots))
 
 
-def remove_empty_legacy_directories() -> None:
-    legacy_roots = (
-        REPO_ROOT / "backend" / "data",
-        REPO_ROOT / "data" / "tts_cache",
-        REPO_ROOT / "substrate" / "clients",
-        REPO_ROOT / "Orb_Assistant" / "vault_system" / "posteriori",
-        REPO_ROOT / "Orb_Assistant" / "src" / "vault_system" / "posteriori",
-        *malformed_client_roots(),
-    )
-    for root in legacy_roots:
-        if not root.exists():
-            continue
-        for directory in sorted(
-            (path for path in root.rglob("*") if path.is_dir()),
-            key=lambda path: len(path.parts),
-            reverse=True,
-        ):
-            try:
-                directory.rmdir()
-            except OSError:
-                pass
+def remove_empty_tree(root: Path) -> None:
+    if not root.exists() or root.is_symlink():
+        return
+    for directory in sorted(
+        (path for path in root.rglob("*") if path.is_dir() and not path.is_symlink()),
+        key=lambda path: len(path.parts),
+        reverse=True,
+    ):
         try:
-            root.rmdir()
+            directory.rmdir()
         except OSError:
             pass
+    try:
+        root.rmdir()
+    except OSError:
+        pass
+
+
+def install_symlink(
+    legacy_path: Path,
+    canonical_path: Path,
+    operations: list[Operation],
+) -> None:
+    if legacy_path.is_symlink():
+        if legacy_path.resolve() == canonical_path.resolve():
+            operations.append(
+                Operation(str(legacy_path), str(canonical_path), "symlink-already-canonical")
+            )
+            return
+        legacy_path.unlink()
+
+    if legacy_path.exists():
+        if legacy_path.is_dir():
+            remove_empty_tree(legacy_path)
+        if legacy_path.exists():
+            operations.append(
+                Operation(
+                    str(legacy_path),
+                    str(canonical_path),
+                    "symlink-blocked",
+                    "Legacy path still contains unverified data.",
+                )
+            )
+            return
+
+    legacy_path.parent.mkdir(parents=True, exist_ok=True)
+    canonical_path.parent.mkdir(parents=True, exist_ok=True)
+    if canonical_path.suffix == "":
+        canonical_path.mkdir(parents=True, exist_ok=True)
+    legacy_path.symlink_to(canonical_path, target_is_directory=canonical_path.is_dir())
+    operations.append(Operation(str(legacy_path), str(canonical_path), "installed-symlink"))
+
+
+def migrate_known_storage(
+    *,
+    apply: bool,
+    finalize: bool,
+    operations: list[Operation],
+) -> list[Path]:
+    backend_data = REPO_ROOT / "backend" / "data"
+
+    for database_name in ("orb_weaver.db", "orb_weaver_check.db"):
+        source = backend_data / database_name
+        if source.exists() and not source.is_symlink():
+            migrate_file(
+                source,
+                VAULT_ROOT / "databases" / database_name,
+                source_label="backend-data",
+                relative_path=Path(database_name),
+                apply=apply,
+                finalize=finalize,
+                operations=operations,
+            )
+
+    for source_root, label in (
+        (backend_data / "tts_cache", "backend-tts-cache"),
+        (REPO_ROOT / "data" / "tts_cache", "root-data-tts-cache"),
+        (REPO_ROOT / "Orb_Assistant" / "audio_cache", "orb-assistant-audio-cache"),
+    ):
+        migrate_tree(
+            source_root,
+            VAULT_ROOT / "runtime" / "tts_cache",
+            label,
+            apply=apply,
+            finalize=finalize,
+            operations=operations,
+        )
+
+    migrate_tree(
+        REPO_ROOT / "substrate" / "clients",
+        VAULT_ROOT / "clients",
+        "substrate-clients",
+        apply=apply,
+        finalize=finalize,
+        operations=operations,
+    )
+
+    malformed_roots = malformed_client_roots()
+    for index, source_root in enumerate(malformed_roots, start=1):
+        migrate_tree(
+            source_root,
+            VAULT_ROOT / "clients",
+            f"malformed-backend-clients-{index}",
+            apply=apply,
+            finalize=finalize,
+            operations=operations,
+        )
+
+    for source_root, label in (
+        (
+            REPO_ROOT / "Orb_Assistant" / "vault_system" / "posteriori",
+            "orb-assistant-posteriori",
+        ),
+        (
+            REPO_ROOT / "Orb_Assistant" / "src" / "vault_system" / "posteriori",
+            "orb-assistant-src-posteriori",
+        ),
+    ):
+        migrate_tree(
+            source_root,
+            VAULT_ROOT / "posteriori",
+            label,
+            apply=apply,
+            finalize=finalize,
+            operations=operations,
+        )
+
+    for source_root, label in (
+        (REPO_ROOT / "backend" / "report_compiler", "backend-reports"),
+        (REPO_ROOT / "reports", "root-reports"),
+    ):
+        migrate_tree(
+            source_root,
+            VAULT_ROOT / "reports",
+            label,
+            apply=apply,
+            finalize=finalize,
+            operations=operations,
+        )
+
+    for source_root, label in (
+        (REPO_ROOT / "browser_reviews", "root-browser-reviews"),
+        (REPO_ROOT / "backend" / "browser_reviews", "backend-browser-reviews"),
+    ):
+        migrate_tree(
+            source_root,
+            VAULT_ROOT / "runtime" / "browser_reviews",
+            label,
+            apply=apply,
+            finalize=finalize,
+            operations=operations,
+        )
+
+    return malformed_roots
+
+
+def install_compatibility_links(
+    malformed_roots: list[Path],
+    operations: list[Operation],
+) -> None:
+    backend_data = REPO_ROOT / "backend" / "data"
+    links = [
+        (backend_data / "tts_cache", VAULT_ROOT / "runtime" / "tts_cache"),
+        (REPO_ROOT / "data" / "tts_cache", VAULT_ROOT / "runtime" / "tts_cache"),
+        (REPO_ROOT / "substrate" / "clients", VAULT_ROOT / "clients"),
+        (
+            REPO_ROOT / "Orb_Assistant" / "vault_system" / "posteriori",
+            VAULT_ROOT / "posteriori",
+        ),
+        (
+            REPO_ROOT / "Orb_Assistant" / "src" / "vault_system" / "posteriori",
+            VAULT_ROOT / "posteriori",
+        ),
+        (REPO_ROOT / "backend" / "report_compiler", VAULT_ROOT / "reports"),
+        (REPO_ROOT / "reports", VAULT_ROOT / "reports"),
+        (
+            REPO_ROOT / "backend" / "browser_reviews",
+            VAULT_ROOT / "runtime" / "browser_reviews",
+        ),
+        (
+            REPO_ROOT / "browser_reviews",
+            VAULT_ROOT / "runtime" / "browser_reviews",
+        ),
+    ]
+    links.extend((root, VAULT_ROOT / "clients") for root in malformed_roots)
+
+    for legacy_path, canonical_path in links:
+        install_symlink(legacy_path, canonical_path, operations)
+
+    for database_name in ("orb_weaver.db", "orb_weaver_check.db"):
+        canonical_database = VAULT_ROOT / "databases" / database_name
+        if canonical_database.exists():
+            install_symlink(backend_data / database_name, canonical_database, operations)
 
 
 def write_manifest(operations: list[Operation], mode: str) -> Path | None:
@@ -237,12 +402,12 @@ def main() -> int:
     parser.add_argument(
         "--apply",
         action="store_true",
-        help="Copy and verify legacy data into the canonical vault.",
+        help="Copy and verify legacy data into the canonical vault. Stop services first.",
     )
     parser.add_argument(
         "--finalize",
         action="store_true",
-        help="After successful verification, remove legacy copies. Stop services first.",
+        help="Remove verified legacy copies and install compatibility links.",
     )
     args = parser.parse_args()
 
@@ -250,81 +415,19 @@ def main() -> int:
     finalize = args.finalize
     mode = "finalize" if finalize else "apply" if apply else "dry-run"
 
+    if apply:
+        print("IMPORTANT: Orb Weaver services must be stopped during this migration.")
+
     ensure_layout(apply)
     operations: list[Operation] = []
-
-    # Databases.
-    backend_data = REPO_ROOT / "backend" / "data"
-    for database_name in ("orb_weaver.db", "orb_weaver_check.db"):
-        source = backend_data / database_name
-        if source.exists():
-            migrate_file(
-                source,
-                VAULT_ROOT / "databases" / database_name,
-                source_label="backend-data",
-                relative_path=Path(database_name),
-                apply=apply,
-                finalize=finalize,
-                operations=operations,
-            )
-
-    # Generated voice assets.
-    migrate_tree(
-        backend_data / "tts_cache",
-        VAULT_ROOT / "runtime" / "tts_cache",
-        "backend-tts-cache",
-        apply=apply,
-        finalize=finalize,
-        operations=operations,
-    )
-    migrate_tree(
-        REPO_ROOT / "data" / "tts_cache",
-        VAULT_ROOT / "runtime" / "tts_cache",
-        "root-data-tts-cache",
-        apply=apply,
-        finalize=finalize,
-        operations=operations,
-    )
-
-    # Client scans, crawls, Site Worlds, pointer maps, reports and manifests.
-    migrate_tree(
-        REPO_ROOT / "substrate" / "clients",
-        VAULT_ROOT / "clients",
-        "substrate-clients",
-        apply=apply,
-        finalize=finalize,
-        operations=operations,
-    )
-    for index, source_root in enumerate(malformed_client_roots(), start=1):
-        migrate_tree(
-            source_root,
-            VAULT_ROOT / "clients",
-            f"malformed-backend-clients-{index}",
-            apply=apply,
-            finalize=finalize,
-            operations=operations,
-        )
-
-    # Learned memory.
-    migrate_tree(
-        REPO_ROOT / "Orb_Assistant" / "vault_system" / "posteriori",
-        VAULT_ROOT / "posteriori",
-        "orb-assistant-posteriori",
-        apply=apply,
-        finalize=finalize,
-        operations=operations,
-    )
-    migrate_tree(
-        REPO_ROOT / "Orb_Assistant" / "src" / "vault_system" / "posteriori",
-        VAULT_ROOT / "posteriori",
-        "orb-assistant-src-posteriori",
+    malformed_roots = migrate_known_storage(
         apply=apply,
         finalize=finalize,
         operations=operations,
     )
 
     if finalize:
-        remove_empty_legacy_directories()
+        install_compatibility_links(malformed_roots, operations)
 
     manifest = write_manifest(operations, mode)
 
@@ -333,6 +436,8 @@ def main() -> int:
     print(f"Operations: {len(operations)}")
     for operation in operations:
         print(f"{operation.action}: {operation.source} -> {operation.destination}")
+        if operation.detail:
+            print(f"  {operation.detail}")
     if manifest:
         print(f"Manifest: {manifest}")
 
