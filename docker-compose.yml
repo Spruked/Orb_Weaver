@@ -8,7 +8,7 @@ services:
       - "16500:16500"
       - "16510:16510"
     environment:
-      - DATABASE_URL=sqlite:///./data/orb_weaver.db
+      - DATABASE_URL=sqlite:////app/vault_system/databases/orb_weaver.db
       - REDIS_URL=redis://redis:6379/0
       - LOCAL_LLM_URL=${LOCAL_LLM_URL:-http://host.docker.internal:11434/api/generate}
       - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-qwen2.5:1.5b}
@@ -17,13 +17,15 @@ services:
       - LOCAL_LLM_NUM_CTX=${LOCAL_LLM_NUM_CTX:-512}
       - LOCAL_LLM_NUM_PREDICT=${LOCAL_LLM_NUM_PREDICT:-32}
       - LOCAL_LLM_TEMPERATURE=${LOCAL_LLM_TEMPERATURE:-0.35}
-      - ORB_WEAVER_SUBSTRATE_ROOT=/app/substrate
+      - ORB_WEAVER_VAULT_ROOT=/app/vault_system
+      - ORB_WEAVER_SUBSTRATE_ROOT=/app/vault_system
       - PUBLIC_BASE_URL=http://127.0.0.1:16510
       - CHROME_PATH=/usr/bin/chromium
       - CHROME_BIN=/usr/bin/chromium
       - CHROME_DEVTOOLS_CLI=chrome-devtools
       - CHROME_DEVTOOLS_ENABLED=true
       - CHROME_DEVTOOLS_PUBLIC_ENABLED=false
+      - CHROME_DEVTOOLS_OUTPUT_ROOT=/app/vault_system/runtime/browser_reviews
       - CHROME_DEVTOOLS_START_ARGS=["--no-sandbox","--disable-dev-shm-usage"]
       - ORB_DESKTOP_MCP_ENABLED=${ORB_DESKTOP_MCP_ENABLED:-true}
       - ORB_DESKTOP_MCP_ROOT=/app/rdrive_mpc_server
@@ -34,7 +36,7 @@ services:
       - TESSERACT_CMD=/usr/bin/tesseract
       - ORB_ASSISTANT_ROOT=/app/Orb_Assistant
       - FASTER_WHISPER_STT_URL=http://host.docker.internal:9000/stt
-      - ORB_TTS_CACHE_DIR=/app/backend/data/tts_cache
+      - ORB_TTS_CACHE_DIR=/app/vault_system/runtime/tts_cache
       - ORB_TTS_TIMEOUT_SECONDS=${ORB_TTS_TIMEOUT_SECONDS:-45}
       - ORB_TTS_QWEN_URL=${ORB_TTS_QWEN_URL:-}
       - ORB_TTS_QWEN_API_KEY=${ORB_TTS_QWEN_API_KEY:-}
@@ -53,9 +55,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./backend/data:/app/backend/data
-      - ./browser_reviews:/app/backend/browser_reviews
-      - ./substrate:/app/substrate
+      - ./vault_system:/app/vault_system
       - ./.runtime/rdrive_mpc_server:/app/rdrive_mpc_server:ro
     depends_on:
       - redis
