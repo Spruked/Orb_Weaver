@@ -26,25 +26,55 @@ frontend/*.log
 backend/*.log
 
 # -------------------------
-# Intelligence Substrate (DO NOT COMMIT)
+# Canonical Vault Runtime Data (DO NOT COMMIT)
 # -------------------------
-# Windows-style paths (escaped)
+# The root vault_system package and a-priori source are tracked. Stored client
+# records, databases, learned memory, generated reports and runtime assets are
+# local data and remain outside Git history.
+/vault_system/clients/**
+/vault_system/databases/**
+/vault_system/posteriori/**
+/vault_system/reports/**
+/vault_system/indexes/**
+/vault_system/manifests/**
+/vault_system/runtime/**
+/vault_system/backups/**
+
+# Allow optional directory placeholders.
+!/vault_system/clients/.gitkeep
+!/vault_system/databases/.gitkeep
+!/vault_system/posteriori/.gitkeep
+!/vault_system/reports/.gitkeep
+!/vault_system/indexes/.gitkeep
+!/vault_system/manifests/.gitkeep
+!/vault_system/runtime/.gitkeep
+!/vault_system/backups/.gitkeep
+
+# -------------------------
+# Legacy Storage Roots (DO NOT RECREATE)
+# -------------------------
+# Windows-style paths accidentally interpreted as relative Linux directories.
 backend/R:\R_Drive_Substrate/
 backend/R:/R_Drive_Substrate/
-
-# Linux-style fallback (WSL-safe)
 backend/R_Drive_Substrate/
 backend/**/R_Drive_Substrate/
+backend/R:\\R_Drive_Substrate*/
+backend/R:*/
 
-# Browser review artifacts
+# Old backend/substrate stores retained only until migration finalization.
 backend/browser_reviews/
 backend/data/
 backend/vault_system/posteriori/
-backend/R:\\R_Drive_Substrate*/
-backend/R:*/
 substrate/
+data/tts_cache/
 
-# Compiled reports
+# Legacy Orb Assistant learned-memory locations.
+/Orb_Assistant/.orb-assistant/
+/Orb_Assistant/vault_system/posteriori/
+/Orb_Assistant/src/vault_system/posteriori/
+/Orb_Assistant/electron/src/vault_system/posteriori/
+
+# Compiled report output from the legacy path.
 reports/
 backend/report_compiler/
 
@@ -79,11 +109,6 @@ build/
 node_modules/
 **/node_modules/
 tools/chrome-devtools-mcp/node_modules/
-# Local ORB a-posteriori memory — never commit
-/Orb_Assistant/.orb-assistant/
-/Orb_Assistant/vault_system/posteriori/
-/Orb_Assistant/src/vault_system/posteriori/
-/Orb_Assistant/electron/src/vault_system/posteriori/
 
 # Windows downloaded-zip metadata
 *:Zone.Identifier

@@ -15,11 +15,12 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-ENV DATABASE_URL=sqlite:///./data/orb_weaver.db
+ENV ORB_WEAVER_VAULT_ROOT=/app/vault_system
+ENV ORB_WEAVER_SUBSTRATE_ROOT=/app/vault_system
+ENV DATABASE_URL=sqlite:////app/vault_system/databases/orb_weaver.db
 ENV LOCAL_LLM_URL=http://host.docker.internal:11434/api/generate
 ENV LOCAL_LLM_MODEL=qwen2.5:3b
 ENV LOCAL_LLM_TIMEOUT_SECONDS=60
-ENV ORB_WEAVER_SUBSTRATE_ROOT=/app/substrate
 ENV PUBLIC_BASE_URL=http://127.0.0.1:16510
 
 WORKDIR /app
@@ -45,13 +46,26 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 COPY backend /app/backend
 COPY Orb_Assistant /app/Orb_Assistant
+COPY vault_system /app/vault_system
 COPY ["Preflight Scanner", "/app/Preflight Scanner"]
 COPY --from=frontend-build /app/frontend/build /app/frontend/build
 COPY deploy/nginx/orb-weaver.conf /etc/nginx/conf.d/default.conf
 COPY deploy/docker/start-orb-weaver.sh /usr/local/bin/start-orb-weaver
 
 RUN chmod +x /usr/local/bin/start-orb-weaver \
-    && mkdir -p /app/backend/data /app/substrate /run/nginx
+    && mkdir -p \
+        /app/vault_system/clients \
+        /app/vault_system/databases \
+        /app/vault_system/posteriori \
+        /app/vault_system/reports \
+        /app/vault_system/indexes \
+        /app/vault_system/manifests \
+        /app/vault_system/schemas \
+        /app/vault_system/runtime/tts_cache \
+        /app/vault_system/runtime/browser_reviews \
+        /app/vault_system/runtime/state \
+        /app/vault_system/runtime/logs \
+        /run/nginx
 
 EXPOSE 16500 16510
 
@@ -60,6 +74,7 @@ ENV CHROME_BIN=/usr/bin/chromium
 ENV CHROME_DEVTOOLS_CLI=chrome-devtools
 ENV CHROME_DEVTOOLS_ENABLED=true
 ENV CHROME_DEVTOOLS_PUBLIC_ENABLED=false
+ENV CHROME_DEVTOOLS_OUTPUT_ROOT=/app/vault_system/runtime/browser_reviews
 ENV CHROME_DEVTOOLS_START_ARGS='["--no-sandbox","--disable-dev-shm-usage"]'
 ENV ORB_DESKTOP_MCP_ENABLED=true
 ENV ORB_DESKTOP_MCP_ROOT=/app/rdrive_mpc_server
@@ -68,7 +83,7 @@ ENV ORB_DESKTOP_MCP_TIMEOUT_SECONDS=20
 ENV TESSERACT_CMD=/usr/bin/tesseract
 ENV ORB_ASSISTANT_ROOT=/app/Orb_Assistant
 ENV FASTER_WHISPER_STT_URL=http://host.docker.internal:9000/stt
-ENV ORB_TTS_CACHE_DIR=/app/backend/data/tts_cache
+ENV ORB_TTS_CACHE_DIR=/app/vault_system/runtime/tts_cache
 ENV ORB_TTS_TIMEOUT_SECONDS=45
 ENV ORB_TTS_QWEN_URL=
 ENV ORB_TTS_QWEN_MODEL=qwen-tts

@@ -17,7 +17,7 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 - Runs install/readiness reconnaissance before or alongside full crawling.
 - Detects sitemap, robots, CMS signals, auth pages, contact forms, products, checkout, booking, blog, PDFs, third-party scripts, and custom behavior flags.
 - Exposes dashboard controls on the main dashboard and per-project Client Folder cards.
-- Saves preflight output into the configured client intelligence substrate.
+- Saves preflight output into the canonical client vault.
 
 ### SEO Audit Engine
 
@@ -36,7 +36,7 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 
 - The live public Website ORB voice runtime is `frontend/src/landing/AutonomousOrb.tsx`.
 - One click starts microphone capture; end-of-speech detection submits automatically through `POST /api/orb/website-voice`.
-- The backend performs Faster Whisper STT, ORB cognition, protected identity answer selection, local LLM answers for ordinary questions, Kokoro TTS/cache, and WAV delivery.
+- The backend performs Faster Whisper STT, ORB cognition, protected identity answer selection, local LLM answers for ordinary questions, local TTS/cache, and WAV delivery.
 - Browser `SpeechRecognition` and browser `speechSynthesis` are not the canonical public ORB voice path.
 - Gold-master replication details live in `docs/ORB_VOICE_RUNTIME_REPLICATION_REPORT.md`.
 - Pointer/runtime intent details live in `docs/ORB_POINTER_RUNTIME_MODEL.md`.
@@ -50,6 +50,30 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 - Advanced customer deployments can receive explicit tool adapters only when the customer, tier, environment, and confirmation policy justify them.
 - The Desktop ORB and DockStation remain the primary home for the deeper MCP tool system.
 
+## Canonical Storage Authority
+
+The repository-root `vault_system/` is the only storage authority.
+
+```text
+vault_system/
+  apriori/                 # canonical seed truths
+  posteriori/              # learned deterministic memory
+  clients/<domain>/        # scans, crawls, Site Worlds, pointer maps and reports
+  databases/               # SQLite application databases
+  reports/                 # generated suite reports
+  indexes/                 # semantic/global indexes
+  manifests/               # scan, pack and migration manifests
+  schemas/                 # vault data schemas
+  runtime/
+    tts_cache/             # generated speech audio
+    browser_reviews/       # browser verification output
+    state/                 # runtime state
+    logs/                  # runtime logs
+  backups/migration_conflicts/
+```
+
+Component folders such as `backend/`, `Orb_Assistant/`, and legacy `substrate/` paths may contain source code or compatibility links, but they must not own independent data stores.
+
 ## Architecture
 
 ```text
@@ -60,9 +84,10 @@ Orb_Weaver/
       audit/            # SEO scoring and issue detection
       analytics/        # GA4 API integration
       models/           # SQLAlchemy database models
-      core/             # Configuration and settings
+      core/             # Configuration and canonical storage authority
     main.py             # FastAPI application entry
     requirements.txt
+  vault_system/         # single persistent/runtime storage authority
   Preflight Scanner/
     preflight_site_scan.py
     orbs_preflight.py
@@ -72,7 +97,7 @@ Orb_Weaver/
     public/             # favicon, logo, robots.txt, sitemap.xml
     scripts/            # Playwright smoke tests
     src/
-      landing/           # live AutonomousOrb voice runtime and landing app
+      landing/          # live AutonomousOrb voice runtime and landing app
       components/
       pages/
       services/
@@ -137,7 +162,7 @@ npx serve -s build -l 16510
 Backend compile:
 
 ```bash
-python -m compileall backend/main.py backend/app "Preflight Scanner/preflight_site_scan.py"
+python -m compileall backend/main.py backend/app "Preflight Scanner/preflight_site_scan.py" vault_system scripts/migrate_to_canonical_vault.py
 ```
 
 Frontend build:
@@ -154,6 +179,19 @@ cd frontend
 npm run smoke:preflight
 ```
 
+Vault migration dry run:
+
+```bash
+python3 scripts/migrate_to_canonical_vault.py
+```
+
+Stop Orb Weaver writers before applying or finalizing migration:
+
+```bash
+python3 scripts/migrate_to_canonical_vault.py --apply
+python3 scripts/migrate_to_canonical_vault.py --finalize
+```
+
 ## Root Docker Image
 
 The repo has a root Dockerfile for WSL/tunnel use. Build from the repository root:
@@ -162,14 +200,13 @@ The repo has a root Dockerfile for WSL/tunnel use. Build from the repository roo
 docker build -t orb-weaver:latest .
 ```
 
-Run the combined container:
+Run the combined container with one storage mount:
 
 ```bash
 docker run --rm \
   -p 16500:16500 \
   -p 16510:16510 \
-  -v "$PWD/.docker-data:/app/backend/data" \
-  -v "$PWD/.docker-substrate:/app/substrate" \
+  -v "$PWD/vault_system:/app/vault_system" \
   --env-file .env \
   orb-weaver:latest
 ```
@@ -181,7 +218,7 @@ Backend API: 16500
 Frontend UI: 16510
 ```
 
-The root image compiles the React frontend during Docker build, copies the resulting `/app/frontend/build` into the final image, and serves it with nginx. Running `npm run build` in the workspace does not update the public container by itself; use `docker compose up -d --build orb-weaver` and verify the served main bundle hash before public browser tests.
+The root image compiles the React frontend during Docker build, copies the resulting `/app/frontend/build` into the final image, and serves it with nginx. Running `npm run build` in the workspace does not update the public container by itself; use `docker compose up -d --build orb-weaver` only after development verification and confirm the served main bundle hash before public browser tests.
 
 Static frontend: `http://127.0.0.1:16510`
 
@@ -255,8 +292,11 @@ Copy `.env.example` to `.env` and adjust deployment-specific values.
 ```env
 DEBUG=false
 SECRET_KEY=change-this-secret
-DATABASE_URL=sqlite:///./data/orb_weaver.db
-ORB_WEAVER_SUBSTRATE_ROOT=./orb_weaver_substrate
+ORB_WEAVER_VAULT_ROOT=../vault_system
+ORB_WEAVER_SUBSTRATE_ROOT=../vault_system
+DATABASE_URL=sqlite:///../vault_system/databases/orb_weaver.db
+ORB_TTS_CACHE_DIR=../vault_system/runtime/tts_cache
+CHROME_DEVTOOLS_OUTPUT_ROOT=../vault_system/runtime/browser_reviews
 PUBLIC_BASE_URL=http://127.0.0.1:16510
 
 GA4_PROPERTY_ID=
@@ -291,7 +331,11 @@ Keep `/api/*` above `*`. For WSL, make sure the tunnel process can reach the sam
 
 ## Client Intelligence Pack
 
-Preflight, crawl, and audit jobs preserve local client intelligence under `ORB_WEAVER_SUBSTRATE_ROOT`.
+Preflight, crawl, audit, Site World, pointer-map, and report jobs preserve local client intelligence under:
+
+```text
+vault_system/clients/<domain>/
+```
 
 Expected artifacts include:
 
@@ -300,6 +344,9 @@ Expected artifacts include:
 - `current/latest_audit.json`
 - `website_orb_context/site_preflight_report.json`
 - `website_orb_context/latest_context.json`
+- `website_orb_context/site_world.json`
+- `website_orb_context/pointer_plot_map.json`
+- `website_orb_context/pointer_manifest.json`
 - `history/`
 - `recommendations/`
 - `reports/`
@@ -307,7 +354,7 @@ Expected artifacts include:
 
 ## Premium Intelligence Pack
 
-The Premium Intelligence Pack is in the service catalog and checkout flow. It currently creates a cart item and checkout order. The intelligence artifacts are produced when preflight, crawl, and audit jobs run and are preserved into the client pack substrate.
+The Premium Intelligence Pack is in the service catalog and checkout flow. It currently creates a cart item and checkout order. The intelligence artifacts are produced when preflight, crawl, and audit jobs run and are preserved into the canonical client vault.
 
 Automatic post-payment entitlement and fulfillment are not yet wired.
 
@@ -318,6 +365,7 @@ Automatic post-payment entitlement and fulfillment are not yet wired.
 - `docs/INTELLIGENCE_PRESERVATION.md`
 - `docs/ORB_WEAVER_INTELLIGENCE_GRAPH_SPEC.md`
 - `docs/ORB_WEAVER_FAILURE_INVENTORY.md`
+- `vault_system/README.md`
 
 ## License
 
