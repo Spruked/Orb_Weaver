@@ -1,6 +1,9 @@
+import os
+import re
+from typing import List, Optional
+
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
-from typing import Optional, List
 
 
 class Settings(BaseSettings):
@@ -9,9 +12,9 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     VERSION: str = "1.0.0"
     ORB_WEAVER_VAULT_ROOT: Optional[str] = None
-    # Legacy compatibility only. New code resolves all storage through
-    # ORB_WEAVER_VAULT_ROOT and never creates a Windows-looking path on POSIX.
-    ORB_WEAVER_SUBSTRATE_ROOT: Optional[str] = None
+    # Legacy compatibility only. It is normalized to the canonical vault and
+    # must never create a Windows-looking directory inside Linux.
+    ORB_WEAVER_SUBSTRATE_ROOT: str = "../vault_system"
     PUBLIC_BASE_URL: str = "https://orbweaver.spruked.com"
     CALI_CRM_URL: str = "http://localhost:16610"
     CALI_CRM_SUBSTRATE_ROOT: str = "R:\\R_Drive_Substrate\\cali_crm"
@@ -104,6 +107,17 @@ class Settings(BaseSettings):
                 return False
             if normalized in {"dev", "development"}:
                 return True
+        return value
+
+    @field_validator("ORB_WEAVER_VAULT_ROOT", "ORB_WEAVER_SUBSTRATE_ROOT", mode="before")
+    @classmethod
+    def normalize_vault_paths(cls, value):
+        if (
+            os.name != "nt"
+            and isinstance(value, str)
+            and re.match(r"^[A-Za-z]:[\\/]", value.strip())
+        ):
+            return "../vault_system"
         return value
 
     class Config:
