@@ -17,7 +17,9 @@ class Settings(BaseSettings):
     ORB_WEAVER_SUBSTRATE_ROOT: str = "../vault_system"
     PUBLIC_BASE_URL: str = "https://orbweaver.spruked.com"
     CALI_CRM_URL: str = "http://localhost:16610"
-    CALI_CRM_SUBSTRATE_ROOT: str = "R:\\R_Drive_Substrate\\cali_crm"
+    # Orb Weaver owns only the outbound CRM bridge records it creates. Those
+    # records remain inside this repository's canonical vault.
+    CALI_CRM_SUBSTRATE_ROOT: str = "../vault_system/integrations/cali_crm"
 
     # Database
     DATABASE_URL: str = "sqlite:///../vault_system/databases/orb_weaver.db"
@@ -118,6 +120,17 @@ class Settings(BaseSettings):
             and re.match(r"^[A-Za-z]:[\\/]", value.strip())
         ):
             return "../vault_system"
+        return value
+
+    @field_validator("CALI_CRM_SUBSTRATE_ROOT", mode="before")
+    @classmethod
+    def normalize_crm_bridge_path(cls, value):
+        if (
+            os.name != "nt"
+            and isinstance(value, str)
+            and re.match(r"^[A-Za-z]:[\\/]", value.strip())
+        ):
+            return "../vault_system/integrations/cali_crm"
         return value
 
     class Config:
