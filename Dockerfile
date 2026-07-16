@@ -13,6 +13,9 @@ RUN npm run build
 
 FROM python:3.12-slim
 
+ARG APP_UID=1000
+ARG APP_GID=1000
+
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV ORB_WEAVER_VAULT_ROOT=/app/vault_system
@@ -38,6 +41,14 @@ RUN apt-get update \
         npm \
         tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --gid "${APP_GID}" orbweaver \
+    && useradd \
+        --uid "${APP_UID}" \
+        --gid "${APP_GID}" \
+        --create-home \
+        --shell /usr/sbin/nologin \
+        orbweaver
 
 RUN npm install -g chrome-devtools-mcp@1.3.0
 
@@ -65,7 +76,18 @@ RUN chmod +x /usr/local/bin/start-orb-weaver \
         /app/vault_system/runtime/browser_reviews \
         /app/vault_system/runtime/state \
         /app/vault_system/runtime/logs \
-        /run/nginx
+        /run/nginx \
+        /var/cache/nginx \
+        /var/lib/nginx \
+        /var/log/nginx \
+        /home/orbweaver/.cache \
+    && chown -R orbweaver:orbweaver \
+        /app \
+        /run/nginx \
+        /var/cache/nginx \
+        /var/lib/nginx \
+        /var/log/nginx \
+        /home/orbweaver
 
 EXPOSE 16500 16510
 
@@ -77,7 +99,7 @@ ENV CHROME_DEVTOOLS_PUBLIC_ENABLED=false
 ENV CHROME_DEVTOOLS_OUTPUT_ROOT=/app/vault_system/runtime/browser_reviews
 ENV CHROME_DEVTOOLS_START_ARGS='["--no-sandbox","--disable-dev-shm-usage"]'
 ENV ORB_DESKTOP_MCP_ENABLED=true
-ENV ORB_DESKTOP_MCP_ROOT=/app/rdrive_mpc_server
+ENV ORB_DESKTOP_MCP_ROOT=/app/rdrive_mcp_server
 ENV ORB_DESKTOP_MCP_PYTHON=python3.12
 ENV ORB_DESKTOP_MCP_TIMEOUT_SECONDS=20
 ENV TESSERACT_CMD=/usr/bin/tesseract
@@ -97,6 +119,8 @@ ENV ORB_TTS_KOKORO_MODEL=kokoro
 ENV ORB_TTS_KOKORO_VOICE=am_echo
 ENV ORB_TTS_KOKORO_FORMAT=wav
 ENV ORB_TTS_KOKORO_PAYLOAD_MODE=kokoro-direct
+
+USER orbweaver:orbweaver
 
 WORKDIR /app/backend
 

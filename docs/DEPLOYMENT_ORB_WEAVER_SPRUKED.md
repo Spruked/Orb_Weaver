@@ -140,14 +140,14 @@ docker run --rm \
   -p 16510:16510 \
   -v "$PWD/.docker-data:/app/backend/data" \
   -v "$PWD/.docker-substrate:/app/substrate" \
-  -v "$PWD/.runtime/rdrive_mpc_server:/app/rdrive_mpc_server:ro" \
+  -v "$PWD/.runtime/rdrive_mcp_server:/app/rdrive_mcp_server:ro" \
   --env-file .env \
   orb-weaver:latest
 ```
 
 The root Dockerfile builds the React frontend, runs the FastAPI backend on `16500`, serves the frontend on `16510` with nginx, and copies `Preflight Scanner/` into `/app/Preflight Scanner` for backend preflight imports.
 
-Orb Weaver's own showcase ORB may use the repo-local Desktop MCP server slot at `.runtime/rdrive_mpc_server`. Basic customer Website ORB builds must not require this folder or the MCP relay.
+Orb Weaver's own showcase ORB may use the repo-local Desktop MCP server slot at `.runtime/rdrive_mcp_server`. Basic customer Website ORB builds must not require this folder or the MCP relay.
 
 ### Self-Scan / Pointer Verification
 

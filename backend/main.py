@@ -1783,6 +1783,21 @@ def _orb_tool_catalog(customer: Customer) -> Dict[str, Any]:
     }
 
 
+ORB_ADMIN_ONLY_TOOLS = frozenset({
+    "chrome_devtools_mcp",
+    "rdrive_orb_mcp",
+    "visual_audit",
+})
+
+
+def _require_orb_tool_permission(customer: Customer, tool: str) -> None:
+    if tool in ORB_ADMIN_ONLY_TOOLS and not bool(customer.is_admin):
+        raise HTTPException(
+            status_code=403,
+            detail="This ORB tool is restricted to Orb Weaver administrators",
+        )
+
+
 def _cache_orb_tool_result(
     db: Session,
     customer: Customer,
@@ -1824,6 +1839,7 @@ def _project_target_url(project: Project) -> str:
 
 async def _run_orb_tool(payload: OrbToolRunRequest, customer: Customer, db: Session) -> Dict[str, Any]:
     tool = payload.tool.strip()
+    _require_orb_tool_permission(customer, tool)
     generated_at = datetime.utcnow().isoformat()
     pulse = _orb_cognitive_pulse(f"Run ORB tool: {tool}")
     normalized_input = payload.model_dump()
@@ -4556,7 +4572,17 @@ async def website_orb_page_capsule(
 
 @app.get("/api/orb/tools/catalog")
 async def orb_tool_catalog(customer: Customer = Depends(get_current_customer)):
-    return _orb_tool_catalog(customer)
+    catalog = _orb_tool_catalog(customer)
+
+    if bool(customer.is_admin):
+        return catalog
+
+    catalog["tools"] = [
+        item
+        for item in catalog.get("tools", [])
+        if item.get("id") not in ORB_ADMIN_ONLY_TOOLS
+    ]
+    return catalog
 
 
 @app.post("/api/orb/tools/run")

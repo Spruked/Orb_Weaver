@@ -104,11 +104,11 @@ Tesseract/OCR requirements:
 Desktop MCP/MPC server boundary:
 - Basic customer Website ORBs must not require Desktop MCP, host OCR, or an MCP relay.
 - Build customer ORBs from pointer_plot_map.json, runtime_intent_manifest.json, voice_manifest.json, tool_cache.json, and approved website context.
-- Orb Weaver's own showcase/development ORB may use the repo-local MCP server slot at .runtime/rdrive_mpc_server/orb_mcp_server.py.
+- Orb Weaver's own showcase/development ORB may use the repo-local MCP server slot at .runtime/rdrive_mcp_server/orb_mcp_server.py.
 - Advanced customer adapters may use an ORBDesktopMCPClient only when explicitly configured.
 - Env for showcase/advanced adapter use only:
   ORB_DESKTOP_MCP_ENABLED=true
-  ORB_DESKTOP_MCP_ROOT=.runtime/rdrive_mpc_server
+  ORB_DESKTOP_MCP_ROOT=.runtime/rdrive_mcp_server
   ORB_DESKTOP_MCP_PYTHON=python3.12
   ORB_DESKTOP_MCP_TIMEOUT_SECONDS=20
   ORB_DESKTOP_MCP_URL=http://host.docker.internal:8765
@@ -143,7 +143,7 @@ Verification:
   Website ORB click records audio and sends website-orb.webm.
   Filler audio does not overlap final TTS.
   Tesseract status reflects WSL /usr/bin/tesseract.
-  MCP status reflects /mnt/r/mpc_server or the HTTP relay.
+  MCP status reflects `/mnt/r/mcp_server`, its temporary legacy `/mnt/r/mpc_server` fallback, or the HTTP relay.
 ```
 
 ## Quick Filler Script For Qwen 3 TTS Clone

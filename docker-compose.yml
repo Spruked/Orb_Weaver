@@ -4,6 +4,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        APP_UID: ${ORB_WEAVER_UID:-1000}
+        APP_GID: ${ORB_WEAVER_GID:-1000}
+    user: "${ORB_WEAVER_UID:-1000}:${ORB_WEAVER_GID:-1000}"
     ports:
       - "16500:16500"
       - "16510:16510"
@@ -28,7 +32,7 @@ services:
       - CHROME_DEVTOOLS_OUTPUT_ROOT=/app/vault_system/runtime/browser_reviews
       - CHROME_DEVTOOLS_START_ARGS=["--no-sandbox","--disable-dev-shm-usage"]
       - ORB_DESKTOP_MCP_ENABLED=${ORB_DESKTOP_MCP_ENABLED:-true}
-      - ORB_DESKTOP_MCP_ROOT=/app/rdrive_mpc_server
+      - ORB_DESKTOP_MCP_ROOT=/app/rdrive_mcp_server
       - ORB_DESKTOP_MCP_PYTHON=python3.12
       - ORB_DESKTOP_MCP_TIMEOUT_SECONDS=${ORB_DESKTOP_MCP_TIMEOUT_SECONDS:-20}
       - ORB_DESKTOP_MCP_URL=${ORB_DESKTOP_MCP_URL:-http://host.docker.internal:8765}
@@ -56,7 +60,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./vault_system:/app/vault_system
-      - ./.runtime/rdrive_mpc_server:/app/rdrive_mpc_server:ro
+      - ./.runtime/rdrive_mcp_server:/app/rdrive_mcp_server:ro
     depends_on:
       - redis
 

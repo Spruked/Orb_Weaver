@@ -2,6 +2,6 @@ services:
   orb-weaver:
     environment:
       - ORB_DESKTOP_MCP_ENABLED=false
-      - ORB_DESKTOP_MCP_ROOT=/app/rdrive_mpc_server
+      - ORB_DESKTOP_MCP_ROOT=/app/rdrive_mcp_server
     volumes:
-      - ./.runtime/rdrive_mpc_server:/app/rdrive_mpc_server:ro
+      - ./.runtime/rdrive_mcp_server:/app/rdrive_mcp_server:ro
