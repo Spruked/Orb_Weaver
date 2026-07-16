@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     CHROME_DEVTOOLS_START_ARGS: List[str] = []
     CHROME_DEVTOOLS_BROWSER_START_CMD: Optional[str] = None
     ORB_DESKTOP_MCP_ENABLED: bool = True
-    ORB_DESKTOP_MCP_ROOT: str = "/mnt/r/mpc_server"
+    ORB_DESKTOP_MCP_ROOT: str = "/mnt/r/mcp_server"
     ORB_DESKTOP_MCP_PYTHON: str = "python3.12"
     ORB_DESKTOP_MCP_TIMEOUT_SECONDS: float = 20.0
     ORB_DESKTOP_MCP_URL: Optional[str] = None

@@ -36,7 +36,7 @@ ln -s "$ORB_WEAVER_VAULT_ROOT/reports" /app/backend/report_compiler
 uvicorn main:app --host 0.0.0.0 --port 16500 &
 BACKEND_PID="$!"
 
-nginx -g "daemon off;" &
+nginx -g "pid /tmp/nginx.pid; daemon off;" &
 FRONTEND_PID="$!"
 
 trap 'kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true' INT TERM

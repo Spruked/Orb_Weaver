@@ -292,7 +292,7 @@ Tesseract belongs behind backend or MCP tools. The browser should not call local
 For Orb Weaver showcase/development, the repo-local MCP server slot is:
 
 ```text
-.runtime/rdrive_mpc_server/orb_mcp_server.py
+.runtime/rdrive_mcp_server/orb_mcp_server.py
 ```
 
 The legacy Desktop ORB/R-drive fallback may still exist at `/mnt/r/mpc_server/orb_mcp_server.py`.
@@ -314,7 +314,7 @@ Environment variables:
 
 ```text
 ORB_DESKTOP_MCP_ENABLED=true
-ORB_DESKTOP_MCP_ROOT=.runtime/rdrive_mpc_server
+ORB_DESKTOP_MCP_ROOT=.runtime/rdrive_mcp_server
 ORB_DESKTOP_MCP_PYTHON=python3.12
 ORB_DESKTOP_MCP_TIMEOUT_SECONDS=20
 ORB_DESKTOP_MCP_URL=http://host.docker.internal:8765
@@ -328,7 +328,7 @@ Orb Weaver showcase ORB browser
 -> Orb Weaver backend
 -> ORBDesktopMCPClient
 -> HTTP relay on host or direct stdio
--> repo-local .runtime/rdrive_mpc_server/orb_mcp_server.py
+-> repo-local .runtime/rdrive_mcp_server/orb_mcp_server.py
 -> allowed ORB MCP tools
 ```
 

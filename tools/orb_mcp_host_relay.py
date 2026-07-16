@@ -289,7 +289,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Host HTTP relay for the R-drive ORB MCP stdio server.")
     parser.add_argument("--host", default=os.getenv("ORB_MCP_RELAY_HOST", "0.0.0.0"))
     parser.add_argument("--port", type=int, default=int(os.getenv("ORB_MCP_RELAY_PORT", "8765")))
-    parser.add_argument("--root", default=os.getenv("ORB_DESKTOP_MCP_ROOT", "/mnt/r/mpc_server"))
+    default_mcp_root = (
+        "/mnt/r/mcp_server"
+        if os.path.isdir("/mnt/r/mcp_server")
+        else "/mnt/r/mpc_server"
+    )
+    parser.add_argument(
+        "--root",
+        default=os.getenv("ORB_DESKTOP_MCP_ROOT", default_mcp_root),
+    )
     parser.add_argument("--python", default=os.getenv("ORB_DESKTOP_MCP_PYTHON", "python3.12"))
     parser.add_argument("--token", default=os.getenv("ORB_MCP_RELAY_TOKEN", ""))
     parser.add_argument("--timeout", type=float, default=float(os.getenv("ORB_MCP_RELAY_TIMEOUT", "30")))
