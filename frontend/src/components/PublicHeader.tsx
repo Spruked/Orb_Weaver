@@ -6,6 +6,7 @@ type PublicHeaderProps = {
 
 const publicNavItems = [
   { href: '/', label: 'Home' },
+  { href: 'https://campaign.orbweaver.spruked.com', label: 'Campaign Portal' },
   { href: '/preflight', label: 'Preflight' },
   { href: '/founding-beta', label: 'Founding Beta' },
   { href: '/investor-contact', label: 'Investors' },
