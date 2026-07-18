@@ -55,6 +55,9 @@ def extract_pointer_plot_records(
             continue
         seen.add(dedupe_key)
 
+        confidence = _confidence(element, target_type, text)
+        confidence_class, runtime_policy = pointer_runtime_policy(confidence)
+        verified_at = datetime.utcnow().isoformat()
         records.append(
             {
                 "target_id": target_id,
@@ -68,10 +71,27 @@ def extract_pointer_plot_records(
                 "semantic_locator": locator,
                 "anchor_strategy": _anchor_strategy(element, target_type),
                 "structural_context": context,
-                "confidence": _confidence(element, target_type, text),
+                "confidence": confidence,
+                "confidence_class": confidence_class,
+                "runtime_policy": runtime_policy,
+                "confidence_evidence": {
+                    "baseline_resolution": "resolved",
+                    "verification_resolution": "not_run",
+                    "sentinel_resolution": "not_run",
+                    "semantic_match": confidence,
+                    "structural_stability": confidence,
+                    "duplicate_risk": "unknown",
+                    "alias_ambiguity": "unknown",
+                    "locator_method": _locator_method(locator),
+                    "last_verified_time": verified_at,
+                    "source_revision": fingerprint,
+                },
                 "allowed_actions": _default_actions(target_type),
                 "status": "active",
-                "last_verified_at": datetime.utcnow().isoformat(),
+                "finding_class": "UNVERIFIED",
+                "finding_subreason": "initial_extraction_not_independently_verified",
+                "pointer_health": "NEW",
+                "last_verified_at": verified_at,
                 "source": "scan",
             }
         )
@@ -357,6 +377,49 @@ def _confidence(element: Tag, target_type: str, text: str) -> float:
     if 24 <= len(text) <= 220:
         score += 0.04
     return round(max(0.0, min(score, 0.96)), 2)
+
+
+def pointer_runtime_policy(confidence: float) -> tuple[str, Dict[str, Any]]:
+    """Translate evidence confidence into the product's enforced runtime boundary."""
+    if confidence >= 0.90:
+        return "VERIFIED", {
+            "behavior": "guide_or_act_within_permission_policy",
+            "may_point": True,
+            "must_verify_before_action": False,
+            "requires_confirmation": False,
+        }
+    if confidence >= 0.75:
+        return "STABLE", {
+            "behavior": "guide_and_verify_before_action",
+            "may_point": True,
+            "must_verify_before_action": True,
+            "requires_confirmation": False,
+        }
+    if confidence >= 0.50:
+        return "UNCERTAIN", {
+            "behavior": "explain_cautiously_without_unverified_point",
+            "may_point": False,
+            "must_verify_before_action": True,
+            "requires_confirmation": True,
+        }
+    return "BLOCKED", {
+        "behavior": "voice_only_refusal_to_point_or_act",
+        "may_point": False,
+        "must_verify_before_action": True,
+        "requires_confirmation": True,
+    }
+
+
+def _locator_method(locator: str) -> str:
+    if locator.startswith("[data-orb-"):
+        return "explicit_orb_attribute"
+    if "[id=" in locator or locator.startswith("#"):
+        return "element_id"
+    if "aria-label" in locator:
+        return "aria_label"
+    if "data-testid" in locator or "data-test" in locator or "data-cy" in locator:
+        return "test_attribute"
+    return "structural_css"
 
 
 def _default_actions(target_type: str) -> List[str]:

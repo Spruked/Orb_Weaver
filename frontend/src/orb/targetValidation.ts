@@ -11,7 +11,7 @@ export type OrbTargetValidationResult =
   | {
       ok: false;
       targetId: string;
-      reason: "missing" | "hidden" | "detached" | "invalid_target_id" | "identity_mismatch";
+      reason: "missing" | "hidden" | "detached" | "invalid_target_id" | "identity_mismatch" | "policy_blocked";
       fallbackPosition: OrbPoint;
     };
 
@@ -30,6 +30,13 @@ export type OrbPointerRecord = {
   meaning?: string;
   direct_aliases?: string[];
   intent_aliases?: string[];
+  confidence_class?: "VERIFIED" | "STABLE" | "UNCERTAIN" | "BLOCKED";
+  runtime_policy?: {
+    may_point?: boolean;
+    requires_live_verification?: boolean;
+    requires_user_confirmation?: boolean;
+    reason?: string;
+  } & Record<string, unknown>;
   structural_context?: {
     parent_locator?: string | number | boolean | null;
     parent_heading?: string | number | boolean | null;
@@ -187,6 +194,19 @@ export function validateOrbPointerTarget(
     options.kineticTransit?.haltToSafePosition();
     logger.warn("[orb-target-validation]", { targetId, reason: "invalid_target_id", fallbackPosition });
     return { ok: false, targetId, reason: "invalid_target_id", fallbackPosition };
+  }
+
+  const confidenceBlocked = record.confidence_class === "UNCERTAIN" || record.confidence_class === "BLOCKED";
+  if (confidenceBlocked || record.runtime_policy?.may_point === false) {
+    options.kineticTransit?.haltToSafePosition();
+    logger.warn("[orb-target-validation]", {
+      targetId,
+      reason: "policy_blocked",
+      confidenceClass: record.confidence_class,
+      runtimePolicy: record.runtime_policy,
+      fallbackPosition,
+    });
+    return { ok: false, targetId, reason: "policy_blocked", fallbackPosition };
   }
 
   const resolved = resolvePointerElement(record);

@@ -33,10 +33,12 @@ rm -rf /app/backend/data /app/backend/report_compiler
 ln -s "$ORB_WEAVER_VAULT_ROOT/runtime/backend_data_compat" /app/backend/data
 ln -s "$ORB_WEAVER_VAULT_ROOT/reports" /app/backend/report_compiler
 
+cd /app/backend
+
 uvicorn main:app --host 0.0.0.0 --port 16500 &
 BACKEND_PID="$!"
 
-nginx -g "pid /tmp/nginx.pid; daemon off;" &
+nginx -g "daemon off;" &
 FRONTEND_PID="$!"
 
 trap 'kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true' INT TERM

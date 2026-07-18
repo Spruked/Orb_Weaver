@@ -1,0 +1,17 @@
+{
+  "skin_id": "orb_factory_default_v1",
+  "display_name": "O.R.B.S. Factory Default",
+  "path": "/orb-skins/factory-orb-v1.png",
+  "sha256": "8eb49c628211c7d077fb65f3591107f1489124ccbfa840dc0f2381157cd87e61",
+  "width": 1492,
+  "height": 1474,
+  "mime_type": "image/png",
+  "color": "RGBA, 8-bit",
+  "provenance": "Original Factory ORB asset supplied by the owner",
+  "customization_state": "FACTORY_DEFAULT",
+  "owner_consent_required": false,
+  "owner_editable": false,
+  "immutable_default": true,
+  "reversible": true,
+  "fallback_enabled": true
+}

@@ -20,7 +20,11 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "npm run build:orb-loader && react-scripts build",
+    "typecheck": "tsc --noEmit",
+    "verify:factory-skin": "node scripts/verify-factory-skin.js",
+    "build:orb-loader": "npm run verify:factory-skin && node scripts/build-orb-loader.js",
+    "smoke:orb-loader": "node scripts/orb-loader-smoke.js",
     "smoke:preflight": "node scripts/preflight-dashboard-smoke.js",
     "test": "react-scripts test",
     "eject": "react-scripts eject"

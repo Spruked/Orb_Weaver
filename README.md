@@ -41,6 +41,21 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 - Gold-master replication details live in `docs/ORB_VOICE_RUNTIME_REPLICATION_REPORT.md`.
 - Pointer/runtime intent details live in `docs/ORB_POINTER_RUNTIME_MODEL.md`.
 
+### Universal ORB Loader and Factory Identity
+
+- `frontend/public/orb-loader.js` is the universal external-script adapter; `frontend/src/adapters/react-component.tsx` is the native React/TypeScript adapter. Both use the shared `frontend/src/orb-client/` core.
+- Every installation starts with immutable `orb_factory_default_v1` (**O.R.B.S. Factory Default**) from `/orb-skins/factory-orb-v1.png`.
+- Factory Default is the permanent fallback. A failed custom asset and an explicit owner rollback both restore it immediately.
+- Skin selection is an appearance-only PATCH operation: it does not rebuild Site World or Pointer Map, restart the runtime, or disconnect the WebSocket.
+- The repository and local container image can include these files without implying that the public `orbweaver.spruked.com` loader has been deployed.
+
+### Pointer Quality Gate
+
+- Pointer extraction count and duplicate-ID checks are not deployment approval. Confidence quality must also pass the Pointer Recovery doctrine.
+- Campaign legacy crawl job `#24` extracted 137 pointers: 1 is safe and 136 are uncertain, so its truthful status is `POINTER_RECOVERY_REQUIRED`, not passed.
+- A non-canonical proof recovery produced 8 renders, 104 viewport segments, 28 recovered pointers, and 109 unresolved pointers. It did not overwrite the canonical map because job `#24` has no lifecycle evidence chain.
+- A lifecycle ORB Scan is still required before campaign pointer readiness or deployment can be approved.
+
 ### ORB Product Boundary
 
 - Orb Weaver's own demo ORB is the showcase/development ORB. It may use Desktop MCP, OCR, browser review, and visual audit tools to prove the ceiling of the ecosystem.
@@ -170,6 +185,14 @@ Frontend build:
 ```bash
 cd frontend
 REACT_APP_API_URL=http://127.0.0.1:16500 npm run build
+```
+
+Universal loader and Factory lifecycle:
+
+```bash
+cd frontend
+npm run verify:factory-skin
+npm run smoke:orb-loader
 ```
 
 Playwright preflight smoke test:

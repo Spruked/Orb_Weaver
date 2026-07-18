@@ -209,6 +209,43 @@ export interface Project {
   folder_title?: string;
 }
 
+export type LifecycleJobType = 'MAP_CRAWL' | 'SITE_SCAN' | 'ORB_SCAN' | 'POINTER_RECOVERY' | 'FULL_AUDIT' | 'PREFLIGHT' | 'SENTINEL';
+
+export interface LifecycleReviewItem {
+  id: string;
+  lifecycle_job_id: string;
+  severity: string;
+  category: string;
+  title: string;
+  details: Record<string, unknown>;
+  status: string;
+  reviewer?: string | null;
+  decision?: 'approve' | 'reject' | 'waive' | null;
+  notes?: string | null;
+  signature_hash?: string | null;
+  created_at?: string | null;
+  decided_at?: string | null;
+}
+
+export interface LifecycleJob {
+  id: string;
+  project_id: string;
+  job_type: LifecycleJobType;
+  status: string;
+  phase: string;
+  progress: { current: number; total: number };
+  config: Record<string, unknown>;
+  result: Record<string, unknown>;
+  evidence_root?: string | null;
+  manifest_hash?: string | null;
+  previous_run_id?: string | null;
+  previous_manifest_hash?: string | null;
+  created_at?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
+  review_items: LifecycleReviewItem[];
+}
+
 export interface Customer {
   id: string;
   email: string;
@@ -394,6 +431,8 @@ export interface PreflightReport {
   warnings?: string[];
   pages_scanned?: number;
   confidence?: number;
+  pointer_guidance?: Record<string, unknown>;
+  deployment_preflight?: { passed: boolean; blockers: string[] };
   project?: Project;
   orb_weaver_project?: {
     project_id?: string;
@@ -731,6 +770,11 @@ export interface WebsiteOrbPointerRecord {
   semantic_locator: string;
   structural_context?: Record<string, string | number | boolean | null | undefined>;
   confidence?: number;
+  confidence_class?: 'VERIFIED' | 'STABLE' | 'UNCERTAIN' | 'BLOCKED';
+  finding_class?: 'CONFIRMED' | 'TRANSIENT' | 'DYNAMIC' | 'CONFLICT' | 'UNVERIFIED' | 'PASSED';
+  finding_subreason?: string;
+  pointer_health?: 'NEW' | 'VERIFIED' | 'RECOVERED' | 'OWNER_VERIFIED' | 'DEPRECATED' | 'REMOVED';
+  uncertainty_reasons?: string[];
 }
 
 export interface WebsiteOrbPointerMap {
@@ -739,6 +783,8 @@ export interface WebsiteOrbPointerMap {
   record_count: number;
   records: WebsiteOrbPointerRecord[];
   by_page: Record<string, string[]>;
+  quality: Record<string, unknown>;
+  recovery: Record<string, unknown>;
 }
 
 export interface WebsiteOrbPageCapsule {
@@ -1035,6 +1081,25 @@ export const api = {
     ),
   deleteProject: (id: string) =>
     request<{ status: string }>(`/api/projects/${id}`, { method: 'DELETE' }),
+  listLifecycleJobs: (projectId: string) =>
+    request<LifecycleJob[]>(`/api/projects/${projectId}/lifecycle-jobs`),
+  startLifecycleJob: (
+    projectId: string,
+    jobType: LifecycleJobType,
+    config: { max_pages?: number; delay?: number; max_depth?: number; seed_urls?: string[]; source_job_id?: number } = {}
+  ) =>
+    request<LifecycleJob>(`/api/projects/${projectId}/lifecycle-jobs/${jobType.toLowerCase().replace(/_/g, '-')}`, {
+      method: 'POST',
+      body: JSON.stringify(config)
+    }),
+  getLifecycleJob: (jobId: string) => request<LifecycleJob>(`/api/lifecycle-jobs/${jobId}`),
+  decideLifecycleReviewItem: (jobId: string, itemId: string, decision: 'approve' | 'reject' | 'waive', notes = '') =>
+    request<{ job: LifecycleJob; review_item: LifecycleReviewItem }>(
+      `/api/lifecycle-jobs/${jobId}/review-items/${itemId}/decision`,
+      { method: 'POST', body: JSON.stringify({ decision, notes }) }
+    ),
+  verifyLifecycleEvidence: (jobId: string) =>
+    request<{ valid: boolean; previous_manifest_chain_valid: boolean }>(`/api/lifecycle-jobs/${jobId}/evidence/verify`),
   startCrawl: (projectId: string, config: CrawlConfig) =>
     request<CrawlJob>(`/api/projects/${projectId}/crawl`, {
       method: 'POST',

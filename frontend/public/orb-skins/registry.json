@@ -1,0 +1,15 @@
+{
+  "schema": "orb_weaver.skin_registry.v1",
+  "default_skin_id": "orb_factory_default_v1",
+  "skins": {
+    "orb_factory_default_v1": {
+      "display_name": "O.R.B.S. Factory Default",
+      "asset_path": "/orb-skins/factory-orb-v1.png",
+      "manifest_path": "/orb-skins/factory-orb-v1.manifest.json",
+      "immutable": true,
+      "fallback": true,
+      "owner_editable": false
+    }
+  },
+  "custom_skin_namespace": "/orb-skins/custom/"
+}

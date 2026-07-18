@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from collections import Counter
 from urllib.parse import urlparse
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 import httpx
@@ -31,9 +31,25 @@ from sqlalchemy.orm import Session
 from app.analytics.ga4 import GA4Connector
 from app.audit.engine import SEOAuditor
 from app.core.config import settings
+from app.core.storage import client_root
 from app.crawler.engine import OrbWeaverCrawler, PageData
+from app.lifecycle import (
+    finalize_evidence_run,
+    initialize_evidence_run,
+    snapshot_sqlite_database,
+    verify_evidence_run,
+    write_failure_diagnostic,
+    write_json_artifact,
+)
 from app.orb import scan_semantic_topology
-from app.orb.pointer_plot import pointer_plot_map_from_pages
+from app.orb.pointer_plot import pointer_plot_map_from_pages, pointer_runtime_policy
+from app.orb.pointer_recovery import (
+    assess_pointer_quality,
+    publish_recovered_pointer_map,
+    reconcile_pointer_recovery,
+    recovery_routes,
+    run_pointer_recovery_capture,
+)
 from app.pack_generator import generate_pack_file
 from app.services.chrome_devtools import ChromeDevToolsReviewRunner
 from app.services.orb_desktop_mcp import DEFAULT_ORB_MCP_TOOLS, ORBDesktopMCPClient
@@ -46,6 +62,7 @@ from app.models.database import (
     Customer,
     CustomerSession,
     GA4Data,
+    LifecycleJob,
     MarketplaceAdSlot,
     MarketplaceNumberSequence,
     MarketplaceProduct,
@@ -55,6 +72,7 @@ from app.models.database import (
     OrbToolCache,
     OrbUserMemory,
     Project,
+    ReviewItem,
     get_engine,
     get_session_maker,
     init_db,
@@ -114,6 +132,21 @@ LLM_WARM_STATUS: Dict[str, Any] = {
     "model": settings.LOCAL_LLM_MODEL,
     "checked_at": None,
     "error": None,
+}
+
+ORB_INSTALL_SITES: Dict[str, Dict[str, Any]] = {
+    "orb-weaver-campaign": {
+        "name": "Orb Weaver Campaign",
+        "context_domain": "campaign.orbweaver.spruked.com",
+        "pointer_recovery_routes": ["/", "/investor"],
+        "allowed_origins": {
+            "https://campaign.orbweaver.spruked.com",
+            "https://spruked.chatgpt.site",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        },
+        "allowed_origin_suffixes": (".openai.chatgpt.site",),
+    },
 }
 
 
@@ -240,6 +273,7 @@ class WebsiteOrbTextRequest(BaseModel):
     synthesize_tts: bool = True
     project_id: Optional[str] = None
     target_url: Optional[str] = Field(default=None, max_length=500)
+    site_id: Optional[str] = Field(default=None, min_length=2, max_length=120)
 
 
 class WebsiteOrbTtsRequest(BaseModel):
@@ -259,6 +293,8 @@ class WebsiteOrbPointerMapResponse(BaseModel):
     record_count: int = 0
     records: List[Dict[str, Any]] = Field(default_factory=list)
     by_page: Dict[str, List[str]] = Field(default_factory=dict)
+    quality: Dict[str, Any] = Field(default_factory=dict)
+    recovery: Dict[str, Any] = Field(default_factory=dict)
 
 
 class WebsiteOrbPageCapsuleResponse(BaseModel):
@@ -274,6 +310,23 @@ class WebsiteOrbPageCapsuleResponse(BaseModel):
     secondary_pointer_targets: List[Dict[str, Any]] = Field(default_factory=list)
     relevant_navigation: Dict[str, str] = Field(default_factory=dict)
     relevant_guiderails: List[str] = Field(default_factory=list)
+
+
+class WebsiteOrbPageContext(BaseModel):
+    url: str = Field(..., min_length=4, max_length=1000)
+    host: str = Field(..., min_length=1, max_length=255)
+    pathname: str = Field(default="/", max_length=1000)
+    title: str = Field(default="", max_length=300)
+    viewport: Dict[str, int] = Field(default_factory=dict)
+    visible_controls: List[Dict[str, Any]] = Field(default_factory=list, max_length=100)
+    captured_at: str = Field(default="", max_length=80)
+
+
+class WebsiteOrbBootstrapRequest(BaseModel):
+    site_id: str = Field(..., min_length=2, max_length=120)
+    target_url: str = Field(..., min_length=4, max_length=1000)
+    loader_version: str = Field(default="1", max_length=30)
+    page_context: WebsiteOrbPageContext
 
 
 class OrbMemoryUpsert(BaseModel):
@@ -297,6 +350,20 @@ class CheckoutCreate(BaseModel):
 
 class PreflightRunConfig(BaseModel):
     output_dir: Optional[str] = None
+
+
+class LifecycleJobConfig(BaseModel):
+    max_pages: int = Field(default=100, ge=1, le=5000)
+    delay: float = Field(default=1.0, ge=0.1, le=10.0)
+    max_depth: int = Field(default=5, ge=1, le=10)
+    tier: str = Field(default="authenticated", pattern="^(free|authenticated)$")
+    seed_urls: List[str] = Field(default_factory=list)
+    source_job_id: Optional[int] = None
+
+
+class ReviewDecisionRequest(BaseModel):
+    decision: str = Field(pattern="^(approve|reject|waive)$")
+    notes: str = Field(default="", max_length=4000)
 
 
 class PublicPreflightRequest(BaseModel):
@@ -1341,6 +1408,39 @@ def _owned_crawl_job(job_id: str, customer: Customer, db: Session) -> CrawlJob:
     return crawl_job
 
 
+def _owned_lifecycle_job(job_id: str | int, customer: Customer, db: Session) -> LifecycleJob:
+    try:
+        job_pk = int(job_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=404, detail="Lifecycle job not found")
+    job = (
+        db.query(LifecycleJob)
+        .join(Project, LifecycleJob.project_id == Project.id)
+        .filter(LifecycleJob.id == job_pk, Project.customer_id == customer.id)
+        .first()
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Lifecycle job not found")
+    return job
+
+
+def _owned_review_item(item_id: str | int, customer: Customer, db: Session) -> ReviewItem:
+    try:
+        item_pk = int(item_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=404, detail="Review item not found")
+    item = (
+        db.query(ReviewItem)
+        .join(LifecycleJob, ReviewItem.lifecycle_job_id == LifecycleJob.id)
+        .join(Project, LifecycleJob.project_id == Project.id)
+        .filter(ReviewItem.id == item_pk, Project.customer_id == customer.id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Review item not found")
+    return item
+
+
 def _owned_audit_report(audit_id: str, customer: Customer, db: Session) -> AuditReport:
     try:
         audit_pk = int(audit_id)
@@ -1392,6 +1492,79 @@ def _serialize_project(project: Project, db: Session) -> Dict:
         "latest_audit_id": str(latest_audit.id) if latest_audit else None,
         "latest_audit_score": latest_audit.overall_score if latest_audit else None,
     }
+
+
+def _serialize_review_item(item: ReviewItem) -> Dict[str, Any]:
+    return {
+        "id": str(item.id),
+        "lifecycle_job_id": str(item.lifecycle_job_id),
+        "severity": item.severity,
+        "category": item.category,
+        "title": item.title,
+        "details": item.details or {},
+        "status": item.status,
+        "reviewer": item.reviewer,
+        "decision": item.decision,
+        "notes": item.notes,
+        "signature_hash": item.signature_hash,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "decided_at": item.decided_at.isoformat() if item.decided_at else None,
+    }
+
+
+def _serialize_lifecycle_job(job: LifecycleJob) -> Dict[str, Any]:
+    return {
+        "id": str(job.id),
+        "project_id": str(job.project_id),
+        "job_type": job.job_type,
+        "status": job.status,
+        "phase": job.phase,
+        "progress": {"current": job.progress_current or 0, "total": job.progress_total or 0},
+        "config": job.config or {},
+        "result": job.result or {},
+        "evidence_root": job.evidence_root,
+        "manifest_hash": job.manifest_hash,
+        "previous_run_id": str(job.previous_run_id) if job.previous_run_id else None,
+        "previous_manifest_hash": job.previous_manifest_hash,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "start_time": job.start_time.isoformat() if job.start_time else None,
+        "end_time": job.end_time.isoformat() if job.end_time else None,
+        "review_items": [_serialize_review_item(item) for item in job.review_items],
+    }
+
+
+LIFECYCLE_JOB_TYPES = {"MAP_CRAWL", "SITE_SCAN", "ORB_SCAN", "POINTER_RECOVERY", "FULL_AUDIT", "PREFLIGHT", "SENTINEL"}
+IMPLEMENTED_LIFECYCLE_JOB_TYPES = {"MAP_CRAWL", "SITE_SCAN", "ORB_SCAN", "POINTER_RECOVERY", "FULL_AUDIT"}
+
+
+def _normalize_lifecycle_job_type(value: str) -> str:
+    normalized = re.sub(r"[^A-Z0-9]+", "_", value.strip().upper()).strip("_")
+    if normalized not in LIFECYCLE_JOB_TYPES:
+        raise HTTPException(status_code=404, detail=f"Unknown lifecycle job type: {value}")
+    return normalized
+
+
+def _latest_lifecycle_job(db: Session, project_id: int, job_type: str, statuses: Set[str]) -> Optional[LifecycleJob]:
+    return (
+        db.query(LifecycleJob)
+        .filter(
+            LifecycleJob.project_id == project_id,
+            LifecycleJob.job_type == job_type,
+            LifecycleJob.status.in_(statuses),
+        )
+        .order_by(LifecycleJob.id.desc())
+        .first()
+    )
+
+
+def _lifecycle_source_job(db: Session, job: LifecycleJob, expected_type: str, statuses: Set[str]) -> LifecycleJob:
+    source_id = (job.config or {}).get("source_job_id")
+    source = db.get(LifecycleJob, int(source_id)) if source_id else None
+    if not source:
+        source = _latest_lifecycle_job(db, job.project_id, expected_type, statuses)
+    if not source or source.job_type != expected_type or source.project_id != job.project_id or source.status not in statuses:
+        raise RuntimeError(f"{job.job_type} requires a {expected_type} job in one of: {', '.join(sorted(statuses))}")
+    return source
 
 
 def _project_report_dir(project: Project) -> Path:
@@ -2724,6 +2897,9 @@ def _load_json_if_present(path: Path) -> Optional[Dict[str, Any]]:
 
 
 def _website_context_root(domain: str) -> Optional[Path]:
+    canonical_root = client_root(domain) / "website_orb_context"
+    if canonical_root.exists():
+        return canonical_root
     repo_root = Path(__file__).resolve().parent.parent
     roots = [
         SUBSTRATE_ROOT,
@@ -2934,6 +3110,125 @@ def _build_page_capsule(target_url: str) -> Dict[str, Any]:
         "relevant_navigation": route_hints,
         "relevant_guiderails": (website_context.get("answer_boundaries") or [])[:8],
     }
+
+
+def _orb_install_site(site_id: str) -> Dict[str, Any]:
+    site = ORB_INSTALL_SITES.get(site_id)
+    if not site:
+        raise HTTPException(status_code=404, detail="ORB site ID is not registered")
+    return site
+
+
+def _orb_install_origin_allowed(site: Dict[str, Any], origin: Optional[str]) -> bool:
+    if not origin:
+        return True
+    try:
+        parsed = urlparse(origin)
+    except ValueError:
+        return False
+    normalized = f"{parsed.scheme}://{parsed.netloc}".lower()
+    if normalized in {str(item).lower() for item in site.get("allowed_origins", set())}:
+        return True
+    hostname = (parsed.hostname or "").lower()
+    return parsed.scheme == "https" and any(
+        hostname.endswith(str(suffix).lower()) for suffix in site.get("allowed_origin_suffixes", ())
+    )
+
+
+def _orb_context_target_url(
+    target_url: Optional[str],
+    site_id: Optional[str],
+    origin: Optional[str] = None,
+) -> Optional[str]:
+    """Map an approved installation URL to the canonical domain holding its Site World."""
+    if not target_url or not site_id:
+        return target_url
+    site = _orb_install_site(site_id)
+    parsed_target = urlparse(target_url)
+    if parsed_target.scheme not in {"http", "https"} or not parsed_target.hostname:
+        raise HTTPException(status_code=400, detail="target_url must be an absolute HTTP(S) URL")
+    target_origin = f"{parsed_target.scheme}://{parsed_target.netloc}"
+    if not _orb_install_origin_allowed(site, target_origin):
+        raise HTTPException(status_code=403, detail="The target URL is not approved for the ORB site ID")
+    if origin:
+        if not _orb_install_origin_allowed(site, origin):
+            raise HTTPException(status_code=403, detail="This origin is not approved for the ORB site ID")
+        parsed_origin = urlparse(origin)
+        if (parsed_origin.hostname or "").lower() != (parsed_target.hostname or "").lower():
+            raise HTTPException(status_code=400, detail="target_url must match the embedding origin")
+    context_domain = str(site.get("context_domain") or parsed_target.hostname)
+    return parsed_target._replace(netloc=context_domain).geturl()
+
+
+def _runtime_pointer_map(domain: str, db: Session) -> Dict[str, Any]:
+    context_root = _website_context_root(domain)
+    pointer_map: Dict[str, Any] = {}
+    if context_root:
+        pointer_path = context_root / "pointer_plot_map.json"
+        if pointer_path.is_file():
+            try:
+                pointer_map = json.loads(pointer_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                raise HTTPException(status_code=500, detail="Pointer map is unreadable")
+
+    if int(pointer_map.get("record_count") or 0) == 0:
+        project = db.query(Project).filter(Project.domain == domain).first()
+        if project:
+            completed_crawls = (
+                db.query(CrawlJob)
+                .filter(CrawlJob.project_id == project.id, CrawlJob.status == "completed")
+                .order_by(CrawlJob.id.desc())
+                .limit(12)
+                .all()
+            )
+            for crawl in completed_crawls:
+                recovered = pointer_plot_map_from_pages(
+                    db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl.id).all()
+                )
+                if int(recovered.get("record_count") or 0) == 0:
+                    continue
+                seen_ids: Set[str] = set()
+                unique_records = []
+                for record in recovered.get("records") or []:
+                    target_id = str(record.get("target_id") or "")
+                    if not target_id or target_id in seen_ids:
+                        continue
+                    seen_ids.add(target_id)
+                    unique_records.append(record)
+                recovered["records"] = unique_records
+                recovered["record_count"] = len(unique_records)
+                recovered["by_page"] = {}
+                for record in unique_records:
+                    recovered["by_page"].setdefault(str(record.get("page_route") or ""), []).append(record["target_id"])
+                recovered["recovered_from_crawl_id"] = str(crawl.id)
+                pointer_map = recovered
+                break
+    normalized_records = []
+    for original in pointer_map.get("records") or []:
+        if not isinstance(original, dict):
+            continue
+        record = dict(original)
+        if not record.get("confidence_class") or not isinstance(record.get("runtime_policy"), dict):
+            confidence = float(record.get("confidence") or 0.0)
+            confidence_class, runtime_policy = pointer_runtime_policy(confidence)
+            record["confidence_class"] = confidence_class
+            record["runtime_policy"] = runtime_policy
+            record["confidence_evidence"] = {
+                **(record.get("confidence_evidence") or {}),
+                "runtime_normalization": "legacy_scan_policy_v1",
+                "semantic_match": confidence,
+                "source_revision": record.get("content_fingerprint"),
+                "last_verified_time": record.get("last_verified_at"),
+            }
+        safe_class = record.get("confidence_class") in {"VERIFIED", "STABLE"}
+        record.setdefault("finding_class", "CONFIRMED" if safe_class else "UNVERIFIED")
+        record.setdefault("finding_subreason", "runtime_confidence_policy" if safe_class else "initial_extraction_not_independently_verified")
+        record.setdefault("pointer_health", "VERIFIED" if safe_class else "NEW")
+        normalized_records.append(record)
+    pointer_map["records"] = normalized_records
+    pointer_map["record_count"] = len(normalized_records)
+    pointer_map["quality"] = assess_pointer_quality(pointer_map)
+    return pointer_map
 
 
 def _client_intelligence_root(project: Project) -> Path:
@@ -4048,7 +4343,7 @@ def _serialize_audit_report(report: AuditReport) -> Dict:
     }
 
 
-async def run_crawl_job(crawl_job_id: int, config_data: Dict):
+async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: Optional[int] = None):
     db = SessionLocal()
     try:
         crawl_job = db.query(CrawlJob).filter(CrawlJob.id == crawl_job_id).first()
@@ -4087,6 +4382,11 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict):
         config = CrawlConfig(**config_data)
         crawl_job.status = "running"
         crawl_job.start_time = datetime.utcnow()
+        lifecycle_job = db.get(LifecycleJob, lifecycle_job_id) if lifecycle_job_id else None
+        if lifecycle_job:
+            lifecycle_job.status = "RUNNING"
+            lifecycle_job.phase = "discovering_routes"
+            lifecycle_job.progress_total = config.max_pages
         db.commit()
 
         def persist_crawl_progress(active_crawler: OrbWeaverCrawler) -> None:
@@ -4100,6 +4400,10 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict):
                     **active_stats,
                 },
             }
+            if lifecycle_job:
+                lifecycle_job.phase = "crawling_pages"
+                lifecycle_job.progress_current = crawl_job.pages_crawled
+                lifecycle_job.progress_total = max(crawl_job.pages_found, config.max_pages)
             db.commit()
 
         crawler = OrbWeaverCrawler(
@@ -4179,6 +4483,10 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict):
             "competitor_gap": competitor_gap,
             "template_detection": template_detection,
         }
+        if lifecycle_job:
+            lifecycle_job.phase = "preserving_map_evidence"
+            lifecycle_job.progress_current = len(pages)
+            lifecycle_job.progress_total = len(pages)
         db.commit()
 
         report_dir = _project_report_dir(project)
@@ -4198,6 +4506,460 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict):
             config = crawl_job.config or {}
             config["error"] = str(exc)
             crawl_job.config = config
+            db.commit()
+    finally:
+        db.close()
+
+
+async def run_lifecycle_job(lifecycle_job_id: int) -> None:
+    db = SessionLocal()
+    root: Optional[Path] = None
+    job: Optional[LifecycleJob] = None
+    followup_job_id: Optional[int] = None
+    try:
+        job = db.get(LifecycleJob, lifecycle_job_id)
+        if not job or job.status != "PENDING":
+            return
+        project = db.get(Project, job.project_id)
+        if not project:
+            return
+
+        previous = (
+            db.query(LifecycleJob)
+            .filter(
+                LifecycleJob.project_id == project.id,
+                LifecycleJob.job_type == job.job_type,
+                LifecycleJob.manifest_hash.isnot(None),
+                LifecycleJob.id != job.id,
+            )
+            .order_by(LifecycleJob.id.desc())
+            .first()
+        )
+        job.previous_run_id = previous.id if previous else None
+        job.previous_manifest_hash = previous.manifest_hash if previous else None
+        root = initialize_evidence_run(project.domain, job.id)
+        job.evidence_root = str(root.resolve())
+        job.status = "RUNNING"
+        job.phase = "initializing_evidence"
+        job.start_time = datetime.utcnow()
+        db.commit()
+
+        config = job.config or {}
+        result: Dict[str, Any]
+        final_status = "COMPLETED"
+
+        if job.job_type == "MAP_CRAWL":
+            crawl_config = CrawlConfig(
+                max_pages=config.get("max_pages", 100),
+                delay=config.get("delay", 1.0),
+                max_depth=config.get("max_depth", 5),
+                tier=config.get("tier", "authenticated"),
+                seed_urls=config.get("seed_urls") or [],
+            )
+            crawl = CrawlJob(
+                project_id=project.id,
+                status="pending",
+                config=crawl_config.model_dump(),
+                start_time=datetime.utcnow(),
+            )
+            db.add(crawl)
+            db.commit()
+            db.refresh(crawl)
+            job.result = {"crawl_job_id": str(crawl.id)}
+            db.commit()
+
+            await run_crawl_job(crawl.id, crawl_config.model_dump(), lifecycle_job_id=job.id)
+            db.expire_all()
+            job = db.get(LifecycleJob, lifecycle_job_id)
+            crawl = db.get(CrawlJob, crawl.id)
+            if not crawl or crawl.status != "completed":
+                raise RuntimeError((crawl.config or {}).get("error") if crawl else "Map crawl disappeared")
+            pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl.id).all()
+            map_dataset = {
+                "schema": "orb_weaver.map_crawl.v1",
+                "crawl_job_id": str(crawl.id),
+                "route_count": len(pages),
+                "routes": [
+                    {
+                        "url": page.url,
+                        "canonical_url": page.canonical_url,
+                        "status_code": page.status_code,
+                        "crawl_depth": page.crawl_depth,
+                        "content_hash": page.content_hash,
+                        "discovery_provenance": (page.semantic_analysis or {}).get("discovery_provenance", []),
+                    }
+                    for page in pages
+                ],
+            }
+            write_json_artifact(root, "baseline/map/map_dataset.json", map_dataset)
+            result = {"crawl_job_id": str(crawl.id), "route_count": len(pages), "approval_required": True}
+            db.add(ReviewItem(
+                lifecycle_job_id=job.id,
+                severity="critical",
+                category="map_approval",
+                title="Approve the discovered route map before downstream scans",
+                details={"crawl_job_id": str(crawl.id), "route_count": len(pages)},
+            ))
+            final_status = "REVIEW_REQUIRED"
+            job.phase = "awaiting_map_approval"
+        elif job.job_type == "SITE_SCAN":
+            source = _lifecycle_source_job(db, job, "MAP_CRAWL", {"APPROVED"})
+            crawl_id = int((source.result or {}).get("crawl_job_id"))
+            pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl_id).all()
+            job.phase = "normalizing_site_dataset"
+            job.progress_total = len(pages)
+            site_dataset = {
+                "schema": "orb_weaver.site_scan.v1",
+                "source_map_job_id": str(source.id),
+                "crawl_job_id": str(crawl_id),
+                "pages": [_page_to_dict(page) for page in pages],
+            }
+            write_json_artifact(root, "baseline/site/site_dataset.json", site_dataset)
+            job.progress_current = len(pages)
+            result = {"source_map_job_id": str(source.id), "crawl_job_id": str(crawl_id), "page_count": len(pages)}
+            job.phase = "site_scan_complete"
+        elif job.job_type == "ORB_SCAN":
+            source = _lifecycle_source_job(db, job, "SITE_SCAN", {"COMPLETED", "APPROVED"})
+            crawl_id = int((source.result or {}).get("crawl_job_id"))
+            pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl_id).all()
+            job.phase = "building_pointer_dataset"
+            pointer_map = pointer_plot_map_from_pages(pages)
+            quality = assess_pointer_quality(pointer_map)
+            pointer_map["quality"] = quality
+            write_json_artifact(root, "baseline/orb/pointer_map.json", pointer_map)
+            job.progress_current = pointer_map["record_count"]
+            job.progress_total = pointer_map["record_count"]
+            result = {
+                "source_site_job_id": str(source.id),
+                "crawl_job_id": str(crawl_id),
+                "pointer_count": pointer_map["record_count"],
+                "pointer_quality": quality,
+                "pointer_guidance_status": "recovery_required" if quality["recovery_required"] else "ready",
+            }
+            if quality["recovery_required"]:
+                configured_routes = ["/", "/investor"] if _safe_pack_name(project.domain) == "campaign.orbweaver.spruked.com" else None
+                routes = recovery_routes(pointer_map, configured_routes)
+                recovery_job = LifecycleJob(
+                    project_id=project.id,
+                    job_type="POINTER_RECOVERY",
+                    status="PENDING",
+                    phase="queued_automatically",
+                    config={
+                        "source_job_id": job.id,
+                        "routes": routes,
+                        "render_passes": 2,
+                        "automatic_attempt": 1,
+                        "automatic_attempts_maximum": 1,
+                    },
+                    progress_current=0,
+                    progress_total=len(routes) * 4,
+                )
+                db.add(recovery_job)
+                db.flush()
+                followup_job_id = recovery_job.id
+                result["pointer_recovery_job_id"] = str(recovery_job.id)
+                result["pointer_recovery_routes"] = routes
+                final_status = "POINTER_RECOVERY_REQUIRED"
+                job.phase = "pointer_recovery_queued"
+            else:
+                job.phase = "orb_scan_complete"
+        elif job.job_type == "POINTER_RECOVERY":
+            source = _lifecycle_source_job(db, job, "ORB_SCAN", {"POINTER_RECOVERY_REQUIRED"})
+            crawl_id = int((source.result or {}).get("crawl_job_id"))
+            pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl_id).all()
+            baseline_pointer_map = pointer_plot_map_from_pages(pages)
+            baseline_pointer_map["quality"] = assess_pointer_quality(baseline_pointer_map)
+            write_json_artifact(root, "baseline/orb/pointer_map.json", baseline_pointer_map)
+
+            routes = recovery_routes(baseline_pointer_map, config.get("routes"))
+            render_passes = min(2, max(2, int(config.get("render_passes") or 2)))
+            job.phase = "capturing_pointer_evidence"
+            job.progress_total = len(routes) * 2 * render_passes
+            db.commit()
+            base_url = project.domain if str(project.domain).startswith(("http://", "https://")) else f"https://{project.domain}"
+            capture_dir = root / "verification/orb/pointer_recovery_capture"
+            capture = await asyncio.to_thread(
+                run_pointer_recovery_capture,
+                base_url,
+                routes,
+                capture_dir,
+                render_passes=render_passes,
+            )
+            job.progress_current = len(capture.get("observations") or [])
+            job.phase = "reconciling_pointer_evidence"
+            recovered_map = reconcile_pointer_recovery(baseline_pointer_map, capture)
+            write_json_artifact(root, "verification/orb/pointer_map.json", recovered_map)
+            write_json_artifact(root, "reconciliation/pointer_recovery.json", recovered_map.get("recovery") or {})
+            context_root = client_root(project.domain) / "website_orb_context"
+            publish_recovered_pointer_map(recovered_map, context_root / "pointer_plot_map.json")
+
+            recovery_summary = recovered_map.get("recovery") or {}
+            quality = recovered_map.get("quality") or assess_pointer_quality(recovered_map)
+            reason_counts = Counter(
+                reason
+                for record in recovered_map.get("records") or []
+                for reason in record.get("uncertainty_reasons") or []
+            )
+            finding_class_counts = Counter(str(record.get("finding_class") or "UNVERIFIED") for record in recovered_map.get("records") or [])
+            pointer_health_counts = Counter(str(record.get("pointer_health") or "NEW") for record in recovered_map.get("records") or [])
+            result = {
+                "source_orb_job_id": str(source.id),
+                "crawl_job_id": str(crawl_id),
+                "operation": "POINTER_RECOVERY_PASS",
+                "automatic_attempt": 1,
+                "automatic_attempts_maximum": 1,
+                "routes": routes,
+                "render_count": recovery_summary.get("render_count", 0),
+                "promoted_pointer_count": recovery_summary.get("promoted_count", 0),
+                "unresolved_pointer_count": recovery_summary.get("unresolved_count", 0),
+                "unresolved_reason_counts": dict(reason_counts),
+                "finding_class_counts": dict(finding_class_counts),
+                "pointer_health_counts": dict(pointer_health_counts),
+                "pointer_quality": quality,
+                "published_pointer_map": str((context_root / "pointer_plot_map.json").resolve()),
+            }
+            if quality.get("recovery_required") or int(recovery_summary.get("unresolved_count") or 0) > 0:
+                unresolved = [
+                    {
+                        "target_id": record.get("target_id"),
+                        "page_route": record.get("page_route"),
+                        "finding_class": record.get("finding_class"),
+                        "finding_subreason": record.get("finding_subreason"),
+                        "uncertainty_reasons": record.get("uncertainty_reasons") or [],
+                    }
+                    for record in recovered_map.get("records") or []
+                    if record.get("recovery_status") == "visual_review_required"
+                ]
+                db.add(ReviewItem(
+                    lifecycle_job_id=job.id,
+                    severity="critical",
+                    category="pointer_recovery_visual_review",
+                    title="Review pointers unresolved by the single automatic Pointer Recovery Pass",
+                    details={
+                        "unresolved_count": len(unresolved),
+                        "reason_counts": dict(reason_counts),
+                        "pointers": unresolved,
+                        "automatic_attempts_exhausted": True,
+                    },
+                ))
+                final_status = "REVIEW_REQUIRED"
+                job.phase = "awaiting_pointer_visual_review"
+            else:
+                job.phase = "pointer_recovery_complete"
+        elif job.job_type == "FULL_AUDIT":
+            source_id = config.get("source_job_id")
+            source = db.get(LifecycleJob, int(source_id)) if source_id else None
+            if not source:
+                source = _latest_lifecycle_job(db, job.project_id, "POINTER_RECOVERY", {"COMPLETED", "APPROVED"})
+            if not source:
+                source = _latest_lifecycle_job(db, job.project_id, "ORB_SCAN", {"COMPLETED", "APPROVED"})
+            if not source or source.project_id != job.project_id or source.job_type not in {"ORB_SCAN", "POINTER_RECOVERY"} or source.status not in {"COMPLETED", "APPROVED"}:
+                raise RuntimeError("FULL_AUDIT requires a pointer-ready ORB Scan or approved Pointer Recovery Pass")
+            baseline_crawl_id = int((source.result or {}).get("crawl_job_id"))
+            baseline_pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == baseline_crawl_id).all()
+            baseline_pointer_map = (
+                _runtime_pointer_map(project.domain, db)
+                if source.job_type == "POINTER_RECOVERY"
+                else pointer_plot_map_from_pages(baseline_pages)
+            )
+            write_json_artifact(root, "baseline/map/map_dataset.json", {
+                "schema": "orb_weaver.audit_baseline_map.v1",
+                "crawl_job_id": str(baseline_crawl_id),
+                "pages": [_page_to_dict(page) for page in baseline_pages],
+            })
+            write_json_artifact(root, "baseline/orb/pointer_map.json", baseline_pointer_map)
+            snapshot_sqlite_database(DATABASE_URL, root)
+
+            verification_config = CrawlConfig(
+                max_pages=config.get("max_pages", max(1, len(baseline_pages))),
+                delay=config.get("delay", 1.0),
+                max_depth=config.get("max_depth", 5),
+                tier=config.get("tier", "authenticated"),
+                seed_urls=[page.url for page in baseline_pages],
+            )
+            verification_crawl = CrawlJob(
+                project_id=project.id,
+                status="pending",
+                config={**verification_config.model_dump(), "purpose": "independent_full_audit_verification"},
+                start_time=datetime.utcnow(),
+            )
+            db.add(verification_crawl)
+            db.commit()
+            db.refresh(verification_crawl)
+            job.result = {
+                "source_orb_job_id": str(source.id),
+                "baseline_crawl_job_id": str(baseline_crawl_id),
+                "verification_crawl_job_id": str(verification_crawl.id),
+            }
+            db.commit()
+            await run_crawl_job(verification_crawl.id, verification_config.model_dump(), lifecycle_job_id=job.id)
+            db.expire_all()
+            job = db.get(LifecycleJob, lifecycle_job_id)
+            verification_crawl = db.get(CrawlJob, verification_crawl.id)
+            if not verification_crawl or verification_crawl.status != "completed":
+                raise RuntimeError((verification_crawl.config or {}).get("error") if verification_crawl else "Verification crawl disappeared")
+            verification_pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == verification_crawl.id).all()
+            verification_pointer_map = pointer_plot_map_from_pages(verification_pages)
+            write_json_artifact(root, "verification/map/map_dataset.json", {
+                "schema": "orb_weaver.audit_verification_map.v1",
+                "crawl_job_id": str(verification_crawl.id),
+                "pages": [_page_to_dict(page) for page in verification_pages],
+            })
+            write_json_artifact(root, "verification/orb/pointer_map.json", verification_pointer_map)
+            snapshot_sqlite_database(DATABASE_URL, root, verification=True)
+
+            baseline_by_url = {page.url: page for page in baseline_pages}
+            verification_by_url = {page.url: page for page in verification_pages}
+            url_reconciliation = []
+            for url in sorted(set(baseline_by_url) | set(verification_by_url)):
+                baseline_page = baseline_by_url.get(url)
+                verification_page = verification_by_url.get(url)
+                if not baseline_page:
+                    classification = "TRANSIENT"
+                    reason = "route_only_in_verification"
+                elif not verification_page:
+                    classification = "UNVERIFIED"
+                    reason = "baseline_route_missing_from_verification"
+                elif baseline_page.status_code != verification_page.status_code:
+                    classification = "CONFLICT"
+                    reason = "http_status_changed"
+                elif baseline_page.content_hash == verification_page.content_hash:
+                    classification = "CONFIRMED"
+                    reason = "content_hash_match"
+                else:
+                    classification = "DYNAMIC"
+                    reason = "content_changed_between_independent_passes"
+                url_reconciliation.append({
+                    "url": url,
+                    "classification": classification,
+                    "reason": reason,
+                    "baseline_status": baseline_page.status_code if baseline_page else None,
+                    "verification_status": verification_page.status_code if verification_page else None,
+                    "baseline_content_hash": baseline_page.content_hash if baseline_page else None,
+                    "verification_content_hash": verification_page.content_hash if verification_page else None,
+                })
+
+            baseline_pointers = {record["target_id"]: record for record in baseline_pointer_map.get("records", [])}
+            verification_pointers = {record["target_id"]: record for record in verification_pointer_map.get("records", [])}
+            pointer_reconciliation = []
+            for target_id in sorted(set(baseline_pointers) | set(verification_pointers)):
+                baseline_pointer = baseline_pointers.get(target_id)
+                verification_pointer = verification_pointers.get(target_id)
+                if not baseline_pointer:
+                    classification = "TRANSIENT"
+                    reason = "pointer_only_in_verification"
+                elif not verification_pointer:
+                    classification = "UNVERIFIED"
+                    reason = "baseline_pointer_missing_from_verification"
+                elif (
+                    baseline_pointer.get("semantic_locator") == verification_pointer.get("semantic_locator")
+                    and baseline_pointer.get("content_fingerprint") == verification_pointer.get("content_fingerprint")
+                ):
+                    classification = "PASSED"
+                    reason = "locator_and_content_match"
+                else:
+                    classification = "CONFLICT"
+                    reason = "pointer_identity_changed"
+                pointer_reconciliation.append({
+                    "target_id": target_id,
+                    "classification": classification,
+                    "reason": reason,
+                    "baseline": baseline_pointer,
+                    "verification": verification_pointer,
+                })
+
+            conflicts = [
+                {"dataset": "url", **record} for record in url_reconciliation if record["classification"] == "CONFLICT"
+            ] + [
+                {"dataset": "pointer", **record} for record in pointer_reconciliation if record["classification"] == "CONFLICT"
+            ]
+            reconciliation = {
+                "schema": "orb_weaver.full_audit_reconciliation.v1",
+                "baseline_crawl_job_id": str(baseline_crawl_id),
+                "verification_crawl_job_id": str(verification_crawl.id),
+                "classifications": ["CONFIRMED", "TRANSIENT", "DYNAMIC", "CONFLICT", "UNVERIFIED", "PASSED"],
+                "urls": url_reconciliation,
+                "pointers": pointer_reconciliation,
+                "summary": {
+                    "url_records": len(url_reconciliation),
+                    "pointer_records": len(pointer_reconciliation),
+                    "conflicts": len(conflicts),
+                    "unverified": sum(1 for record in url_reconciliation + pointer_reconciliation if record["classification"] == "UNVERIFIED"),
+                },
+            }
+            write_json_artifact(root, "reconciliation/reconciliation.json", reconciliation)
+            for conflict in conflicts:
+                db.add(ReviewItem(
+                    lifecycle_job_id=job.id,
+                    severity="critical",
+                    category=f"{conflict['dataset']}_conflict",
+                    title=f"Resolve {conflict['dataset']} reconciliation conflict",
+                    details=conflict,
+                ))
+            db.add(ReviewItem(
+                lifecycle_job_id=job.id,
+                severity="critical",
+                category="full_audit_approval",
+                title="Approve the independent Full Audit before Preflight",
+                details={"conflict_count": len(conflicts), "verification_crawl_job_id": str(verification_crawl.id)},
+            ))
+            result = {
+                "source_orb_job_id": str(source.id),
+                "baseline_crawl_job_id": str(baseline_crawl_id),
+                "verification_crawl_job_id": str(verification_crawl.id),
+                "conflict_count": len(conflicts),
+                "reconciliation_summary": reconciliation["summary"],
+                "approval_required": True,
+            }
+            final_status = "REVIEW_REQUIRED"
+            job.phase = "awaiting_full_audit_review"
+        else:
+            raise RuntimeError(f"Lifecycle orchestration is not implemented for {job.job_type}")
+
+        if job.job_type != "FULL_AUDIT":
+            snapshot_sqlite_database(DATABASE_URL, root)
+        job.result = result
+        job.status = final_status
+        job.end_time = datetime.utcnow()
+        db.commit()
+        manifest = finalize_evidence_run(
+            root,
+            run_id=job.id,
+            project_id=project.id,
+            domain=project.domain,
+            job_type=job.job_type,
+            status=job.status,
+            scan_contract={"job_type": job.job_type, "config": config, "source_job_id": config.get("source_job_id")},
+            previous_run_id=job.previous_run_id,
+            previous_manifest_hash=job.previous_manifest_hash,
+            metadata={"result": result},
+        )
+        job.manifest_hash = manifest["manifest_hash"]
+        db.commit()
+        if followup_job_id:
+            asyncio.create_task(run_lifecycle_job(followup_job_id))
+    except Exception as exc:
+        if job:
+            job.status = "FAILED"
+            job.phase = "failed"
+            job.end_time = datetime.utcnow()
+            job.result = {**(job.result or {}), "error": str(exc)}
+            if root:
+                write_failure_diagnostic(root, stage=job.job_type, category="lifecycle_stage_failure", error=str(exc))
+                project = db.get(Project, job.project_id)
+                manifest = finalize_evidence_run(
+                    root,
+                    run_id=job.id,
+                    project_id=job.project_id,
+                    domain=project.domain if project else "unknown",
+                    job_type=job.job_type,
+                    status="FAILED",
+                    scan_contract={"job_type": job.job_type, "config": job.config or {}},
+                    previous_run_id=job.previous_run_id,
+                    previous_manifest_hash=job.previous_manifest_hash,
+                    metadata={"error": str(exc)},
+                )
+                job.manifest_hash = manifest["manifest_hash"]
             db.commit()
     finally:
         db.close()
@@ -4285,7 +5047,9 @@ async def public_preflight(payload: PublicPreflightRequest):
 async def website_orb_voice(
     audio: UploadFile = File(...),
     target_url: Optional[str] = Form(default=None),
+    site_id: Optional[str] = Form(default=None),
     authorization: Optional[str] = Header(default=None),
+    origin: Optional[str] = Header(default=None),
     db: Session = Depends(get_db),
 ):
     route_started = time.perf_counter()
@@ -4305,10 +5069,17 @@ async def website_orb_voice(
 
     started = time.perf_counter()
     memory_context = _orb_memory_summary(customer, db)
-    website_context = _load_domain_website_context(target_url)
+    context_target_url = _orb_context_target_url(target_url, site_id, origin)
+    website_context = _load_domain_website_context(context_target_url)
     if website_context is not None:
         website_context["current_url"] = target_url
-    page_capsule = _build_page_capsule(target_url) if target_url else None
+        website_context["current_domain"] = _domain_from_url(target_url)
+    page_capsule = _build_page_capsule(context_target_url) if context_target_url else None
+    if page_capsule is not None and target_url:
+        page_capsule["current_url"] = target_url
+        page_capsule["route"] = _route_from_url(target_url)
+        page_capsule["context_domain"] = page_capsule.get("domain")
+        page_capsule["domain"] = _domain_from_url(target_url)
     mark("memory_summary", started)
 
     started = time.perf_counter()
@@ -4411,16 +5182,25 @@ async def website_orb_voice(
 async def website_orb_text(
     payload: WebsiteOrbTextRequest,
     authorization: Optional[str] = Header(default=None),
+    origin: Optional[str] = Header(default=None),
     db: Session = Depends(get_db),
 ):
     customer = get_optional_customer(authorization=authorization, db=db)
     transcript = payload.transcript.strip()
     memory_context = _orb_memory_summary(customer, db)
     project = _owned_project(payload.project_id, customer, db) if customer and payload.project_id else None
-    website_context = _load_domain_website_context(payload.target_url or (_project_target_url(project) if project else None))
-    page_capsule = _build_page_capsule(payload.target_url or (_project_target_url(project) if project else "")) if (payload.target_url or project) else None
+    target_url = payload.target_url or (_project_target_url(project) if project else None)
+    context_target_url = _orb_context_target_url(target_url, payload.site_id, origin)
+    website_context = _load_domain_website_context(context_target_url)
+    page_capsule = _build_page_capsule(context_target_url or "") if context_target_url else None
     if website_context is not None:
-        website_context["current_url"] = payload.target_url or (_project_target_url(project) if project else None)
+        website_context["current_url"] = target_url
+        website_context["current_domain"] = _domain_from_url(target_url)
+    if page_capsule is not None and target_url:
+        page_capsule["current_url"] = target_url
+        page_capsule["route"] = _route_from_url(target_url)
+        page_capsule["context_domain"] = page_capsule.get("domain")
+        page_capsule["domain"] = _domain_from_url(target_url)
     pointer_matches = _lookup_pointer_context(website_context, transcript)
     cache_hit = _lookup_project_tool_cache(project, transcript, db) if project else None
     if cache_hit and cache_hit.get("spoken_output"):
@@ -4491,6 +5271,179 @@ async def website_orb_text(
     }
 
 
+@app.get("/api/orb/bootstrap")
+async def website_orb_bootstrap(
+    site_id: str = Query(..., min_length=2, max_length=120),
+    target_url: str = Query(..., min_length=4, max_length=1000),
+    loader_version: str = Query(default="1", max_length=30),
+    origin: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    site = _orb_install_site(site_id)
+    if not _orb_install_origin_allowed(site, origin):
+        raise HTTPException(status_code=403, detail="This origin is not approved for the ORB site ID")
+    parsed_target = urlparse(target_url)
+    if parsed_target.scheme not in {"http", "https"} or not parsed_target.hostname:
+        raise HTTPException(status_code=400, detail="target_url must be an absolute HTTP(S) URL")
+    if origin:
+        parsed_origin = urlparse(origin)
+        if (parsed_origin.hostname or "").lower() != (parsed_target.hostname or "").lower():
+            raise HTTPException(status_code=400, detail="target_url must match the embedding origin")
+
+    domain = _domain_from_url(target_url)
+    context_target_url = _orb_context_target_url(target_url, site_id, origin)
+    context_domain = _domain_from_url(context_target_url)
+    pointer_map = _runtime_pointer_map(context_domain, db)
+    website_context = _load_domain_website_context(context_target_url) or {}
+    page_capsule = _build_page_capsule(context_target_url or target_url)
+    page_capsule["current_url"] = target_url
+    page_capsule["route"] = _route_from_url(target_url)
+    page_capsule["context_domain"] = page_capsule.get("domain")
+    page_capsule["domain"] = domain
+    site_world = {
+        key: website_context.get(key)
+        for key in (
+            "schema",
+            "site_name",
+            "brand",
+            "domain",
+            "site_summary",
+            "orb_role",
+            "primary_user_tasks",
+            "key_facts",
+            "route_hints",
+            "answer_boundaries",
+            "orb_ready_score",
+            "authority_flow",
+            "knowledge_graph",
+            "competitor_gap",
+            "template_detection",
+        )
+        if website_context.get(key) is not None
+    }
+    site_world.setdefault("site_name", site.get("name"))
+    site_world.setdefault("domain", domain)
+    ready = bool(website_context) and int(pointer_map.get("record_count") or 0) > 0
+    pointer_quality = pointer_map.get("quality") or assess_pointer_quality(pointer_map)
+    pointer_recovery_required = bool(pointer_quality.get("recovery_required"))
+    return {
+        "schema": "orb_weaver.loader_bootstrap.v1",
+        "status": "ready" if ready else "awaiting_scan",
+        "generated_at": datetime.utcnow().isoformat(),
+        "site": {
+            "site_id": site_id,
+            "name": site.get("name"),
+            "domain": domain,
+            "context_domain": context_domain,
+            "loader_version": loader_version,
+        },
+        "site_world": site_world,
+        "page_capsule": page_capsule,
+        "pointer_map": {
+            "schema": pointer_map.get("schema") or "orb_weaver.pointer_plot_map.v1",
+            "generated_at": pointer_map.get("generated_at"),
+            "record_count": int(pointer_map.get("record_count") or 0),
+            "records": pointer_map.get("records") if isinstance(pointer_map.get("records"), list) else [],
+            "by_page": pointer_map.get("by_page") if isinstance(pointer_map.get("by_page"), dict) else {},
+            "quality": pointer_quality,
+            "recovery": pointer_map.get("recovery") if isinstance(pointer_map.get("recovery"), dict) else {},
+        },
+        "pointer_guidance": {
+            "status": "recovery_required" if pointer_recovery_required else "ready",
+            "safe_pointer_count": int(pointer_quality.get("stable_count") or 0),
+            "blocked_pointer_count": int(pointer_quality.get("uncertain_count") or 0),
+            "automatic_recovery_attempts_maximum": 1,
+        },
+        "deployment_preflight": {
+            "passed": ready and not pointer_recovery_required,
+            "blockers": ["POINTER_RECOVERY_REQUIRED"] if pointer_recovery_required else [],
+        },
+        "orb_identity": {
+            "skin_id": "orb_factory_default_v1",
+            "display_name": "O.R.B.S. Factory Default",
+            "asset_path": "/orb-skins/factory-orb-v1.png",
+            "asset_sha256": "8eb49c628211c7d077fb65f3591107f1489124ccbfa840dc0f2381157cd87e61",
+            "customization_state": "FACTORY_DEFAULT",
+            "owner_consent_required": False,
+            "owner_editable": False,
+            "immutable_default": True,
+            "reversible": True,
+            "fallback_enabled": True,
+        },
+        "capabilities": _orb_capabilities(),
+        "endpoints": {
+            "bootstrap": "/api/orb/bootstrap",
+            "text": "/api/orb/website-text",
+            "voice": "/api/orb/website-voice",
+            "tts": "/api/orb/tts",
+            "pointer_map": "/api/orb/pointer-map",
+            "page_capsule": "/api/orb/page-capsule",
+            "websocket": "/ws/orb",
+        },
+        "installation": {
+            "shadow_dom": True,
+            "spa_route_observer": True,
+            "voice_requires_user_gesture": True,
+            "pointer_policy_enforced": True,
+        },
+    }
+
+
+@app.post("/api/orb/bootstrap")
+async def website_orb_bootstrap_with_page_context(
+    payload: WebsiteOrbBootstrapRequest,
+    origin: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    if payload.page_context.url != payload.target_url:
+        raise HTTPException(status_code=400, detail="page_context URL must match target_url")
+    parsed_target = urlparse(payload.target_url)
+    if payload.page_context.host.split(":", 1)[0].lower() != (parsed_target.hostname or "").lower():
+        raise HTTPException(status_code=400, detail="page_context host must match target_url")
+    result = await website_orb_bootstrap(
+        site_id=payload.site_id,
+        target_url=payload.target_url,
+        loader_version=payload.loader_version,
+        origin=origin,
+        db=db,
+    )
+    result["observed_page"] = payload.page_context.model_dump()
+    return result
+
+
+@app.websocket("/ws/orb")
+async def website_orb_websocket(websocket: WebSocket):
+    site_id = websocket.query_params.get("site_id") or ""
+    site = ORB_INSTALL_SITES.get(site_id)
+    origin = websocket.headers.get("origin")
+    if not site or not _orb_install_origin_allowed(site, origin):
+        await websocket.close(code=1008, reason="Unregistered site or origin")
+        return
+    await websocket.accept()
+    await websocket.send_json({
+        "type": "orb.connected",
+        "site_id": site_id,
+        "server_time": datetime.utcnow().isoformat(),
+    })
+    try:
+        while True:
+            message = await websocket.receive_json()
+            message_type = message.get("type")
+            if message_type == "orb.route":
+                target_url = str(message.get("target_url") or "")[:1000]
+                await websocket.send_json({
+                    "type": "orb.route.ack",
+                    "target_url": target_url,
+                    "route": _route_from_url(target_url),
+                })
+            elif message_type == "orb.ping":
+                await websocket.send_json({"type": "orb.pong", "server_time": datetime.utcnow().isoformat()})
+            else:
+                await websocket.send_json({"type": "orb.ignored", "reason": "unsupported_message"})
+    except (WebSocketDisconnect, RuntimeError, ValueError):
+        return
+
+
 @app.get("/api/orb/capabilities")
 async def website_orb_capabilities():
     return _orb_capabilities()
@@ -4508,48 +5461,7 @@ async def website_orb_pointer_map(
     if not raw_domain:
         raise HTTPException(status_code=404, detail="Pointer map domain is unknown")
 
-    context_root = _website_context_root(raw_domain)
-    pointer_map: Dict[str, Any] = {}
-    if context_root:
-        pointer_path = context_root / "pointer_plot_map.json"
-        if pointer_path.is_file():
-            try:
-                pointer_map = json.loads(pointer_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                raise HTTPException(status_code=500, detail="Pointer map is unreadable")
-
-    if int(pointer_map.get("record_count") or 0) == 0:
-        project = db.query(Project).filter(Project.domain == raw_domain).first()
-        if project:
-            completed_crawls = (
-                db.query(CrawlJob)
-                .filter(CrawlJob.project_id == project.id, CrawlJob.status == "completed")
-                .order_by(CrawlJob.id.desc())
-                .limit(12)
-                .all()
-            )
-            for crawl in completed_crawls:
-                recovered = pointer_plot_map_from_pages(
-                    db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl.id).all()
-                )
-                if int(recovered.get("record_count") or 0) == 0:
-                    continue
-                seen_ids: Set[str] = set()
-                unique_records = []
-                for record in recovered.get("records") or []:
-                    target_id = str(record.get("target_id") or "")
-                    if not target_id or target_id in seen_ids:
-                        continue
-                    seen_ids.add(target_id)
-                    unique_records.append(record)
-                recovered["records"] = unique_records
-                recovered["record_count"] = len(unique_records)
-                recovered["by_page"] = {}
-                for record in unique_records:
-                    recovered["by_page"].setdefault(str(record.get("page_route") or ""), []).append(record["target_id"])
-                recovered["recovered_from_crawl_id"] = str(crawl.id)
-                pointer_map = recovered
-                break
+    pointer_map = _runtime_pointer_map(raw_domain, db)
 
     if int(pointer_map.get("record_count") or 0) == 0:
         raise HTTPException(status_code=404, detail="Pointer map not found")
@@ -4560,6 +5472,8 @@ async def website_orb_pointer_map(
         "record_count": int(pointer_map.get("record_count") or 0),
         "records": pointer_map.get("records") if isinstance(pointer_map.get("records"), list) else [],
         "by_page": pointer_map.get("by_page") if isinstance(pointer_map.get("by_page"), dict) else {},
+        "quality": pointer_map.get("quality") or assess_pointer_quality(pointer_map),
+        "recovery": pointer_map.get("recovery") if isinstance(pointer_map.get("recovery"), dict) else {},
     }
 
 
@@ -5384,6 +6298,209 @@ async def get_project(project_id: str, db: Session = Depends(get_db), customer: 
     return _serialize_project(project, db)
 
 
+@app.get("/api/projects/{project_id}/lifecycle-jobs")
+async def list_project_lifecycle_jobs(
+    project_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    jobs = (
+        db.query(LifecycleJob)
+        .filter(LifecycleJob.project_id == project.id)
+        .order_by(LifecycleJob.id.desc())
+        .all()
+    )
+    return [_serialize_lifecycle_job(job) for job in jobs]
+
+
+@app.post("/api/projects/{project_id}/lifecycle-jobs/{job_type}")
+async def start_project_lifecycle_job(
+    project_id: str,
+    job_type: str,
+    background_tasks: BackgroundTasks,
+    config: LifecycleJobConfig = LifecycleJobConfig(),
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    normalized_type = _normalize_lifecycle_job_type(job_type)
+    if normalized_type not in IMPLEMENTED_LIFECYCLE_JOB_TYPES:
+        raise HTTPException(status_code=501, detail=f"{normalized_type} orchestration is not integrated yet")
+
+    active = (
+        db.query(LifecycleJob)
+        .filter(
+            LifecycleJob.project_id == project.id,
+            LifecycleJob.job_type == normalized_type,
+            LifecycleJob.status.in_({"PENDING", "RUNNING"}),
+        )
+        .first()
+    )
+    if active:
+        raise HTTPException(status_code=409, detail=f"{normalized_type} job {active.id} is already active")
+
+    config_data = config.model_dump(exclude_none=True)
+    if normalized_type == "SITE_SCAN":
+        source = _owned_lifecycle_job(config.source_job_id, customer, db) if config.source_job_id else _latest_lifecycle_job(db, project.id, "MAP_CRAWL", {"APPROVED"})
+        if not source or source.project_id != project.id or source.job_type != "MAP_CRAWL" or source.status != "APPROVED":
+            raise HTTPException(status_code=409, detail="Site Scan requires an approved Map Crawl")
+        config_data["source_job_id"] = source.id
+    elif normalized_type == "ORB_SCAN":
+        source = _owned_lifecycle_job(config.source_job_id, customer, db) if config.source_job_id else _latest_lifecycle_job(db, project.id, "SITE_SCAN", {"COMPLETED", "APPROVED"})
+        if not source or source.project_id != project.id or source.job_type != "SITE_SCAN" or source.status not in {"COMPLETED", "APPROVED"}:
+            raise HTTPException(status_code=409, detail="ORB Scan requires a completed Site Scan")
+        config_data["source_job_id"] = source.id
+    elif normalized_type == "POINTER_RECOVERY":
+        source = _owned_lifecycle_job(config.source_job_id, customer, db) if config.source_job_id else _latest_lifecycle_job(db, project.id, "ORB_SCAN", {"POINTER_RECOVERY_REQUIRED"})
+        if not source or source.project_id != project.id or source.job_type != "ORB_SCAN" or source.status != "POINTER_RECOVERY_REQUIRED":
+            raise HTTPException(status_code=409, detail="Pointer Recovery requires an ORB Scan marked POINTER_RECOVERY_REQUIRED")
+        prior_recovery = (
+            db.query(LifecycleJob)
+            .filter(LifecycleJob.project_id == project.id, LifecycleJob.job_type == "POINTER_RECOVERY")
+            .order_by(LifecycleJob.id.desc())
+            .all()
+        )
+        if any(int((item.config or {}).get("source_job_id") or 0) == source.id for item in prior_recovery):
+            raise HTTPException(status_code=409, detail="The single automatic Pointer Recovery Pass has already been created for this ORB Scan")
+        source_pointer_map = pointer_plot_map_from_pages(
+            db.query(CrawledPage).filter(CrawledPage.crawl_job_id == int((source.result or {}).get("crawl_job_id"))).all()
+        )
+        configured_routes = ["/", "/investor"] if _safe_pack_name(project.domain) == "campaign.orbweaver.spruked.com" else None
+        config_data.update({
+            "source_job_id": source.id,
+            "routes": recovery_routes(source_pointer_map, configured_routes),
+            "render_passes": 2,
+            "automatic_attempt": 1,
+            "automatic_attempts_maximum": 1,
+        })
+    elif normalized_type == "FULL_AUDIT":
+        source = _owned_lifecycle_job(config.source_job_id, customer, db) if config.source_job_id else _latest_lifecycle_job(db, project.id, "POINTER_RECOVERY", {"COMPLETED", "APPROVED"})
+        if not source:
+            source = _latest_lifecycle_job(db, project.id, "ORB_SCAN", {"COMPLETED", "APPROVED"})
+        if not source or source.project_id != project.id or source.job_type not in {"ORB_SCAN", "POINTER_RECOVERY"} or source.status not in {"COMPLETED", "APPROVED"}:
+            raise HTTPException(status_code=409, detail="Full Audit requires a pointer-ready ORB Scan or approved Pointer Recovery Pass")
+        config_data["source_job_id"] = source.id
+
+    job = LifecycleJob(
+        project_id=project.id,
+        job_type=normalized_type,
+        status="PENDING",
+        phase="queued",
+        config=config_data,
+        progress_current=0,
+        progress_total=config.max_pages if normalized_type == "MAP_CRAWL" else 0,
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    background_tasks.add_task(run_lifecycle_job, job.id)
+    return _serialize_lifecycle_job(job)
+
+
+@app.get("/api/lifecycle-jobs/{job_id}")
+async def get_lifecycle_job(
+    job_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    return _serialize_lifecycle_job(_owned_lifecycle_job(job_id, customer, db))
+
+
+@app.post("/api/lifecycle-jobs/{job_id}/review-items/{item_id}/decision")
+async def decide_lifecycle_review_item(
+    job_id: str,
+    item_id: str,
+    payload: ReviewDecisionRequest,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    job = _owned_lifecycle_job(job_id, customer, db)
+    item = _owned_review_item(item_id, customer, db)
+    if item.lifecycle_job_id != job.id:
+        raise HTTPException(status_code=404, detail="Review item not found")
+    if item.status != "open":
+        raise HTTPException(status_code=409, detail="Review item has already been decided")
+
+    decided_at = datetime.utcnow()
+    reviewer = customer.email
+    signature_payload = {
+        "job_id": job.id,
+        "review_item_id": item.id,
+        "decision": payload.decision,
+        "notes": payload.notes.strip(),
+        "reviewer_id": customer.id,
+        "decided_at": decided_at.isoformat(),
+    }
+    item.status = "decided"
+    item.decision = payload.decision
+    item.notes = payload.notes.strip() or None
+    item.reviewer = reviewer
+    item.decided_at = decided_at
+    item.signature_hash = hashlib.sha256(
+        json.dumps(signature_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    db.flush()
+
+    if payload.decision == "reject":
+        job.status = "BLOCKED"
+        job.phase = "review_rejected"
+    else:
+        open_critical = (
+            db.query(ReviewItem)
+            .filter(
+                ReviewItem.lifecycle_job_id == job.id,
+                ReviewItem.severity == "critical",
+                ReviewItem.status == "open",
+            )
+            .count()
+        )
+        if open_critical == 0 and job.status == "REVIEW_REQUIRED":
+            job.status = "APPROVED"
+            job.phase = "approved"
+    db.commit()
+    db.refresh(item)
+    db.refresh(job)
+    return {"job": _serialize_lifecycle_job(job), "review_item": _serialize_review_item(item)}
+
+
+@app.get("/api/lifecycle-jobs/{job_id}/evidence/manifest")
+async def get_lifecycle_evidence_manifest(
+    job_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    job = _owned_lifecycle_job(job_id, customer, db)
+    manifest_path = Path(job.evidence_root or "") / "manifest.json"
+    if not job.evidence_root or not manifest_path.is_file():
+        raise HTTPException(status_code=409, detail="Evidence manifest is not available yet")
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+@app.get("/api/lifecycle-jobs/{job_id}/evidence/verify")
+async def verify_lifecycle_evidence(
+    job_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    job = _owned_lifecycle_job(job_id, customer, db)
+    if not job.evidence_root:
+        raise HTTPException(status_code=409, detail="Evidence is not available yet")
+    verification = verify_evidence_run(Path(job.evidence_root))
+    chain_valid = True
+    if job.previous_run_id:
+        previous = db.get(LifecycleJob, job.previous_run_id)
+        chain_valid = bool(
+            previous
+            and previous.project_id == job.project_id
+            and previous.manifest_hash == job.previous_manifest_hash
+            and (verification.get("manifest") or {}).get("previous_manifest_hash") == previous.manifest_hash
+        )
+    verification["previous_manifest_chain_valid"] = chain_valid
+    verification["valid"] = bool(verification.get("valid") and chain_valid)
+    return verification
+
+
 @app.post("/api/projects/{project_id}/ga4/config")
 async def update_project_ga4_config(
     project_id: str,
@@ -5461,7 +6578,15 @@ async def get_project_preflight(project_id: str, db: Session = Depends(get_db), 
     if not report_path.is_file():
         return {"status": "not_run", "project": _serialize_project(project, db)}
     try:
-        return json.loads(report_path.read_text(encoding="utf-8"))
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        pointer_map = _runtime_pointer_map(project.domain, db)
+        quality = pointer_map.get("quality") or assess_pointer_quality(pointer_map)
+        report["pointer_guidance"] = quality
+        report["deployment_preflight"] = {
+            "passed": not quality.get("recovery_required"),
+            "blockers": ["POINTER_RECOVERY_REQUIRED"] if quality.get("recovery_required") else [],
+        }
+        return report
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to read preflight report: {exc}")
 
@@ -5476,6 +6601,18 @@ async def run_project_preflight(
     project = _owned_project(project_id, customer, db)
     try:
         report = await _run_project_preflight(project, output_dir=config.output_dir if config else None)
+        pointer_map = _runtime_pointer_map(project.domain, db)
+        quality = pointer_map.get("quality") or assess_pointer_quality(pointer_map)
+        report["pointer_guidance"] = quality
+        report["deployment_preflight"] = {
+            "passed": not quality.get("recovery_required"),
+            "blockers": ["POINTER_RECOVERY_REQUIRED"] if quality.get("recovery_required") else [],
+        }
+        if quality.get("recovery_required"):
+            report["warnings"] = list(dict.fromkeys([
+                *(report.get("warnings") or []),
+                "Deployment is blocked until the Pointer Recovery Pass and required visual review are complete.",
+            ]))
         preserve_client_preflight_intelligence(project, report)
         return report
     except Exception as exc:
@@ -5574,6 +6711,7 @@ async def get_crawl_pointer_plot_map(
     crawl_job = _owned_crawl_job(job_id, customer, db)
     pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl_job.id).all()
     pointer_map = pointer_plot_map_from_pages(pages)
+    pointer_map["quality"] = assess_pointer_quality(pointer_map)
     return {
         "crawl_id": str(crawl_job.id),
         "project_id": str(crawl_job.project_id),

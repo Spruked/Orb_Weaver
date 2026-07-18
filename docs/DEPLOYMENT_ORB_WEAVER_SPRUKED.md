@@ -165,7 +165,7 @@ substrate/clients/orbweaver.spruked.com/website_orb_context/pointer_plot_map.jso
 substrate/clients/orbweaver.spruked.com/website_orb_context/tool_cache.json
 ```
 
-The pointer map should report nonzero `record_count`, no duplicate `target_id` values, and scoped locator data in each record's `semantic_locator` and `structural_context`.
+The pointer map must report nonzero `record_count`, no duplicate `target_id` values, scoped locator data, and acceptable confidence quality under `POINTER_RECOVERY_DOCTRINE.md`. Record count and duplicate checks alone are not a passed map. If the stable ratio, uncertainty ratio, absolute safe-pointer floor, or conflict threshold fails, report `POINTER_RECOVERY_REQUIRED`, allow only verified/stable live-matched guidance, and block deployment Preflight until recovery and required review complete.
 
 ## Spruked.com Navigation Tab
 

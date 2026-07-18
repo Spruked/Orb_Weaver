@@ -50,16 +50,38 @@ RUN groupadd --gid "${APP_GID}" orbweaver \
         --shell /usr/sbin/nologin \
         orbweaver
 
+RUN sed -i 's|pid /run/nginx.pid;|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf \
+    && sed -i '/^user /d' /etc/nginx/nginx.conf
+
+RUN mkdir -p \
+        /var/lib/nginx/body \
+        /var/lib/nginx/proxy \
+        /var/lib/nginx/fastcgi \
+        /var/lib/nginx/uwsgi \
+        /var/lib/nginx/scgi \
+        /var/cache/nginx \
+        /var/log/nginx \
+        /run/nginx \
+    && chown -R orbweaver:orbweaver \
+        /var/lib/nginx \
+        /var/cache/nginx \
+        /var/log/nginx \
+        /run/nginx
+
 RUN npm install -g chrome-devtools-mcp@1.3.0
 
 COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 COPY backend /app/backend
+RUN chown -R orbweaver:orbweaver /app/backend
+
 COPY Orb_Assistant /app/Orb_Assistant
 COPY vault_system /app/vault_system
 COPY ["Preflight Scanner", "/app/Preflight Scanner"]
 COPY --from=frontend-build /app/frontend/build /app/frontend/build
+COPY --from=frontend-build /app/frontend/node_modules/playwright /app/node_modules/playwright
+COPY --from=frontend-build /app/frontend/node_modules/playwright-core /app/node_modules/playwright-core
 COPY deploy/nginx/orb-weaver.conf /etc/nginx/conf.d/default.conf
 COPY deploy/docker/start-orb-weaver.sh /usr/local/bin/start-orb-weaver
 
@@ -77,3 +99,5 @@ RUN chmod +x /usr/local/bin/start-orb-weaver \
         /app/vault_system/runtime/state \
         /app/vault_system/runtime/logs \
         /run/nginx
+
+CMD ["/usr/local/bin/start-orb-weaver"]

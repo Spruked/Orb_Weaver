@@ -129,6 +129,25 @@ class OrbWeaverCrawler:
         self.current_depth: Dict[str, int] = {}
         self.total_pages_scraped = 0
         self.rejected_external_urls: Set[str] = set()
+        self.discovery_provenance: Dict[str, List[Dict]] = {}
+
+    def _record_discovery(
+        self,
+        url: str,
+        source_type: str,
+        *,
+        source_url: Optional[str] = None,
+        discovery_zone: Optional[str] = None,
+    ) -> None:
+        normalized = self._normalize_url(url)
+        record = {
+            "source_type": source_type,
+            "source_url": source_url,
+            "discovery_zone": discovery_zone or source_type,
+        }
+        records = self.discovery_provenance.setdefault(normalized, [])
+        if record not in records:
+            records.append(record)
 
     def _emit_progress(self, force: bool = False) -> None:
         if not self.progress_callback:
@@ -284,6 +303,12 @@ class OrbWeaverCrawler:
                     break
                 self.sitemap_urls.add(normalized_page)
                 self.discovered_urls.add(normalized_page)
+                self._record_discovery(
+                    normalized_page,
+                    "sitemap",
+                    source_url=normalized_sitemap,
+                    discovery_zone="sitemap",
+                )
             elif page_url:
                 self.rejected_external_urls.add(page_url)
         self._emit_progress()
@@ -306,13 +331,26 @@ class OrbWeaverCrawler:
                 internal_targets.append({
                     'url': normalized,
                     'anchor': anchor,
-                    'nofollow': 'nofollow' in (link.get('rel') or [])
+                    'nofollow': 'nofollow' in (link.get('rel') or []),
+                    'discovery_zone': self._link_discovery_zone(link),
                 })
             else:
                 external.add(normalized)
                 self.rejected_external_urls.add(normalized)
 
         return internal, external, internal_targets
+
+    @staticmethod
+    def _link_discovery_zone(link) -> str:
+        if link.find_parent("header"):
+            return "header"
+        if link.find_parent("footer"):
+            return "footer"
+        if link.find_parent("nav"):
+            return "navigation"
+        if link.find_parent("form"):
+            return "form_action"
+        return "body"
 
     def _extract_schema_markup(self, soup: BeautifulSoup) -> List[Dict]:
         schemas = []
@@ -780,6 +818,7 @@ class OrbWeaverCrawler:
             **semantic_analysis,
             "pointer_plot_records": pointer_plot_records,
             "pointer_plot_record_count": len(pointer_plot_records),
+            "discovery_provenance": self.discovery_provenance.get(normalized_url, []),
         }
 
         page_data = PageData(
@@ -835,6 +874,16 @@ class OrbWeaverCrawler:
                 self.rejected_external_urls.add(normalized_link)
                 continue
             self.discovered_urls.add(normalized_link)
+            target = next(
+                (item for item in internal_link_targets if item.get("url") == normalized_link),
+                {},
+            )
+            self._record_discovery(
+                normalized_link,
+                "internal_link",
+                source_url=normalized_url,
+                discovery_zone=target.get("discovery_zone") or "body",
+            )
             if normalized_link not in self.visited_urls and len(self.visited_urls) < self.max_pages:
                 await self._crawl_page(session, link, depth + 1)
             elif normalized_link not in self.visited_urls and len(self.visited_urls) >= self.max_pages:
@@ -861,6 +910,7 @@ class OrbWeaverCrawler:
             seen.add(normalized)
             resolved.append(normalized)
             self.discovered_urls.add(normalized)
+            self._record_discovery(normalized, "owner_seed", discovery_zone="owner_seed")
         return resolved
 
     async def crawl(self, start_url: str, seed_urls: Optional[List[str]] = None) -> List[PageData]:
@@ -868,6 +918,7 @@ class OrbWeaverCrawler:
         self.domain = parsed.netloc
         self.domain_key = self._domain_key(parsed.netloc)
         context_seed_urls = self._resolve_seed_urls(start_url, seed_urls)
+        self._record_discovery(start_url, "owner_seed", discovery_zone="owner_seed")
 
         # Check for sitemap and robots.txt
         async with aiohttp.ClientSession(
@@ -946,6 +997,7 @@ class OrbWeaverCrawler:
             'max_depth_configured': self.max_depth,
             'current_depth': dict(list(self.current_depth.items())[:5000]),
             'rejected_external_urls': sorted(self.rejected_external_urls)[:200],
+            'crawl_provenance': self.discovery_provenance,
             'host_normalization': {
                 'input_host': self.domain,
                 'canonical_host_key': self.domain_key,

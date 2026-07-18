@@ -20,6 +20,7 @@ class Project(Base):
 
     crawls = relationship("CrawlJob", back_populates="project")
     audits = relationship("AuditReport", back_populates="project")
+    lifecycle_jobs = relationship("LifecycleJob", back_populates="project")
     customer = relationship("Customer", back_populates="projects")
 
 class Customer(Base):
@@ -241,6 +242,50 @@ class AuditReport(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="audits")
+
+
+class LifecycleJob(Base):
+    __tablename__ = "lifecycle_jobs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    job_type = Column(String(50), nullable=False, index=True)
+    status = Column(String(50), nullable=False, default="PENDING", index=True)
+    phase = Column(String(100), nullable=False, default="queued")
+    progress_current = Column(Integer, default=0)
+    progress_total = Column(Integer, default=0)
+    config = Column(JSON, default=dict)
+    result = Column(JSON, default=dict)
+    evidence_root = Column(Text, nullable=True)
+    manifest_hash = Column(String(64), nullable=True, index=True)
+    previous_run_id = Column(Integer, nullable=True)
+    previous_manifest_hash = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    start_time = Column(DateTime, nullable=True)
+    end_time = Column(DateTime, nullable=True)
+
+    project = relationship("Project", back_populates="lifecycle_jobs")
+    review_items = relationship("ReviewItem", back_populates="lifecycle_job", cascade="all, delete-orphan")
+
+
+class ReviewItem(Base):
+    __tablename__ = "review_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lifecycle_job_id = Column(Integer, ForeignKey("lifecycle_jobs.id"), nullable=False, index=True)
+    severity = Column(String(30), nullable=False, default="warning")
+    category = Column(String(80), nullable=False)
+    title = Column(String(255), nullable=False)
+    details = Column(JSON, default=dict)
+    status = Column(String(30), nullable=False, default="open", index=True)
+    reviewer = Column(String(255), nullable=True)
+    decision = Column(String(50), nullable=True)
+    notes = Column(Text, nullable=True)
+    signature_hash = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    decided_at = Column(DateTime, nullable=True)
+
+    lifecycle_job = relationship("LifecycleJob", back_populates="review_items")
 
 class GA4Data(Base):
     __tablename__ = "ga4_data"
