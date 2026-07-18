@@ -1,0 +1,41 @@
+{
+  "schema": "orb_weaver.brand_assets.v1",
+  "identity": "ORB Weaver tuxedo logo family",
+  "assets": {
+    "banner": {
+      "path": "/orbweaver1600.png",
+      "width": 1600,
+      "height": 891,
+      "mime_type": "image/png",
+      "sha256": "061c2f18c4cc9601e3e922c1679fa953c44892b19cb2c5ce0b641326c61aa1d4"
+    },
+    "square": {
+      "path": "/orbweaverlogo1024.png",
+      "width": 1024,
+      "height": 1024,
+      "mime_type": "image/png",
+      "sha256": "ece50611f11782fdb599fb94a5a5ef4eba5efa9fb61363a4990e6d2fa7f7fa1d"
+    },
+    "touch": {
+      "path": "/apple-touch-icon.png",
+      "width": 512,
+      "height": 512,
+      "mime_type": "image/png",
+      "sha256": "057e23a1884086f097d1f6df37aa6193e635cbd577f2c1d95e25730001dbd015"
+    },
+    "compact": {
+      "path": "/orbsuitlogo128.png",
+      "width": 128,
+      "height": 128,
+      "mime_type": "image/png",
+      "sha256": "aad40cc253e9bb8f4893983889164e209ec0d8b29e7eeb6f927f202bbe1805d0"
+    },
+    "favicon": {
+      "path": "/favicon.ico",
+      "width": 64,
+      "height": 64,
+      "mime_type": "image/x-icon",
+      "sha256": "98379139e6fcb5cabf31ceac87ed0d37d979a468372502bb735fde9592187f1c"
+    }
+  }
+}
