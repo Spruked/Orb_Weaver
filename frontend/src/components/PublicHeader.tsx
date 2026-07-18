@@ -8,7 +8,6 @@ const publicNavItems = [
   { href: '/', label: 'Home' },
   { href: '/preflight', label: 'Preflight' },
   { href: '/marketplace', label: 'Marketplace' },
-  { href: '/circus', label: 'Circus' },
   { href: '/demo', label: 'Demonstration Station' },
   { href: '/login', label: 'Login' },
 ];
