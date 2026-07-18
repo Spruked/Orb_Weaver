@@ -20,7 +20,6 @@ import LegalPage from './pages/LegalPage';
 import RouteScrollReset from './components/RouteScrollReset';
 import LandingPage from './landing/LandingPage';
 import PublicPreflight from './pages/PublicPreflight';
-import PublicStaticPage from './pages/PublicStaticPage';
 import MarketplaceRoutes from './marketplace/MarketplaceRoutes';
 import { api, authStore, Customer } from './services/api';
 import './index.css';
@@ -110,9 +109,6 @@ function App() {
   }
   if (publicPath === '/preflight') {
     return renderPublicPage(<PublicPreflight />);
-  }
-  if (publicPath === '/circus') {
-    return renderPublicPage(<PublicStaticPage title="Orb Weaver Circus" src="/circus-page.html" />);
   }
   if (publicPath === '/marketplace' || publicPath.startsWith('/marketplace/')) {
     return renderPublicPage(<MarketplaceRoutes />);
