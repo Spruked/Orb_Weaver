@@ -62,12 +62,12 @@ const { chromium } = require('playwright');
   }));
   const loaderPath = path.resolve(__dirname, '../public/orb-loader.js');
   const loaderSource = fs.readFileSync(loaderPath, 'utf8');
-  const factoryAsset = fs.readFileSync(path.resolve(__dirname, '../public/orb-skins/factory-orb-v1.png'));
+  const factoryAsset = fs.readFileSync(path.resolve(__dirname, '../public/orb-skins/tuxorb.png'));
   await page.route('https://runtime.test/orb-loader.js', (route) => route.fulfill({
     contentType: 'application/javascript',
     body: loaderSource,
   }));
-  await page.route('https://runtime.test/orb-skins/factory-orb-v1.png', (route) => route.fulfill({
+  await page.route('https://runtime.test/orb-skins/tuxorb.png', (route) => route.fulfill({
     contentType: 'image/png', body: factoryAsset,
   }));
   await page.route('https://runtime.test/custom-skin.png', (route) => route.fulfill({
@@ -105,7 +105,7 @@ const { chromium } = require('playwright');
 
   await installLoader();
   await page.waitForFunction(() => window.OrbWeaver?.getStatus().online === true);
-  await page.waitForFunction(() => document.querySelector('#orb-weaver-universal-root')?.shadowRoot?.querySelector('[data-skin]')?.naturalWidth === 1492);
+  await page.waitForFunction(() => document.querySelector('#orb-weaver-universal-root')?.shadowRoot?.querySelector('[data-skin]')?.naturalWidth === 512);
   assert.equal(await page.locator('#orb-weaver-universal-root').count(), 1, 'one script must mount one ORB');
   assert.equal(await page.evaluate(() => !!document.querySelector('#orb-weaver-universal-root').shadowRoot), true, 'mount must use Shadow DOM');
   assert.deepEqual(await page.evaluate(() => window.OrbWeaver.getStatus()), {
@@ -115,7 +115,7 @@ const { chromium } = require('playwright');
     skinId: 'orb_factory_default_v1',
     customizationState: 'FACTORY_DEFAULT',
   }, 'Factory Default must be the first active identity');
-  assert.equal(await page.evaluate(() => document.querySelector('#orb-weaver-universal-root').shadowRoot.querySelector('[data-skin]').src), 'https://runtime.test/orb-skins/factory-orb-v1.png');
+  assert.equal(await page.evaluate(() => document.querySelector('#orb-weaver-universal-root').shadowRoot.querySelector('[data-skin]').src), 'https://runtime.test/orb-skins/tuxorb.png');
   assert.deepEqual(await page.evaluate(() => {
     const root = document.querySelector('#orb-weaver-universal-root').shadowRoot;
     const toggle = root.querySelector('[data-toggle]');
@@ -130,8 +130,8 @@ const { chromium } = require('playwright');
     toggle.style.height = '';
     return { naturalWidth: skin.naturalWidth, naturalHeight: skin.naturalHeight, objectFit: getComputedStyle(skin).objectFit, sizes };
   }), {
-    naturalWidth: 1492,
-    naturalHeight: 1474,
+    naturalWidth: 512,
+    naturalHeight: 512,
     objectFit: 'contain',
     sizes: [{ size: 48, width: 48, height: 48 }, { size: 84, width: 84, height: 84 }, { size: 128, width: 128, height: 128 }],
   }, 'Factory artwork must preserve its full aspect inside every supported ORB size');

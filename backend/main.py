@@ -5361,8 +5361,8 @@ async def website_orb_bootstrap(
         "orb_identity": {
             "skin_id": "orb_factory_default_v1",
             "display_name": "O.R.B.S. Factory Default",
-            "asset_path": "/orb-skins/factory-orb-v1.png",
-            "asset_sha256": "8eb49c628211c7d077fb65f3591107f1489124ccbfa840dc0f2381157cd87e61",
+            "asset_path": "/orb-skins/tuxorb.png",
+            "asset_sha256": "f447043b007e9aba07c0c67e3b5749751f8db327b21b09f1a763eca359e73ca5",
             "customization_state": "FACTORY_DEFAULT",
             "owner_consent_required": False,
             "owner_editable": False,

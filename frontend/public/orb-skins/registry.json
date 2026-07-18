@@ -4,7 +4,7 @@
   "skins": {
     "orb_factory_default_v1": {
       "display_name": "O.R.B.S. Factory Default",
-      "asset_path": "/orb-skins/factory-orb-v1.png",
+      "asset_path": "/orb-skins/tuxorb.png",
       "manifest_path": "/orb-skins/factory-orb-v1.manifest.json",
       "immutable": true,
       "fallback": true,

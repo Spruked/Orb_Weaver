@@ -44,7 +44,7 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 ### Universal ORB Loader and Factory Identity
 
 - `frontend/public/orb-loader.js` is the universal external-script adapter; `frontend/src/adapters/react-component.tsx` is the native React/TypeScript adapter. Both use the shared `frontend/src/orb-client/` core.
-- Every installation starts with immutable `orb_factory_default_v1` (**O.R.B.S. Factory Default**) from `/orb-skins/factory-orb-v1.png`.
+- Every installation starts with immutable `orb_factory_default_v1` (**O.R.B.S. Factory Default**) using the tuxedo asset at `/orb-skins/tuxorb.png`.
 - Factory Default is the permanent fallback. A failed custom asset and an explicit owner rollback both restore it immediately.
 - Skin selection is an appearance-only PATCH operation: it does not rebuild Site World or Pointer Map, restart the runtime, or disconnect the WebSocket.
 - The repository and local container image can include these files without implying that the public `orbweaver.spruked.com` loader has been deployed.
@@ -384,6 +384,7 @@ Automatic post-payment entitlement and fulfillment are not yet wired.
 ## Documentation
 
 - `docs/DEPLOYMENT_ORB_WEAVER_SPRUKED.md`
+- `docs/ORB_MARKETPLACE_ARCHITECTURE.md`
 - `docs/PACK_CONTRACT_V0_1.md`
 - `docs/INTELLIGENCE_PRESERVATION.md`
 - `docs/ORB_WEAVER_INTELLIGENCE_GRAPH_SPEC.md`

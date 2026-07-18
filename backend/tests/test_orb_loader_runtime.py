@@ -54,6 +54,8 @@ def test_bootstrap_accepts_registered_chatgpt_site_and_reports_page(tmp_path, mo
     assert payload["pointer_guidance"]["safe_pointer_count"] == 1
     assert payload["deployment_preflight"] == {"passed": False, "blockers": ["POINTER_RECOVERY_REQUIRED"]}
     assert payload["orb_identity"]["skin_id"] == "orb_factory_default_v1"
+    assert payload["orb_identity"]["asset_path"] == "/orb-skins/tuxorb.png"
+    assert payload["orb_identity"]["asset_sha256"] == "f447043b007e9aba07c0c67e3b5749751f8db327b21b09f1a763eca359e73ca5"
     assert payload["orb_identity"]["owner_editable"] is False
     assert payload["orb_identity"]["immutable_default"] is True
     assert payload["orb_identity"]["fallback_enabled"] is True

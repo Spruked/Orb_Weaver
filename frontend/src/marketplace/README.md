@@ -2,6 +2,8 @@
 
 This folder contains the isolated Marketplace experience for Orb Weaver.
 
+The permanent platform definition, product/package boundaries, creator model, delivery lifecycle, and trust requirements live in `docs/ORB_MARKETPLACE_ARCHITECTURE.md` at the repository root.
+
 ## Purpose
 - Keep marketplace UI and routing separate from dashboard pages.
 - Preserve standalone-ready architecture for future extraction.
