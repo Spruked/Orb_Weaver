@@ -1,10 +1,10 @@
 import React, { ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, 
-  Globe, 
-  Search, 
-  BarChart3, 
+  LayoutDashboard,
+  Globe,
+  Search,
+  BarChart3,
   Settings,
   FileText,
   User,
@@ -12,7 +12,6 @@ import {
   Shield,
   Store,
   Sparkles,
-  Tent,
   Activity,
   BrainCircuit,
   ChevronLeft,
@@ -41,7 +40,6 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
     { path: '/marketplace', icon: Store, label: 'Marketplace', reload: true },
     { path: '/web-weave', icon: BrainCircuit, label: 'Web Weave' },
     { path: '/demo', icon: Sparkles, label: 'Demo' },
-    { path: '/circus', icon: Tent, label: 'Circus', reload: true },
     { path: '/diagnostics', icon: Activity, label: 'Diagnostics', reload: true },
     { path: '/cart', icon: ShoppingCart, label: 'Cart' },
     ...(customer.is_admin ? [{ path: '/admin/customers', icon: Shield, label: 'Admin' }] : []),
@@ -75,7 +73,6 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
         {isSidebarOpen ? <ChevronLeft className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>
 
-      {/* Sidebar */}
       <aside
         className={`fixed left-0 top-0 z-30 flex h-full w-64 flex-col bg-brand-dark text-white shadow-xl transition-transform duration-200 md:w-64 md:translate-x-0 ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
@@ -97,10 +94,10 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
 
         <nav className="mt-3 flex-1 overflow-y-auto px-2 pb-4 md:px-4">
           {navItems.map((item) => {
-            const isActive = location.pathname === item.path || 
+            const isActive = location.pathname === item.path ||
                             (item.path !== '/' && location.pathname.startsWith(item.path));
             const navClassName = `mb-1.5 flex items-center justify-start gap-3 rounded-lg px-3 py-2.5 transition-all ${
-              isActive 
+              isActive
                 ? 'bg-brand-orange text-white shadow-lg'
                 : 'text-gray-300 hover:bg-white/10 hover:text-white'
             }`;
@@ -136,12 +133,11 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="min-h-screen flex-1 md:ml-64">
         <header className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3 md:px-8">
           <div className="flex items-center justify-between gap-4">
             <h2 className="min-w-0 truncate text-xl font-bold text-gray-800 md:text-2xl">
-              {navItems.find(n => location.pathname === n.path || 
+              {navItems.find(n => location.pathname === n.path ||
                 (n.path !== '/' && location.pathname.startsWith(n.path)))?.label || 'Dashboard'}
             </h2>
             <div className="flex min-w-0 items-center gap-3 md:gap-5">
