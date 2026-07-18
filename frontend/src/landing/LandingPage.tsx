@@ -29,6 +29,10 @@ const LandingPage: React.FC = () => {
               Run Free Preflight Scan
             </a>
 
+            <a className="ow-v2-secondary" href="https://campaign.orbweaver.spruked.com">
+              Campaign, Beta & Investor Portal
+            </a>
+
             <a className="ow-v2-secondary" href="#how">
               See the Intelligence Layer
             </a>
