@@ -20,6 +20,7 @@ import LegalPage from './pages/LegalPage';
 import RouteScrollReset from './components/RouteScrollReset';
 import LandingPage from './landing/LandingPage';
 import PublicPreflight from './pages/PublicPreflight';
+import PublicLeadPage from './pages/PublicLeadPage';
 import MarketplaceRoutes from './marketplace/MarketplaceRoutes';
 import { api, authStore, Customer } from './services/api';
 import './index.css';
@@ -94,13 +95,19 @@ function App() {
     return (
       <QueryClientProvider client={queryClient}>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <RouteScrollReset />
+          <RouteScrollReset />
           <LandingPage />
         </Router>
       </QueryClientProvider>
     );
   }
 
+  if (publicPath === '/founding-beta') {
+    return renderPublicPage(<PublicLeadPage type="beta" />);
+  }
+  if (publicPath === '/investor-contact') {
+    return renderPublicPage(<PublicLeadPage type="investor" />);
+  }
   if (!customer && publicPath === '/privacy') {
     return renderPublicPage(<LegalPage type="privacy" />);
   }
