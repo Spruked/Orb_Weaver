@@ -1,5 +1,6 @@
 import importlib
 import asyncio
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -91,6 +92,88 @@ def test_lifecycle_jobs_and_review_decisions_are_owner_scoped(tmp_path, monkeypa
     assert payload["job"]["status"] == "APPROVED"
     assert payload["review_item"]["signature_hash"]
     assert payload["review_item"]["reviewer"] == "lifecycle-owner@example.com"
+
+
+def test_owner_pointer_authority_is_signed_and_persisted_in_canonical_vault(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    owner_token = signup(client, "pointer-owner@example.com")
+    other_token = signup(client, "pointer-other@example.com")
+    project_id = int(client.post(
+        "/api/projects",
+        headers=auth(owner_token),
+        json={"name": "Pointer Authority", "domain": "pointer.test"},
+    ).json()["id"])
+    pointer = {
+        "target_id": "book-consult",
+        "page_route": "https://pointer.test/",
+        "target_type": "button",
+        "meaning": "button: Book consultation",
+        "intent_aliases": ["schedule a consult"],
+        "direct_aliases": ["book consultation"],
+        "topic_aliases": ["meeting"],
+        "semantic_locator": "#book-consult",
+        "content_fingerprint": "consult-fingerprint",
+        "structural_context": {"tag": "button", "parent_locator": "main"},
+        "allowed_actions": ["point"],
+        "status": "active",
+        "confidence": 0.62,
+        "confidence_class": "UNCERTAIN",
+        "runtime_policy": {"may_point": False},
+        "pointer_health": "NEW",
+    }
+    context_root = main.client_root("pointer.test") / "website_orb_context"
+    context_root.mkdir(parents=True, exist_ok=True)
+    (context_root / "pointer_plot_map.json").write_text(json.dumps({
+        "schema": "orb_weaver.pointer_plot_map.v1",
+        "record_count": 1,
+        "records": [pointer],
+        "by_page": {"https://pointer.test/": ["book-consult"]},
+    }), encoding="utf-8")
+
+    with main.SessionLocal() as db:
+        job = main.LifecycleJob(
+            project_id=project_id,
+            job_type="POINTER_RECOVERY",
+            status="REVIEW_REQUIRED",
+            phase="awaiting_pointer_visual_review",
+        )
+        db.add(job)
+        db.flush()
+        db.add(main.ReviewItem(
+            lifecycle_job_id=job.id,
+            severity="critical",
+            category="pointer_recovery_visual_review",
+            title="Review unresolved pointers",
+            details={"pointers": [pointer]},
+        ))
+        db.commit()
+        job_id = job.id
+
+    denied = client.post(
+        f"/api/lifecycle-jobs/{job_id}/pointers/book-consult/authority",
+        headers=auth(other_token),
+        json={"decision": "approve", "notes": "Not the owner."},
+    )
+    assert denied.status_code == 404
+
+    response = client.post(
+        f"/api/lifecycle-jobs/{job_id}/pointers/book-consult/authority",
+        headers=auth(owner_token),
+        json={"decision": "approve", "notes": "Verified against the current rendered page."},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["pointer"]["pointer_health"] == "OWNER_VERIFIED"
+    assert payload["pointer"]["confidence_class"] == "VERIFIED"
+    assert payload["pointer"]["runtime_policy"]["may_point"] is True
+    assert payload["pointer"]["runtime_policy"]["may_click"] is False
+    assert payload["signature_hash"]
+
+    canonical = json.loads((context_root / "pointer_plot_map.json").read_text(encoding="utf-8"))
+    authority = json.loads((context_root / "pointer_authority.json").read_text(encoding="utf-8"))
+    assert canonical["records"][0]["pointer_health"] == "OWNER_VERIFIED"
+    assert authority["decisions"][0]["target_id"] == "book-consult"
+    assert authority["decisions"][0]["signature_hash"] == payload["signature_hash"]
 
 
 def test_site_scan_requires_an_approved_map(tmp_path, monkeypatch):

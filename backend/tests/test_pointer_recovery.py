@@ -1,4 +1,9 @@
-from app.orb.pointer_recovery import assess_pointer_quality, reconcile_pointer_recovery
+from app.orb.pointer_recovery import (
+    assess_pointer_quality,
+    merge_canonical_pointer_authority,
+    promote_owner_verified_pointer,
+    reconcile_pointer_recovery,
+)
 
 
 def record(target_id, confidence_class, locator, meaning="button: Request discussion", route="/"):
@@ -103,3 +108,43 @@ def test_duplicate_targets_use_conflict_finding_class():
     recovered = reconcile_pointer_recovery({"records": duplicated}, {"observations": []})
     assert {pointer["finding_class"] for pointer in recovered["records"]} == {"CONFLICT"}
     assert all(pointer["finding_subreason"] == "selector_not_durable" for pointer in recovered["records"])
+
+
+def test_owner_verification_grants_pointing_but_never_click_or_navigation():
+    pointer_map = {"records": [record("consult", "UNCERTAIN", "#book-consult", "button: Book consultation")]}
+    approved = promote_owner_verified_pointer(
+        pointer_map,
+        "consult",
+        reviewer="owner@example.com",
+        signature_hash="signed-decision",
+        notes="Verified visually on desktop and mobile.",
+        decided_at="2026-07-19T12:00:00+00:00",
+    )
+    pointer = approved["records"][0]
+    assert pointer["pointer_health"] == "OWNER_VERIFIED"
+    assert pointer["confidence_class"] == "VERIFIED"
+    assert pointer["runtime_policy"]["may_point"] is True
+    assert pointer["runtime_policy"]["may_click"] is False
+    assert pointer["runtime_policy"]["may_navigate"] is False
+    assert pointer["owner_authority"]["signature_hash"] == "signed-decision"
+
+
+def test_rescan_retains_exact_owner_identity_and_demotes_stale_identity():
+    original = record("consult", "STABLE", "#book-consult", "button: Book consultation")
+    approved = promote_owner_verified_pointer(
+        {"records": [original]},
+        "consult",
+        reviewer="owner@example.com",
+        signature_hash="signed-decision",
+    )
+    retained = merge_canonical_pointer_authority(approved, {"records": [dict(original)]})
+    assert retained["records"][0]["pointer_health"] == "OWNER_VERIFIED"
+    assert retained["authority_reconciliation"]["retained_count"] == 1
+
+    replacement = record("consult-v2", "UNCERTAIN", "#book-consult-v2", "button: Book consultation")
+    demoted = merge_canonical_pointer_authority(approved, {"records": [replacement]})
+    stale = next(item for item in demoted["records"] if item["target_id"] == "consult")
+    assert stale["pointer_health"] == "DEPRECATED"
+    assert stale["status"] == "inactive"
+    assert stale["runtime_policy"]["may_point"] is False
+    assert stale["finding_subreason"] == "owner_verified_identity_not_confirmed_by_rescan"

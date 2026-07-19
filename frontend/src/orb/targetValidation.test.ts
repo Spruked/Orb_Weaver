@@ -106,4 +106,50 @@ describe("validateOrbPointerTarget", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("policy_blocked");
   });
+
+  it("rejects a stale selector that now identifies different content", () => {
+    document.body.innerHTML = '<main><button id="book-consult">Download brochure</button></main>';
+    const element = document.querySelector("button") as HTMLButtonElement;
+    element.getBoundingClientRect = () => ({
+      x: 10, y: 10, left: 10, top: 10, right: 210, bottom: 50, width: 200, height: 40,
+      toJSON: () => ({}),
+    });
+
+    const result = validateOrbPointerTarget({
+      target_id: "book-consult",
+      semantic_locator: "#book-consult",
+      content_fingerprint: "consult",
+      meaning: "button: Book consultation",
+      confidence_class: "VERIFIED",
+      runtime_policy: { may_point: true },
+      structural_context: { parent_locator: "main", tag: "button" },
+    }, { logger: { warn: jest.fn(), info: jest.fn() } });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("identity_mismatch");
+  });
+
+  it("selects the matching identity when a selector returns competing elements", () => {
+    document.body.innerHTML = '<main><button class="cta">Download brochure</button><button class="cta">Book consultation</button></main>';
+    const elements = Array.from(document.querySelectorAll("button")) as HTMLButtonElement[];
+    elements.forEach((element, index) => {
+      element.getBoundingClientRect = () => ({
+        x: 10, y: 10 + index * 50, left: 10, top: 10 + index * 50, right: 210,
+        bottom: 50 + index * 50, width: 200, height: 40, toJSON: () => ({}),
+      });
+    });
+
+    const result = validateOrbPointerTarget({
+      target_id: "book-consult",
+      semantic_locator: "button.cta",
+      content_fingerprint: "consult",
+      meaning: "button: Book consultation",
+      confidence_class: "VERIFIED",
+      runtime_policy: { may_point: true },
+      structural_context: { parent_locator: "main", tag: "button" },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.element).toBe(elements[1]);
+  });
 });

@@ -46,6 +46,7 @@ const Projects: React.FC = () => {
   const [lifecycleJobs, setLifecycleJobs] = useState<Record<string, LifecycleJob[]>>({});
   const [startingLifecycleKey, setStartingLifecycleKey] = useState('');
   const [decidingReviewItemId, setDecidingReviewItemId] = useState('');
+  const [decidingPointerTargetId, setDecidingPointerTargetId] = useState('');
   const [error, setError] = useState('');
 
   const loadPreflights = useCallback(async (projectList: Project[]) => {
@@ -136,6 +137,19 @@ const Projects: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Failed to record review decision');
     } finally {
       setDecidingReviewItemId('');
+    }
+  };
+
+  const handlePointerAuthority = async (jobId: string, targetId: string, decision: 'approve' | 'reject') => {
+    setError('');
+    setDecidingPointerTargetId(targetId);
+    try {
+      await api.decidePointerAuthority(jobId, targetId, decision);
+      await loadProjects(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to record pointer authority');
+    } finally {
+      setDecidingPointerTargetId('');
     }
   };
 
@@ -306,6 +320,14 @@ const Projects: React.FC = () => {
             const initialQuality = (orbScanJob?.result.pointer_quality || {}) as Record<string, unknown>;
             const recoveryReasons = (pointerRecoveryJob?.result.unresolved_reason_counts || {}) as Record<string, number>;
             const recoveryFindingClasses = (pointerRecoveryJob?.result.finding_class_counts || {}) as Record<string, number>;
+            const pointerReview = pointerRecoveryJob?.review_items.find(
+              (item) => item.status === 'open' && item.category === 'pointer_owner_verification'
+            ) || pointerRecoveryJob?.review_items.find(
+              (item) => item.status === 'open' && item.category === 'pointer_recovery_visual_review'
+            );
+            const pointerReviewDetails = (pointerReview?.details || {}) as Record<string, unknown>;
+            const pointerDecisions = (pointerReviewDetails.pointer_decisions || {}) as Record<string, unknown>;
+            const reviewPointers = (Array.isArray(pointerReviewDetails.pointers) ? pointerReviewDetails.pointers : []) as Array<Record<string, unknown>>;
             return (
             <div key={project.id} className="card hover:shadow-lg transition-shadow">
               <div className="flex items-start justify-between mb-4">
@@ -384,7 +406,7 @@ const Projects: React.FC = () => {
                             </div>
                           </div>
                         )}
-                        {job && openReview && (
+                        {job && openReview && !['pointer_recovery_visual_review', 'pointer_owner_verification'].includes(openReview.category) && (
                           <div className="mt-2 border-t border-gray-100 pt-2">
                             <p className="text-[11px] text-gray-700 mb-2">{openReview.title}</p>
                             <div className="flex gap-2">
@@ -457,6 +479,45 @@ const Projects: React.FC = () => {
                       <p className="mt-2 text-[10px] text-gray-600">
                         Findings: {Object.entries(recoveryFindingClasses).map(([finding, count]) => `${finding} ${count}`).join(' · ')}
                       </p>
+                    )}
+                    {pointerRecoveryJob && reviewPointers.length > 0 && (
+                      <div className="mt-3 space-y-2 border-t border-violet-100 pt-3">
+                        <p className="text-[11px] font-bold text-gray-900">Owner pointer review</p>
+                        {reviewPointers.filter((pointer) => !pointerDecisions[String(pointer.target_id || '')]).slice(0, 8).map((pointer) => {
+                          const targetId = String(pointer.target_id || '');
+                          const rawRoute = String(pointer.page_route || '/');
+                          const reviewUrl = /^https?:\/\//.test(rawRoute)
+                            ? rawRoute
+                            : `https://${project.domain}${rawRoute.startsWith('/') ? rawRoute : `/${rawRoute}`}`;
+                          return (
+                            <div key={targetId} className="rounded border border-violet-100 bg-violet-50 px-2 py-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="truncate text-[11px] font-semibold text-gray-900">{String(pointer.meaning || targetId)}</p>
+                                  <p className="truncate text-[10px] text-gray-600">{rawRoute} · {String(pointer.semantic_locator || 'No locator')}</p>
+                                  <p className="truncate text-[10px] text-gray-500">Fingerprint: {String(pointer.content_fingerprint || 'missing')} · Actions: {Array.isArray(pointer.allowed_actions) ? pointer.allowed_actions.join(', ') : 'none'}</p>
+                                </div>
+                                <a href={reviewUrl} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-violet-700">Inspect</a>
+                              </div>
+                              <div className="mt-2 flex gap-2">
+                                <button
+                                  onClick={() => handlePointerAuthority(pointerRecoveryJob.id, targetId, 'approve')}
+                                  disabled={decidingPointerTargetId === targetId}
+                                  className="rounded bg-green-100 px-2 py-1 text-[10px] font-semibold text-green-700 disabled:opacity-50"
+                                >Owner verify</button>
+                                <button
+                                  onClick={() => handlePointerAuthority(pointerRecoveryJob.id, targetId, 'reject')}
+                                  disabled={decidingPointerTargetId === targetId}
+                                  className="rounded bg-red-100 px-2 py-1 text-[10px] font-semibold text-red-700 disabled:opacity-50"
+                                >Reject</button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {reviewPointers.filter((pointer) => !pointerDecisions[String(pointer.target_id || '')]).length > 8 && (
+                          <p className="text-[10px] text-gray-500">Showing the next 8 unresolved pointers. Decisions reveal the next set.</p>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>

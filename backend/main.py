@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from io import BytesIO, StringIO
 import asyncio
 import base64
@@ -52,11 +52,15 @@ from app.lifecycle import (
     write_json_artifact,
 )
 from app.orb import scan_semantic_topology
+from app.orb.pointer_intent import resolve_pointer_intent
 from app.orb.pointer_plot import pointer_plot_map_from_pages, pointer_runtime_policy
 from app.orb.pointer_recovery import (
     assess_pointer_quality,
+    merge_canonical_pointer_authority,
     publish_recovered_pointer_map,
+    promote_owner_verified_pointer,
     reconcile_pointer_recovery,
+    reject_owner_pointer,
     recovery_routes,
     run_pointer_recovery_capture,
 )
@@ -372,6 +376,11 @@ class LifecycleJobConfig(BaseModel):
 
 class ReviewDecisionRequest(BaseModel):
     decision: str = Field(pattern="^(approve|reject|waive)$")
+    notes: str = Field(default="", max_length=4000)
+
+
+class PointerAuthorityDecisionRequest(BaseModel):
+    decision: str = Field(pattern="^(approve|reject)$")
     notes: str = Field(default="", max_length=4000)
 
 
@@ -3010,7 +3019,34 @@ def _pointer_summary(record: Dict[str, Any], score: float = 0.0) -> Dict[str, An
         "structural_context": record.get("structural_context") or {},
         "allowed_actions": record.get("allowed_actions") or [],
         "confidence": record.get("confidence"),
+        "confidence_class": record.get("confidence_class"),
+        "pointer_health": record.get("pointer_health"),
+        "guidance_eligible": (
+            record.get("confidence_class") in {"VERIFIED", "STABLE"}
+            and (record.get("runtime_policy") or {}).get("may_point") is not False
+        ),
         "match_score": round(score, 3),
+    }
+
+
+def _pointer_review_payload(record: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "target_id": record.get("target_id"),
+        "page_route": record.get("page_route"),
+        "target_type": record.get("target_type"),
+        "meaning": record.get("meaning"),
+        "intent_aliases": record.get("intent_aliases") or [],
+        "direct_aliases": record.get("direct_aliases") or [],
+        "topic_aliases": record.get("topic_aliases") or [],
+        "semantic_locator": record.get("semantic_locator"),
+        "content_fingerprint": record.get("content_fingerprint"),
+        "structural_context": record.get("structural_context") or {},
+        "allowed_actions": record.get("allowed_actions") or [],
+        "confidence": record.get("confidence"),
+        "confidence_class": record.get("confidence_class"),
+        "finding_class": record.get("finding_class"),
+        "finding_subreason": record.get("finding_subreason"),
+        "uncertainty_reasons": record.get("uncertainty_reasons") or [],
     }
 
 
@@ -3033,28 +3069,13 @@ def _lookup_pointer_context(
     if not domain:
         return []
     records = _load_pointer_records_for_domain(str(domain))
-    query_tokens = _tokenize_intent(transcript)
-    if not query_tokens:
-        return []
-
-    scored: List[Tuple[float, Dict[str, Any]]] = []
-    for record in records:
-        if not isinstance(record, dict) or record.get("status") not in (None, "active"):
-            continue
-        record_tokens = _tokenize_intent(_pointer_record_text(record))
-        if not record_tokens:
-            continue
-        overlap = query_tokens & record_tokens
-        if not overlap:
-            continue
-        score = len(overlap) / max(1, min(len(query_tokens), len(record_tokens)))
-        if record.get("target_type") in {"nav", "button", "link", "product"}:
-            score += 0.08
-        if score >= 0.2:
-            scored.append((score, record))
-
-    matches = sorted(scored, key=lambda item: item[0], reverse=True)[:max_records]
-    return [_pointer_summary(record, score) for score, record in matches]
+    matches = resolve_pointer_intent(
+        records,
+        transcript,
+        str(website_context.get("current_url") or "/"),
+        max_records=max_records,
+    )
+    return [_pointer_summary(match.record, match.score) for match in matches]
 
 
 def _build_page_capsule(target_url: str) -> Dict[str, Any]:
@@ -4685,9 +4706,12 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
             job.progress_current = len(capture.get("observations") or [])
             job.phase = "reconciling_pointer_evidence"
             recovered_map = reconcile_pointer_recovery(baseline_pointer_map, capture)
+            context_root = client_root(project.domain) / "website_orb_context"
+            existing_canonical_map = _load_json_if_present(context_root / "pointer_plot_map.json") or {}
+            recovered_map = merge_canonical_pointer_authority(existing_canonical_map, recovered_map)
             write_json_artifact(root, "verification/orb/pointer_map.json", recovered_map)
             write_json_artifact(root, "reconciliation/pointer_recovery.json", recovered_map.get("recovery") or {})
-            context_root = client_root(project.domain) / "website_orb_context"
+            write_json_artifact(root, "reconciliation/pointer_authority.json", recovered_map.get("authority_reconciliation") or {})
             publish_recovered_pointer_map(recovered_map, context_root / "pointer_plot_map.json")
 
             recovery_summary = recovered_map.get("recovery") or {}
@@ -4715,15 +4739,25 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
                 "pointer_quality": quality,
                 "published_pointer_map": str((context_root / "pointer_plot_map.json").resolve()),
             }
+            promoted_for_owner_review = [
+                _pointer_review_payload(record)
+                for record in recovered_map.get("records") or []
+                if record.get("recovery_status") == "promoted"
+            ]
+            if promoted_for_owner_review:
+                db.add(ReviewItem(
+                    lifecycle_job_id=job.id,
+                    severity="warning",
+                    category="pointer_owner_verification",
+                    title="Owner-verify recovered pointer identities before production guidance",
+                    details={
+                        "pointer_count": len(promoted_for_owner_review),
+                        "pointers": promoted_for_owner_review,
+                    },
+                ))
             if quality.get("recovery_required") or int(recovery_summary.get("unresolved_count") or 0) > 0:
                 unresolved = [
-                    {
-                        "target_id": record.get("target_id"),
-                        "page_route": record.get("page_route"),
-                        "finding_class": record.get("finding_class"),
-                        "finding_subreason": record.get("finding_subreason"),
-                        "uncertainty_reasons": record.get("uncertainty_reasons") or [],
-                    }
+                    _pointer_review_payload(record)
                     for record in recovered_map.get("records") or []
                     if record.get("recovery_status") == "visual_review_required"
                 ]
@@ -4741,6 +4775,9 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
                 ))
                 final_status = "REVIEW_REQUIRED"
                 job.phase = "awaiting_pointer_visual_review"
+            elif promoted_for_owner_review:
+                final_status = "REVIEW_REQUIRED"
+                job.phase = "awaiting_pointer_owner_verification"
             else:
                 job.phase = "pointer_recovery_complete"
         elif job.job_type == "FULL_AUDIT":
@@ -6459,6 +6496,170 @@ async def decide_lifecycle_review_item(
     db.refresh(item)
     db.refresh(job)
     return {"job": _serialize_lifecycle_job(job), "review_item": _serialize_review_item(item)}
+
+
+@app.post("/api/lifecycle-jobs/{job_id}/pointers/{target_id}/authority")
+async def decide_pointer_authority(
+    job_id: str,
+    target_id: str,
+    payload: PointerAuthorityDecisionRequest,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    job = _owned_lifecycle_job(job_id, customer, db)
+    if job.job_type != "POINTER_RECOVERY" or job.status not in {"REVIEW_REQUIRED", "APPROVED"}:
+        raise HTTPException(status_code=409, detail="Pointer authority requires a reviewed Pointer Recovery job")
+    project = db.get(Project, job.project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    context_root = client_root(project.domain) / "website_orb_context"
+    pointer_path = context_root / "pointer_plot_map.json"
+    pointer_map = _load_json_if_present(pointer_path)
+    if not pointer_map:
+        raise HTTPException(status_code=409, detail="The canonical pointer map is unavailable")
+
+    matching_item: Optional[ReviewItem] = None
+    reviewed_pointer: Optional[Dict[str, Any]] = None
+    for review_item in job.review_items:
+        if review_item.category not in {"pointer_recovery_visual_review", "pointer_owner_verification"}:
+            continue
+        pointers = (review_item.details or {}).get("pointers") or []
+        for pointer in pointers:
+            if isinstance(pointer, dict) and str(pointer.get("target_id") or "") == target_id:
+                matching_item = review_item
+                reviewed_pointer = pointer
+                break
+        if reviewed_pointer:
+            break
+    if not matching_item or not reviewed_pointer:
+        raise HTTPException(status_code=409, detail="Pointer target is not part of this job's owner review evidence")
+
+    canonical_pointer = next(
+        (
+            record for record in pointer_map.get("records") or []
+            if isinstance(record, dict) and str(record.get("target_id") or "") == target_id
+        ),
+        None,
+    )
+    identity_fields = ("page_route", "meaning", "semantic_locator", "content_fingerprint", "structural_context", "allowed_actions")
+    if not canonical_pointer or any(canonical_pointer.get(field) != reviewed_pointer.get(field) for field in identity_fields):
+        raise HTTPException(status_code=409, detail="Canonical pointer identity changed after review evidence was captured; run a fresh recovery")
+
+    decided_at = datetime.now(timezone.utc).isoformat()
+    notes = payload.notes.strip()
+    signature_payload = {
+        "job_id": job.id,
+        "project_id": project.id,
+        "target_id": target_id,
+        "decision": payload.decision,
+        "notes": notes,
+        "reviewer_id": customer.id,
+        "reviewer": customer.email,
+        "decided_at": decided_at,
+    }
+    signature_hash = hashlib.sha256(
+        json.dumps(signature_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    try:
+        if payload.decision == "approve":
+            updated_map = promote_owner_verified_pointer(
+                pointer_map,
+                target_id,
+                reviewer=customer.email,
+                signature_hash=signature_hash,
+                notes=notes,
+                decided_at=decided_at,
+            )
+        else:
+            updated_map = reject_owner_pointer(
+                pointer_map,
+                target_id,
+                reviewer=customer.email,
+                signature_hash=signature_hash,
+                notes=notes,
+                decided_at=decided_at,
+            )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Pointer target not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    decision_record = {**signature_payload, "signature_hash": signature_hash}
+    authority_path = context_root / "pointer_authority.json"
+    authority_log = _load_json_if_present(authority_path) or {
+        "schema": "orb_weaver.pointer_authority.v1",
+        "domain": project.domain,
+        "decisions": [],
+    }
+    authority_log["decisions"] = [*(authority_log.get("decisions") or []), decision_record]
+    authority_log["updated_at"] = decided_at
+    publish_recovered_pointer_map(updated_map, pointer_path)
+    publish_recovered_pointer_map(authority_log, authority_path)
+
+    pointers = (matching_item.details or {}).get("pointers") or []
+    details = dict(matching_item.details or {})
+    decisions = dict(details.get("pointer_decisions") or {})
+    decisions[target_id] = decision_record
+    details["pointer_decisions"] = decisions
+    matching_item.details = details
+    expected_ids = {
+        str(pointer.get("target_id"))
+        for pointer in pointers
+        if isinstance(pointer, dict) and pointer.get("target_id")
+    }
+    if expected_ids and expected_ids.issubset(decisions):
+        matching_item.status = "decided"
+        matching_item.decision = "resolved"
+        matching_item.reviewer = customer.email
+        matching_item.decided_at = datetime.fromisoformat(decided_at)
+        matching_item.signature_hash = hashlib.sha256(
+            json.dumps(decisions, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+
+    db.flush()
+    open_critical = db.query(ReviewItem).filter(
+        ReviewItem.lifecycle_job_id == job.id,
+        ReviewItem.severity == "critical",
+        ReviewItem.status == "open",
+    ).count()
+    if open_critical == 0:
+        job.status = "APPROVED"
+        job.phase = "pointer_authority_review_complete"
+    db.commit()
+
+    if job.evidence_root:
+        evidence_root = Path(job.evidence_root)
+        if evidence_root.is_dir():
+            safe_target_id = re.sub(r"[^a-zA-Z0-9_.-]+", "_", target_id)
+            write_json_artifact(evidence_root, f"review/pointer_{safe_target_id}_{signature_hash[:12]}.json", decision_record)
+            manifest = finalize_evidence_run(
+                evidence_root,
+                run_id=job.id,
+                project_id=project.id,
+                domain=project.domain,
+                job_type=job.job_type,
+                status=job.status,
+                scan_contract={"job_type": job.job_type, "config": job.config or {}, "source_job_id": (job.config or {}).get("source_job_id")},
+                previous_run_id=job.previous_run_id,
+                previous_manifest_hash=job.previous_manifest_hash,
+                metadata={"result": job.result or {}, "latest_pointer_authority_decision": decision_record},
+            )
+            job.manifest_hash = manifest["manifest_hash"]
+            db.commit()
+
+    db.refresh(job)
+    return {
+        "job": _serialize_lifecycle_job(job),
+        "target_id": target_id,
+        "decision": payload.decision,
+        "signature_hash": signature_hash,
+        "pointer": next(
+            record for record in updated_map.get("records") or []
+            if str(record.get("target_id") or "") == target_id
+        ),
+        "review_item": _serialize_review_item(matching_item) if matching_item else None,
+    }
 
 
 @app.get("/api/lifecycle-jobs/{job_id}/evidence/manifest")

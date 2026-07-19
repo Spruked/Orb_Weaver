@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import shutil
 import subprocess
@@ -262,6 +263,237 @@ def publish_recovered_pointer_map(pointer_map: Dict[str, Any], target: Path) -> 
         except FileNotFoundError:
             pass
         raise
+
+
+def promote_owner_verified_pointer(
+    pointer_map: Dict[str, Any],
+    target_id: str,
+    *,
+    reviewer: str,
+    signature_hash: str,
+    notes: str = "",
+    decided_at: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Promote exactly one reviewed pointer without granting any click authority."""
+    required_identity = {
+        "target_id",
+        "page_route",
+        "meaning",
+        "semantic_locator",
+        "content_fingerprint",
+        "allowed_actions",
+    }
+    result = dict(pointer_map)
+    records: List[Dict[str, Any]] = []
+    promoted = False
+    timestamp = decided_at or datetime.now(timezone.utc).isoformat()
+    for original in pointer_map.get("records") or []:
+        record = dict(original)
+        if str(record.get("target_id") or "") != target_id:
+            records.append(record)
+            continue
+        missing = sorted(key for key in required_identity if not record.get(key))
+        if missing:
+            raise ValueError(f"Pointer identity is incomplete: {', '.join(missing)}")
+        if record.get("status") not in (None, "active"):
+            raise ValueError("Only an active pointer may receive owner verification")
+        prior_health = str(record.get("pointer_health") or "NEW")
+        record["confidence"] = max(float(record.get("confidence") or 0.0), 0.95)
+        record["confidence_class"] = "VERIFIED"
+        record["pointer_health"] = "OWNER_VERIFIED"
+        record["runtime_policy"] = {
+            "behavior": "guide_and_verify_before_action",
+            "may_point": True,
+            "must_verify_before_action": True,
+            "requires_confirmation": False,
+            "may_click": False,
+            "may_navigate": False,
+        }
+        authority = {
+            "state": "OWNER_VERIFIED",
+            "reviewer": reviewer,
+            "signature_hash": signature_hash,
+            "decided_at": timestamp,
+            "notes": notes,
+            "identity_hash": _pointer_identity_hash(record),
+        }
+        record["owner_authority"] = authority
+        record["authority_history"] = [
+            *(record.get("authority_history") or []),
+            {
+                "event": "owner_verified",
+                "from": prior_health,
+                "to": "OWNER_VERIFIED",
+                **authority,
+            },
+        ]
+        promoted = True
+        records.append(record)
+    if not promoted:
+        raise KeyError(f"Pointer target not found: {target_id}")
+    result["records"] = records
+    result["record_count"] = len(records)
+    result["by_page"] = _records_by_page(records)
+    result["quality"] = assess_pointer_quality(result)
+    return result
+
+
+def reject_owner_pointer(
+    pointer_map: Dict[str, Any],
+    target_id: str,
+    *,
+    reviewer: str,
+    signature_hash: str,
+    notes: str = "",
+    decided_at: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Record an owner rejection and make the target ineligible for guidance."""
+    result = dict(pointer_map)
+    records: List[Dict[str, Any]] = []
+    rejected = False
+    timestamp = decided_at or datetime.now(timezone.utc).isoformat()
+    for original in pointer_map.get("records") or []:
+        record = dict(original)
+        if str(record.get("target_id") or "") != target_id:
+            records.append(record)
+            continue
+        record["confidence_class"] = "BLOCKED"
+        record["runtime_policy"] = {
+            "behavior": "voice_only_owner_rejected",
+            "may_point": False,
+            "must_verify_before_action": True,
+            "requires_confirmation": True,
+            "may_click": False,
+            "may_navigate": False,
+        }
+        record["finding_class"] = "BLOCKED"
+        record["finding_subreason"] = "owner_rejected_pointer_identity"
+        record["authority_history"] = [
+            *(record.get("authority_history") or []),
+            {
+                "event": "owner_rejected",
+                "from": str(record.get("pointer_health") or "NEW"),
+                "to": "BLOCKED",
+                "reviewer": reviewer,
+                "signature_hash": signature_hash,
+                "decided_at": timestamp,
+                "notes": notes,
+                "identity_hash": _pointer_identity_hash(record),
+            },
+        ]
+        rejected = True
+        records.append(record)
+    if not rejected:
+        raise KeyError(f"Pointer target not found: {target_id}")
+    result["records"] = records
+    result["record_count"] = len(records)
+    result["by_page"] = _records_by_page(records)
+    result["quality"] = assess_pointer_quality(result)
+    return result
+
+
+def merge_canonical_pointer_authority(
+    previous_map: Dict[str, Any],
+    candidate_map: Dict[str, Any],
+    *,
+    reconciled_at: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Carry owner authority forward only when the complete target identity survives."""
+    timestamp = reconciled_at or datetime.now(timezone.utc).isoformat()
+    previous_owner = {
+        str(record.get("target_id")): record
+        for record in previous_map.get("records") or []
+        if record.get("pointer_health") == "OWNER_VERIFIED"
+    }
+    records: List[Dict[str, Any]] = []
+    retained: set[str] = set()
+    for original in candidate_map.get("records") or []:
+        record = dict(original)
+        target_id = str(record.get("target_id") or "")
+        prior = previous_owner.get(target_id)
+        if prior and _pointer_identity_hash(prior) == _pointer_identity_hash(record):
+            record["confidence"] = max(float(record.get("confidence") or 0.0), 0.95)
+            record["confidence_class"] = "VERIFIED"
+            record["pointer_health"] = "OWNER_VERIFIED"
+            record["runtime_policy"] = dict(prior.get("runtime_policy") or {})
+            record["owner_authority"] = dict(prior.get("owner_authority") or {})
+            record["authority_history"] = [
+                *(prior.get("authority_history") or []),
+                {
+                    "event": "owner_authority_retained_after_rescan",
+                    "from": "OWNER_VERIFIED",
+                    "to": "OWNER_VERIFIED",
+                    "decided_at": timestamp,
+                    "identity_hash": _pointer_identity_hash(record),
+                },
+            ]
+            retained.add(target_id)
+        records.append(record)
+
+    for target_id, prior in previous_owner.items():
+        if target_id in retained:
+            continue
+        stale = dict(prior)
+        stale["status"] = "inactive"
+        stale["confidence_class"] = "BLOCKED"
+        stale["pointer_health"] = "DEPRECATED"
+        stale["runtime_policy"] = {
+            "behavior": "voice_only_stale_owner_identity",
+            "may_point": False,
+            "must_verify_before_action": True,
+            "requires_confirmation": True,
+            "may_click": False,
+            "may_navigate": False,
+        }
+        stale["finding_class"] = "UNVERIFIED"
+        stale["finding_subreason"] = "owner_verified_identity_not_confirmed_by_rescan"
+        stale["authority_history"] = [
+            *(prior.get("authority_history") or []),
+            {
+                "event": "owner_authority_demoted_after_rescan",
+                "from": "OWNER_VERIFIED",
+                "to": "DEPRECATED",
+                "decided_at": timestamp,
+                "identity_hash": _pointer_identity_hash(prior),
+            },
+        ]
+        records.append(stale)
+
+    result = dict(candidate_map)
+    result["records"] = records
+    result["record_count"] = len(records)
+    result["by_page"] = _records_by_page(records)
+    result["authority_reconciliation"] = {
+        "schema": "orb_weaver.pointer_authority_reconciliation.v1",
+        "reconciled_at": timestamp,
+        "previous_owner_verified_count": len(previous_owner),
+        "retained_count": len(retained),
+        "demoted_count": len(previous_owner) - len(retained),
+    }
+    result["quality"] = assess_pointer_quality(result)
+    return result
+
+
+def _pointer_identity_hash(record: Dict[str, Any]) -> str:
+    identity = {
+        "target_id": record.get("target_id"),
+        "page_route": _route(record.get("page_route")),
+        "meaning": _meaning(record),
+        "semantic_locator": record.get("semantic_locator"),
+        "content_fingerprint": record.get("content_fingerprint"),
+        "structural_context": record.get("structural_context") or {},
+        "allowed_actions": sorted(str(item) for item in record.get("allowed_actions") or []),
+    }
+    return hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+
+
+def _records_by_page(records: Iterable[Dict[str, Any]]) -> Dict[str, List[str]]:
+    by_page: Dict[str, List[str]] = defaultdict(list)
+    for record in records:
+        by_page[str(record.get("page_route") or "")].append(str(record.get("target_id") or ""))
+    return dict(by_page)
 
 
 def recovery_routes(pointer_map: Dict[str, Any], configured: Optional[List[str]] = None) -> List[str]:

@@ -6,6 +6,29 @@ Update this file after meaningful code, configuration, runtime, testing, or doct
 
 ---
 
+## 2026-07-19 — Owner-Verified Pointer Authority Milestone
+
+### Implemented
+
+* Added per-target owner authority decisions for Pointer Recovery jobs. Decisions are owner-scoped, signed, persisted beside the canonical pointer map, and included in lifecycle review evidence.
+* `OWNER_VERIFIED` pointers become `VERIFIED` and may point only after live DOM verification; approval explicitly grants neither click nor navigation authority.
+* Owner rejection blocks pointing. A later rescan retains owner authority only when the full target identity is unchanged; missing or changed identities are preserved as inactive `DEPRECATED` audit records.
+* Added route-scoped deterministic semantic intent resolution with paraphrase concepts and ambiguity rejection. Uncertain matches remain voice-only.
+* Added owner pointer review controls showing route, locator, fingerprint, permissions, and a live inspection link.
+* Expanded crawler extraction to include meaningful CTA links outside navigation and to use their `href` as the semantic locator. Navigation links are not duplicated as CTAs.
+
+### Verification
+
+* Backend: 29 passed.
+* Frontend: 6 passed; TypeScript no-emit passed; optimized production build passed.
+* Loader smoke: 25 checks passed, 8 bootstrap reports, 0 console errors.
+* Fresh canonical campaign Map Crawl job 2 / crawl 27 captured `/` and `/investor` and is correctly paused at `REVIEW_REQUIRED` for real owner approval.
+* Proposed first acceptance target: `target_598ed88cc1a1`, “Join the Founding Beta →”, on `/`, scoped beneath “Test it on real websites.” The similarly named footer CTA remains a separate record and structural context.
+
+### Required next action
+
+* The owner must approve lifecycle Map Crawl job 2 before Site Scan, ORB Scan, Pointer Recovery, and the real target authority decision can proceed. Do not manufacture or bypass the owner signature.
+
 ## 2026-07-15 — Canonical Root Vault and Website Voice Lifecycle Repair
 
 ### Repository checkpoint

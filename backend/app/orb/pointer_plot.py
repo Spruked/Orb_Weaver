@@ -153,7 +153,7 @@ def _candidate_elements(soup: BeautifulSoup) -> List[tuple[Tag, str]]:
         href = anchor.get("href", "")
         if _looks_like_download(href):
             candidates.append((anchor, "download"))
-        elif anchor.get("role") == "button" or _has_button_class(anchor):
+        elif not anchor.find_parent("nav"):
             candidates.append((anchor, "button"))
 
     for paragraph in soup.find_all("p"):
@@ -179,6 +179,9 @@ def _semantic_locator(element: Tag) -> str:
         value = element.get(attr)
         if value:
             return f'{element.name}[{attr}="{_css_escape(str(value))}"]'
+
+    if element.name == "a" and element.get("href"):
+        return f'a[href="{_css_escape(str(element.get("href")))}"]'
 
     role = element.get("role")
     text = _visible_text(element)

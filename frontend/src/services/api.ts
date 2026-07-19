@@ -1098,6 +1098,11 @@ export const api = {
       `/api/lifecycle-jobs/${jobId}/review-items/${itemId}/decision`,
       { method: 'POST', body: JSON.stringify({ decision, notes }) }
     ),
+  decidePointerAuthority: (jobId: string, targetId: string, decision: 'approve' | 'reject', notes = '') =>
+    request<{ job: LifecycleJob; target_id: string; decision: string; signature_hash: string; pointer: WebsiteOrbPointerRecord }>(
+      `/api/lifecycle-jobs/${jobId}/pointers/${encodeURIComponent(targetId)}/authority`,
+      { method: 'POST', body: JSON.stringify({ decision, notes }) }
+    ),
   verifyLifecycleEvidence: (jobId: string) =>
     request<{ valid: boolean; previous_manifest_chain_valid: boolean }>(`/api/lifecycle-jobs/${jobId}/evidence/verify`),
   startCrawl: (projectId: string, config: CrawlConfig) =>
