@@ -22,9 +22,12 @@ ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from app.crawler.engine import OrbWeaverCrawler  # noqa: E402
 from app.orb.pointer_plot import pointer_plot_map_from_pages  # noqa: E402
+from vault_system.paths import client_root  # noqa: E402
 
 
 def _safe_pack_name(value: str) -> str:
@@ -69,8 +72,9 @@ async def run(args: argparse.Namespace) -> Dict[str, Any]:
     duplicates = _duplicate_target_ids(records)
 
     domain = args.domain or _domain_from_url(args.url)
-    context_dir = Path(args.substrate_root) / "clients" / _safe_pack_name(domain) / "website_orb_context"
-    current_dir = Path(args.substrate_root) / "clients" / _safe_pack_name(domain) / "current"
+    site_vault = client_root(domain)
+    context_dir = site_vault / "website_orb_context"
+    current_dir = site_vault / "current"
     pointer_path = context_dir / "pointer_plot_map.json"
     existing_pointer_map = _read_json(pointer_path)
     existing_count = int(existing_pointer_map.get("record_count") or 0)
@@ -104,7 +108,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Self-scan a site and write Orb Weaver pointer artifacts.")
     parser.add_argument("--url", default="https://orbweaver.spruked.com")
     parser.add_argument("--domain", default="")
-    parser.add_argument("--substrate-root", default="substrate")
     parser.add_argument("--max-pages", type=int, default=50)
     parser.add_argument("--max-depth", type=int, default=4)
     parser.add_argument("--delay", type=float, default=0.1)

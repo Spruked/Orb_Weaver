@@ -93,13 +93,16 @@ Orb Weaver scans
 
 ## Storage boundary
 
-The following are compatibility paths only after migration and must point into the root vault rather than contain independent records:
+The following are prohibited legacy locations. Migration may read and remove
+them, but no compatibility package or second `vault_system` directory may
+remain after finalization:
 
 - `substrate/clients`
 - malformed `backend/R:\R_Drive_Substrate/.../clients` trees
 - `backend/data`
 - `data/tts_cache`
-- `Orb_Assistant/vault_system/posteriori`
-- `Orb_Assistant/src/vault_system/posteriori`
+- `Orb_Assistant/vault_system`
+- `Orb_Assistant/src/vault_system`
+- `Orb_Assistant/src/logic_seeds/*/vault`
 
 Use `scripts/migrate_to_canonical_vault.py` to inventory, verify, consolidate, and finalize these paths without overwriting conflicting records.

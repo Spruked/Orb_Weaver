@@ -13,12 +13,13 @@ Any changes to this interface require full system validation.
 from pathlib import Path
 from typing import Dict
 from .validation_state import IntuitiveValidationCognition
+from vault_system.paths import worker_vault
 
 
 class IntuitiveValidator:
     def __init__(self, worker_root: Path):
         self.root = worker_root
-        self.vault_path = worker_root / "vault"
+        self.vault_path = worker_vault("intuitive_validator")
         self.cognition = IntuitiveValidationCognition(self.vault_path)
 
         self.symmetry_threshold = 0.88

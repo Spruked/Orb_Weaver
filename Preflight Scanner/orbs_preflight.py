@@ -11,7 +11,14 @@ import json
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Any, Dict
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from vault_system.paths import LOGS_ROOT
 
 # ---------------------------------------------------------------------------
 # Optional import — compile-safe fallback
@@ -27,7 +34,8 @@ except ImportError:
 # ---------------------------------------------------------------------------
 logger = logging.getLogger("orbs_preflight")
 if not logger.handlers:
-    _handler = logging.FileHandler("scanner.log")
+    LOGS_ROOT.mkdir(parents=True, exist_ok=True)
+    _handler = logging.FileHandler(LOGS_ROOT / "orbs_preflight.log")
     _handler.setFormatter(logging.Formatter(
         "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
     ))

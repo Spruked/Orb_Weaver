@@ -7,7 +7,7 @@ from pathlib import Path
 from collections import deque
 from Orb_Assistant.src.hlsf_geometry.engine import hlsf_singleton
 from Orb_Assistant.src.components.core_4_minds.tribunal import FourMindTribunal
-from Orb_Assistant.src.vault_system.manager import VaultManager
+from vault_system.manager import VaultManager
 
 # Ensure parent dir (where bayesian_engine.py lives) is importable without packaging.
 PARENT = Path(__file__).resolve().parent.parent
@@ -326,7 +326,9 @@ class SF_ORB_Controller:
     def __init__(self):
         print("Initializing SF-ORB Sovereign Logic...")
         self.engine = hlsf_singleton
-        self.tribunal = FourMindTribunal(skg_path="components/core_4_minds")
+        self.tribunal = FourMindTribunal(
+            skg_path=str(Path(__file__).resolve().parent / "components" / "core_4_minds")
+        )
         self.vaults = VaultManager()
         self.habit_tracker = HabitTracker(self.vaults)
         self.intuitive_recognizer = IntuitiveRecognizer(self.engine)

@@ -6,11 +6,18 @@ import json
 import os
 import queue
 import subprocess
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from vault_system.paths import LOGS_ROOT
 
 
 DEFAULT_TOOLS = [
@@ -301,7 +308,7 @@ def main() -> None:
     parser.add_argument("--python", default=os.getenv("ORB_DESKTOP_MCP_PYTHON", "python3.12"))
     parser.add_argument("--token", default=os.getenv("ORB_MCP_RELAY_TOKEN", ""))
     parser.add_argument("--timeout", type=float, default=float(os.getenv("ORB_MCP_RELAY_TIMEOUT", "30")))
-    parser.add_argument("--audit-log", default=os.getenv("ORB_MCP_RELAY_AUDIT_LOG", "backend/data/orb_mcp_host_relay_audit.jsonl"))
+    parser.add_argument("--audit-log", default=os.getenv("ORB_MCP_RELAY_AUDIT_LOG", str(LOGS_ROOT / "orb_mcp_host_relay_audit.jsonl")))
     parser.add_argument("--enable-mutation", action="store_true", default=os.getenv("ORB_MCP_ENABLE_MUTATION", "").lower() in {"1", "true", "yes"})
     args = parser.parse_args()
 

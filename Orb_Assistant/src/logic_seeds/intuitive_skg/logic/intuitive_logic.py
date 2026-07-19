@@ -1,11 +1,12 @@
 from pathlib import Path
 from .cognitive_state import IntuitiveCognition
+from vault_system.paths import worker_vault
 
 
 class IntuitiveEngine:
     def __init__(self, worker_root: Path):
         self.root = worker_root
-        self.vault_path = worker_root / "vault"
+        self.vault_path = worker_vault("intuitive_skg")
         self.cognition = IntuitiveCognition(self.vault_path)
 
     def check_necessity(self, current_node, field_map):

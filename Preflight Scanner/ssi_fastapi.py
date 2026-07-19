@@ -7,7 +7,15 @@ Includes preflight endpoints and existing SSI query/install routes.
 import json
 import logging
 import os
+import sys
+from pathlib import Path
 from typing import Any, Dict, Optional
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from vault_system.paths import CLIENTS_ROOT, LOGS_ROOT
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -37,7 +45,8 @@ except ImportError:
 # ---------------------------------------------------------------------------
 logger = logging.getLogger("ssi_fastapi")
 if not logger.handlers:
-    _handler = logging.FileHandler("scanner.log")
+    LOGS_ROOT.mkdir(parents=True, exist_ok=True)
+    _handler = logging.FileHandler(LOGS_ROOT / "ssi_fastapi.log")
     _handler.setFormatter(logging.Formatter(
         "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
     ))
@@ -73,13 +82,15 @@ async def get_preflight_report() -> Dict[str, Any]:
     Return the latest site_preflight_report.json if it exists.
     Returns {"status": "not_run"} if not found.
     """
-    # Search common output directories for the report
-    search_dirs = ["./output", "./ssi_output", "/tmp/orb_output"]
-    for d in search_dirs:
-        report_path = os.path.join(d, "site_preflight_report.json")
-        if os.path.isfile(report_path):
+    reports = sorted(
+        CLIENTS_ROOT.glob("*/preflight/site_preflight_report.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for report_path in reports:
+        if report_path.is_file():
             try:
-                with open(report_path, "r", encoding="utf-8") as f:
+                with report_path.open("r", encoding="utf-8") as f:
                     return json.load(f)
             except Exception as exc:
                 logger.error("Failed to read preflight report from %s: %s", report_path, str(exc))

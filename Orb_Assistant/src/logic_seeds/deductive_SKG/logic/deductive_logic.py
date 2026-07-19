@@ -4,12 +4,13 @@ from pathlib import Path
 import sys
 from typing import Dict, Tuple, List, Optional
 from .cognitive_state import DeductiveCognition
+from vault_system.paths import worker_vault
 
 
 class DeductiveEngine:
     def __init__(self, worker_root: Path):
         self.root = worker_root
-        self.vault_path = worker_root / "vault"
+        self.vault_path = worker_vault("deductive_skg")
         self.cognition = DeductiveCognition(self.vault_path)
 
     def modus_ponens(

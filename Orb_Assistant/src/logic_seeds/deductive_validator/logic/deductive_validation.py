@@ -14,12 +14,13 @@ import time
 from pathlib import Path
 from typing import Dict, List, Tuple
 from .validation_state import ValidationCognition
+from vault_system.paths import worker_vault
 
 
 class DeductiveValidator:
     def __init__(self, worker_root: Path):
         self.root = worker_root
-        self.vault_path = worker_root / "vault"
+        self.vault_path = worker_vault("deductive_validator")
         self.cognition = ValidationCognition(self.vault_path)
 
         # Apriori truths for cross-reference (not enforcement)

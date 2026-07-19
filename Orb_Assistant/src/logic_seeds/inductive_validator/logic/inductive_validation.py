@@ -13,12 +13,13 @@ Any changes to this interface require full system validation.
 from pathlib import Path
 from typing import Dict, List
 from .validation_state import InductiveValidationCognition
+from vault_system.paths import worker_vault
 
 
 class InductiveValidator:
     def __init__(self, worker_root: Path):
         self.root = worker_root
-        self.vault_path = worker_root / "vault"
+        self.vault_path = worker_vault("inductive_validator")
         self.cognition = InductiveValidationCognition(self.vault_path)
 
         # Historical pattern library (reference only)

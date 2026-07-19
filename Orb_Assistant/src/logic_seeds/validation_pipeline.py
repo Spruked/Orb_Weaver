@@ -18,6 +18,7 @@ import time
 import hashlib
 from pathlib import Path
 from typing import Dict
+from vault_system.paths import worker_vault
 
 # Import all three validators
 current_dir = Path(__file__).parent
@@ -176,7 +177,9 @@ class FinalValidationLayer:
         validation_record["signed_witness_envelope"] = signed_envelope
 
         # Log complete record
-        with open("final_validation_log.jsonl", "a") as f:
+        validation_log = worker_vault("final_validation") / "final_validation_log.jsonl"
+        validation_log.parent.mkdir(parents=True, exist_ok=True)
+        with validation_log.open("a", encoding="utf-8") as f:
             f.write(json.dumps(validation_record) + "\n")
 
         # Return original verdict + validation metadata

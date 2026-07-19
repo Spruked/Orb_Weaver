@@ -60,7 +60,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./vault_system:/app/vault_system
-      - ./.runtime/rdrive_mpc_server:/app/rdrive_mpc_server:ro
+      - ./.runtime/rdrive_mcp_server:/app/rdrive_mcp_server:ro
     depends_on:
       - redis
 

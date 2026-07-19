@@ -34,6 +34,20 @@ backend/*.log
 /vault_system/clients/**
 /vault_system/databases/**
 /vault_system/posteriori/**
+/vault_system/cognition/**
+/vault_system/identity/**
+/vault_system/permissions/**
+/vault_system/site_or_environment_data/**
+/vault_system/client_or_owner_data/**
+/vault_system/short_term_memory/**
+/vault_system/long_term_memory/**
+/vault_system/workflow_state/**
+/vault_system/observations/**
+/vault_system/verified_outcomes/**
+/vault_system/runtime_state/**
+/vault_system/persistent_cache/**
+/vault_system/audit/**
+/vault_system/global_intelligence/**
 /vault_system/reports/**
 /vault_system/indexes/**
 /vault_system/manifests/**
@@ -44,6 +58,7 @@ backend/*.log
 !/vault_system/clients/.gitkeep
 !/vault_system/databases/.gitkeep
 !/vault_system/posteriori/.gitkeep
+!/vault_system/cognition/.gitkeep
 !/vault_system/reports/.gitkeep
 !/vault_system/indexes/.gitkeep
 !/vault_system/manifests/.gitkeep
@@ -68,10 +83,12 @@ backend/vault_system/posteriori/
 substrate/
 data/tts_cache/
 
-# Legacy Orb Assistant learned-memory locations.
+# Legacy Orb Assistant learned-memory locations. These paths must not be
+# recreated; the migration tool moves their contents into the one root vault.
 /Orb_Assistant/.orb-assistant/
-/Orb_Assistant/vault_system/posteriori/
-/Orb_Assistant/src/vault_system/posteriori/
+/Orb_Assistant/vault_system/
+/Orb_Assistant/src/vault_system/
+/Orb_Assistant/src/logic_seeds/*/vault/
 /Orb_Assistant/electron/src/vault_system/posteriori/
 
 # Compiled report output from the legacy path.

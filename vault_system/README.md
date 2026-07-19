@@ -1,6 +1,9 @@
 # Orb Weaver Canonical Vault
 
-`vault_system/` is the single storage authority for this repository.
+`vault_system/` is the single storage authority for this repository and for
+every downloadable customer ORB. A repository or installed ORB must contain
+exactly one directory named `vault_system`; components receive namespaces
+inside it and may not create independent stores.
 
 All subsystems resolve persistent and runtime data through this root. Component
 folders such as `backend/`, `Orb_Assistant/`, and legacy `substrate/` paths may
@@ -12,6 +15,18 @@ contain source code, but they must not own independent data stores.
 vault_system/
 ├── apriori/                 # canonical seed truths
 ├── posteriori/              # learned deterministic memory
+├── identity/                # ORB identity and installed configuration
+├── permissions/             # consent, capability and access policy
+├── site_or_environment_data/# scanned site/environment knowledge
+├── client_or_owner_data/    # governed owner/client records
+├── short_term_memory/       # durable bounded working memory
+├── long_term_memory/        # durable learned memory and TPC state
+├── workflow_state/          # resumable operational workflows
+├── observations/            # cognition and tool observations
+├── verified_outcomes/       # approved or verified results
+├── runtime_state/           # durable runtime state
+├── persistent_cache/        # reusable generated cache
+├── audit/                   # audit events and evidence
 ├── clients/                 # per-domain scans, crawls, Site Worlds and pointer maps
 ├── databases/               # SQLite databases
 ├── reports/                 # generated reports
@@ -49,4 +64,5 @@ python3 scripts/migrate_to_canonical_vault.py
 
 That is a dry run. After stopping Orb Weaver services, use `--apply` to copy
 and verify data, then `--finalize` to remove only verified legacy copies.
+Finalization does not recreate compatibility storage paths.
 Every applied migration writes a manifest under `vault_system/manifests/`.

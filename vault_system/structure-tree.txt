@@ -1,0 +1,453 @@
+vault_system
+├── apriori
+│   └── apriori_core.json
+├── backups
+│   └── migration_conflicts
+│       ├── root-data
+│       │   └── orb_weaver.db
+│       ├── runtime-dev
+│       │   └── orb_weaver.db
+│       ├── backend-tts-cache
+│       └── malformed-client-root-1
+├── clients
+│   ├── 127.0.0.1_16510
+│   │   ├── claims
+│   │   │   ├── banned_claims.json
+│   │   │   └── safe_claims.json
+│   │   ├── crm_context
+│   │   │   └── latest_context.json
+│   │   ├── current
+│   │   │   ├── latest_audit.json
+│   │   │   └── latest_crawl.json
+│   │   ├── dandy_sponsor_pack
+│   │   │   └── latest_pack.json
+│   │   ├── history
+│   │   │   ├── audit_2.json
+│   │   │   └── crawl_2.json
+│   │   ├── local_index
+│   │   │   └── client_index.sqlite
+│   │   ├── mail_context
+│   │   │   └── latest_context.json
+│   │   ├── recommendations
+│   │   │   └── audit_2_recommendations.json
+│   │   ├── reports
+│   │   │   └── audit_2_report.json
+│   │   └── website_orb_context
+│   │       └── latest_context.json
+│   ├── campaign.orbweaver.spruked.com
+│   │   ├── claims
+│   │   │   ├── banned_claims.json
+│   │   │   └── safe_claims.json
+│   │   ├── crm_context
+│   │   │   └── latest_context.json
+│   │   ├── current
+│   │   │   ├── latest_audit.json
+│   │   │   └── latest_crawl.json
+│   │   ├── dandy_sponsor_pack
+│   │   │   └── latest_pack.json
+│   │   ├── history
+│   │   │   ├── audit_15.json
+│   │   │   ├── audit_16.json
+│   │   │   ├── crawl_23.json
+│   │   │   └── crawl_24.json
+│   │   ├── local_index
+│   │   │   └── client_index.sqlite
+│   │   ├── mail_context
+│   │   │   └── latest_context.json
+│   │   ├── recommendations
+│   │   │   ├── audit_15_recommendations.json
+│   │   │   └── audit_16_recommendations.json
+│   │   ├── reports
+│   │   │   ├── audit_15_report.json
+│   │   │   └── audit_16_report.json
+│   │   ├── website_orb_context
+│   │   │   ├── latest_context.json
+│   │   │   └── pointer_plot_map.json
+│   │   ├── approved_claims
+│   │   ├── banned_claims
+│   │   ├── dandy_packs
+│   │   ├── owner_seed_changes
+│   │   └── visitor_questions
+│   ├── chumbacasino.com
+│   │   ├── claims
+│   │   │   ├── banned_claims.json
+│   │   │   └── safe_claims.json
+│   │   ├── crm_context
+│   │   │   └── latest_context.json
+│   │   ├── current
+│   │   │   ├── latest_audit.json
+│   │   │   └── latest_crawl.json
+│   │   ├── dandy_sponsor_pack
+│   │   │   └── latest_pack.json
+│   │   ├── history
+│   │   │   ├── audit_7.json
+│   │   │   ├── crawl_8.json
+│   │   │   └── crawl_9.json
+│   │   ├── local_index
+│   │   │   └── client_index.sqlite
+│   │   ├── mail_context
+│   │   │   └── latest_context.json
+│   │   ├── recommendations
+│   │   │   └── audit_7_recommendations.json
+│   │   ├── reports
+│   │   │   └── audit_7_report.json
+│   │   └── website_orb_context
+│   │       └── latest_context.json
+│   ├── esahubble.org
+│   │   ├── current
+│   │   │   └── latest_preflight.json
+│   │   ├── local_index
+│   │   │   └── client_index.sqlite
+│   │   ├── website_orb_context
+│   │   │   └── site_preflight_report.json
+│   │   ├── approved_claims
+│   │   ├── banned_claims
+│   │   ├── claims
+│   │   ├── crm_context
+│   │   ├── dandy_packs
+│   │   ├── dandy_sponsor_pack
+│   │   ├── history
+│   │   ├── mail_context
+│   │   ├── owner_seed_changes
+│   │   ├── recommendations
+│   │   ├── reports
+│   │   └── visitor_questions
+│   ├── http_127.0.0.1_16510
+│   │   ├── claims
+│   │   │   ├── banned_claims.json
+│   │   │   └── safe_claims.json
+│   │   ├── crm_context
+│   │   │   └── latest_context.json
+│   │   ├── current
+│   │   │   ├── latest_audit.json
+│   │   │   └── latest_crawl.json
+│   │   ├── dandy_sponsor_pack
+│   │   │   └── latest_pack.json
+│   │   ├── history
+│   │   │   ├── audit_3.json
+│   │   │   ├── audit_4.json
+│   │   │   ├── audit_5.json
+│   │   │   ├── audit_6.json
+│   │   │   ├── crawl_3.json
+│   │   │   ├── crawl_4.json
+│   │   │   ├── crawl_5.json
+│   │   │   └── crawl_6.json
+│   │   ├── local_index
+│   │   │   └── client_index.sqlite
+│   │   ├── mail_context
+│   │   │   └── latest_context.json
+│   │   ├── recommendations
+│   │   │   ├── audit_3_recommendations.json
+│   │   │   ├── audit_4_recommendations.json
+│   │   │   ├── audit_5_recommendations.json
+│   │   │   └── audit_6_recommendations.json
+│   │   ├── reports
+│   │   │   ├── audit_3_report.json
+│   │   │   ├── audit_4_report.json
+│   │   │   ├── audit_5_report.json
+│   │   │   └── audit_6_report.json
+│   │   └── website_orb_context
+│   │       └── latest_context.json
+│   ├── orb.weaver.com
+│   │   ├── crm_context
+│   │   │   └── latest_context.json
+│   │   ├── current
+│   │   │   └── latest_crawl.json
+│   │   ├── dandy_sponsor_pack
+│   │   │   └── latest_pack.json
+│   │   ├── history
+│   │   │   └── crawl_19.json
+│   │   ├── local_index
+│   │   │   └── client_index.sqlite
+│   │   ├── mail_context
+│   │   │   └── latest_context.json
+│   │   ├── website_orb_context
+│   │   │   ├── latest_context.json
+│   │   │   └── pointer_plot_map.json
+│   │   ├── approved_claims
+│   │   ├── banned_claims
+│   │   ├── claims
+│   │   ├── dandy_packs
+│   │   ├── owner_seed_changes
+│   │   ├── recommendations
+│   │   ├── reports
+│   │   └── visitor_questions
+│   ├── orbweaver.spruked.com
+│   │   ├── claims
+│   │   │   ├── banned_claims.json
+│   │   │   └── safe_claims.json
+│   │   ├── crm_context
+│   │   │   └── latest_context.json
+│   │   ├── current
+│   │   │   ├── latest_audit.json
+│   │   │   ├── latest_crawl.json
+│   │   │   ├── latest_preflight.json
+│   │   │   └── latest_self_scan.json
+│   │   ├── dandy_sponsor_pack
+│   │   │   └── latest_pack.json
+│   │   ├── history
+│   │   │   ├── audit_1.json
+│   │   │   ├── audit_10.json
+│   │   │   ├── audit_11.json
+│   │   │   ├── crawl_1.json
+│   │   │   ├── crawl_11.json
+│   │   │   ├── crawl_12.json
+│   │   │   ├── crawl_17.json
+│   │   │   └── crawl_22.json
+│   │   ├── local_index
+│   │   │   └── client_index.sqlite
+│   │   ├── mail_context
+│   │   │   └── latest_context.json
+│   │   ├── recommendations
+│   │   │   ├── audit_10_recommendations.json
+│   │   │   ├── audit_11_recommendations.json
+│   │   │   └── audit_1_recommendations.json
+│   │   ├── reports
+│   │   │   ├── audit_10_report.json
+│   │   │   ├── audit_11_report.json
+│   │   │   └── audit_1_report.json
+│   │   ├── website_orb_context
+│   │   │   ├── latest_context.json
+│   │   │   ├── orb_runtime_context.json
+│   │   │   ├── pointer_plot_map.json
+│   │   │   ├── self_scan_summary.json
+│   │   │   ├── site_preflight_report.json
+│   │   │   └── tool_cache.json
+│   │   ├── approved_claims
+│   │   ├── banned_claims
+│   │   ├── dandy_packs
+│   │   ├── owner_seed_changes
+│   │   └── visitor_questions
+│   ├── shilohridgekatahdins.com
+│   │   ├── crm_context
+│   │   │   └── latest_context.json
+│   │   ├── current
+│   │   │   ├── latest_crawl.json
+│   │   │   └── latest_preflight.json
+│   │   ├── dandy_sponsor_pack
+│   │   │   └── latest_pack.json
+│   │   ├── history
+│   │   │   ├── crawl_15.json
+│   │   │   ├── crawl_16.json
+│   │   │   └── crawl_18.json
+│   │   ├── local_index
+│   │   │   └── client_index.sqlite
+│   │   ├── mail_context
+│   │   │   └── latest_context.json
+│   │   ├── website_orb_context
+│   │   │   ├── latest_context.json
+│   │   │   ├── pointer_plot_map.json
+│   │   │   └── site_preflight_report.json
+│   │   ├── approved_claims
+│   │   ├── banned_claims
+│   │   ├── claims
+│   │   ├── dandy_packs
+│   │   ├── owner_seed_changes
+│   │   ├── recommendations
+│   │   ├── reports
+│   │   └── visitor_questions
+│   ├── spruked.com
+│   │   ├── claims
+│   │   │   ├── banned_claims.json
+│   │   │   └── safe_claims.json
+│   │   ├── crm_context
+│   │   │   └── latest_context.json
+│   │   ├── current
+│   │   │   ├── latest_audit.json
+│   │   │   └── latest_crawl.json
+│   │   ├── dandy_sponsor_pack
+│   │   │   └── latest_pack.json
+│   │   ├── history
+│   │   │   ├── audit_12.json
+│   │   │   └── crawl_14.json
+│   │   ├── local_index
+│   │   │   └── client_index.sqlite
+│   │   ├── mail_context
+│   │   │   └── latest_context.json
+│   │   ├── recommendations
+│   │   │   └── audit_12_recommendations.json
+│   │   ├── reports
+│   │   │   └── audit_12_report.json
+│   │   └── website_orb_context
+│   │       ├── latest_context.json
+│   │       └── pointer_plot_map.json
+│   ├── superiorpowersports.com
+│   │   ├── claims
+│   │   │   ├── banned_claims.json
+│   │   │   └── safe_claims.json
+│   │   ├── crm_context
+│   │   │   └── latest_context.json
+│   │   ├── current
+│   │   │   ├── latest_audit.json
+│   │   │   └── latest_crawl.json
+│   │   ├── dandy_sponsor_pack
+│   │   │   └── latest_pack.json
+│   │   ├── history
+│   │   │   ├── audit_14.json
+│   │   │   └── crawl_21.json
+│   │   ├── local_index
+│   │   │   └── client_index.sqlite
+│   │   ├── mail_context
+│   │   │   └── latest_context.json
+│   │   ├── recommendations
+│   │   │   └── audit_14_recommendations.json
+│   │   ├── reports
+│   │   │   └── audit_14_report.json
+│   │   ├── website_orb_context
+│   │   │   ├── latest_context.json
+│   │   │   └── pointer_plot_map.json
+│   │   ├── approved_claims
+│   │   ├── banned_claims
+│   │   ├── dandy_packs
+│   │   ├── owner_seed_changes
+│   │   └── visitor_questions
+│   ├── www.pinterest.com
+│   │   ├── crm_context
+│   │   │   └── latest_context.json
+│   │   ├── current
+│   │   │   └── latest_crawl.json
+│   │   ├── dandy_sponsor_pack
+│   │   │   └── latest_pack.json
+│   │   ├── history
+│   │   │   └── crawl_2.json
+│   │   ├── local_index
+│   │   │   └── client_index.sqlite
+│   │   ├── mail_context
+│   │   │   └── latest_context.json
+│   │   └── website_orb_context
+│   │       └── latest_context.json
+│   ├── www.spacex.com
+│   │   ├── claims
+│   │   │   ├── banned_claims.json
+│   │   │   └── safe_claims.json
+│   │   ├── crm_context
+│   │   │   └── latest_context.json
+│   │   ├── current
+│   │   │   ├── latest_audit.json
+│   │   │   ├── latest_crawl.json
+│   │   │   └── latest_preflight.json
+│   │   ├── dandy_sponsor_pack
+│   │   │   └── latest_pack.json
+│   │   ├── history
+│   │   │   ├── audit_13.json
+│   │   │   ├── crawl_19.json
+│   │   │   └── crawl_20.json
+│   │   ├── local_index
+│   │   │   └── client_index.sqlite
+│   │   ├── mail_context
+│   │   │   └── latest_context.json
+│   │   ├── recommendations
+│   │   │   └── audit_13_recommendations.json
+│   │   ├── reports
+│   │   │   └── audit_13_report.json
+│   │   ├── website_orb_context
+│   │   │   ├── latest_context.json
+│   │   │   ├── pointer_plot_map.json
+│   │   │   └── site_preflight_report.json
+│   │   ├── approved_claims
+│   │   ├── banned_claims
+│   │   ├── dandy_packs
+│   │   ├── owner_seed_changes
+│   │   └── visitor_questions
+│   └── www.superiorpowersports.com
+│       ├── crm_context
+│       │   └── latest_context.json
+│       ├── current
+│       │   └── latest_crawl.json
+│       ├── dandy_sponsor_pack
+│       │   └── latest_pack.json
+│       ├── history
+│       │   └── crawl_3.json
+│       ├── local_index
+│       │   └── client_index.sqlite
+│       ├── mail_context
+│       │   └── latest_context.json
+│       └── website_orb_context
+│           └── latest_context.json
+├── databases
+│   ├── orb_weaver.db
+│   └── orb_weaver_check.db
+├── integrations
+│   └── cali_crm
+├── long_term_memory
+│   └── tpc
+├── manifests
+│   ├── pops_scan_reset_20260715T234300Z.json
+│   ├── vault_migration_20260715T233607Z.json
+│   ├── vault_migration_20260715T235820Z.json
+│   └── vault_migration_20260719T020421Z.json
+├── observations
+│   └── cognition
+│       └── workers
+│           └── deductive_validator
+│               └── observation_log.jsonl
+├── reports
+│   ├── 1_orb_weaver
+│   │   ├── crawl_22.json
+│   │   └── preflight
+│   ├── 2_pinterest
+│   │   └── crawl_2.json
+│   ├── 3_pops
+│   │   └── preflight
+│   ├── 3_superior_powersports
+│   │   └── crawl_3.json
+│   ├── 4_spruked_com
+│   │   └── preflight
+│   ├── 5_shiloh_ridge_farm
+│   │   └── preflight
+│   │       └── site_preflight_report.json
+│   ├── 6_hubble
+│   │   └── preflight
+│   │       └── site_preflight_report.json
+│   ├── 6_orb_weaver
+│   │   ├── crawl_19.json
+│   │   └── preflight
+│   ├── 7_space_x
+│   │   ├── preflight
+│   │   │   └── site_preflight_report.json
+│   │   ├── audit_13.json
+│   │   ├── crawl_19.json
+│   │   ├── crawl_20.json
+│   │   └── latest_report.json
+│   ├── 8_power_sports
+│   │   ├── audit_14.json
+│   │   ├── crawl_21.json
+│   │   ├── latest_report.json
+│   │   └── preflight
+│   ├── 9_open_ai
+│   │   ├── audit_15.json
+│   │   ├── audit_16.json
+│   │   ├── crawl_23.json
+│   │   ├── crawl_24.json
+│   │   ├── latest_report.json
+│   │   └── preflight
+│   ├── 1_dependency
+│   ├── 1_lifecycle
+│   ├── 2_dependency
+│   ├── 3_campaign
+│   └── c-drive-space-recovery-report.md
+├── runtime
+│   ├── logs
+│   │   ├── preflight_scanner_legacy_backend.log
+│   │   └── preflight_scanner_legacy_root.log
+│   ├── backend_data_compat
+│   ├── browser_reviews
+│   ├── state
+│   └── tts_cache
+├── README.md
+├── __init__.py
+├── audit
+├── client_or_owner_data
+├── identity
+├── indexes
+├── manager.py
+├── paths.py
+├── permissions
+├── persistent_cache
+├── posteriori
+├── runtime_state
+├── schemas
+├── short_term_memory
+├── site_or_environment_data
+├── verified_outcomes
+└── workflow_state

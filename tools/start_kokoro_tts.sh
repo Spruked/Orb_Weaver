@@ -2,13 +2,14 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PID_FILE="$ROOT/backend/data/kokoro_tts.pid"
-LOG_FILE="$ROOT/backend/data/kokoro_tts.log"
+VAULT_ROOT="${ORB_WEAVER_VAULT_ROOT:-$ROOT/vault_system}"
+PID_FILE="$VAULT_ROOT/runtime/state/kokoro_tts.pid"
+LOG_FILE="$VAULT_ROOT/runtime/logs/kokoro_tts.log"
 PYTHON_BIN="${KOKORO_PYTHON:-/home/bryan/py312/bin/python}"
 HOST="${KOKORO_HOST:-0.0.0.0}"
 PORT="${KOKORO_PORT:-8880}"
 
-mkdir -p "$(dirname "$PID_FILE")"
+mkdir -p "$(dirname "$PID_FILE")" "$(dirname "$LOG_FILE")"
 
 if [[ -f "$PID_FILE" ]]; then
   old_pid="$(cat "$PID_FILE" || true)"

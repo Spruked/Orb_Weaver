@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -u
 
-DEV_BACKEND_URL="${DEV_BACKEND_URL:-http://127.0.0.1:16600}"
+DEV_BACKEND_URL="${DEV_BACKEND_URL:-http://127.0.0.1:16500}"
 OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 WINDOWS_TESSERACT="${WINDOWS_TESSERACT:-/mnt/c/Program Files/Tesseract-OCR/tesseract.exe}"
 OCR_IMAGE="${1:-}"

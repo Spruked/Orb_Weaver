@@ -1,4 +1,5 @@
 import importlib
+import json
 import sys
 from pathlib import Path
 
@@ -6,6 +7,37 @@ from fastapi.testclient import TestClient
 
 
 def load_app(tmp_path, monkeypatch):
+    vault_root = tmp_path / "vault_system"
+    context_root = vault_root / "clients" / "campaign.orbweaver.spruked.com" / "website_orb_context"
+    context_root.mkdir(parents=True)
+    (context_root / "latest_context.json").write_text(
+        json.dumps({"schema": "orb_weaver.site_world.v1", "site_name": "Campaign"}),
+        encoding="utf-8",
+    )
+    (context_root / "pointer_plot_map.json").write_text(
+        json.dumps(
+            {
+                "schema": "orb_weaver.pointer_plot_map.v1",
+                "record_count": 1,
+                "records": [
+                    {
+                        "target_id": "start",
+                        "confidence": 0.95,
+                        "confidence_class": "STABLE",
+                        "runtime_policy": {"may_point": True},
+                    }
+                ],
+                "by_page": {"/": ["start"]},
+                "quality": {
+                    "status": "POINTER_RECOVERY_REQUIRED",
+                    "recovery_required": True,
+                    "stable_count": 1,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ORB_WEAVER_VAULT_ROOT", str(vault_root))
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'orb_loader_test.db'}")
     monkeypatch.setenv("LOCAL_LLM_URL", "")
     monkeypatch.setenv("LOCAL_LLM_MODEL", "")
@@ -14,6 +46,7 @@ def load_app(tmp_path, monkeypatch):
         sys.path.insert(0, backend_path)
     sys.modules.pop("main", None)
     sys.modules.pop("app.core.config", None)
+    sys.modules.pop("app.core.storage", None)
     main = importlib.import_module("main")
     return main, TestClient(main.app)
 

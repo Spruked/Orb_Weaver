@@ -8,12 +8,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from app.core.storage import BROWSER_REVIEWS_ROOT
+
 
 class ChromeDevToolsReviewRunner:
     def __init__(
         self,
         cli: str = "chrome-devtools-mcp",
-        output_root: str = "browser_reviews",
+        output_root: str = str(BROWSER_REVIEWS_ROOT),
         timeout_seconds: int = 60,
         start_args: Optional[List[str]] = None,
         browser_start_cmd: Optional[str] = None,

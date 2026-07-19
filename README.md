@@ -73,6 +73,7 @@ The repository-root `vault_system/` is the only storage authority.
 vault_system/
   apriori/                 # canonical seed truths
   posteriori/              # learned deterministic memory
+  cognition/               # TPC and reasoning-worker histories
   clients/<domain>/        # scans, crawls, Site Worlds, pointer maps and reports
   databases/               # SQLite application databases
   reports/                 # generated suite reports
@@ -383,6 +384,7 @@ Automatic post-payment entitlement and fulfillment are not yet wired.
 
 ## Documentation
 
+- `docs/README.md` (central documentation index)
 - `docs/DEPLOYMENT_ORB_WEAVER_SPRUKED.md`
 - `docs/ORB_MARKETPLACE_ARCHITECTURE.md`
 - `docs/ORB_WEAVER_V1_TRANSACTIONAL_DOCTRINE.md`

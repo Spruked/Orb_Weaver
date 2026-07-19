@@ -49,7 +49,8 @@ Update this file after meaningful code, configuration, runtime, testing, or doct
 * Updated Docker to mount only `./vault_system:/app/vault_system` for Orb Weaver storage.
 * Updated database, TTS-cache, browser-review, and legacy substrate settings to resolve through the root vault.
 * Promoted the real `VaultManager` to `vault_system/manager.py`.
-* Left `Orb_Assistant/vault_system/manager.py` only as a compatibility import; it no longer owns storage.
+* Removed the duplicate `Orb_Assistant/vault_system` compatibility packages;
+  ORB components import the one repository-root vault directly.
 * Moved the tracked a-priori seed to `vault_system/apriori/apriori_core.json` and removed duplicate tracked copies.
 * Added `scripts/migrate_to_canonical_vault.py` with dry-run, apply, and finalize modes.
 * Migration preserves conflicting records under `vault_system/backups/migration_conflicts/`, hash-verifies copies, writes a manifest, and installs compatibility symlinks only after verified finalization.
@@ -197,7 +198,7 @@ Update this file after meaningful code, configuration, runtime, testing, or doct
 * Envelope contains Weaver identity, job, current page, approved site intelligence, public capabilities, pointer policy, navigation confirmation, escalation policy, and prohibitions.
 * Added a public capability registry covering website text, website voice, public Preflight, marketplace guidance, verified pointer guidance, and human escalation status.
 * Human escalation is explicitly unavailable until a real public handoff endpoint exists.
-* Updated `Orb_Weaver_feature_board_v2.md` with O.R.B.S. architecture and current no-parking/no-sleep movement doctrine.
+* Updated [`planning/Orb_Weaver_feature_board_v2.md`](planning/Orb_Weaver_feature_board_v2.md) with O.R.B.S. architecture and current no-parking/no-sleep movement doctrine.
 
 ### Verification completed
 

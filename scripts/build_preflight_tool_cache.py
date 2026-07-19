@@ -25,6 +25,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from vault_system.paths import client_root
+
 ALLOW_MCP_ENV = "ORB_BUILD_ALLOW_MCP"
 DEFAULT_DOMAIN = "orbweaver.spruked.com"
 
@@ -145,7 +151,7 @@ def _fallback_phrases(fallback_path: Path) -> List[str]:
 
 
 def _context_dir(args: argparse.Namespace) -> Path:
-    return Path(args.substrate_root) / "clients" / _safe_pack_name(args.domain) / "website_orb_context"
+    return client_root(args.domain) / "website_orb_context"
 
 
 def _output_path(args: argparse.Namespace) -> Path:
@@ -254,7 +260,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Build ORB pre-flight tool_cache.json for low-latency voice guidance.")
     parser.add_argument("--fallback-responses", default="frontend/public/orb/voice/fallback_responses.json")
     parser.add_argument("--domain", default=os.getenv("ORB_CACHE_DOMAIN", DEFAULT_DOMAIN))
-    parser.add_argument("--substrate-root", default=os.getenv("ORB_WEAVER_SUBSTRATE_ROOT", "substrate"))
     parser.add_argument("--pointer-map", default="")
     parser.add_argument("--output", default="")
     parser.add_argument("--limit", type=int, default=50)

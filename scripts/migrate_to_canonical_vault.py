@@ -5,8 +5,8 @@ Dry-run is the default. Stop Orb Weaver services before using --apply or
 --finalize so databases and active cache files cannot change while copied.
 
 --apply copies and hash-verifies every recognized legacy record.
---finalize additionally removes only verified legacy copies and replaces
-necessary old paths with compatibility symlinks into the canonical vault.
+--finalize additionally removes only verified legacy copies. It does not
+recreate legacy storage paths.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ CANONICAL_DIRS = (
     VAULT_ROOT / "databases",
     VAULT_ROOT / "posteriori",
     VAULT_ROOT / "apriori",
+    VAULT_ROOT / "cognition" / "workers",
     VAULT_ROOT / "reports",
     VAULT_ROOT / "indexes",
     VAULT_ROOT / "manifests",
@@ -245,13 +246,18 @@ def migrate_known_storage(
 ) -> list[Path]:
     backend_data = REPO_ROOT / "backend" / "data"
 
-    for database_name in ("orb_weaver.db", "orb_weaver_check.db"):
-        source = backend_data / database_name
+    database_sources = (
+        (backend_data / "orb_weaver.db", "backend-data", "orb_weaver.db"),
+        (backend_data / "orb_weaver_check.db", "backend-data", "orb_weaver_check.db"),
+        (REPO_ROOT / "data" / "orb_weaver.db", "root-data", "orb_weaver.db"),
+        (REPO_ROOT / ".runtime" / "dev" / "orb_weaver.db", "runtime-dev", "orb_weaver.db"),
+    )
+    for source, source_label, database_name in database_sources:
         if source.exists() and not source.is_symlink():
             migrate_file(
                 source,
                 VAULT_ROOT / "databases" / database_name,
-                source_label="backend-data",
+                source_label=source_label,
                 relative_path=Path(database_name),
                 apply=apply,
                 finalize=finalize,
@@ -267,6 +273,23 @@ def migrate_known_storage(
             source_root,
             VAULT_ROOT / "runtime" / "tts_cache",
             label,
+            apply=apply,
+            finalize=finalize,
+            operations=operations,
+        )
+
+    for worker_name in (
+        "deductive_SKG",
+        "deductive_validator",
+        "inductive_skg",
+        "inductive_validator",
+        "intuitive_skg",
+        "intuitive_validator",
+    ):
+        migrate_tree(
+            REPO_ROOT / "Orb_Assistant" / "src" / "logic_seeds" / worker_name / "vault",
+            VAULT_ROOT / "cognition" / "workers" / worker_name.lower(),
+            f"orb-cognition-{worker_name.lower()}",
             apply=apply,
             finalize=finalize,
             operations=operations,
@@ -337,6 +360,21 @@ def migrate_known_storage(
             operations=operations,
         )
 
+    for source, label, destination_name in (
+        (REPO_ROOT / "scanner.log", "root-scanner-log", "preflight_scanner_legacy_root.log"),
+        (REPO_ROOT / "backend" / "scanner.log", "backend-scanner-log", "preflight_scanner_legacy_backend.log"),
+    ):
+        if source.exists() and not source.is_symlink():
+            migrate_file(
+                source,
+                VAULT_ROOT / "runtime" / "logs" / destination_name,
+                source_label=label,
+                relative_path=Path(destination_name),
+                apply=apply,
+                finalize=finalize,
+                operations=operations,
+            )
+
     return malformed_roots
 
 
@@ -344,39 +382,10 @@ def install_compatibility_links(
     malformed_roots: list[Path],
     operations: list[Operation],
 ) -> None:
-    backend_data = REPO_ROOT / "backend" / "data"
-    links = [
-        (backend_data / "tts_cache", VAULT_ROOT / "runtime" / "tts_cache"),
-        (REPO_ROOT / "data" / "tts_cache", VAULT_ROOT / "runtime" / "tts_cache"),
-        (REPO_ROOT / "substrate" / "clients", VAULT_ROOT / "clients"),
-        (
-            REPO_ROOT / "Orb_Assistant" / "vault_system" / "posteriori",
-            VAULT_ROOT / "posteriori",
-        ),
-        (
-            REPO_ROOT / "Orb_Assistant" / "src" / "vault_system" / "posteriori",
-            VAULT_ROOT / "posteriori",
-        ),
-        (REPO_ROOT / "backend" / "report_compiler", VAULT_ROOT / "reports"),
-        (REPO_ROOT / "reports", VAULT_ROOT / "reports"),
-        (
-            REPO_ROOT / "backend" / "browser_reviews",
-            VAULT_ROOT / "runtime" / "browser_reviews",
-        ),
-        (
-            REPO_ROOT / "browser_reviews",
-            VAULT_ROOT / "runtime" / "browser_reviews",
-        ),
-    ]
-    links.extend((root, VAULT_ROOT / "clients") for root in malformed_roots)
-
-    for legacy_path, canonical_path in links:
-        install_symlink(legacy_path, canonical_path, operations)
-
-    for database_name in ("orb_weaver.db", "orb_weaver_check.db"):
-        canonical_database = VAULT_ROOT / "databases" / database_name
-        if canonical_database.exists():
-            install_symlink(backend_data / database_name, canonical_database, operations)
+    # All callers resolve the canonical root directly. Compatibility links can
+    # be mistaken for another store, so finalization leaves legacy paths absent.
+    for root in malformed_roots:
+        remove_empty_tree(root)
 
 
 def write_manifest(operations: list[Operation], mode: str) -> Path | None:

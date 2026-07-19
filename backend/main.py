@@ -31,7 +31,17 @@ from sqlalchemy.orm import Session
 from app.analytics.ga4 import GA4Connector
 from app.audit.engine import SEOAuditor
 from app.core.config import settings
-from app.core.storage import client_root
+from app.core.storage import (
+    BROWSER_REVIEWS_ROOT,
+    INDEXES_ROOT,
+    INTEGRATIONS_ROOT,
+    REPORTS_ROOT,
+    TTS_CACHE_ROOT,
+    VAULT_ROOT,
+    canonical_database_url,
+    client_root,
+    ensure_vault_layout,
+)
 from app.crawler.engine import OrbWeaverCrawler, PageData
 from app.lifecycle import (
     finalize_evidence_run,
@@ -100,8 +110,8 @@ app.add_middleware(
 
 def _resolve_database_url() -> str:
     if settings.DATABASE_URL.strip() == "postgresql://user:pass@localhost/orb_weaver":
-        return "sqlite:///./data/orb_weaver.db"
-    return settings.DATABASE_URL
+        return canonical_database_url(None)
+    return canonical_database_url(settings.DATABASE_URL)
 
 
 def _engine_kwargs(database_url: str) -> Dict:
@@ -111,16 +121,15 @@ def _engine_kwargs(database_url: str) -> Dict:
 
 
 DATABASE_URL = _resolve_database_url()
-if DATABASE_URL.startswith("sqlite"):
-    Path("data").mkdir(parents=True, exist_ok=True)
+ensure_vault_layout()
 
 ENGINE = get_engine(DATABASE_URL, **_engine_kwargs(DATABASE_URL))
 SessionLocal = get_session_maker(ENGINE)
 init_db(ENGINE)
 
-REPORT_COMPILER_ROOT = Path("report_compiler")
+REPORT_COMPILER_ROOT = REPORTS_ROOT
 REPORT_COMPILER_ROOT.mkdir(parents=True, exist_ok=True)
-ORB_TTS_CACHE_ROOT = Path(settings.ORB_TTS_CACHE_DIR)
+ORB_TTS_CACHE_ROOT = TTS_CACHE_ROOT
 ORB_TTS_CACHE_ROOT.mkdir(parents=True, exist_ok=True)
 ORB_TTS_INFLIGHT_LOCK = asyncio.Lock()
 ORB_TTS_INFLIGHT: Dict[str, asyncio.Task] = {}
@@ -185,7 +194,7 @@ async def _warm_local_llm() -> None:
 async def warm_local_llm_on_startup() -> None:
     asyncio.create_task(_warm_local_llm())
 
-SUBSTRATE_ROOT = Path(settings.ORB_WEAVER_SUBSTRATE_ROOT)
+SUBSTRATE_ROOT = VAULT_ROOT
 PREFLIGHT_SCANNER_ROOT = Path(__file__).resolve().parent.parent / "Preflight Scanner"
 PREFLIGHT_SCANNER_MODULE = PREFLIGHT_SCANNER_ROOT / "preflight_site_scan.py"
 ORB_CONTROLLER = None
@@ -1782,7 +1791,12 @@ def _orb_capabilities() -> Dict[str, Any]:
     windows_tesseract_available = windows_tesseract_path.exists()
     desktop_mcp_root = Path(settings.ORB_DESKTOP_MCP_ROOT).expanduser()
     desktop_mcp_server = desktop_mcp_root / "orb_mcp_server.py"
-    desktop_mcp_available = bool(settings.ORB_DESKTOP_MCP_ENABLED and desktop_mcp_server.exists())
+    desktop_mcp_available = False
+    if settings.ORB_DESKTOP_MCP_ENABLED:
+        try:
+            desktop_mcp_available = _orb_desktop_mcp_client().available()
+        except Exception:
+            desktop_mcp_available = False
 
     return {
         "schema": "orb_weaver.website_orb_capabilities.v1",
@@ -2780,7 +2794,7 @@ async def _synthesize_orb_tts(text: str) -> Dict[str, Optional[str]]:
 def _chrome_devtools_runner() -> ChromeDevToolsReviewRunner:
     return ChromeDevToolsReviewRunner(
         cli=settings.CHROME_DEVTOOLS_CLI,
-        output_root=settings.CHROME_DEVTOOLS_OUTPUT_ROOT,
+        output_root=str(BROWSER_REVIEWS_ROOT),
         timeout_seconds=settings.CHROME_DEVTOOLS_TIMEOUT_SECONDS,
         start_args=settings.CHROME_DEVTOOLS_START_ARGS,
         browser_start_cmd=settings.CHROME_DEVTOOLS_BROWSER_START_CMD,
@@ -2801,7 +2815,7 @@ def _orb_desktop_mcp_client() -> ORBDesktopMCPClient:
 
 
 def _cali_crm_import_dir() -> Path:
-    return Path(settings.CALI_CRM_SUBSTRATE_ROOT) / "imports" / "pending"
+    return INTEGRATIONS_ROOT / "cali_crm" / "imports" / "pending"
 
 
 def _customer_crm_import_record(customer: Customer, db: Session) -> Dict:
@@ -2898,24 +2912,7 @@ def _load_json_if_present(path: Path) -> Optional[Dict[str, Any]]:
 
 def _website_context_root(domain: str) -> Optional[Path]:
     canonical_root = client_root(domain) / "website_orb_context"
-    if canonical_root.exists():
-        return canonical_root
-    repo_root = Path(__file__).resolve().parent.parent
-    roots = [
-        SUBSTRATE_ROOT,
-        repo_root / "substrate",
-        Path.cwd().parent / "substrate",
-    ]
-    seen: Set[str] = set()
-    for substrate_root in roots:
-        root_key = str(substrate_root.resolve() if substrate_root.exists() else substrate_root)
-        if root_key in seen:
-            continue
-        seen.add(root_key)
-        root = substrate_root / "clients" / _safe_pack_name(domain) / "website_orb_context"
-        if root.exists():
-            return root
-    return None
+    return canonical_root if canonical_root.exists() else None
 
 
 def _load_domain_website_context(target_url: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -2964,7 +2961,7 @@ def _lookup_domain_runtime_tool(
 
     domain = website_context.get("domain")
     if domain:
-        cache_path = SUBSTRATE_ROOT / "clients" / _safe_pack_name(str(domain)) / "website_orb_context" / "tool_cache.json"
+        cache_path = client_root(str(domain)) / "website_orb_context" / "tool_cache.json"
         tool_cache = _load_json_if_present(cache_path) or {}
         for entry in tool_cache.get("entries") or []:
             score = _score_keyword_match(transcript, entry.get("keywords") or entry.get("intents") or [])
@@ -3232,11 +3229,11 @@ def _runtime_pointer_map(domain: str, db: Session) -> Dict[str, Any]:
 
 
 def _client_intelligence_root(project: Project) -> Path:
-    return SUBSTRATE_ROOT / "clients" / _safe_pack_name(project.domain)
+    return client_root(project.domain)
 
 
 def _global_intelligence_root() -> Path:
-    return SUBSTRATE_ROOT / "global_intelligence"
+    return INDEXES_ROOT / "global_intelligence"
 
 
 def _write_json(path: Path, payload: Dict) -> None:

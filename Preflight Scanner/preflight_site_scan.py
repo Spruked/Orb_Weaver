@@ -10,13 +10,21 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urljoin, urlparse
 
 import aiohttp
 from aiohttp import ClientTimeout
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from vault_system.paths import LOGS_ROOT, client_root
 
 
 class FetchedResponse:
@@ -61,7 +69,8 @@ except ImportError:
 # ---------------------------------------------------------------------------
 logger = logging.getLogger("preflight_scanner")
 if not logger.handlers:
-    _handler = logging.FileHandler("scanner.log")
+    LOGS_ROOT.mkdir(parents=True, exist_ok=True)
+    _handler = logging.FileHandler(LOGS_ROOT / "preflight_scanner.log")
     _handler.setFormatter(logging.Formatter(
         "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
     ))
@@ -310,6 +319,7 @@ class PreflightScanner:
         self.root_url = normalize_url(root_url)
         self.output_dir = output_dir
         self.domain = get_domain(self.root_url)
+        self.vault_output_dir = client_root(self.domain) / "preflight"
         self.parsed_root = urlparse(self.root_url)
         self.session: Optional[aiohttp.ClientSession] = None
         self.semaphore: Optional[asyncio.Semaphore] = None
@@ -985,13 +995,24 @@ class PreflightScanner:
                 "confidence": confidence,
             }
 
-            # Write report
-            os.makedirs(self.output_dir, exist_ok=True)
-            report_path = os.path.join(self.output_dir, "site_preflight_report.json")
-            with open(report_path, "w", encoding="utf-8") as f:
+            # The canonical client vault is mandatory. output_dir remains an
+            # optional export destination for standalone compatibility.
+            self.vault_output_dir.mkdir(parents=True, exist_ok=True)
+            vault_report_path = self.vault_output_dir / "site_preflight_report.json"
+            with vault_report_path.open("w", encoding="utf-8") as f:
                 json.dump(report, f, indent=2, ensure_ascii=False)
 
-            logger.info("Preflight scan complete. Report saved to %s", report_path)
+            os.makedirs(self.output_dir, exist_ok=True)
+            report_path = os.path.join(self.output_dir, "site_preflight_report.json")
+            if Path(report_path).resolve() != vault_report_path.resolve():
+                with open(report_path, "w", encoding="utf-8") as f:
+                    json.dump(report, f, indent=2, ensure_ascii=False)
+
+            logger.info(
+                "Preflight scan complete. Canonical report saved to %s; export saved to %s",
+                vault_report_path,
+                report_path,
+            )
             return report
 
         finally:

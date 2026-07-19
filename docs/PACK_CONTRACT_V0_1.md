@@ -26,6 +26,12 @@ PostgreSQL may replace SQLite as the application database when deliberately conf
 
 Vector databases are deferred until the pack and reader contract are stable.
 
+The same rule is embedded in every downloadable `.orbpack`: it contains one
+top-level `vault_system/`, a `vault-manifest.json`, and the site's isolated
+`clients/<domain>/` namespace. Installed adapters, cognition engines, voice
+services, and scanners may write only within that root. They must never create
+a second `vault_system` or store site data beside the ORB runtime.
+
 ## Client Pack Layout
 
 ```text

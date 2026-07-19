@@ -1,11 +1,12 @@
 from pathlib import Path
 from .cognitive_state import InductiveCognition
+from vault_system.paths import worker_vault
 
 
 class InductiveEngine:
     def __init__(self, worker_root: Path):
         self.root = worker_root
-        self.vault_path = worker_root / "vault"
+        self.vault_path = worker_vault("inductive_skg")
         self.cognition = InductiveCognition(self.vault_path)
 
         # Placeholder for existing methods

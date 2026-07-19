@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .paths import VAULT_ROOT
+
 
 class VaultManager:
     """Canonical Orb Weaver vault manager.
@@ -17,7 +19,7 @@ class VaultManager:
         self.base_path = (
             Path(base_path).expanduser().resolve()
             if base_path is not None
-            else Path(__file__).resolve().parent
+            else VAULT_ROOT
         )
         self.apriori_path = self.base_path / "apriori" / "apriori_core.json"
         self.posteriori_dir = self.base_path / "posteriori"

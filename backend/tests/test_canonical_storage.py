@@ -1,6 +1,7 @@
 from app.core.storage import (
     BROWSER_REVIEWS_ROOT,
     CLIENTS_ROOT,
+    COGNITION_ROOT,
     DATABASES_ROOT,
     POSTERIORI_ROOT,
     REPORTS_ROOT,
@@ -14,6 +15,7 @@ from app.core.storage import (
 def test_all_storage_roots_are_children_of_the_canonical_vault():
     for path in (
         CLIENTS_ROOT,
+        COGNITION_ROOT,
         DATABASES_ROOT,
         POSTERIORI_ROOT,
         REPORTS_ROOT,

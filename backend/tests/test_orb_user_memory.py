@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 
 def load_app(tmp_path, monkeypatch):
+    monkeypatch.setenv("ORB_WEAVER_VAULT_ROOT", str(tmp_path / "vault_system"))
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'orb_memory_test.db'}")
     monkeypatch.setenv("LOCAL_LLM_URL", "")
     monkeypatch.setenv("LOCAL_LLM_MODEL", "")
@@ -14,6 +15,7 @@ def load_app(tmp_path, monkeypatch):
         sys.path.insert(0, backend_path)
     sys.modules.pop("main", None)
     sys.modules.pop("app.core.config", None)
+    sys.modules.pop("app.core.storage", None)
     main = importlib.import_module("main")
     monkeypatch.setattr(main, "_orb_cognitive_pulse", lambda transcript: {"cognitive_mode": "TEST", "glow_intensity": 0.5})
     return main, TestClient(main.app)
