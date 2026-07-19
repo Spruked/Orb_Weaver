@@ -17,6 +17,21 @@ Use `Orb Weaver final product plan.docx` as the source of truth, complete as muc
 5. P0: Pointer confidence evidence and enforced runtime policy.
 6. P1: Sentinel, route safety, versioned deployment, hash-chain verification, and failure-diagnostics UI.
 
+## V1 commercial focus
+
+The primary V1 customer relationship is buyer-to-seller transaction guidance. Build the Website ORB first for marketplaces, small-business and service websites, local retailers, independent sellers, catalogs, booking/quotation flows, and membership/account businesses.
+
+The required V1 flow is:
+
+```text
+Welcome -> understand need -> explain approved choices -> reduce uncertainty
+-> guide verified action -> confirm observable outcome -> explain next step
+```
+
+The minimum workflow set is shopper discovery, signup/account access, product or service selection, lead/quote/booking capture, cart/checkout guidance, seller onboarding, and post-transaction guidance. The ORB must protect the buyer from pressure and invented claims while protecting the seller through approved facts, policies, valid conversion paths, and human escalation.
+
+The permanent requirements and acceptance criteria are in `docs/ORB_WEAVER_V1_TRANSACTIONAL_DOCTRINE.md`. Treat that document as the commercial V1 scope; do not broaden V1 into a generic chatbot or unrestricted browser agent.
+
 ## Work completed before interruption
 
 ### Durable notes

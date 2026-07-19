@@ -6,6 +6,8 @@ This is the reusable ORB deployment pattern from Orb Weaver, separated from this
 
 Build a deployable Website ORB, distinct from the Desktop ORB.
 
+For commercial V1 deployments, this runtime is first a trustworthy buyer-seller transaction guide. Discovery, signup/account access, selection, lead or booking capture, checkout explanation, seller onboarding, and post-transaction support must follow `docs/ORB_WEAVER_V1_TRANSACTIONAL_DOCTRINE.md`. Voice and motion support those workflows; they do not replace grounded knowledge, verified pointers, consent, or host authorization.
+
 The Website ORB is a browser resident assistant that:
 
 - floats above the site UI

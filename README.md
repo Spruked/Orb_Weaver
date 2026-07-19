@@ -385,6 +385,7 @@ Automatic post-payment entitlement and fulfillment are not yet wired.
 
 - `docs/DEPLOYMENT_ORB_WEAVER_SPRUKED.md`
 - `docs/ORB_MARKETPLACE_ARCHITECTURE.md`
+- `docs/ORB_WEAVER_V1_TRANSACTIONAL_DOCTRINE.md`
 - `docs/PACK_CONTRACT_V0_1.md`
 - `docs/INTELLIGENCE_PRESERVATION.md`
 - `docs/ORB_WEAVER_INTELLIGENCE_GRAPH_SPEC.md`

@@ -17,6 +17,14 @@ Shared ORBS runtime
 
 The Marketplace must never silently grant a tool, apply detected branding, replace the immutable Factory Default, or bypass ownership, consent, runtime permission, or deployment-review gates.
 
+## V1 buyer-seller focus
+
+The first commercial Website ORB target is the transaction relationship between buyers and sellers. Marketplace sites are especially valuable because the same deployment may guide browsing and registered buyers while separately supporting prospective and active sellers.
+
+Marketplace participant state may select an approved buyer, account-holder, seller-onboarding, or active-seller flow, but it must never replace the host's authentication or authorization. Buyer information, seller tools, listing administration, order state, and marketplace policies remain separated by the host application's access controls.
+
+The canonical workflows, safeguards, and acceptance criteria are defined in `docs/ORB_WEAVER_V1_TRANSACTIONAL_DOCTRINE.md`.
+
 ## Product families
 
 The Marketplace can distribute complete ORBs for different environments and purposes:
