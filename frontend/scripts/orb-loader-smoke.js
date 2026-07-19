@@ -20,7 +20,7 @@ const { chromium } = require('playwright');
   });
   await page.route('https://campaign.test/**', (route) => route.fulfill({
     contentType: 'text/html',
-    body: '<!doctype html><title>Campaign Test</title><body style="margin:13px"><main><button id="start">Start campaign</button><a href="/about">About</a><div id="app"></div></main></body>',
+    body: '<!doctype html><title>Campaign Test</title><body style="margin:13px"><main><section id="competitor"><button class="start-action">Start campaign</button></section><section id="approved"><button class="start-action">Start campaign</button></section><a href="/about">About</a><div id="app"></div></main></body>',
   }));
   await page.route('https://runtime.test/api/orb/bootstrap', async (route) => {
     const request = route.request();
@@ -39,16 +39,24 @@ const { chromium } = require('playwright');
         site_world: { site_name: 'Campaign Test' },
         page_capsule: {},
         pointer_map: {
-          record_count: 1,
+          record_count: 3,
           by_page: { '/': ['start'] },
           records: [{
             target_id: 'start',
             page_route: '/',
-            semantic_locator: '#start',
+            semantic_locator: '.start-action',
             meaning: 'button: Start campaign',
             confidence_class: 'VERIFIED',
             runtime_policy: { may_point: true },
-            structural_context: { tag: 'button' },
+            structural_context: { tag: 'button', parent_locator: '#approved' },
+          }, {
+            target_id: 'stale', page_route: '/', semantic_locator: '#removed-target',
+            meaning: 'button: Removed target', confidence_class: 'VERIFIED',
+            runtime_policy: { may_point: true }, structural_context: { tag: 'button', parent_locator: '#approved' },
+          }, {
+            target_id: 'wrong-route', page_route: '/investor', semantic_locator: '.start-action',
+            meaning: 'button: Start campaign', confidence_class: 'VERIFIED',
+            runtime_policy: { may_point: true }, structural_context: { tag: 'button', parent_locator: '#approved' },
           }],
         },
         capabilities: {},
@@ -78,6 +86,10 @@ const { chromium } = require('playwright');
   }));
   await page.goto('https://campaign.test/');
   await page.evaluate(() => {
+    window.__pointerSafety = { clicks: 0 };
+    document.querySelectorAll('.start-action').forEach((element) => {
+      element.addEventListener('click', () => { window.__pointerSafety.clicks += 1; });
+    });
     window.__fakeSocketStats = { created: 0, closed: 0 };
     class FakeWebSocket {
       static OPEN = 1;
@@ -175,10 +187,42 @@ const { chromium } = require('playwright');
   await page.evaluate(() => history.replaceState({}, '', '/'));
   await waitForObservations(7);
 
+  const locationBeforePointing = page.url();
   assert.equal(await page.evaluate(() => {
     return window.OrbWeaver.pointTo('start');
   }), true, 'verified pointer target should guide');
+  assert.equal(await page.evaluate(() => window.OrbWeaver.pointTo('stale')), false, 'a stale selector must not guide');
+  assert.equal(await page.evaluate(() => window.OrbWeaver.pointTo('wrong-route')), false, 'a wrong-route record must not guide');
+  await page.waitForFunction(() => document.querySelector('#orb-weaver-universal-root').shadowRoot.querySelector('[data-pointer]').dataset.visible === 'true');
+  assert.deepEqual(await page.evaluate(() => {
+    const root = document.querySelector('#orb-weaver-universal-root').shadowRoot;
+    const pointer = root.querySelector('[data-pointer]').getBoundingClientRect();
+    const approved = document.querySelector('#approved .start-action').getBoundingClientRect();
+    const competitor = document.querySelector('#competitor .start-action').getBoundingClientRect();
+    const orb = root.querySelector('[data-toggle]').getBoundingClientRect();
+    return {
+      approvedPinged: Math.abs(pointer.left - (approved.left - 7)) < 2 && Math.abs(pointer.top - (approved.top - 7)) < 2,
+      competitorRejected: Math.abs(pointer.top - (competitor.top - 7)) >= 2,
+      orbTraveled: orb.left < window.innerWidth - orb.width - 18,
+      clicks: window.__pointerSafety.clicks,
+    };
+  }), { approvedPinged: true, competitorRejected: true, orbTraveled: true, clicks: 0 }, 'guidance must scope, travel, and ping without clicking');
+  assert.equal(page.url(), locationBeforePointing, 'guidance must not navigate');
   assert.equal(await page.evaluate(() => document.body.style.margin), '13px', 'loader must not modify host layout');
+  await page.evaluate(() => document.querySelector('#approved .start-action').remove());
+  await page.evaluate(() => window.OrbWeaver.ask('start campaign'));
+  assert.deepEqual(await page.evaluate(() => {
+    const root = document.querySelector('#orb-weaver-universal-root').shadowRoot;
+    return {
+      message: root.querySelector('[data-output]').textContent,
+      pointerVisible: root.querySelector('[data-pointer]').dataset.visible === 'true',
+      clicks: window.__pointerSafety.clicks,
+    };
+  }), {
+    message: 'I could not verify that target on this page, so I will not point to it or take action.',
+    pointerVisible: false,
+    clicks: 0,
+  }, 'failed live verification must return an honest answer and suppress the pointer');
 
   const bootstrapReportsBeforeSkin = observations.length;
   const skinCheckpoint = await page.evaluate(() => {
@@ -231,7 +275,7 @@ const { chromium } = require('playwright');
   assert.deepEqual(consoleErrors, [], 'loader must not emit console security/runtime errors in the approved test');
   console.log(JSON.stringify({
     status: 'passed',
-    checks: 25,
+    checks: 35,
     bootstrap_reports: observations.length,
     console_errors: consoleErrors.length,
   }, null, 2));

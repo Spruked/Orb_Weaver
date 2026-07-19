@@ -66,6 +66,7 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
   let mediaStream: MediaStream | undefined;
   let chunks: BlobPart[] = [];
   let pointerTimer = 0;
+  let travelTimer = 0;
   const element = <T extends HTMLElement>(selector: string) => shadow.querySelector<T>(selector)!;
   const skinImage = element<HTMLImageElement>('[data-skin]');
   const restoreFactory = () => {
@@ -135,30 +136,64 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
   };
   const pointRecord = (record: OrbPointerRecord) => {
     if (!mayPoint(record) || routeOf(record.page_route) !== routeOf(window.location.href)) return false;
+    let searchRoot: ParentNode = document;
+    const parentLocator = record.structural_context?.parent_locator?.trim();
+    if (parentLocator) {
+      try {
+        const parent = document.querySelector<HTMLElement>(parentLocator);
+        if (!parent) return false;
+        searchRoot = parent;
+      } catch { return false; }
+    }
     let targets: NodeListOf<HTMLElement>;
-    try { targets = document.querySelectorAll<HTMLElement>(record.semantic_locator); } catch { return false; }
+    try { targets = searchRoot.querySelectorAll<HTMLElement>(record.semantic_locator); } catch { return false; }
     const target = Array.from(targets).find((candidate) => {
       const rect = candidate.getBoundingClientRect();
       const tag = normalize(record.structural_context?.tag);
       const text = normalize(candidate.getAttribute('aria-label') || candidate.textContent);
+      const identityMatches = aliases(record).some((value) => {
+        if (text === value) return true;
+        if (text.length < 5 || value.length < 5) return false;
+        return (text.includes(value) || value.includes(text))
+          && Math.min(text.length, value.length) / Math.max(text.length, value.length) >= 0.65;
+      });
       return document.body.contains(candidate) && rect.width > 0 && rect.height > 0
         && (!tag || candidate.tagName.toLowerCase() === tag)
-        && (!aliases(record).length || aliases(record).some((value) => text.includes(value) || value.includes(text)));
+        && (!aliases(record).length || identityMatches);
     });
     if (!target) return false;
     target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    window.clearTimeout(travelTimer);
     window.setTimeout(() => {
       if (!mounted || !document.body.contains(target)) return;
       const rect = target.getBoundingClientRect();
-      const pointer = element('[data-pointer]');
-      Object.assign(pointer.style, {
-        left: Math.max(0, rect.left - 7) + 'px', top: Math.max(0, rect.top - 7) + 'px',
-        width: rect.width + 14 + 'px', height: rect.height + 14 + 'px',
+      const toggle = element<HTMLButtonElement>('[data-toggle]');
+      const orbSize = toggle.getBoundingClientRect().width || 84;
+      const desiredLeft = rect.right + orbSize + 18 <= window.innerWidth
+        ? rect.right + 12
+        : rect.left - orbSize - 12;
+      Object.assign(toggle.style, {
+        left: Math.max(8, Math.min(window.innerWidth - orbSize - 8, desiredLeft)) + 'px',
+        top: Math.max(8, Math.min(window.innerHeight - orbSize - 8, rect.top + (rect.height - orbSize) / 2)) + 'px',
+        right: 'auto', bottom: 'auto',
+        transition: window.matchMedia('(prefers-reduced-motion: reduce)').matches
+          ? 'none'
+          : 'left 520ms cubic-bezier(.2,.8,.2,1), top 520ms cubic-bezier(.2,.8,.2,1)',
       });
-      pointer.dataset.visible = 'true';
-      window.clearTimeout(pointerTimer);
-      pointerTimer = window.setTimeout(() => delete pointer.dataset.visible, 2600);
-      log('Pointer target discovered', { targetId: record.target_id, confidenceClass: record.confidence_class });
+      log('ORB traveled to verified target', { targetId: record.target_id });
+      travelTimer = window.setTimeout(() => {
+        if (!mounted || !document.body.contains(target)) return;
+        const verifiedRect = target.getBoundingClientRect();
+        const pointer = element('[data-pointer]');
+        Object.assign(pointer.style, {
+          left: Math.max(0, verifiedRect.left - 7) + 'px', top: Math.max(0, verifiedRect.top - 7) + 'px',
+          width: verifiedRect.width + 14 + 'px', height: verifiedRect.height + 14 + 'px',
+        });
+        pointer.dataset.visible = 'true';
+        window.clearTimeout(pointerTimer);
+        pointerTimer = window.setTimeout(() => delete pointer.dataset.visible, 2600);
+        log('Pointer target discovered', { targetId: record.target_id, confidenceClass: record.confidence_class });
+      }, 540);
     }, 380);
     return true;
   };
@@ -180,7 +215,21 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
   const handleResponse = (response: OrbRuntimeResponse, intent: string) => {
     setStatus('online', 'Connected');
     setMessage(response.spoken_output || 'I am ready.');
-    guide(intent, response.cognitive_pulse?.pointer_matches?.[0]?.target_id);
+    const preferredTarget = response.cognitive_pulse?.pointer_matches?.[0]?.target_id;
+    const guided = guide(intent, preferredTarget);
+    if (preferredTarget && !guided) {
+      const verificationFailure = 'I could not verify that target on this page, so I will not point to it or take action.';
+      setMessage(verificationFailure);
+      const pointer = element('[data-pointer]');
+      delete pointer.dataset.visible;
+      window.clearTimeout(pointerTimer);
+      if ('speechSynthesis' in window && 'SpeechSynthesisUtterance' in window) {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(verificationFailure));
+      }
+      log('Pointer verification blocked guidance', { targetId: preferredTarget });
+      return;
+    }
     if (response.tts_audio_url) void new Audio(client.mediaUrl(response.tts_audio_url)).play().catch(() => undefined);
   };
   const ask = async (text: string) => {
@@ -289,6 +338,7 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
     mediaStream?.getTracks().forEach((track) => track.stop());
     disposeCustomAsset?.();
     window.clearTimeout(pointerTimer);
+    window.clearTimeout(travelTimer);
     host.remove();
     log('ORB unmounted', { siteId: config.siteId });
     delete window.__ORB_WEAVER_LOADER_V1__;

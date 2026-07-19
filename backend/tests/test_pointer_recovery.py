@@ -1,4 +1,5 @@
 from app.orb.pointer_recovery import (
+    _candidate_matches_record,
     assess_pointer_quality,
     merge_canonical_pointer_authority,
     promote_owner_verified_pointer,
@@ -108,6 +109,18 @@ def test_duplicate_targets_use_conflict_finding_class():
     recovered = reconcile_pointer_recovery({"records": duplicated}, {"observations": []})
     assert {pointer["finding_class"] for pointer in recovered["records"]} == {"CONFLICT"}
     assert all(pointer["finding_subreason"] == "selector_not_durable" for pointer in recovered["records"])
+
+
+def test_recovery_rejects_short_similarly_named_navigation_candidate():
+    target = record("founding-beta", "UNCERTAIN", 'a[href="/founding-beta"]', "button: Join the Founding Beta")
+    assert _candidate_matches_record(
+        {"accessible_name": "Join the Founding Beta", "locator": 'a[href="/founding-beta"]'},
+        target,
+    ) is True
+    assert _candidate_matches_record(
+        {"accessible_name": "Beta", "locator": 'a[href="#beta"]'},
+        target,
+    ) is False
 
 
 def test_owner_verification_grants_pointing_but_never_click_or_navigation():

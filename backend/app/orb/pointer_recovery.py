@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -522,13 +523,37 @@ def _meaning(record: Dict[str, Any]) -> str:
 
 
 def _candidate_matches_record(candidate: Dict[str, Any], record: Dict[str, Any]) -> bool:
-    candidate_meaning = str(candidate.get("accessible_name") or candidate.get("text") or "").lower().strip()
-    record_meaning = _meaning(record)
-    if candidate.get("locator") == record.get("semantic_locator"):
+    candidate_meaning = _normalized_identity_text(candidate.get("accessible_name") or candidate.get("text"))
+    record_meaning = _normalized_identity_text(_meaning(record))
+    if not candidate_meaning or not record_meaning:
+        return False
+    if candidate_meaning == record_meaning:
         return True
-    if record_meaning and candidate_meaning:
-        return record_meaning in candidate_meaning or candidate_meaning in record_meaning
-    return bool(record.get("content_fingerprint") and candidate.get("text_fingerprint") == record.get("content_fingerprint"))
+
+    candidate_words = _identity_words(candidate_meaning)
+    record_words = _identity_words(record_meaning)
+    if not candidate_words or not record_words:
+        return False
+    overlap = candidate_words & record_words
+    candidate_coverage = len(overlap) / len(candidate_words)
+    record_coverage = len(overlap) / len(record_words)
+    same_locator = candidate.get("locator") == record.get("semantic_locator")
+    if same_locator:
+        return candidate_coverage >= 0.75 and record_coverage >= 0.75
+    return candidate_coverage >= 0.9 and record_coverage >= 0.9
+
+
+def _normalized_identity_text(value: Any) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", str(value or "").lower()))
+
+
+def _identity_words(value: str) -> set[str]:
+    stop_words = {"a", "an", "and", "the", "to", "of", "for"}
+    return {
+        word
+        for word in value.split()
+        if word not in stop_words and not word.isdigit()
+    }
 
 
 def _preferred_locator(matches: List[Dict[str, Any]]) -> str:

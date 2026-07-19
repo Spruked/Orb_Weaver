@@ -8,7 +8,8 @@ from urllib.parse import urlparse
 
 STOP_WORDS = {
     "a", "an", "and", "are", "can", "could", "do", "does", "for", "how", "i", "in", "is",
-    "it", "me", "my", "of", "on", "please", "the", "there", "this", "to", "where", "with",
+    "it", "me", "my", "of", "on", "please", "program", "show", "the", "there", "this", "to",
+    "where", "with", "become",
 }
 
 CONCEPTS = {
@@ -19,6 +20,7 @@ CONCEPTS = {
     "contact": {"contact", "reach", "email", "message", "talk"},
     "start": {"start", "begin", "launch", "join", "signup", "register"},
     "demo": {"demo", "demonstration", "preview", "example"},
+    "beta": {"beta", "pilot", "participate", "participation", "tester", "testing"},
 }
 
 CONCEPT_BY_TOKEN = {
@@ -79,6 +81,13 @@ def guidance_eligible(record: Dict[str, Any]) -> bool:
     return (record.get("runtime_policy") or {}).get("may_point") is not False
 
 
+def authority_rank(record: Dict[str, Any]) -> int:
+    """Prefer explicit owner authority over merely recovered runtime evidence."""
+    if record.get("pointer_health") == "OWNER_VERIFIED":
+        return 2
+    return 1 if guidance_eligible(record) else 0
+
+
 def resolve_pointer_intent(
     records: Iterable[Dict[str, Any]],
     transcript: str,
@@ -119,9 +128,13 @@ def resolve_pointer_intent(
         if score >= minimum_score:
             scored.append(PointerIntentMatch(round(score, 4), record, guidance_eligible(record)))
 
-    scored.sort(key=lambda match: (match.score, match.guidance_eligible), reverse=True)
+    scored.sort(
+        key=lambda match: (authority_rank(match.record), match.score, match.guidance_eligible),
+        reverse=True,
+    )
     eligible = [match for match in scored if match.guidance_eligible]
-    candidates = eligible or scored
+    owner_verified = [match for match in eligible if authority_rank(match.record) == 2]
+    candidates = owner_verified or eligible or scored
     if len(candidates) > 1:
         first, second = candidates[0], candidates[1]
         distinct = str(first.record.get("target_id")) != str(second.record.get("target_id"))

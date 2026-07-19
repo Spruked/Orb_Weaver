@@ -100,7 +100,12 @@ const elementMatchesRecord = (element: HTMLElement, record: OrbPointerRecord): b
   if (!fragments.length) {
     return true;
   }
-  return fragments.some((fragment) => currentText.includes(fragment) || fragment.includes(currentText));
+  return fragments.some((fragment) => {
+    if (currentText === fragment) return true;
+    if (currentText.length < 5 || fragment.length < 5) return false;
+    return (currentText.includes(fragment) || fragment.includes(currentText))
+      && Math.min(currentText.length, fragment.length) / Math.max(currentText.length, fragment.length) >= 0.65;
+  });
 };
 
 const queryElements = (selector: string): HTMLElement[] => {
@@ -122,6 +127,8 @@ const resolvePointerElement = (record: OrbPointerRecord): { element: HTMLElement
       return { element, method: "scoped_pointer_record" };
     }
   }
+
+  if (parentLocator) return null;
 
   for (const element of queryElements(semanticLocator)) {
     if (elementMatchesRecord(element, record)) {

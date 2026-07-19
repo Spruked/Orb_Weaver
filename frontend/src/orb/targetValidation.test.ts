@@ -152,4 +152,48 @@ describe("validateOrbPointerTarget", () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.element).toBe(elements[1]);
   });
+
+  it("does not fall back outside an authoritative parent locator", () => {
+    document.body.innerHTML = '<section id="changed"></section><footer><button class="cta">Join the Founding Beta</button></footer>';
+    const element = document.querySelector("button") as HTMLButtonElement;
+    element.getBoundingClientRect = () => ({
+      x: 10, y: 10, left: 10, top: 10, right: 210, bottom: 50, width: 200, height: 40,
+      toJSON: () => ({}),
+    });
+
+    const result = validateOrbPointerTarget({
+      target_id: "approved-beta",
+      semantic_locator: "button.cta",
+      content_fingerprint: "beta",
+      meaning: "button: Join the Founding Beta",
+      confidence_class: "VERIFIED",
+      runtime_policy: { may_point: true },
+      structural_context: { parent_locator: "#changed", tag: "button" },
+    }, { logger: { warn: jest.fn(), info: jest.fn() } });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("identity_mismatch");
+  });
+
+  it("rejects a short similarly named identity", () => {
+    document.body.innerHTML = '<nav><a href="#beta">Beta</a></nav>';
+    const element = document.querySelector("a") as HTMLAnchorElement;
+    element.getBoundingClientRect = () => ({
+      x: 10, y: 10, left: 10, top: 10, right: 110, bottom: 50, width: 100, height: 40,
+      toJSON: () => ({}),
+    });
+
+    const result = validateOrbPointerTarget({
+      target_id: "approved-beta",
+      semantic_locator: "a",
+      content_fingerprint: "beta",
+      meaning: "button: Join the Founding Beta",
+      confidence_class: "VERIFIED",
+      runtime_policy: { may_point: true },
+      structural_context: { parent_locator: "nav", tag: "a" },
+    }, { logger: { warn: jest.fn(), info: jest.fn() } });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("identity_mismatch");
+  });
 });

@@ -6522,7 +6522,7 @@ async def decide_pointer_authority(
     matching_item: Optional[ReviewItem] = None
     reviewed_pointer: Optional[Dict[str, Any]] = None
     for review_item in job.review_items:
-        if review_item.category not in {"pointer_recovery_visual_review", "pointer_owner_verification"}:
+        if review_item.status != "open" or review_item.category not in {"pointer_recovery_visual_review", "pointer_owner_verification"}:
             continue
         pointers = (review_item.details or {}).get("pointers") or []
         for pointer in pointers:

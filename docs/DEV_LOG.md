@@ -19,15 +19,19 @@ Update this file after meaningful code, configuration, runtime, testing, or doct
 
 ### Verification
 
-* Backend: 29 passed.
-* Frontend: 6 passed; TypeScript no-emit passed; optimized production build passed.
-* Loader smoke: 25 checks passed, 8 bootstrap reports, 0 console errors.
-* Fresh canonical campaign Map Crawl job 2 / crawl 27 captured `/` and `/investor` and is correctly paused at `REVIEW_REQUIRED` for real owner approval.
-* Proposed first acceptance target: `target_598ed88cc1a1`, “Join the Founding Beta →”, on `/`, scoped beneath “Test it on real websites.” The similarly named footer CTA remains a separate record and structural context.
+* Owner-approved Map Crawl job 2 / crawl 27 captured `/` and `/investor`.
+* Site Scan job 3 completed from that crawl. ORB Scan job 4 produced 147 records and correctly required Pointer Recovery.
+* Pointer Recovery job 5 rendered both routes at desktop and mobile sizes. After correcting an overly broad short-label match and deterministically reconciling the original capture, 22 records were recoverable and 125 remained unresolved for review.
+* Owner approval promoted `target_598ed88cc1a1`, “Join the Founding Beta →”, to `OWNER_VERIFIED` / `VERIFIED`. Its policy permits pointing after live verification and explicitly denies click and navigation.
+* Three natural paraphrases resolve the owner-approved target on `/`; the same intent resolves no pointer on `/investor`. Owner authority rejects the similarly named recovered CTA as a competing semantic candidate.
+* Live acceptance against the active campaign page found three global selector matches but exactly one inside `article:nth-of-type(2)`. The scoped target survived reload, scrolled into view, moved the ORB 365 px, and received the ping with zero clicks, zero navigation, and zero ORB console errors.
+* Backend: 31 passed. Frontend: 8 passed; TypeScript no-emit passed; optimized production build passed.
+* Loader smoke: 35 checks passed, 8 bootstrap reports, 0 console errors.
 
-### Required next action
+### Remaining lifecycle work
 
-* The owner must approve lifecycle Map Crawl job 2 before Site Scan, ORB Scan, Pointer Recovery, and the real target authority decision can proceed. Do not manufacture or bypass the owner signature.
+* Pointer Recovery job 5 remains `REVIEW_REQUIRED`: 21 additional recovered records still need per-target authority decisions and 125 unresolved records remain in the critical visual-review queue. This does not reduce the completed authority or acceptance of `target_598ed88cc1a1`.
+* Do not promote unresolved or recovered records from runtime evidence alone. Continue with stronger intent coverage only through owner-authorized records, then rendered acquisition hardening.
 
 ## 2026-07-15 — Canonical Root Vault and Website Voice Lifecycle Repair
 

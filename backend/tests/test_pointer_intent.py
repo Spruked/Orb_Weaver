@@ -44,8 +44,34 @@ def test_low_confidence_semantic_match_remains_voice_only():
 
 def test_owner_authority_disambiguates_an_unapproved_duplicate():
     records = [
-        pointer("approved-beta", "/", "button: Join the Founding Beta", ["join the beta"], "VERIFIED"),
-        pointer("uncertain-beta", "/", "button: Join the Founding Beta", ["join the beta"], "UNCERTAIN"),
+        {
+            **pointer("approved-beta", "/", "button: Join the Founding Beta", ["join the beta"], "VERIFIED"),
+            "pointer_health": "OWNER_VERIFIED",
+        },
+        {
+            **pointer("recovered-beta", "/", "button: Join the Founding Beta", ["join the beta"], "STABLE"),
+            "pointer_health": "RECOVERED",
+        },
     ]
     matches = resolve_pointer_intent(records, "How do I join the beta?", "https://example.test/")
     assert [match.record["target_id"] for match in matches] == ["approved-beta"]
+
+
+def test_beta_paraphrases_resolve_to_owner_verified_target_without_exact_alias():
+    records = [
+        {
+            **pointer("approved-beta", "/", "button: Join the Founding Beta", ["join the founding beta"], "VERIFIED"),
+            "pointer_health": "OWNER_VERIFIED",
+        },
+        {
+            **pointer("recovered-beta", "/", "button: Join the Founding Beta", ["join the founding beta"], "STABLE"),
+            "pointer_health": "RECOVERED",
+        },
+    ]
+    for transcript in (
+        "How can I participate in the founding beta?",
+        "Where is the beta program?",
+        "How do I become a tester?",
+    ):
+        matches = resolve_pointer_intent(records, transcript, "https://example.test/")
+        assert [match.record["target_id"] for match in matches] == ["approved-beta"]
