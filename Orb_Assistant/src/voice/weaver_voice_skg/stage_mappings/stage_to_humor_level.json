@@ -1,0 +1,199 @@
+{
+  "mapping_version": "1.0.0",
+  "description": "Maps ORBS funnel stages to Weaver humor levels. The Stage Governor provides the canonical stage ID; this mapping selects the voice preset.",
+  "default_humor_level": "focused",
+  "mappings": {
+    "landing_page": {
+      "humor_level": "full",
+      "preset_file": "voice_presets/full_personality.json",
+      "initiative": "high",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 1500
+    },
+    "orb_demonstration": {
+      "humor_level": "full",
+      "preset_file": "voice_presets/full_personality.json",
+      "initiative": "high",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 1000
+    },
+    "preflight_setup": {
+      "humor_level": "full",
+      "preset_file": "voice_presets/full_personality.json",
+      "initiative": "high",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 2000
+    },
+    "preflight_progress": {
+      "humor_level": "full",
+      "preset_file": "voice_presets/full_personality.json",
+      "initiative": "medium",
+      "entry_guidance_required": false,
+      "stabilization_delay_ms": 0
+    },
+    "crawl_progress": {
+      "humor_level": "full",
+      "preset_file": "voice_presets/full_personality.json",
+      "initiative": "medium",
+      "entry_guidance_required": false,
+      "stabilization_delay_ms": 0
+    },
+    "low_stakes_exploration": {
+      "humor_level": "full",
+      "preset_file": "voice_presets/full_personality.json",
+      "initiative": "medium",
+      "entry_guidance_required": false,
+      "stabilization_delay_ms": 3000
+    },
+    "audit_review": {
+      "humor_level": "focused",
+      "preset_file": "voice_presets/focused_warmth.json",
+      "initiative": "medium",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 2500
+    },
+    "orbs_integration_assessment": {
+      "humor_level": "focused",
+      "preset_file": "voice_presets/focused_warmth.json",
+      "initiative": "medium",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 2500
+    },
+    "package_presentation": {
+      "humor_level": "focused",
+      "preset_file": "voice_presets/focused_warmth.json",
+      "initiative": "medium",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 2000
+    },
+    "final_closer_questionnaire": {
+      "humor_level": "focused",
+      "preset_file": "voice_presets/focused_warmth.json",
+      "initiative": "medium",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 2000
+    },
+    "package_commitment": {
+      "humor_level": "quiet",
+      "preset_file": "voice_presets/quiet_confidence.json",
+      "initiative": "low",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 3000
+    },
+    "build_configuration": {
+      "humor_level": "quiet",
+      "preset_file": "voice_presets/quiet_confidence.json",
+      "initiative": "low",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 2500
+    },
+    "final_order_review": {
+      "humor_level": "quiet",
+      "preset_file": "voice_presets/quiet_confidence.json",
+      "initiative": "low",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 3000
+    },
+    "signature": {
+      "humor_level": "quiet",
+      "preset_file": "voice_presets/quiet_confidence.json",
+      "initiative": "low",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 3000
+    },
+    "checkout": {
+      "humor_level": "quiet",
+      "preset_file": "voice_presets/quiet_confidence.json",
+      "initiative": "low",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 3000
+    },
+    "legal_sensitive": {
+      "humor_level": "quiet",
+      "preset_file": "voice_presets/quiet_confidence.json",
+      "initiative": "low",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 3000
+    },
+    "payment_sensitive": {
+      "humor_level": "quiet",
+      "preset_file": "voice_presets/quiet_confidence.json",
+      "initiative": "low",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 3000
+    },
+    "verified_payment": {
+      "humor_level": "celebratory",
+      "preset_file": "voice_presets/celebratory.json",
+      "initiative": "medium",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 2000
+    },
+    "fulfillment_milestones": {
+      "humor_level": "celebratory",
+      "preset_file": "voice_presets/celebratory.json",
+      "initiative": "medium",
+      "entry_guidance_required": false,
+      "stabilization_delay_ms": 1500
+    },
+    "successful_installation": {
+      "humor_level": "celebratory",
+      "preset_file": "voice_presets/celebratory.json",
+      "initiative": "medium",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 2000
+    },
+    "launch_verification": {
+      "humor_level": "celebratory",
+      "preset_file": "voice_presets/celebratory.json",
+      "initiative": "medium",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 2000
+    },
+    "live_status": {
+      "humor_level": "celebratory",
+      "preset_file": "voice_presets/celebratory.json",
+      "initiative": "medium",
+      "entry_guidance_required": true,
+      "stabilization_delay_ms": 2000
+    }
+  },
+  "intent_routing_table": {
+    "landing_page": {
+      "I want to see what this does": {
+        "intent": "product_demonstration",
+        "action": "view_demonstration"
+      },
+      "Scan my website": {
+        "intent": "preflight_interest",
+        "action": "start_preflight"
+      },
+      "How much does it cost": {
+        "intent": "package_exploration",
+        "action": "explore_packages"
+      },
+      "I already have an account": {
+        "intent": "returning_customer",
+        "action": "login"
+      },
+      "I'm interested in investing": {
+        "intent": "investor_interest",
+        "action": "open_campaign_portal"
+      },
+      "I'm just looking": {
+        "intent": "exploration",
+        "action": "continue_browsing"
+      }
+    },
+    "global_fallback": {
+      "unclear_request": {
+        "intent": "ambiguous",
+        "action": "ask_clarifying_question"
+      },
+      "no_match": {
+        "intent": "no_match",
+        "action": "honest_constrained_response"
+      }
+    }
+  }
+}

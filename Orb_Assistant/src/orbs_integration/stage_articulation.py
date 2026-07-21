@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Mapping, Tuple
 
 from .stage_snapshot import AllowedAction, StageSnapshot, thaw_json
+
+try:
+    from Orb_Assistant.src.voice.weaver_voice_skg.logic.weaver_articulation import WeaverArticulation
+except ImportError:
+    WeaverArticulation = None
 
 
 @dataclass(frozen=True)
@@ -21,6 +28,14 @@ class StageArticulator:
 
     def __init__(self, language_model: Callable[[Mapping[str, Any]], str] | None = None):
         self._language_model = language_model
+        self._weaver_articulation = None
+        if WeaverArticulation is not None:
+            skg_root = Path(__file__).resolve().parents[1] / "voice" / "weaver_voice_skg"
+            if skg_root.exists():
+                try:
+                    self._weaver_articulation = WeaverArticulation(skg_root=str(skg_root))
+                except Exception:
+                    self._weaver_articulation = None
 
     def model_payload(self, snapshot: StageSnapshot) -> Mapping[str, Any]:
         """The only payload that may be sent to an articulation model."""
@@ -45,11 +60,38 @@ class StageArticulator:
         if self._language_model:
             spoken = str(self._language_model(payload)).strip()
         else:
-            spoken = self._deterministic_explanation(snapshot)
+            spoken = self._weaver_skg_explanation(snapshot)
+            if not spoken:
+                spoken = self._deterministic_explanation(snapshot)
         if not spoken:
             spoken = self._deterministic_explanation(snapshot)
         # Actions always come from the snapshot, never from generated language.
         return StageArticulation(spoken, snapshot.allowed_actions, snapshot.approved_destination_route)
+
+    def _weaver_skg_explanation(self, snapshot: StageSnapshot) -> str:
+        if self._weaver_articulation is None:
+            return ""
+
+        context = {
+            "stage_id": snapshot.current_stage,
+            "screen_stable_at": time.time(),
+            "visitor_input_active": False,
+            "evidence": thaw_json(snapshot.approved_stage_evidence),
+            "visitor_statement": snapshot.customer_action_required or "",
+            "allowed_actions": [action.name for action in snapshot.allowed_actions],
+            "recommended_action": snapshot.next_recommended_action,
+            "situation_description": (
+                f"Stage {snapshot.current_stage} with status {snapshot.stage_status}."
+                f"{f' Blocking reason: {snapshot.blocking_reason}' if snapshot.blocking_reason else ''}"
+            ),
+        }
+
+        try:
+            response = self._weaver_articulation.articulate(context)
+        except Exception:
+            return ""
+
+        return str(getattr(response, "text", "")).strip()
 
     @staticmethod
     def _deterministic_explanation(snapshot: StageSnapshot) -> str:
