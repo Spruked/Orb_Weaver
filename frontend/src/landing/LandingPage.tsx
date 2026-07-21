@@ -1,8 +1,31 @@
-import React from "react";
+import React, { useState } from "react";
 import PublicHeader from "../components/PublicHeader";
+import { authStore } from "../services/api";
+import { trackOnboardingEvent } from "../services/analytics";
+import { createIntentGuestSession, LandingIntent } from "../onboarding/guestOnboarding";
 import "./Landing.css";
 
 const LandingPage: React.FC = () => {
+  const [pendingTarget, setPendingTarget] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  const begin = async (target: string, intent: LandingIntent, tier: 'basic' | 'enhanced' | 'premium' | null = null) => {
+    if (intent === 'dashboard' && authStore.getToken()) {
+      window.location.assign('/dashboard');
+      return;
+    }
+    setError('');
+    setPendingTarget(target);
+    trackOnboardingEvent('landing_signup_cta_clicked', { intent, ...(tier ? { tier } : {}) });
+    try {
+      await createIntentGuestSession(target, intent, tier);
+      window.location.assign(target);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'We could not start onboarding. Please try again.');
+      setPendingTarget(null);
+    }
+  };
+
   return (
     <main className="ow-v2-page">
       <div className="ow-v2-grid" />
@@ -25,9 +48,25 @@ const LandingPage: React.FC = () => {
           </p>
 
           <div className="ow-v2-actions">
-            <a className="ow-v2-primary" href="/preflight">
-              Run Free Preflight Scan
-            </a>
+            <button
+              id="landing-free-preflight"
+              data-orb-target="run-free-preflight"
+              className="ow-v2-primary"
+              onClick={() => begin('/signup?intent=preflight', 'preflight')}
+              disabled={Boolean(pendingTarget)}
+            >
+              {pendingTarget === '/signup?intent=preflight' ? 'Preparing…' : 'Run a Free Preflight Scan'}
+            </button>
+
+            <button
+              id="landing-dashboard"
+              data-orb-target="launch-dashboard"
+              className="ow-v2-secondary"
+              onClick={() => begin('/login?next=/dashboard', 'dashboard')}
+              disabled={Boolean(pendingTarget)}
+            >
+              Launch Dashboard
+            </button>
 
             <a className="ow-v2-secondary" href="https://campaign.orbweaver.spruked.com">
               Campaign, Beta & Investor Portal
@@ -37,6 +76,8 @@ const LandingPage: React.FC = () => {
               See the Intelligence Layer
             </a>
           </div>
+
+          {error && <p className="ow-v2-cta-error" role="alert">{error}</p>}
 
           <div className="ow-v2-proof">
             <span>NO REBUILD REQUIRED</span>
@@ -64,6 +105,46 @@ const LandingPage: React.FC = () => {
           <h2>Give it presence.</h2>
           <p>A site-native ORB that knows where help is actually needed.</p>
         </article>
+      </section>
+
+      <section className="ow-v2-packages" aria-labelledby="package-heading">
+        <div className="ow-v2-package-heading">
+          <p className="ow-v2-kicker">WEBSITE ORBS</p>
+          <h2 id="package-heading">Start with interest. Confirm fit with evidence.</h2>
+          <p>Package eligibility and final recommendations follow Preflight, Crawl, and Final Audit.</p>
+        </div>
+        <div className="ow-v2-package-grid">
+          {([
+            ['basic', 'Basic', 'Visitor guidance for a focused public website.'],
+            ['enhanced', 'Enhanced', 'Deeper routing across services and departments.'],
+            ['premium', 'Premium', 'Branded guidance with broader semantic support.'],
+          ] as const).map(([tier, label, description]) => (
+            <article key={tier}>
+              <span>{label}</span>
+              <p>{description}</p>
+              <button
+                id={`landing-package-${tier}`}
+                data-orb-target={`package-${tier}`}
+                onClick={() => begin(`/signup?intent=package&tier=${tier}`, 'package', tier)}
+                disabled={Boolean(pendingTarget)}
+              >
+                Explore {label}
+              </button>
+            </article>
+          ))}
+          <article>
+            <span>Enterprise</span>
+            <p>Preserve enterprise interest for an evidence-led supported discussion.</p>
+            <button
+              id="landing-enterprise"
+              data-orb-target="package-enterprise"
+              onClick={() => begin('/signup?intent=enterprise', 'enterprise')}
+              disabled={Boolean(pendingTarget)}
+            >
+              Discuss Enterprise
+            </button>
+          </article>
+        </div>
       </section>
     </main>
   );

@@ -2,11 +2,15 @@
 
 Orb Weaver is a local-first website intelligence platform with authenticated customer workspaces, website crawling, preflight scanning, ORB-readable semantic scoring, report generation, checkout records, client intelligence packs, and Cloudflare Tunnel deployment support.
 
+> [!IMPORTANT]
+> **IMMUTABLE STORAGE LAW:** `vault_system/` is the sole authoritative data system. Every persisted scan, raw-data artifact, customer record, authentication session, project, checkout order, verified payment, entitlement, workflow state, report, cache, and learned observation must be written into and read back from the canonical Vault. Component-local or parallel stores are prohibited. See [IMMUTABLE_VAULT_STORAGE_LAW.md](./IMMUTABLE_VAULT_STORAGE_LAW.md).
+
 ## Features
 
 ### Website ORB Crawler Engine
 
 - Async crawling with configurable page limits, crawl depth, delay, sitemap discovery, and context seed URLs.
+- Authenticated owner crawls include configured admin-section seeds such as `/admin` and tag admin pages separately from public sitemap/link discovery.
 - On-page SEO analysis for titles, meta descriptions, headings, canonicals, links, images, and indexability.
 - Technical SEO checks for SSL, robots.txt, sitemap.xml, schema markup, redirects, and broken links.
 - Semantic and entity analysis for ORB-readable website context.
@@ -29,7 +33,7 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 
 - Customer signup/login with bearer-token sessions.
 - Per-customer project ownership.
-- Account, cart, checkout order, admin customer, project, crawl, audit, GA4, report, and legal pages.
+- Account, cart, checkout order, admin customer, project, crawl, audit, GA4, report, legal pages, and admin-section scan awareness.
 - Service catalog includes Starter Audit, Growth Audit, and Premium Intelligence Pack.
 
 ### Website ORB Voice Runtime
@@ -59,6 +63,7 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 ### ORB Product Boundary
 
 - Orb Weaver's own demo ORB is the showcase/development ORB. It may use Desktop MCP, OCR, browser review, and visual audit tools to prove the ceiling of the ecosystem.
+- The owner/admin ORB has full navigation, admin-route awareness, pointer escalation folders, and canonical tool access for Spruked/CALI operations. It may scan configured admin sections during authenticated owner crawls.
 - Installed customer Website ORBs are website-native packages: target map, compiled intent cache, voice assets, approved website context, and deployment files.
 - Pointer guidance is core to every ORB. Every Website ORB gets a Pointer Plot Map, runtime pointer resolution, and verified visual guidance; tiers change coverage, density, maintenance, branding, and adaptation.
 - Basic customer ORBs do not inherit Desktop MCP tools from the Orb Weaver demo.
@@ -67,7 +72,10 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 
 ## Canonical Storage Authority
 
-The repository-root `vault_system/` is the only storage authority.
+The repository-root `vault_system/` is the only storage authority. This is an
+immutable repository invariant covering scans, raw evidence, customer data,
+checkout/payment records, entitlements, and every other persisted operational
+record—not merely generated files.
 
 ```text
 vault_system/

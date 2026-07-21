@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Globe, CheckCircle, XCircle, Image, Search, Download, Activity } from 'lucide-react';
+import { Globe, CheckCircle, XCircle, Image, Search, Download, Activity, Square } from 'lucide-react';
 import { api, CrawledPage, CrawlJob as CrawlJobType, downloads } from '../services/api';
 
-const RUNNING_STATUSES = new Set(['pending', 'running']);
+const RUNNING_STATUSES = new Set(['pending', 'running', 'cancel_requested']);
 
 const CrawlProgressPanel: React.FC<{ status: string; progress: number; pagesCrawled: number; pagesFound: number }> = ({
   status,
@@ -44,32 +44,47 @@ const CrawlJob: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isRunningAudit, setIsRunningAudit] = useState(false);
+  const [isStoppingCrawl, setIsStoppingCrawl] = useState(false);
   const [progress, setProgress] = useState(8);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [lastConnectedAt, setLastConnectedAt] = useState<Date | null>(null);
 
   useEffect(() => {
     if (!jobId) return;
 
     let stopped = false;
     let timer: number | undefined;
+    let consecutiveFailures = 0;
+    let hasLoadedJob = false;
 
     const load = async () => {
       try {
         const job = await api.getCrawlJob(jobId);
         if (stopped) return;
+        hasLoadedJob = true;
+        consecutiveFailures = 0;
         setCrawlData(job);
+        setError('');
+        setReconnectAttempt(0);
+        setLastConnectedAt(new Date());
 
         if (job.status === 'completed') {
           const pageResponse = await api.getCrawlPages(jobId);
           if (!stopped) setPages(pageResponse.pages);
         }
 
-        if (job.status === 'pending' || job.status === 'running') {
+        if (RUNNING_STATUSES.has(job.status)) {
           timer = window.setTimeout(load, 2000);
         }
       } catch (err) {
-        if (!stopped) setError(err instanceof Error ? err.message : 'Failed to load crawl job');
+        if (stopped) return;
+        consecutiveFailures += 1;
+        setError(err instanceof Error ? err.message : 'Temporarily unable to reach the crawl service');
+        setReconnectAttempt(consecutiveFailures);
+        const retryDelay = Math.min(30000, 2000 * (2 ** Math.min(consecutiveFailures - 1, 4)));
+        timer = window.setTimeout(load, retryDelay);
       } finally {
-        if (!stopped) setIsLoading(false);
+        if (!stopped && (hasLoadedJob || consecutiveFailures > 0)) setIsLoading(false);
       }
     };
 
@@ -139,6 +154,21 @@ const CrawlJob: React.FC = () => {
   const maxPagesConfigured = Number(stats.max_pages_configured || crawlData?.config?.max_pages || 0);
   const maxDepthConfigured = Number(stats.max_depth_configured || crawlData?.config?.max_depth || 0);
   const hostNormalization = stats.host_normalization as Record<string, string | boolean | number | null> | undefined;
+  const configuredAdminScan = crawlData?.config?.include_admin_sections !== false;
+  const adminSeedUrls = Array.isArray(stats.admin_seed_urls)
+    ? stats.admin_seed_urls
+    : (crawlData?.config?.seed_urls || []).filter((url) => String(url).startsWith('/admin'));
+  const adminPagesFromStats = Number(stats.admin_section_pages_scanned || 0);
+  const adminPagesFromRows = pages.filter((page) => {
+    try {
+      const path = new URL(page.url).pathname.toLowerCase().replace(/\/$/, '') || '/';
+      return path === '/admin' || path.startsWith('/admin/');
+    } catch {
+      return page.url.toLowerCase().includes('/admin');
+    }
+  }).length;
+  const adminPagesScanned = adminPagesFromStats || adminPagesFromRows;
+  const adminUrlsFound = Number(stats.admin_section_urls_found || adminPagesScanned || 0);
   const pointerSummary = crawlData?.pointer_summary;
   const plannedToolCalls = crawlData?.planned_tool_calls || [];
 
@@ -179,12 +209,47 @@ const CrawlJob: React.FC = () => {
     }
   };
 
+  const handleStopCrawl = async () => {
+    if (!jobId || !isActiveCrawl) return;
+    setIsStoppingCrawl(true);
+    setError('');
+    try {
+      setCrawlData(await api.cancelCrawlJob(jobId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to stop crawl');
+    } finally {
+      setIsStoppingCrawl(false);
+    }
+  };
+
   if (isLoading) return <div className="card text-gray-500">Loading crawl job...</div>;
-  if (error) return <div className="card text-red-600">{error}</div>;
+  if (!crawlData && error) {
+    return (
+      <div className="card border-amber-200 bg-amber-50 text-amber-800">
+        <p className="font-semibold">Reconnecting to crawl job #{jobId}</p>
+        <p className="mt-1 text-sm">{error}</p>
+        <p className="mt-2 text-xs">Automatic retry attempt {reconnectAttempt}. You can leave this page open.</p>
+      </div>
+    );
+  }
   if (!crawlData) return <div className="card text-gray-500">Crawl job not found.</div>;
 
   return (
     <div className="space-y-6">
+      {reconnectAttempt > 0 && (
+        <div className="card border-amber-200 bg-amber-50 text-amber-800">
+          <div className="flex items-center gap-3">
+            <Activity className="h-5 w-5 animate-pulse" />
+            <div>
+              <p className="font-semibold">Connection interrupted—retrying automatically</p>
+              <p className="text-sm">Last crawl data is preserved. Retry attempt {reconnectAttempt}; the backend crawl continues independently.</p>
+            </div>
+          </div>
+        </div>
+      )}
+      {!reconnectAttempt && lastConnectedAt && isActiveCrawl && (
+        <p className="text-right text-xs text-gray-400">Live status checked {lastConnectedAt.toLocaleTimeString()}</p>
+      )}
       <div className="card border-blue-100 bg-blue-50">
         <div className="flex items-start justify-between gap-4">
         <div>
@@ -194,7 +259,7 @@ const CrawlJob: React.FC = () => {
               className={`px-3 py-1 rounded-full text-sm font-semibold ${
                 crawlData.status === 'completed'
                   ? 'bg-green-100 text-green-700'
-                  : crawlData.status === 'running' || crawlData.status === 'pending'
+                  : RUNNING_STATUSES.has(crawlData.status)
                   ? 'bg-blue-100 text-blue-700'
                   : 'bg-red-100 text-red-700'
               }`}
@@ -209,6 +274,16 @@ const CrawlJob: React.FC = () => {
             <p className="text-sm text-gray-600 mt-1">Crawl job #{jobId} for project {crawlData.project_id}</p>
         </div>
         <div className="flex gap-3">
+          {isActiveCrawl && (
+            <button
+              onClick={handleStopCrawl}
+              disabled={isStoppingCrawl || crawlData.status === 'cancel_requested'}
+              className="flex items-center gap-2 rounded-lg bg-red-100 px-4 py-3 font-semibold text-red-700 hover:bg-red-200 disabled:opacity-50"
+            >
+              <Square className="h-4 w-4 fill-current" />
+              {isStoppingCrawl || crawlData.status === 'cancel_requested' ? 'Stopping…' : 'Stop Crawl'}
+            </button>
+          )}
           <button
             onClick={() => downloads.crawlCsv(String(jobId))}
             className="btn-secondary flex items-center gap-2"
@@ -337,6 +412,7 @@ const CrawlJob: React.FC = () => {
                 ['Pages Discovered', discoveredUrls],
                 ['Pages Crawled', pagesCrawled],
                 ['Pages Skipped', skippedEstimate],
+                ['Admin Pages', adminPagesScanned],
                 ['Sitemap URLs', sitemapUrlsFound],
                 ['Sitemap Indexes', sitemapIndexesFound],
                 ['Internal Links', Number(stats.total_internal_links || 0)],
@@ -365,6 +441,18 @@ const CrawlJob: React.FC = () => {
               <div className="flex justify-between bg-white/70 rounded-lg px-3 py-2">
                 <span className="text-gray-600">Host Normalization</span>
                 <span className="font-semibold">{hostNormalization?.www_equivalent ? 'www = root' : '-'}</span>
+              </div>
+              <div className="flex justify-between bg-white/70 rounded-lg px-3 py-2">
+                <span className="text-gray-600">Admin Scan</span>
+                <span className="font-semibold">{configuredAdminScan ? 'Enabled' : 'Off'}</span>
+              </div>
+              <div className="flex justify-between bg-white/70 rounded-lg px-3 py-2">
+                <span className="text-gray-600">Admin URLs Found</span>
+                <span className="font-semibold">{adminUrlsFound}</span>
+              </div>
+              <div className="flex justify-between bg-white/70 rounded-lg px-3 py-2 md:col-span-2">
+                <span className="text-gray-600">Admin Seeds</span>
+                <span className="font-semibold text-right truncate">{adminSeedUrls.length ? adminSeedUrls.join(', ') : '-'}</span>
               </div>
             </div>
           </div>

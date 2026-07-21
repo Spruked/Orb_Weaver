@@ -154,7 +154,7 @@ async def main() -> int:
     parser.add_argument(
         "--output",
         required=True,
-        help="Output directory for site_preflight_report.json.",
+        help="Output directory inside the canonical vault_system for site_preflight_report.json.",
     )
     args = parser.parse_args()
 

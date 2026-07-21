@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.core.storage import BROWSER_REVIEWS_ROOT
+from app.core.storage import BROWSER_REVIEWS_ROOT, require_vault_path
 
 
 class ChromeDevToolsReviewRunner:
@@ -21,7 +21,7 @@ class ChromeDevToolsReviewRunner:
         browser_start_cmd: Optional[str] = None,
     ):
         self.cli = cli
-        self.output_root = Path(output_root)
+        self.output_root = require_vault_path(output_root, "Browser review output")
         self.timeout_seconds = timeout_seconds
         self.start_args = start_args or []
         self.browser_start_cmd = browser_start_cmd

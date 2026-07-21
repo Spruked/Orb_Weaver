@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
 from app.core.config import settings
-from app.core.storage import client_root
+from app.core.storage import client_root, require_vault_path
 
 
 EVIDENCE_DIRECTORIES = (
@@ -74,14 +74,15 @@ def _write_json_atomic(path: Path, payload: Any) -> None:
 
 
 def initialize_evidence_run(domain: str, run_id: int | str) -> Path:
-    root = client_root(domain) / "runs" / str(run_id)
+    root = require_vault_path(client_root(domain) / "runs" / str(run_id), "Lifecycle evidence run")
     for relative in EVIDENCE_DIRECTORIES:
         (root / relative).mkdir(parents=True, exist_ok=True)
     return root
 
 
 def write_json_artifact(root: Path, relative_path: str, payload: Any) -> Path:
-    target = (root / relative_path).resolve()
+    root = require_vault_path(root, "Lifecycle evidence root")
+    target = require_vault_path((root / relative_path).resolve(), "Lifecycle evidence artifact")
     if root.resolve() not in target.parents:
         raise ValueError("Evidence artifact path must remain inside the run root")
     _write_json_atomic(target, payload)

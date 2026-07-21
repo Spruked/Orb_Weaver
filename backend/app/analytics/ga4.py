@@ -61,6 +61,20 @@ class GA4Connector:
 
         response = self.client.run_report(request)
 
+        totals_response = self.client.run_report(RunReportRequest(
+            property=self._format_property_id(),
+            date_ranges=[DateRange(start_date=start_date, end_date=end_date)],
+            metrics=[
+                Metric(name='sessions'),
+                Metric(name='users'),
+                Metric(name='newUsers'),
+                Metric(name='bounceRate'),
+                Metric(name='engagementRate'),
+                Metric(name='averageSessionDuration'),
+                Metric(name='screenPageViews')
+            ]
+        ))
+
         data = []
         for row in response.rows:
             data.append({
@@ -74,13 +88,20 @@ class GA4Connector:
                 'pageviews': int(row.metric_values[5].value)
             })
 
+        totals_row = totals_response.rows[0] if totals_response.rows else None
+        totals = {
+            'sessions': int(totals_row.metric_values[0].value) if totals_row else 0,
+            'users': int(totals_row.metric_values[1].value) if totals_row else 0,
+            'new_users': int(totals_row.metric_values[2].value) if totals_row else 0,
+            'bounce_rate': float(totals_row.metric_values[3].value) if totals_row else 0,
+            'engagement_rate': float(totals_row.metric_values[4].value) if totals_row else 0,
+            'avg_session_duration': float(totals_row.metric_values[5].value) if totals_row else 0,
+            'pageviews': int(totals_row.metric_values[6].value) if totals_row else 0,
+        }
+
         return {
             'data': data,
-            'totals': {
-                'sessions': sum(d['sessions'] for d in data),
-                'users': sum(d['users'] for d in data),
-                'pageviews': sum(d['pageviews'] for d in data)
-            }
+            'totals': totals
         }
 
     def get_top_pages(

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orb_weaver.orbs_guest_session.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "guest_session_id", "landing_intent", "original_cta_destination", "current_onboarding_step", "completed_onboarding_steps", "non_sensitive_questionnaire_answers", "created_at", "expires_at", "version"],
+  "properties": {
+    "schema": {"const": "orb_weaver.orbs_guest_session.v1"},
+    "guest_session_id": {"type": "string", "minLength": 32},
+    "landing_intent": {"type": "string", "minLength": 1},
+    "selected_tier_interest": {"type": ["string", "null"]},
+    "website_url": {"type": ["string", "null"]},
+    "original_cta_destination": {"type": "string", "pattern": "^/[^/].*|^/$"},
+    "current_onboarding_step": {"type": "string"},
+    "completed_onboarding_steps": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "non_sensitive_questionnaire_answers": {"type": "object"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "version": {"type": "integer", "minimum": 1}
+  }
+}

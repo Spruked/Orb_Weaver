@@ -26,6 +26,13 @@ export const authStore = {
   clearToken: () => localStorage.removeItem(TOKEN_KEY)
 };
 
+export class ApiError extends Error {
+  constructor(message: string, public readonly code?: string, public readonly status?: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 function apiUrl(path: string) {
   return `${API_BASE_URL}${path}`;
 }
@@ -50,7 +57,7 @@ async function parseJsonResponse<T>(response: Response, requestUrl: string): Pro
   if (!response.ok) {
     const body = contentType.includes('application/json') ? await response.json().catch(() => null) : null;
     const message = body?.detail || body?.message || response.statusText;
-    throw new Error(message || ORB_RECONNECT_MESSAGE);
+    throw new ApiError(message || ORB_RECONNECT_MESSAGE, body?.code, response.status);
   }
 
   if (!contentType.includes('application/json')) {
@@ -207,6 +214,76 @@ export interface Project {
   latest_audit_id?: string | null;
   latest_audit_score?: number | null;
   folder_title?: string;
+}
+
+export interface OrbsAllowedAction {
+  name: string;
+  display_label: string;
+  confirmation_required: boolean;
+  allowed_input_fields: string[];
+  permitted_input_fields: string[];
+  destination_route?: string | null;
+  destination_verified: boolean;
+  reason_available?: string | null;
+  idempotency_required: boolean;
+}
+
+export interface OrbsStageSnapshot {
+  schema: 'orb_weaver.orbs_stage_snapshot.v1';
+  customer_id: string;
+  snapshot_version: string;
+  project_id: string;
+  project_display_name: string;
+  build_order_id?: string | null;
+  current_stage: string;
+  stage_status: string;
+  completed_stages: string[];
+  blocking_reason?: string | null;
+  customer_action_required?: string | null;
+  next_recommended_action?: string | null;
+  approved_stage_evidence: Record<string, unknown>;
+  approved_destination_route?: string | null;
+  approved_destination_verified: boolean;
+  updated_at: string;
+  allowed_actions: OrbsAllowedAction[];
+}
+
+export interface OrbsActionSubmission {
+  project_id: string;
+  build_order_id?: string | null;
+  action: string;
+  expected_stage: string;
+  snapshot_version: string;
+  inputs: Record<string, unknown>;
+  confirmation_evidence?: Record<string, unknown>;
+}
+
+export interface OrbsGuestSession {
+  schema: 'orb_weaver.orbs_guest_session.v1';
+  guest_session_id: string;
+  landing_intent: string;
+  selected_tier_interest?: string | null;
+  website_url?: string | null;
+  original_cta_destination: string;
+  current_onboarding_step: string;
+  completed_onboarding_steps: string[];
+  non_sensitive_questionnaire_answers: Record<string, unknown>;
+  created_at: string;
+  expires_at: string;
+  version: number;
+}
+
+export interface OrbsGuestMergeResult {
+  schema: 'orb_weaver.orbs_guest_merge_result.v1';
+  merge_status: 'merged' | 'idempotent_replay';
+  guest_session_id: string;
+  customer_id: string;
+  project_id: string;
+  onboarding_record_id: string;
+  original_cta_destination: string;
+  transferred_fields: string[];
+  consumed_at: string;
+  fresh_snapshot: OrbsStageSnapshot;
 }
 
 export type LifecycleJobType = 'MAP_CRAWL' | 'SITE_SCAN' | 'ORB_SCAN' | 'POINTER_RECOVERY' | 'FULL_AUDIT' | 'PREFLIGHT' | 'SENTINEL';
@@ -394,6 +471,7 @@ export interface CrawlConfig {
   max_depth: number;
   competitor_domains?: string[];
   seed_urls?: string[];
+  include_admin_sections?: boolean;
 }
 
 export interface PreflightReport {
@@ -621,6 +699,18 @@ export interface AuditReportPayload {
     warning_count: number;
     opportunity_count: number;
     total_pages: number;
+    public_pages?: number;
+    route_category_counts?: Record<string, number>;
+    pages_excluded_from_public_seo_scoring?: number;
+    excluded_from_public_seo_scoring?: Record<string, string[]>;
+    admin_pages_scanned?: number;
+    admin_pages_excluded_from_public_seo_scoring?: number;
+    admin_urls?: string[];
+    transactional_pages_excluded_from_public_seo_scoring?: number;
+    transactional_urls?: string[];
+    crawl_control_resources?: number;
+    orb_context_entities?: number;
+    orb_context_thin_content_pages?: number;
     avg_load_time: number;
   };
   top_issues: SEOIssue[];
@@ -914,14 +1004,24 @@ export interface OrbMemorySummary {
 export interface GA4FullReport {
   traffic_overview?: {
     totals?: Record<string, number>;
+    data?: Array<Record<string, string | number>>;
   };
   top_pages?: Array<Record<string, string | number>>;
   search_queries?: Array<Record<string, string | number>>;
   device_breakdown?: Array<Record<string, string | number>>;
   country_breakdown?: Array<Record<string, string | number>>;
+  conversion_events?: Array<Record<string, string | number>>;
 }
 
 export const api = {
+  getOrbsStage: (projectId: string) =>
+    request<OrbsStageSnapshot>(`/api/projects/${projectId}/orbs-stage`),
+  submitOrbsStageAction: (projectId: string, payload: OrbsActionSubmission, idempotencyKey: string) =>
+    request<OrbsStageSnapshot>(`/api/projects/${projectId}/orbs-stage/actions`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(payload)
+    }),
   websiteOrbVoice: (
     audio: Blob,
     signal?: AbortSignal,
@@ -995,6 +1095,29 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ website_url: websiteUrl })
     }),
+  createOrbsGuestSession: (payload: {
+    landing_intent: string;
+    selected_tier_interest?: string | null;
+    website_url?: string | null;
+    original_cta_destination: string;
+    current_onboarding_step: string;
+    completed_onboarding_steps: string[];
+    non_sensitive_questionnaire_answers: Record<string, unknown>;
+  }) =>
+    request<OrbsGuestSession>('/api/orbs/guest-sessions', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+  mergeOrbsGuestSession: (guestSessionId: string, payload: {
+    schema: 'orb_weaver.orbs_guest_merge_request.v1';
+    guest_session_id: string;
+    idempotency_key: string;
+    project_display_name?: string | null;
+  }) =>
+    request<OrbsGuestMergeResult>(`/api/orbs/guest-sessions/${encodeURIComponent(guestSessionId)}/merge`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
   signup: (payload: {
     email: string;
     password: string;
@@ -1003,12 +1126,12 @@ export const api = {
     company_name?: string | null;
     contact_name?: string | null;
     phone?: string | null;
-    address_line1: string;
+    address_line1?: string | null;
     address_line2?: string | null;
-    city: string;
-    state: string;
-    postal_code: string;
-    country: string;
+    city?: string | null;
+    state?: string | null;
+    postal_code?: string | null;
+    country?: string | null;
     business_phone?: string | null;
     business_address_line1?: string | null;
     business_address_line2?: string | null;
@@ -1017,6 +1140,7 @@ export const api = {
     business_postal_code?: string | null;
     business_country?: string | null;
     tax_id?: string | null;
+    guest_session_id?: string | null;
   }) =>
     request<AuthResponse>('/api/auth/signup', {
       method: 'POST',
@@ -1086,13 +1210,15 @@ export const api = {
   startLifecycleJob: (
     projectId: string,
     jobType: LifecycleJobType,
-    config: { max_pages?: number; delay?: number; max_depth?: number; seed_urls?: string[]; source_job_id?: number } = {}
+    config: { max_pages?: number; delay?: number; max_depth?: number; seed_urls?: string[]; include_admin_sections?: boolean; source_job_id?: number } = {}
   ) =>
     request<LifecycleJob>(`/api/projects/${projectId}/lifecycle-jobs/${jobType.toLowerCase().replace(/_/g, '-')}`, {
       method: 'POST',
       body: JSON.stringify(config)
     }),
   getLifecycleJob: (jobId: string) => request<LifecycleJob>(`/api/lifecycle-jobs/${jobId}`),
+  cancelLifecycleJob: (jobId: string) =>
+    request<LifecycleJob>(`/api/lifecycle-jobs/${jobId}/cancel`, { method: 'POST' }),
   decideLifecycleReviewItem: (jobId: string, itemId: string, decision: 'approve' | 'reject' | 'waive', notes = '') =>
     request<{ job: LifecycleJob; review_item: LifecycleReviewItem }>(
       `/api/lifecycle-jobs/${jobId}/review-items/${itemId}/decision`,
@@ -1130,6 +1256,8 @@ export const api = {
       method: 'POST'
     }),
   getCrawlJob: (jobId: string) => request<CrawlJob>(`/api/crawl-jobs/${jobId}`),
+  cancelCrawlJob: (jobId: string) =>
+    request<CrawlJob>(`/api/crawl-jobs/${jobId}/cancel`, { method: 'POST' }),
   listCrawlJobs: () => request<CrawlJob[]>('/api/crawl-jobs'),
   getCrawlPages: (jobId: string) => request<PagesResponse>(`/api/crawl-jobs/${jobId}/pages?limit=200`),
   runAudit: (jobId: string) =>
@@ -1154,6 +1282,7 @@ export const api = {
     request<{
       project: Project;
       crawl_summary?: Record<string, number | boolean> | null;
+      latest_audit?: AuditReportResponse | null;
       audit_scores?: Record<string, number> | null;
       audit_issues?: AuditReportPayload['summary'] | null;
       ga4_data?: GA4FullReport | null;

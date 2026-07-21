@@ -4,6 +4,7 @@ import asyncio
 import base64
 import csv
 import hashlib
+import hmac
 import importlib.util
 import json
 import os
@@ -20,9 +21,9 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from collections import Counter
 from urllib.parse import urlparse
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 import httpx
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, or_
@@ -33,14 +34,16 @@ from app.audit.engine import SEOAuditor
 from app.core.config import settings
 from app.core.storage import (
     BROWSER_REVIEWS_ROOT,
-    INDEXES_ROOT,
+    GLOBAL_INTELLIGENCE_ROOT,
     INTEGRATIONS_ROOT,
     REPORTS_ROOT,
+    RUNTIME_ROOT,
     TTS_CACHE_ROOT,
     VAULT_ROOT,
     canonical_database_url,
     client_root,
     ensure_vault_layout,
+    require_vault_path,
 )
 from app.crawler.engine import OrbWeaverCrawler, PageData
 from app.lifecycle import (
@@ -85,11 +88,35 @@ from app.models.database import (
     OrbRecentContext,
     OrbToolCache,
     OrbUserMemory,
+    OrbsBuildOrder,
+    OrbsEntitlement,
+    OrbsGuestSession,
+    OrbsOnboardingRecord,
     Project,
     ReviewItem,
     get_engine,
     get_session_maker,
     init_db,
+)
+from app.orbs_contracts import (
+    GUEST_MERGE_REQUEST_SCHEMA,
+    OrbsGuestMergeRequestContract,
+    OrbsStageSnapshotContract,
+)
+from app.orbs_guest import create_guest_session, merge_guest_session
+from app.orbs_governor import (
+    GovernorRejection,
+    active_entitlement,
+    apply_transition_action,
+    canonical_request_hash,
+    compile_snapshot,
+    idempotency_record,
+    mark_payment_verified,
+    persist_idempotency,
+    record_action_event,
+    record_package_artifact,
+    record_rejection,
+    validate_submission,
 )
 
 DEFAULT_TESSDATA_PATH = Path("/usr/share/tesseract-ocr/5/tessdata")
@@ -233,6 +260,7 @@ class CrawlConfig(BaseModel):
     tier: str = Field(default="authenticated", pattern="^(free|authenticated)$")
     competitor_domains: List[str] = Field(default_factory=list)
     seed_urls: List[str] = Field(default_factory=list)
+    include_admin_sections: bool = True
 
 
 class GA4Config(BaseModel):
@@ -249,12 +277,12 @@ class CustomerSignup(BaseModel):
     company_name: Optional[str] = None
     contact_name: Optional[str] = None
     phone: Optional[str] = None
-    address_line1: str
+    address_line1: Optional[str] = None
     address_line2: Optional[str] = None
-    city: str
-    state: str
-    postal_code: str
-    country: str = "US"
+    city: Optional[str] = None
+    state: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = "US"
     business_phone: Optional[str] = None
     business_address_line1: Optional[str] = None
     business_address_line2: Optional[str] = None
@@ -263,6 +291,7 @@ class CustomerSignup(BaseModel):
     business_postal_code: Optional[str] = None
     business_country: Optional[str] = None
     tax_id: Optional[str] = None
+    guest_session_id: Optional[str] = Field(default=None, min_length=32, max_length=128)
 
 
 class CustomerLogin(BaseModel):
@@ -371,6 +400,7 @@ class LifecycleJobConfig(BaseModel):
     max_depth: int = Field(default=5, ge=1, le=10)
     tier: str = Field(default="authenticated", pattern="^(free|authenticated)$")
     seed_urls: List[str] = Field(default_factory=list)
+    include_admin_sections: bool = True
     source_job_id: Optional[int] = None
 
 
@@ -408,6 +438,26 @@ class OrbToolRunRequest(BaseModel):
 
 class TPCPackRequest(BaseModel):
     tier: str = Field(default="basic", pattern="^(basic|enhanced|premium)$")
+
+
+class OrbsStageActionRequest(BaseModel):
+    project_id: str
+    build_order_id: Optional[str] = None
+    action: str = Field(min_length=1, max_length=120)
+    expected_stage: str = Field(min_length=1, max_length=80)
+    snapshot_version: str = Field(min_length=1, max_length=120)
+    inputs: Dict[str, Any] = Field(default_factory=dict)
+    confirmation_evidence: Optional[Dict[str, Any]] = None
+
+
+class OrbsGuestSessionCreate(BaseModel):
+    landing_intent: str = Field(min_length=1, max_length=255)
+    selected_tier_interest: Optional[str] = Field(default=None, max_length=80)
+    website_url: Optional[str] = Field(default=None, max_length=2048)
+    original_cta_destination: str = Field(min_length=1, max_length=500)
+    current_onboarding_step: str = Field(default="landing", max_length=80)
+    completed_onboarding_steps: list[str] = Field(default_factory=list)
+    non_sensitive_questionnaire_answers: Dict[str, Any] = Field(default_factory=dict)
 
 
 class MarketplaceProductCreate(BaseModel):
@@ -837,6 +887,10 @@ async def _create_stripe_checkout(order: CheckoutOrder, customer: Customer) -> D
         "customer_email": customer.email,
         "metadata[orb_weaver_order_id]": str(order.id),
     }
+    if order.project_id:
+        data["metadata[orb_weaver_project_id]"] = str(order.project_id)
+    if order.build_order_id:
+        data["metadata[orb_weaver_build_order_id]"] = str(order.build_order_id)
     for index, item in enumerate(order.line_items or []):
         data[f"line_items[{index}][price_data][currency]"] = order.currency
         data[f"line_items[{index}][price_data][product_data][name]"] = item["name"]
@@ -1622,7 +1676,11 @@ def _load_preflight_scanner():
 
 async def _run_project_preflight(project: Project, output_dir: Optional[str] = None) -> Dict:
     scanner_cls = _load_preflight_scanner()
-    target_output = Path(output_dir).resolve() if output_dir else _project_preflight_dir(project).resolve()
+    target_output = (
+        require_vault_path(Path(output_dir), "Preflight output")
+        if output_dir
+        else _project_preflight_dir(project).resolve()
+    )
     root_url = project.domain if project.domain.startswith(("http://", "https://")) else f"https://{project.domain}"
     scanner = scanner_cls(root_url=root_url, output_dir=str(target_output))
     report = await scanner.scan()
@@ -2849,6 +2907,79 @@ def _customer_crm_import_record(customer: Customer, db: Session) -> Dict:
     }
 
 
+def _ensure_signup_project(customer: Customer, db: Session, domain: str = "spruked.com") -> Project:
+    project = (
+        db.query(Project)
+        .filter(Project.customer_id == customer.id, Project.domain == domain)
+        .first()
+    )
+    if project:
+        return project
+    project = Project(
+        customer_id=customer.id,
+        name=_default_project_name(domain),
+        domain=domain,
+    )
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+    return project
+
+
+async def _sync_customer_to_cali_crm(customer: Customer, db: Session) -> Dict[str, Any]:
+    import_dir = _cali_crm_import_dir()
+    import_dir.mkdir(parents=True, exist_ok=True)
+    record = _customer_crm_import_record(customer, db)
+    payload = {
+        "schema": "orb_weaver.cali_crm_customer_signup.v1",
+        "generated_at": datetime.utcnow().isoformat(),
+        "source": "orb_weaver_signup",
+        "target": "cali_crm",
+        "record": record,
+    }
+    output_path = import_dir / f"orb_weaver_signup_customer_{customer.id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+    _write_json(output_path, payload)
+
+    result: Dict[str, Any] = {
+        "status": "queued",
+        "path": str(output_path),
+        "crm_url": settings.CALI_CRM_URL,
+    }
+    if not settings.CALI_CRM_SYNC_ON_SIGNUP:
+        return result
+
+    headers = {"Authorization": f"Bearer {settings.CALI_CRM_TOKEN}"} if settings.CALI_CRM_TOKEN else {}
+    endpoints = [
+        f"{settings.CALI_CRM_URL.rstrip('/')}/api/cali/imports/orb-weaver/customer-signup",
+        f"{settings.CALI_CRM_URL.rstrip('/')}/cali/imports/orb-weaver/customer-signup",
+        f"{settings.CALI_CRM_URL.rstrip('/')}/api/imports/orb-weaver/customer-signup",
+    ]
+    errors: List[str] = []
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            synced_response = None
+            for endpoint in endpoints:
+                try:
+                    response = await client.post(endpoint, json=payload, headers=headers)
+                    if response.status_code < 500:
+                        response.raise_for_status()
+                        synced_response = response
+                        break
+                    errors.append(f"{endpoint}:{response.status_code}")
+                except Exception as exc:
+                    errors.append(f"{endpoint}:{exc}")
+            if synced_response is None:
+                raise RuntimeError("; ".join(errors[-3:]))
+        result["status"] = "synced"
+        result["http_status"] = synced_response.status_code
+    except Exception as exc:
+        result["status"] = "queued"
+        result["sync_error"] = str(exc)
+        if errors:
+            result["attempted_endpoints"] = endpoints
+    return result
+
+
 def _tpc_pack_output_dir(project: Project) -> Path:
     folder = _project_report_dir(project) / "tpc_packs"
     folder.mkdir(parents=True, exist_ok=True)
@@ -2907,6 +3038,49 @@ def _route_from_url(value: Optional[str]) -> str:
     candidate = raw if "://" in raw else f"https://{raw}"
     parsed = urlparse(candidate)
     return (parsed.path or "/").rstrip("/") or "/"
+
+
+def _approved_website_routes(website_context: Optional[Dict[str, Any]]) -> Set[str]:
+    routes: Set[str] = set()
+    if not website_context:
+        return routes
+
+    for route in (website_context.get("route_hints") or {}).values():
+        routes.add(_route_from_url(str(route)))
+
+    authority_flow = website_context.get("authority_flow") or {}
+    for page in authority_flow.get("pages") or []:
+        routes.add(_route_from_url(page.get("url")))
+
+    return {route for route in routes if route}
+
+
+def _navigation_decision(
+    website_context: Optional[Dict[str, Any]],
+    suggested_route: Any,
+) -> Dict[str, Any]:
+    route = _route_from_url(str(suggested_route or ""))
+    approved_routes = _approved_website_routes(website_context)
+    if not suggested_route:
+        return {
+            "status": "none",
+            "may_navigate": False,
+            "route": None,
+            "reason": "no_route_suggested",
+        }
+    if route not in approved_routes:
+        return {
+            "status": "blocked",
+            "may_navigate": False,
+            "route": route,
+            "reason": "route_not_in_approved_site_world",
+        }
+    return {
+        "status": "verified",
+        "may_navigate": True,
+        "route": route,
+        "reason": "route_present_in_approved_site_world",
+    }
 
 
 def _load_json_if_present(path: Path) -> Optional[Dict[str, Any]]:
@@ -2981,12 +3155,17 @@ def _lookup_domain_runtime_tool(
         return None
 
     score, entry, source = sorted(candidates, key=lambda item: item[0], reverse=True)[0]
+    navigation = _navigation_decision(website_context, entry.get("suggested_route"))
+    spoken_output = str(entry.get("spoken_output") or "").strip()
+    if navigation["status"] == "blocked":
+        spoken_output = "I cannot verify that destination in the approved site map, so I will not move you there."
     return {
-        "spoken_output": str(entry.get("spoken_output") or "").strip(),
+        "spoken_output": spoken_output,
         "llm_source": source,
         "cache_entry_id": entry.get("id"),
         "cache_score": round(score, 3),
-        "suggested_route": entry.get("suggested_route"),
+        "suggested_route": navigation["route"] if navigation["may_navigate"] else None,
+        "navigation": navigation,
         "tts_audio_url": entry.get("tts_audio_url"),
         "tts_provider": entry.get("tts_provider"),
         "tts_error": entry.get("tts_error"),
@@ -3254,15 +3433,17 @@ def _client_intelligence_root(project: Project) -> Path:
 
 
 def _global_intelligence_root() -> Path:
-    return INDEXES_ROOT / "global_intelligence"
+    return GLOBAL_INTELLIGENCE_ROOT
 
 
 def _write_json(path: Path, payload: Dict) -> None:
+    path = require_vault_path(path, "JSON artifact")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
 
 def _append_jsonl(path: Path, payload: Dict) -> None:
+    path = require_vault_path(path, "JSONL intelligence artifact")
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, default=str) + "\n")
@@ -4361,6 +4542,14 @@ def _serialize_audit_report(report: AuditReport) -> Dict:
     }
 
 
+class CrawlCancellationRequested(RuntimeError):
+    """Raised inside a crawl worker after a user requests cancellation."""
+
+
+class LifecycleCancellationRequested(RuntimeError):
+    """Raised between lifecycle phases after a user requests cancellation."""
+
+
 async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: Optional[int] = None):
     db = SessionLocal()
     try:
@@ -4408,6 +4597,9 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
         db.commit()
 
         def persist_crawl_progress(active_crawler: OrbWeaverCrawler) -> None:
+            db.refresh(crawl_job)
+            if crawl_job.status in {"cancel_requested", "cancelled"}:
+                raise CrawlCancellationRequested(f"Crawl job {crawl_job.id} was stopped by the user")
             active_stats = active_crawler.get_crawl_stats()
             crawl_job.pages_crawled = len(active_crawler.crawled_data)
             crawl_job.pages_found = int(active_stats.get("discovered_urls") or active_stats.get("visited_urls") or 0)
@@ -4429,11 +4621,15 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             delay=config.delay,
             max_depth=config.max_depth,
             tier=config.tier,
+            include_admin_sections=config.include_admin_sections,
             progress_callback=persist_crawl_progress,
         )
 
         start_url = f"https://{project.domain}" if not project.domain.startswith("http") else project.domain
         pages = await crawler.crawl(start_url, seed_urls=config.seed_urls)
+        db.refresh(crawl_job)
+        if crawl_job.status in {"cancel_requested", "cancelled"}:
+            raise CrawlCancellationRequested(f"Crawl job {crawl_job.id} was stopped by the user")
         crawl_stats = crawler.get_crawl_stats()
 
         db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl_job.id).delete()
@@ -4516,6 +4712,22 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
         (report_dir / f"crawl_{crawl_job.id}.json").write_text(str(snapshot), encoding="utf-8")
         preserve_client_crawl_intelligence(project, crawl_job, stored_pages, db)
         db.commit()
+    except CrawlCancellationRequested as exc:
+        crawl_job = db.query(CrawlJob).filter(CrawlJob.id == crawl_job_id).first()
+        if crawl_job:
+            crawl_job.status = "cancelled"
+            crawl_job.end_time = datetime.utcnow()
+            config = crawl_job.config or {}
+            config["cancelled_reason"] = str(exc)
+            crawl_job.config = config
+        if lifecycle_job_id:
+            lifecycle_job = db.get(LifecycleJob, lifecycle_job_id)
+            if lifecycle_job:
+                lifecycle_job.status = "CANCELLED"
+                lifecycle_job.phase = "cancelled_by_user"
+                lifecycle_job.end_time = datetime.utcnow()
+                lifecycle_job.result = {**(lifecycle_job.result or {}), "cancelled_reason": str(exc)}
+        db.commit()
     except Exception as exc:
         crawl_job = db.query(CrawlJob).filter(CrawlJob.id == crawl_job_id).first()
         if crawl_job:
@@ -4562,9 +4774,15 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
         job.start_time = datetime.utcnow()
         db.commit()
 
+        def ensure_lifecycle_not_cancelled() -> None:
+            db.refresh(job)
+            if job.status in {"CANCEL_REQUESTED", "CANCELLED"}:
+                raise LifecycleCancellationRequested(f"{job.job_type} job {job.id} was stopped by the user")
+
         config = job.config or {}
         result: Dict[str, Any]
         final_status = "COMPLETED"
+        ensure_lifecycle_not_cancelled()
 
         if job.job_type == "MAP_CRAWL":
             crawl_config = CrawlConfig(
@@ -4573,6 +4791,7 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
                 max_depth=config.get("max_depth", 5),
                 tier=config.get("tier", "authenticated"),
                 seed_urls=config.get("seed_urls") or [],
+                include_admin_sections=config.get("include_admin_sections", True),
             )
             crawl = CrawlJob(
                 project_id=project.id,
@@ -4590,6 +4809,8 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
             db.expire_all()
             job = db.get(LifecycleJob, lifecycle_job_id)
             crawl = db.get(CrawlJob, crawl.id)
+            if crawl and crawl.status == "cancelled":
+                raise LifecycleCancellationRequested(f"MAP_CRAWL job {job.id} was stopped by the user")
             if not crawl or crawl.status != "completed":
                 raise RuntimeError((crawl.config or {}).get("error") if crawl else "Map crawl disappeared")
             pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl.id).all()
@@ -4703,6 +4924,7 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
                 capture_dir,
                 render_passes=render_passes,
             )
+            ensure_lifecycle_not_cancelled()
             job.progress_current = len(capture.get("observations") or [])
             job.phase = "reconciling_pointer_evidence"
             recovered_map = reconcile_pointer_recovery(baseline_pointer_map, capture)
@@ -4810,6 +5032,7 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
                 max_depth=config.get("max_depth", 5),
                 tier=config.get("tier", "authenticated"),
                 seed_urls=[page.url for page in baseline_pages],
+                include_admin_sections=config.get("include_admin_sections", True),
             )
             verification_crawl = CrawlJob(
                 project_id=project.id,
@@ -4830,6 +5053,8 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
             db.expire_all()
             job = db.get(LifecycleJob, lifecycle_job_id)
             verification_crawl = db.get(CrawlJob, verification_crawl.id)
+            if verification_crawl and verification_crawl.status == "cancelled":
+                raise LifecycleCancellationRequested(f"FULL_AUDIT job {job.id} was stopped by the user")
             if not verification_crawl or verification_crawl.status != "completed":
                 raise RuntimeError((verification_crawl.config or {}).get("error") if verification_crawl else "Verification crawl disappeared")
             verification_pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == verification_crawl.id).all()
@@ -4950,6 +5175,7 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
         else:
             raise RuntimeError(f"Lifecycle orchestration is not implemented for {job.job_type}")
 
+        ensure_lifecycle_not_cancelled()
         if job.job_type != "FULL_AUDIT":
             snapshot_sqlite_database(DATABASE_URL, root)
         job.result = result
@@ -4972,6 +5198,14 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
         db.commit()
         if followup_job_id:
             asyncio.create_task(run_lifecycle_job(followup_job_id))
+    except LifecycleCancellationRequested as exc:
+        job = db.get(LifecycleJob, lifecycle_job_id)
+        if job:
+            job.status = "CANCELLED"
+            job.phase = "cancelled_by_user"
+            job.end_time = datetime.utcnow()
+            job.result = {**(job.result or {}), "cancelled_reason": str(exc)}
+            db.commit()
     except Exception as exc:
         if job:
             job.status = "FAILED"
@@ -5062,7 +5296,8 @@ async def public_preflight(payload: PublicPreflightRequest):
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        with tempfile.TemporaryDirectory(prefix="orb_public_preflight_") as output_dir:
+        RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="orb_public_preflight_", dir=RUNTIME_ROOT) as output_dir:
             scan = await _run_preflight_url(site_url, output_dir)
         report = _public_preflight_report(scan)
         if settings.CHROME_DEVTOOLS_ENABLED and settings.CHROME_DEVTOOLS_PUBLIC_ENABLED:
@@ -5160,6 +5395,7 @@ async def website_orb_voice(
                 "cache_entry_id": domain_cache_hit.get("cache_entry_id"),
                 "cache_score": domain_cache_hit.get("cache_score"),
                 "suggested_route": domain_cache_hit.get("suggested_route"),
+                "navigation": domain_cache_hit.get("navigation"),
                 "pointer_matches": pointer_matches,
                 "glow_intensity": 0.78,
             },
@@ -5277,6 +5513,7 @@ async def website_orb_text(
                 "cache_entry_id": domain_cache_hit.get("cache_entry_id"),
                 "cache_score": domain_cache_hit.get("cache_score"),
                 "suggested_route": domain_cache_hit.get("suggested_route"),
+                "navigation": domain_cache_hit.get("navigation"),
                 "pointer_matches": pointer_matches,
                 "glow_intensity": 0.78,
             },
@@ -5630,20 +5867,22 @@ async def signup_customer(payload: CustomerSignup, db: Session = Depends(get_db)
     email = _normalize_email(payload.email)
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Valid email is required")
-    for label, value in {
-        "Full name": payload.full_name,
-        "Address line 1": payload.address_line1,
-        "City": payload.city,
-        "State": payload.state,
-        "Postal code": payload.postal_code,
-        "Country": payload.country,
-        "Phone": payload.phone,
-    }.items():
+    for label, value in {"Full name": payload.full_name}.items():
         if not value or not value.strip():
             raise HTTPException(status_code=400, detail=f"{label} is required")
     existing = db.query(Customer).filter(Customer.email == email).first()
     if existing:
         raise HTTPException(status_code=409, detail="Customer email already exists")
+
+    pending_guest = None
+    if payload.guest_session_id:
+        pending_guest = db.query(OrbsGuestSession).filter(
+            OrbsGuestSession.guest_session_id == payload.guest_session_id,
+            OrbsGuestSession.consumed_at.is_(None),
+            OrbsGuestSession.expires_at > datetime.utcnow(),
+        ).first()
+        if not pending_guest:
+            raise HTTPException(status_code=400, detail="Guest onboarding session is unavailable")
 
     business_name = (payload.business_name or payload.company_name or payload.full_name).strip()
     is_first_customer = db.query(Customer).count() == 0
@@ -5655,12 +5894,12 @@ async def signup_customer(payload: CustomerSignup, db: Session = Depends(get_db)
         company_name=(payload.company_name or "").strip() or None,
         contact_name=(payload.contact_name or "").strip() or None,
         phone=(payload.phone or "").strip() or None,
-        address_line1=payload.address_line1.strip(),
+        address_line1=(payload.address_line1 or "").strip() or None,
         address_line2=(payload.address_line2 or "").strip() or None,
-        city=payload.city.strip(),
-        state=payload.state.strip(),
-        postal_code=payload.postal_code.strip(),
-        country=payload.country.strip(),
+        city=(payload.city or "").strip() or None,
+        state=(payload.state or "").strip() or None,
+        postal_code=(payload.postal_code or "").strip() or None,
+        country=(payload.country or "US").strip() or "US",
         business_phone=(payload.business_phone or "").strip() or None,
         business_address_line1=(payload.business_address_line1 or "").strip() or None,
         business_address_line2=(payload.business_address_line2 or "").strip() or None,
@@ -5674,6 +5913,9 @@ async def signup_customer(payload: CustomerSignup, db: Session = Depends(get_db)
     db.add(customer)
     db.commit()
     db.refresh(customer)
+    if pending_guest is None:
+        _ensure_signup_project(customer, db, "spruked.com")
+    await _sync_customer_to_cali_crm(customer, db)
     return _issue_customer_session(customer, db)
 
 
@@ -6269,6 +6511,61 @@ async def list_checkout_orders(db: Session = Depends(get_db), customer: Customer
     return [_serialize_checkout_order(order) for order in orders]
 
 
+@app.post("/api/webhooks/stripe")
+async def stripe_payment_webhook(request: Request, db: Session = Depends(get_db)):
+    """Advance an ORBS order only from a verified, paid Stripe webhook."""
+    if not settings.STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Stripe webhook verification is not configured")
+    raw = await request.body()
+    signature_header = request.headers.get("Stripe-Signature", "")
+    components: Dict[str, List[str]] = {}
+    for component in signature_header.split(","):
+        name, separator, value = component.strip().partition("=")
+        if separator:
+            components.setdefault(name, []).append(value)
+    timestamp = (components.get("t") or [""])[0]
+    signatures = components.get("v1") or []
+    try:
+        timestamp_number = int(timestamp)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid Stripe signature timestamp") from exc
+    expected = hmac.new(
+        settings.STRIPE_WEBHOOK_SECRET.encode("utf-8"),
+        timestamp.encode("ascii") + b"." + raw,
+        hashlib.sha256,
+    ).hexdigest()
+    if abs(int(time.time()) - timestamp_number) > 300 or not any(hmac.compare_digest(expected, candidate) for candidate in signatures):
+        raise HTTPException(status_code=400, detail="Invalid Stripe webhook signature")
+    try:
+        event = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid Stripe webhook payload") from exc
+    if event.get("type") != "checkout.session.completed":
+        return {"received": True, "ignored": True}
+    session = ((event.get("data") or {}).get("object") or {})
+    if session.get("payment_status") != "paid":
+        return {"received": True, "ignored": True, "reason": "payment_not_verified"}
+    metadata = session.get("metadata") or {}
+    order_id = metadata.get("orb_weaver_order_id")
+    try:
+        checkout = db.get(CheckoutOrder, int(order_id))
+    except (TypeError, ValueError):
+        checkout = None
+    if not checkout or checkout.provider != "stripe" or checkout.provider_order_id != session.get("id"):
+        raise HTTPException(status_code=409, detail="Stripe checkout binding is invalid")
+    if int(session.get("amount_total") or -1) != checkout.amount_cents:
+        raise HTTPException(status_code=409, detail="Stripe payment amount does not match the order")
+    if str(session.get("currency") or "").lower() != checkout.currency.lower():
+        raise HTTPException(status_code=409, detail="Stripe payment currency does not match the order")
+    try:
+        build_order = mark_payment_verified(db, checkout)
+        db.commit()
+    except GovernorRejection as rejection:
+        db.rollback()
+        return JSONResponse(status_code=rejection.status_code, content={"code": rejection.code, "detail": str(rejection)})
+    return {"received": True, "build_order_id": str(build_order.id), "stage": build_order.current_stage}
+
+
 @app.post("/api/projects")
 async def create_project(
     project: ProjectCreate,
@@ -6439,6 +6736,54 @@ async def get_lifecycle_job(
     customer: Customer = Depends(get_current_customer),
 ):
     return _serialize_lifecycle_job(_owned_lifecycle_job(job_id, customer, db))
+
+
+@app.post("/api/lifecycle-jobs/{job_id}/cancel")
+async def cancel_lifecycle_job(
+    job_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    job = _owned_lifecycle_job(job_id, customer, db)
+    if job.status not in {"PENDING", "RUNNING", "CANCEL_REQUESTED"}:
+        raise HTTPException(status_code=409, detail=f"Lifecycle job is already {job.status}")
+
+    now = datetime.utcnow()
+    was_pending = job.status == "PENDING"
+    job.status = "CANCELLED" if was_pending else "CANCEL_REQUESTED"
+    job.phase = "cancelled_by_user" if was_pending else "cancellation_requested"
+    if was_pending:
+        job.end_time = now
+    job.result = {
+        **(job.result or {}),
+        "cancel_requested_at": now.isoformat(),
+        "cancel_requested_by": customer.email,
+    }
+
+    result = job.result or {}
+    crawl_ids = {
+        str(result.get("crawl_job_id") or ""),
+        str(result.get("verification_crawl_job_id") or ""),
+    }
+    if job.job_type == "FULL_AUDIT":
+        crawl_ids.add(str(result.get("verification_crawl_job_id") or ""))
+    for raw_crawl_id in crawl_ids - {""}:
+        try:
+            crawl_id = int(raw_crawl_id)
+        except (TypeError, ValueError):
+            continue
+        crawl_job = db.get(CrawlJob, crawl_id)
+        if crawl_job and crawl_job.status in {"pending", "running", "cancel_requested"}:
+            crawl_job.status = "cancelled" if crawl_job.status == "pending" else "cancel_requested"
+            if crawl_job.status == "cancelled":
+                crawl_job.end_time = now
+            crawl_config = crawl_job.config or {}
+            crawl_config.update({"cancel_requested_at": now.isoformat(), "cancel_requested_by": customer.email})
+            crawl_job.config = crawl_config
+
+    db.commit()
+    db.refresh(job)
+    return _serialize_lifecycle_job(job)
 
 
 @app.post("/api/lifecycle-jobs/{job_id}/review-items/{item_id}/decision")
@@ -6872,6 +7217,43 @@ async def get_crawl_job(job_id: str, db: Session = Depends(get_db), customer: Cu
     return _serialize_crawl_job(crawl_job, db)
 
 
+@app.post("/api/crawl-jobs/{job_id}/cancel")
+async def cancel_crawl_job(job_id: str, db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
+    crawl_job = _owned_crawl_job(job_id, customer, db)
+    if crawl_job.status not in {"pending", "running", "cancel_requested"}:
+        raise HTTPException(status_code=409, detail=f"Crawl job is already {crawl_job.status}")
+
+    now = datetime.utcnow()
+    crawl_job.status = "cancelled" if crawl_job.status == "pending" else "cancel_requested"
+    if crawl_job.status == "cancelled":
+        crawl_job.end_time = now
+    config = crawl_job.config or {}
+    config.update({"cancel_requested_at": now.isoformat(), "cancel_requested_by": customer.email})
+    crawl_job.config = config
+
+    linked_lifecycle_jobs = (
+        db.query(LifecycleJob)
+        .filter(
+            LifecycleJob.project_id == crawl_job.project_id,
+            LifecycleJob.status.in_({"PENDING", "RUNNING", "CANCEL_REQUESTED"}),
+        )
+        .all()
+    )
+    for lifecycle_job in linked_lifecycle_jobs:
+        result = lifecycle_job.result or {}
+        linked_ids = {
+            str(result.get("crawl_job_id") or ""),
+            str(result.get("verification_crawl_job_id") or ""),
+        }
+        if str(crawl_job.id) in linked_ids:
+            lifecycle_job.status = "CANCEL_REQUESTED"
+            lifecycle_job.phase = "cancellation_requested"
+
+    db.commit()
+    db.refresh(crawl_job)
+    return _serialize_crawl_job(crawl_job, db)
+
+
 @app.get("/api/crawl-jobs")
 async def list_crawl_jobs(db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
     jobs = (
@@ -7143,6 +7525,214 @@ async def report_compiler(project_id: str, db: Session = Depends(get_db), custom
     }
 
 
+@app.post("/api/orbs/guest-sessions")
+async def start_orbs_guest_session(
+    payload: OrbsGuestSessionCreate,
+    db: Session = Depends(get_db),
+):
+    """Persist only approved pre-account onboarding progress in the Vault."""
+    try:
+        return create_guest_session(db, payload.model_dump())
+    except GovernorRejection as rejection:
+        db.rollback()
+        return JSONResponse(
+            status_code=rejection.status_code,
+            content={"code": rejection.code, "detail": str(rejection)},
+        )
+
+
+@app.post("/api/orbs/guest-sessions/{guest_session_id}/merge")
+async def merge_orbs_guest_session(
+    guest_session_id: str,
+    payload: OrbsGuestMergeRequestContract,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    """Consume one guest session into authoritative customer/project state once."""
+    if payload.schema != GUEST_MERGE_REQUEST_SCHEMA or payload.guest_session_id != guest_session_id:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "code": "guest_session_mismatch",
+                "detail": "Guest session path and contract binding do not match",
+            },
+        )
+    try:
+        return merge_guest_session(db, customer, payload.model_dump(mode="json"))
+    except GovernorRejection as rejection:
+        db.rollback()
+        return JSONResponse(
+            status_code=rejection.status_code,
+            content={"code": rejection.code, "detail": str(rejection)},
+        )
+
+
+@app.get("/api/projects/{project_id}/orbs-stage")
+async def get_orbs_stage(
+    project_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    """Return the only authoritative, project-bound ORBS journey snapshot."""
+    project = _owned_project(project_id, customer, db)
+    return OrbsStageSnapshotContract.model_validate(
+        compile_snapshot(db, project, customer)
+    ).model_dump(mode="json")
+
+
+@app.post("/api/projects/{project_id}/orbs-stage/actions")
+async def submit_orbs_stage_action(
+    project_id: str,
+    payload: OrbsStageActionRequest,
+    background_tasks: BackgroundTasks,
+    idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    """Validate and execute one governor-approved action, then return a fresh snapshot."""
+    project = _owned_project(project_id, customer, db)
+    request_payload = payload.model_dump()
+    request_hash = canonical_request_hash(request_payload)
+    key = (idempotency_key or "").strip()
+    if not key:
+        return JSONResponse(status_code=400, content={"code": "precondition_failed", "detail": "Idempotency-Key is required"})
+    if payload.project_id != str(project.id):
+        return JSONResponse(status_code=403, content={"code": "unauthorized_project", "detail": "Project binding does not match"})
+
+    previous = idempotency_record(db, customer.id, key)
+    if previous:
+        if previous.request_hash != request_hash:
+            fresh = compile_snapshot(db, project, customer)
+            return JSONResponse(status_code=409, content={
+                "code": "idempotency_conflict",
+                "detail": "Idempotency-Key was already used with a different payload",
+                "fresh_snapshot": fresh,
+            })
+        return JSONResponse(status_code=previous.response_status, content=previous.response_payload)
+
+    try:
+        snapshot = compile_snapshot(db, project, customer)
+        validate_submission(snapshot, request_payload, payload.confirmation_evidence)
+        action = payload.action
+
+        if action == "run_preflight":
+            report = await _run_project_preflight(project)
+            preserve_client_preflight_intelligence(project, report)
+            record_action_event(db, project, customer, "operation_completed", action, snapshot["snapshot_version"])
+        elif action == "run_crawl":
+            config = CrawlConfig()
+            crawl = CrawlJob(
+                project_id=project.id,
+                status="pending",
+                config=config.model_dump(),
+                start_time=datetime.utcnow(),
+            )
+            db.add(crawl)
+            db.flush()
+            record_action_event(db, project, customer, "operation_enqueued", action, snapshot["snapshot_version"], {"crawl_job_id": str(crawl.id)})
+            background_tasks.add_task(run_crawl_job, crawl.id, config.model_dump())
+        elif action == "run_final_audit":
+            crawl = (
+                db.query(CrawlJob)
+                .filter(CrawlJob.project_id == project.id, CrawlJob.status == "completed")
+                .order_by(CrawlJob.id.desc())
+                .first()
+            )
+            if not crawl:
+                raise GovernorRejection("precondition_failed", "A completed crawl is required")
+            audit = AuditReport(project_id=project.id, crawl_job_id=crawl.id, report_data={})
+            db.add(audit)
+            db.flush()
+            record_action_event(db, project, customer, "operation_enqueued", action, snapshot["snapshot_version"], {"audit_id": str(audit.id)})
+            background_tasks.add_task(run_audit_job, audit.id, crawl.id)
+        elif action in {
+            "view_final_order",
+            "explore_orbs_packages",
+            "open_dashboard",
+            "visit_orb_marketplace",
+        }:
+            record_action_event(db, project, customer, "safe_action_viewed", action, snapshot["snapshot_version"])
+        elif action == "open_checkout":
+            order = db.get(OrbsBuildOrder, int(snapshot["build_order_id"]))
+            if not order or not order.final_order or not order.signature:
+                raise GovernorRejection("precondition_failed", "A signed itemized order is required")
+            provider = str(payload.inputs.get("provider") or "").strip().lower()
+            if provider != "stripe":
+                raise GovernorRejection(
+                    "precondition_failed",
+                    "Only Stripe is enabled for ORBS orders because it has an authoritative verified-payment webhook",
+                )
+            checkout = db.get(CheckoutOrder, order.checkout_order_id) if order.checkout_order_id else None
+            if not checkout:
+                checkout = CheckoutOrder(
+                    customer_id=customer.id,
+                    project_id=project.id,
+                    build_order_id=order.id,
+                    provider=provider,
+                    status="created",
+                    amount_cents=int(order.final_order["total_amount_cents"]),
+                    currency=str(order.final_order.get("currency") or "usd"),
+                    line_items=[{
+                        "sku": order.final_order["sku"],
+                        "name": order.final_order["name"],
+                        "unit_amount_cents": int(order.final_order["unit_amount_cents"]),
+                        "currency": str(order.final_order.get("currency") or "usd"),
+                        "quantity": 1,
+                    }],
+                )
+                db.add(checkout)
+                db.flush()
+                provider_result = await _create_stripe_checkout(checkout, customer)
+                checkout.status = provider_result.get("status", "provider_error")
+                checkout.provider_order_id = provider_result.get("provider_order_id")
+                checkout.checkout_url = provider_result.get("checkout_url")
+                checkout.error = provider_result.get("error")
+                order.checkout_order_id = checkout.id
+                order.payment_status = "checkout_created" if checkout.status == "checkout_created" else checkout.status
+                order.version += 1
+                record_action_event(db, project, customer, "checkout_created", action, str(order.version), {"checkout_order_id": str(checkout.id), "provider": provider})
+        elif action == "generate_entitled_orbpack":
+            order = db.get(OrbsBuildOrder, int(snapshot["build_order_id"]))
+            if not order or not active_entitlement(db, order):
+                raise GovernorRejection("entitlement_required", "Matching active entitlement is required")
+            if order.payment_status != "verified":
+                raise GovernorRejection("payment_not_verified", "Verified payment is required")
+            open_review = db.query(ReviewItem).join(LifecycleJob).filter(
+                LifecycleJob.project_id == project.id,
+                ReviewItem.status == "open",
+            ).first()
+            if open_review:
+                raise GovernorRejection("review_required", "Required reviews remain open")
+            report = generate_pack_file(
+                scan_data=_build_tpc_pack_scan_data(project, db),
+                site_id=str(project.id),
+                domain=project.domain,
+                tier=str(order.package_tier),
+                output_dir=_tpc_pack_output_dir(project),
+            )
+            record_package_artifact(db, order, customer, report)
+            apply_transition_action(db, project, customer, snapshot, request_payload)
+        else:
+            apply_transition_action(db, project, customer, snapshot, request_payload)
+
+        db.commit()
+        db.expire_all()
+        project = _owned_project(project_id, customer, db)
+        fresh = compile_snapshot(db, project, customer)
+        persist_idempotency(db, customer, project, key, request_hash, 200, fresh)
+        db.commit()
+        return fresh
+    except GovernorRejection as rejection:
+        db.rollback()
+        project = _owned_project(project_id, customer, db)
+        record_rejection(db, project, customer, request_payload, rejection)
+        fresh = compile_snapshot(db, project, customer)
+        response = {"code": rejection.code, "detail": str(rejection), "fresh_snapshot": fresh}
+        persist_idempotency(db, customer, project, key, request_hash, rejection.status_code, response)
+        db.commit()
+        return JSONResponse(status_code=rejection.status_code, content=response)
+
+
 @app.get("/api/projects/{project_id}/report-files/{filename}")
 async def open_report_file(
     project_id: str,
@@ -7173,6 +7763,20 @@ async def create_tpc_pack(
     customer: Customer = Depends(get_current_customer),
 ):
     project = _owned_project(project_id, customer, db)
+    order = db.query(OrbsBuildOrder).filter(
+        OrbsBuildOrder.project_id == project.id,
+        OrbsBuildOrder.customer_id == customer.id,
+    ).first()
+    if not order or order.current_stage != "package_generation" or not active_entitlement(db, order):
+        return JSONResponse(status_code=409, content={
+            "code": "entitlement_required",
+            "detail": "An active project-bound ORBS entitlement at Package Generation is required",
+        })
+    if payload.tier != order.package_tier:
+        return JSONResponse(status_code=409, content={
+            "code": "precondition_failed",
+            "detail": "Requested pack tier does not match the entitled package",
+        })
     report = generate_pack_file(
         scan_data=_build_tpc_pack_scan_data(project, db),
         site_id=str(project.id),
@@ -7180,6 +7784,8 @@ async def create_tpc_pack(
         tier=payload.tier,
         output_dir=_tpc_pack_output_dir(project),
     )
+    record_package_artifact(db, order, customer, report)
+    db.commit()
     return {
         "status": "created",
         "project": _serialize_project(project, db),
@@ -7342,6 +7948,7 @@ async def get_combined_dashboard(project_id: str, db: Session = Depends(get_db),
     return {
         "project": _serialize_project(project, db),
         "crawl_summary": crawl_summary,
+        "latest_audit": _serialize_audit_report(latest_audit) if audit_payload else None,
         "audit_scores": audit_payload.get("scores") if audit_payload else None,
         "audit_issues": audit_payload.get("summary") if audit_payload else None,
         "ga4_data": ga4_data,

@@ -22,6 +22,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from vault_system.paths import require_vault_path
+
 from .pointer_plot_schema import CandidateCorrection, PlotRecord, PlotSource, PlotStatus
 
 # Conservative default — flagged as an open decision in the doctrine doc.
@@ -41,6 +43,7 @@ def load_candidate_corrections(path: Path) -> list[CandidateCorrection]:
     append to this queue; Package A is the only package allowed to
     evaluate it for promotion into the authoritative map.
     """
+    path = require_vault_path(path, "Pointer candidate corrections")
     if not path.exists():
         return []
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -49,6 +52,7 @@ def load_candidate_corrections(path: Path) -> list[CandidateCorrection]:
 
 
 def save_candidate_corrections(path: Path, corrections: list[CandidateCorrection]) -> None:
+    path = require_vault_path(path, "Pointer candidate corrections")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
@@ -75,6 +79,7 @@ def save_pointer_plot_map(path: Path, records: list[PlotRecord]) -> None:
     Writes the authoritative Package A map artifact. This is for scan/rescan
     output only; runtime recovery evidence must use CandidateCorrection.
     """
+    path = require_vault_path(path, "Authoritative pointer plot map")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(

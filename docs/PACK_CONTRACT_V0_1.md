@@ -22,7 +22,11 @@ Orb Weaver uses one repository-native storage authority:
 - append-only JSONL under `vault_system/indexes/global_intelligence/` for global anonymized intelligence.
 - `vault_system/runtime/` for generated caches, browser-review output, logs and temporary runtime state.
 
-PostgreSQL may replace SQLite as the application database when deliberately configured, but all repository-owned filesystem storage still resolves through `vault_system/`.
+The authoritative application database is Vault-backed under
+`vault_system/databases/`. Customer, checkout, payment-verification,
+entitlement, and workflow records may not be moved to a parallel component or
+provider database. External providers may be consulted transiently, but their
+verified result must be recorded in the Vault before Orb Weaver relies on it.
 
 Vector databases are deferred until the pack and reader contract are stable.
 

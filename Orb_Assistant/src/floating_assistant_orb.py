@@ -5,6 +5,7 @@ message loop so the Electron bridge can coordinate readiness and queries.
 """
 
 import json
+import os
 import sys
 import time
 import threading
@@ -68,7 +69,17 @@ from Orb_Assistant.src.orb_controller import SF_ORB_Controller  # noqa: E402
 
 class CALIFloatingOrb:
     def __init__(self, project_root):
-        self.controller = SF_ORB_Controller()
+        stage_client = None
+        stage_base_url = os.environ.get("ORB_WEAVER_API_URL", "").strip()
+        stage_token = os.environ.get("ORB_WEAVER_CUSTOMER_TOKEN", "").strip()
+        if stage_base_url and stage_token:
+            from Orb_Assistant.src.orbs_integration import OrbWeaverStageClient
+
+            stage_client = OrbWeaverStageClient.from_orb_weaver(
+                stage_base_url,
+                token_provider=lambda: os.environ.get("ORB_WEAVER_CUSTOMER_TOKEN", ""),
+            )
+        self.controller = SF_ORB_Controller(orbs_stage_client=stage_client)
         self.running = False
         self.last_cursor_pos = (0, 0)
         self.last_time = time.time()

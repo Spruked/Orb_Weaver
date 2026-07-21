@@ -10,14 +10,17 @@ import Projects from './pages/Projects';
 import CrawlJobs from './pages/CrawlJobs';
 import CrawlJob from './pages/CrawlJob';
 import AuditReport from './pages/AuditReport';
+import OrbsIntegration from './pages/OrbsIntegration';
 import GA4Dashboard from './pages/GA4Dashboard';
 import ReportCompiler from './pages/ReportCompiler';
-import AuthPage from './pages/AuthPage';
+import AuthPage, { AuthenticationOutcome } from './pages/AuthPage';
+import WelcomeWorkspace from './pages/WelcomeWorkspace';
 import Account from './pages/Account';
 import Cart from './pages/Cart';
 import AdminCustomers from './pages/AdminCustomers';
 import LegalPage from './pages/LegalPage';
 import RouteScrollReset from './components/RouteScrollReset';
+import GoogleAnalyticsTracker from './components/GoogleAnalyticsTracker';
 import LandingPage from './landing/LandingPage';
 import PublicPreflight from './pages/PublicPreflight';
 import PublicLeadPage from './pages/PublicLeadPage';
@@ -36,6 +39,7 @@ const queryClient = new QueryClient({
 
 function App() {
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [authenticationOutcome, setAuthenticationOutcome] = useState<AuthenticationOutcome | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
@@ -66,13 +70,18 @@ function App() {
     setCustomer(null);
   };
 
-  const handleAuthenticated = (nextCustomer: Customer) => {
-    const returnPath = window.location.pathname;
+  const handleAuthenticated = (nextCustomer: Customer, outcome?: AuthenticationOutcome) => {
     setCustomer(nextCustomer);
+    setAuthenticationOutcome(outcome || null);
+    const returnPath = window.location.pathname;
+    const nextPath = outcome?.nextPath
+      || (outcome?.mergeResult ? `/welcome?project=${encodeURIComponent(outcome.mergeResult.project_id)}` : null)
+      || (outcome?.mergeError ? '/welcome?merge=pending' : null)
+      || (returnPath === '/demo' || returnPath === '/diagnostics' ? returnPath : '/dashboard');
     window.history.replaceState(
       null,
       '',
-      returnPath === '/demo' || returnPath === '/diagnostics' ? returnPath : '/dashboard'
+      nextPath
     );
   };
 
@@ -86,6 +95,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <RouteScrollReset />
+        <GoogleAnalyticsTracker />
         {element}
       </Router>
     </QueryClientProvider>
@@ -96,6 +106,7 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <RouteScrollReset />
+          <GoogleAnalyticsTracker />
           <LandingPage />
         </Router>
       </QueryClientProvider>
@@ -129,6 +140,9 @@ function App() {
   if (!customer && publicPath === '/login') {
     return renderPublicPage(<AuthPage onAuthenticated={handleAuthenticated} />);
   }
+  if (!customer && publicPath === '/signup') {
+    return renderPublicPage(<AuthPage onAuthenticated={handleAuthenticated} initialMode="signup" />);
+  }
 
   if (!customer) {
     return renderPublicPage(<AuthPage onAuthenticated={handleAuthenticated} />);
@@ -138,10 +152,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <RouteScrollReset />
+        <GoogleAnalyticsTracker />
         <Layout customer={customer}>
           <Routes>
             <Route path="/" element={<Dashboard customer={customer} />} />
             <Route path="/dashboard" element={<Dashboard customer={customer} />} />
+            <Route path="/welcome" element={<WelcomeWorkspace customer={customer} initialMergeResult={authenticationOutcome?.mergeResult} initialMergeError={authenticationOutcome?.mergeError} />} />
             <Route path="/demo" element={<Demo customer={customer} />} />
             <Route path="/diagnostics" element={<DiagnosticsPlaceholder customer={customer} />} />
             <Route path="/web-weave" element={<WebWeave />} />
@@ -149,6 +165,8 @@ function App() {
             <Route path="/crawl" element={<CrawlJobs />} />
             <Route path="/crawl/:jobId" element={<CrawlJob />} />
             <Route path="/audit/:auditId" element={<AuditReport />} />
+            <Route path="/orbs/:projectId" element={<OrbsIntegration />} />
+            <Route path="/ga4" element={<GA4Dashboard />} />
             <Route path="/ga4/:propertyId" element={<GA4Dashboard />} />
             <Route path="/reports" element={<ReportCompiler />} />
             <Route path="/reports/:projectId" element={<ReportCompiler />} />

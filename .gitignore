@@ -80,7 +80,12 @@ backend/R:*/
 backend/browser_reviews/
 backend/data/
 backend/vault_system/posteriori/
-substrate/
+# Legacy substrate contains documentation and tracked compatibility links only.
+# Any real data beneath it is forbidden by the immutable Vault storage law.
+substrate/*
+!substrate/README.md
+!substrate/clients
+!substrate/global_intelligence
 data/tts_cache/
 
 # Legacy Orb Assistant learned-memory locations. These paths must not be

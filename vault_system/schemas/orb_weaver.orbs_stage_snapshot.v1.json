@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orb_weaver.orbs_stage_snapshot.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "customer_id", "project_id", "project_display_name", "current_stage", "stage_status", "snapshot_version", "completed_stages", "approved_stage_evidence", "allowed_actions", "updated_at"],
+  "properties": {
+    "schema": {"const": "orb_weaver.orbs_stage_snapshot.v1"},
+    "customer_id": {"type": "string", "minLength": 1},
+    "project_id": {"type": "string", "minLength": 1},
+    "project_display_name": {"type": "string", "minLength": 1},
+    "build_order_id": {"type": ["string", "null"]},
+    "current_stage": {"type": "string", "minLength": 1},
+    "stage_status": {"type": "string", "minLength": 1},
+    "snapshot_version": {"type": "string", "minLength": 1},
+    "completed_stages": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "blocking_reason": {"type": ["string", "null"]},
+    "customer_action_required": {"type": ["string", "null"]},
+    "approved_stage_evidence": {"type": "object"},
+    "allowed_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "display_label", "confirmation_required", "permitted_input_fields", "destination_verified", "idempotency_required"],
+        "properties": {
+          "name": {"type": "string"},
+          "display_label": {"type": "string"},
+          "confirmation_required": {"type": "boolean"},
+          "permitted_input_fields": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+          "allowed_input_fields": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+          "destination_route": {"type": ["string", "null"]},
+          "destination_verified": {"type": "boolean"},
+          "idempotency_required": {"type": "boolean"},
+          "reason_available": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "next_recommended_action": {"type": ["string", "null"]},
+    "approved_destination_route": {"type": ["string", "null"]},
+    "approved_destination_verified": {"type": "boolean"},
+    "updated_at": {"type": "string", "format": "date-time"}
+  }
+}

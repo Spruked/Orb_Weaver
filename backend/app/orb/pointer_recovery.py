@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urljoin, urlparse
 
+from app.core.storage import require_vault_path
+
 
 DEFAULT_THRESHOLDS = {
     "minimum_stable_ratio": 0.70,
@@ -225,6 +227,7 @@ def run_pointer_recovery_capture(
     *,
     render_passes: int = 2,
 ) -> Dict[str, Any]:
+    output_dir = require_vault_path(output_dir, "Pointer recovery capture")
     script = Path(__file__).with_name("pointer_recovery_capture.js")
     if not script.is_file():
         raise RuntimeError("Pointer recovery browser capture script is missing")
@@ -249,6 +252,7 @@ def run_pointer_recovery_capture(
 
 def publish_recovered_pointer_map(pointer_map: Dict[str, Any], target: Path) -> None:
     """Atomically publish the reconciled map without replacing the Site World."""
+    target = require_vault_path(target, "Recovered pointer map")
     target.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
     try:

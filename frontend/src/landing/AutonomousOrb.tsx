@@ -60,6 +60,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   size = 190,
   className = "",
 }) => {
+  const onboardingSafeMode = ['/signup', '/login', '/welcome'].includes(window.location.pathname);
   const move = useAnimationControls();
   const surge = useAnimationControls();
   const glow = useAnimationControls();
@@ -1290,7 +1291,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     )}
     <motion.div
       animate={move}
-      className={`ow-v2-orb-position ${pointerBloom ? "is-pointing" : ""} ${className}`}
+      className={`ow-v2-orb-position ${pointerBloom ? "is-pointing" : ""} ${onboardingSafeMode ? "onboarding-safe-mode" : ""} ${className}`}
       data-orb-last-guided-target={lastGuidedTarget || undefined}
       style={{
         position: "fixed",

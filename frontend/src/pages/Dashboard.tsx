@@ -1,185 +1,228 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Globe,
-  Search,
-  BarChart3,
-  ArrowRight,
-  AlertTriangle,
-  CheckCircle,
-  Zap,
-  Clock,
-  ChevronRight,
   Activity,
-  ShieldCheck
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  CheckCircle2,
+  Clock3,
+  Download,
+  Eye,
+  FileText,
+  Globe2,
+  Layers3,
+  MapPinned,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  Wrench
 } from 'lucide-react';
 import ScoreCircle from '../components/ScoreCircle';
 import IssueCard from '../components/IssueCard';
-import { api, Customer, PreflightReport, Project, SEOIssue } from '../services/api';
+import {
+  api,
+  AuditReportPayload,
+  AuditReportResponse,
+  Customer,
+  downloads,
+  GA4FullReport,
+  openFiles,
+  PreflightReport,
+  Project
+} from '../services/api';
 
 const ACTIVE_CRAWL_STATUSES = new Set(['pending', 'running']);
 
-const ProcessActivityPanel: React.FC<{
-  title: string;
-  business?: string;
-  domain?: string;
-  status?: string;
-  detail: string;
-  progress: number;
-}> = ({ title, business, domain, status, detail, progress }) => (
-  <div className="card border-blue-200 bg-blue-50">
-    <div className="flex items-start justify-between gap-4 mb-4">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
-          <Activity className="w-5 h-5 animate-pulse" />
-        </div>
-        <div>
-          <h2 className="font-bold text-gray-900">{title}</h2>
-          <p className="text-lg font-bold text-gray-900 mt-1">{business || 'Pending website'}</p>
-          <p className="text-sm text-gray-700">{domain || detail}</p>
-          {status && <p className="text-xs text-blue-700 font-semibold mt-1">Status: {status}</p>}
-          <p className="text-xs text-gray-600 mt-1">{detail}</p>
-        </div>
-      </div>
-      <span className="text-2xl font-bold text-blue-700">{progress}%</span>
-    </div>
-    <div className="h-3 bg-white rounded-full overflow-hidden border border-blue-100">
-      <div className="h-full bg-blue-600 progress-slide transition-all duration-700" style={{ width: `${progress}%` }} />
-    </div>
-  </div>
-);
-
-const statusBadgeClass = (status?: string) => {
-  if (!status || status === 'never_crawled') return 'bg-gray-100 text-gray-700';
-  if (status === 'completed') return 'bg-green-100 text-green-700';
-  if (status === 'running' || status === 'pending') return 'bg-blue-100 text-blue-700';
-  return 'bg-red-100 text-red-700';
+type DashboardPayload = {
+  project: Project;
+  crawl_summary?: Record<string, number | boolean> | null;
+  latest_audit?: AuditReportResponse | null;
+  audit_scores?: Record<string, number> | null;
+  audit_issues?: AuditReportPayload['summary'] | null;
+  ga4_data?: GA4FullReport | null;
+  top_issues?: AuditReportPayload['top_issues'] | null;
 };
 
 interface DashboardProps {
   customer: Customer;
 }
 
+const scoreLabel = (key: string) => key.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const metricTone = (score: number) => {
+  if (score >= 80) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (score >= 60) return 'border-blue-200 bg-blue-50 text-blue-700';
+  if (score >= 40) return 'border-amber-200 bg-amber-50 text-amber-700';
+  return 'border-red-200 bg-red-50 text-red-700';
+};
+
+const DataTile: React.FC<{ label: string; value: React.ReactNode; note?: string }> = ({ label, value, note }) => (
+  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{label}</p>
+    <p className="mt-2 text-2xl font-bold text-slate-950">{value}</p>
+    {note && <p className="mt-1 text-xs text-slate-500">{note}</p>}
+  </div>
+);
+
+const EmptyDashboard: React.FC<{
+  domain: string;
+  competitorDomains: string;
+  includeAdminSections: boolean;
+  isCrawling: boolean;
+  error: string;
+  onDomainChange: (value: string) => void;
+  onCompetitorsChange: (value: string) => void;
+  onIncludeAdminChange: (value: boolean) => void;
+  onStart: () => void;
+}> = ({
+  domain,
+  competitorDomains,
+  includeAdminSections,
+  isCrawling,
+  error,
+  onDomainChange,
+  onCompetitorsChange,
+  onIncludeAdminChange,
+  onStart
+}) => (
+  <section className="rounded-2xl bg-gradient-to-br from-brand-dark to-brand-blue p-6 text-white shadow-lg md:p-8">
+    <p className="text-sm font-bold uppercase tracking-[0.16em] text-cyan-200">Begin the evidence path</p>
+    <h1 className="mt-2 text-3xl font-bold">Audit a website before choosing Seals</h1>
+    <p className="mt-2 max-w-2xl text-sm text-slate-200">
+      Crawl the website, compile the audit, review the complete results here, and then continue to Seals.
+    </p>
+    <div className="mt-7 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+      <label className="relative">
+        <span className="sr-only">Website URL</span>
+        <Globe2 className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+        <input
+          value={domain}
+          onChange={(event) => onDomainChange(event.target.value)}
+          placeholder="Website URL"
+          className="w-full rounded-xl border border-white/20 bg-white/10 py-3.5 pl-12 pr-4 text-white placeholder:text-slate-400 focus:border-brand-orange focus:outline-none"
+        />
+      </label>
+      <label>
+        <span className="sr-only">Competitor domains</span>
+        <input
+          value={competitorDomains}
+          onChange={(event) => onCompetitorsChange(event.target.value)}
+          placeholder="Optional competitors, comma-separated"
+          className="w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3.5 text-white placeholder:text-slate-400 focus:border-brand-orange focus:outline-none"
+        />
+      </label>
+      <button
+        onClick={onStart}
+        disabled={isCrawling || !domain.trim()}
+        className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-orange px-6 py-3.5 font-bold text-brand-dark transition hover:bg-brand-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {isCrawling ? <Activity className="h-5 w-5 animate-pulse" /> : <Search className="h-5 w-5" />}
+        {isCrawling ? 'Starting…' : 'Start audit'}
+      </button>
+    </div>
+    <label className="mt-4 inline-flex items-start gap-3 rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm">
+      <input
+        type="checkbox"
+        checked={includeAdminSections}
+        onChange={(event) => onIncludeAdminChange(event.target.checked)}
+        className="mt-1 rounded border-white/30 text-brand-orange focus:ring-brand-orange"
+      />
+      <span>
+        <span className="block font-semibold">Include verified admin routes</span>
+        <span className="block text-xs text-slate-300">Private routes inform ORB awareness but remain outside public SEO scoring.</span>
+      </span>
+    </label>
+    {error && <p className="mt-4 text-sm font-semibold text-red-200">{error}</p>}
+  </section>
+);
+
 const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
   const navigate = useNavigate();
-  const [domain, setDomain] = useState('');
-  const [competitorDomains, setCompetitorDomains] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedProjectId = searchParams.get('project') || '';
   const [projects, setProjects] = useState<Project[]>([]);
-  const [dashboardData, setDashboardData] = useState<{
-    crawl_summary?: Record<string, number | boolean> | null;
-    audit_scores?: Record<string, number> | null;
-    audit_issues?: {
-      total_issues: number;
-      critical_count: number;
-      warning_count: number;
-      opportunity_count: number;
-      total_pages: number;
-      avg_load_time: number;
-    } | null;
-    ga4_data?: {
-      traffic_overview?: { totals?: Record<string, number> };
-      device_breakdown?: Array<Record<string, string | number>>;
-    } | null;
-    top_issues?: SEOIssue[] | null;
-  } | null>(null);
+  const [dashboardData, setDashboardData] = useState<DashboardPayload | null>(null);
+  const [preflightReport, setPreflightReport] = useState<PreflightReport | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCrawling, setIsCrawling] = useState(false);
   const [isRunningPreflight, setIsRunningPreflight] = useState(false);
-  const [preflightReport, setPreflightReport] = useState<PreflightReport | null>(null);
+  const [isStartingAudit, setIsStartingAudit] = useState(false);
+  const [domain, setDomain] = useState('');
+  const [competitorDomains, setCompetitorDomains] = useState('');
+  const [includeAdminSections, setIncludeAdminSections] = useState(true);
   const [error, setError] = useState('');
-  const [processProgress, setProcessProgress] = useState(8);
-
-  const latestProject = useMemo(() => projects[projects.length - 1], [projects]);
-  const scores = dashboardData?.audit_scores;
-  const summary = dashboardData?.audit_issues;
-  const topIssues = dashboardData?.top_issues || [];
-  const sessions = dashboardData?.ga4_data?.traffic_overview?.totals?.sessions || 0;
-  const devices = dashboardData?.ga4_data?.device_breakdown || [];
-  const enteredDomain = domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
-  const activeBusiness = latestProject?.name || (enteredDomain ? 'New website scan' : 'No active website selected');
-  const activeDomain = latestProject?.domain || enteredDomain || 'Enter a website URL to start a scan';
-  const activeCrawlStatus = isCrawling ? 'queueing' : latestProject?.latest_crawl_status || 'not started';
-  const activeAuditStatus = latestProject?.latest_audit_id
-    ? `audit #${latestProject.latest_audit_id}${latestProject.latest_audit_score == null ? ' compiling' : ` score ${Math.round(latestProject.latest_audit_score)}`}`
-    : 'no audit report yet';
 
   const loadDashboard = useCallback(async (showLoading = true) => {
-    if (showLoading) {
-      setIsLoading(true);
-    }
-      setError('');
-      try {
-        const projectList = await api.listProjects();
-        setProjects(projectList);
-
-        const latest = projectList[projectList.length - 1];
-        if (latest) {
-          const [combined, preflight] = await Promise.all([
-            api.getCombinedDashboard(latest.id),
-            api.getProjectPreflight(latest.id).catch(() => null)
-          ]);
-          setDashboardData(combined);
-          setPreflightReport(preflight);
-        } else {
-          setDashboardData(null);
-          setPreflightReport(null);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
-      } finally {
-        if (showLoading) {
-          setIsLoading(false);
-        }
+    if (showLoading) setIsLoading(true);
+    setError('');
+    try {
+      const projectList = await api.listProjects();
+      setProjects(projectList);
+      const requested = projectList.find((project) => project.id === requestedProjectId);
+      const latestAudited = [...projectList].reverse().find((project) => project.latest_audit_id);
+      const selected = requested || latestAudited || projectList[projectList.length - 1];
+      if (!selected) {
+        setDashboardData(null);
+        setPreflightReport(null);
+        return;
       }
-  }, []);
+      if (selected.id !== requestedProjectId) {
+        setSearchParams({ project: selected.id }, { replace: true });
+      }
+      const [combined, preflight] = await Promise.all([
+        api.getCombinedDashboard(selected.id),
+        api.getProjectPreflight(selected.id).catch(() => null)
+      ]);
+      setDashboardData(combined);
+      setPreflightReport(preflight);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
+    } finally {
+      if (showLoading) setIsLoading(false);
+    }
+  }, [requestedProjectId, setSearchParams]);
 
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
 
-  const hasActiveCrawl = !!latestProject?.latest_crawl_status && ACTIVE_CRAWL_STATUSES.has(latestProject.latest_crawl_status);
-  const hasActiveAudit = !!latestProject?.latest_audit_id && latestProject.latest_audit_score == null && latestProject.latest_crawl_status === 'completed';
-  const hasActiveProcess = isCrawling || hasActiveCrawl || hasActiveAudit;
+  const project = dashboardData?.project || projects.find((item) => item.id === requestedProjectId) || null;
+  const audit = dashboardData?.latest_audit || null;
+  const report = audit?.report || null;
+  const scores = report?.scores || dashboardData?.audit_scores || null;
+  const summary = report?.summary || dashboardData?.audit_issues || null;
+  const pointerSummary = report?.pointer_summary;
+  const plannedToolCalls = report?.planned_tool_calls || [];
+  const allIssues = useMemo(() => report ? [
+    ...report.issues.critical,
+    ...report.issues.warnings,
+    ...report.issues.opportunities
+  ] : [], [report]);
+  const sessions = Number(dashboardData?.ga4_data?.traffic_overview?.totals?.sessions || 0);
+  const activeCrawl = !!project?.latest_crawl_status && ACTIVE_CRAWL_STATUSES.has(project.latest_crawl_status);
 
   useEffect(() => {
-    if (!hasActiveProcess) {
-      setProcessProgress(100);
-      return;
-    }
-
-    setProcessProgress((current) => (current >= 95 ? 8 : Math.max(current, 8)));
-    const progressTimer = window.setInterval(() => {
-      setProcessProgress((current) => Math.min(95, current + 1));
-    }, 1000);
-    const pollTimer = window.setInterval(() => {
-      loadDashboard(false);
-    }, 4000);
-
-    return () => {
-      window.clearInterval(progressTimer);
-      window.clearInterval(pollTimer);
-    };
-  }, [hasActiveProcess, loadDashboard]);
+    if (!activeCrawl || !project) return;
+    const timer = window.setInterval(() => loadDashboard(false), 4000);
+    return () => window.clearInterval(timer);
+  }, [activeCrawl, loadDashboard, project]);
 
   const handleStartCrawl = async () => {
     if (!domain.trim()) return;
-
     setIsCrawling(true);
     setError('');
     try {
       const normalizedDomain = domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '');
-      const project = await api.createProject({
-        domain: normalizedDomain,
-        ga4_property_id: null
-      });
-      const crawl = await api.startCrawl(project.id, {
+      const createdProject = await api.createProject({ domain: normalizedDomain, ga4_property_id: null });
+      const crawl = await api.startCrawl(createdProject.id, {
         max_pages: 150,
         delay: 1,
         max_depth: 5,
-        competitor_domains: competitorDomains
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean)
+        competitor_domains: competitorDomains.split(',').map((item) => item.trim()).filter(Boolean),
+        seed_urls: includeAdminSections ? ['/admin'] : [],
+        include_admin_sections: includeAdminSections
       });
       navigate(`/crawl/${crawl.id}`);
     } catch (err) {
@@ -190,12 +233,11 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
   };
 
   const handleRunPreflight = async () => {
-    if (!latestProject) return;
-
+    if (!project) return;
     setIsRunningPreflight(true);
     setError('');
     try {
-      setPreflightReport(await api.runProjectPreflight(latestProject.id));
+      setPreflightReport(await api.runProjectPreflight(project.id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to run preflight scan');
     } finally {
@@ -203,343 +245,339 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
     }
   };
 
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-blue-600';
-    if (score >= 40) return 'text-yellow-600';
-    return 'text-red-600';
+  const handleRunFinalAudit = async () => {
+    if (!project) return;
+    setIsStartingAudit(true);
+    setError('');
+    try {
+      const nextAudit = await api.reauditProject(project.id);
+      navigate(`/audit/${nextAudit.audit_id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start the final audit');
+    } finally {
+      setIsStartingAudit(false);
+    }
   };
 
-  return (
-    <div className="space-y-8">
-      <div className="bg-gradient-to-r from-brand-dark to-brand-blue rounded-2xl p-8 text-white">
-        <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-8">
-          <div>
-            <p className="text-sm text-gray-300 mb-2">Dashboard for</p>
-            <h1 className="text-4xl font-bold mb-2">{customer.business_name}</h1>
-            <p className="text-gray-300 text-sm mb-6">
-              {customer.contact_name || 'Account owner'} · {customer.email}
-            </p>
+  if (isLoading) {
+    return <div className="card text-slate-500">Loading the completed audit and website evidence…</div>;
+  }
 
-            <div className="rounded-xl border border-white/15 bg-white/10 p-5 mb-8">
-              <p className="text-sm text-gray-300">Current website</p>
-              <div className="flex flex-wrap items-center gap-3 mt-2">
-                <h2 className="text-2xl font-bold">{activeBusiness}</h2>
-                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusBadgeClass(activeCrawlStatus)}`}>
-                  Crawl: {activeCrawlStatus}
-                </span>
-              </div>
-              <p className="text-lg text-white mt-1">{activeDomain}</p>
-              <p className="text-sm text-gray-300 mt-2">Audit: {activeAuditStatus}</p>
+  if (!project || !audit || !report || !summary || !scores) {
+    return (
+      <div className="space-y-6">
+        {projects.length > 0 && (
+          <div className="card flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Selected website</p>
+              <p className="font-bold text-slate-950">{project?.name || customer.business_name}</p>
             </div>
-
-          <div className="flex gap-4">
-            <div className="flex-1 relative">
-              <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Enter your website URL"
-                value={domain}
-                onChange={(e) => setDomain(e.target.value)}
-                className="w-full pl-12 pr-4 py-4 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-brand-orange"
-              />
-            </div>
-            <button
-              onClick={handleStartCrawl}
-              disabled={isCrawling || !domain.trim()}
-              className="bg-brand-orange hover:bg-brand-accent text-brand-dark hover:text-white px-8 py-4 rounded-xl font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            <select
+              value={project?.id || requestedProjectId}
+              onChange={(event) => setSearchParams({ project: event.target.value })}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800"
             >
-              {isCrawling ? <Clock className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-              {isCrawling ? 'Starting...' : 'Start Audit'}
-            </button>
+              {projects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.domain}</option>)}
+            </select>
           </div>
-
-          <div className="mt-4 relative">
-            <input
-              type="text"
-              placeholder="Optional competitors, comma-separated"
-              value={competitorDomains}
-              onChange={(e) => setCompetitorDomains(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:border-brand-orange"
-            />
+        )}
+        {activeCrawl && (
+          <div className="card border-blue-200 bg-blue-50">
+            <div className="flex items-center gap-3">
+              <Activity className="h-5 w-5 animate-pulse text-blue-700" />
+              <div>
+                <p className="font-bold text-slate-950">Website crawl in progress</p>
+                <p className="text-sm text-slate-600">The dashboard will populate after the audit compiles.</p>
+              </div>
+            </div>
           </div>
+        )}
+        <EmptyDashboard
+          domain={domain}
+          competitorDomains={competitorDomains}
+          includeAdminSections={includeAdminSections}
+          isCrawling={isCrawling}
+          error={error}
+          onDomainChange={setDomain}
+          onCompetitorsChange={setCompetitorDomains}
+          onIncludeAdminChange={setIncludeAdminSections}
+          onStart={handleStartCrawl}
+        />
+      </div>
+    );
+  }
 
-          {error && <p className="mt-4 text-sm text-red-200">{error}</p>}
-          </div>
+  const routeCounts = summary.route_category_counts || {};
+  const targetCounts = pointerSummary?.target_type_counts || {};
+  const integrationGroups = plannedToolCalls.reduce<Record<string, number>>((groups, tool) => {
+    groups[tool.tool] = (groups[tool.tool] || 0) + 1;
+    return groups;
+  }, {});
+  const publicPages = summary.public_pages ?? summary.total_pages;
+  const excludedPages = summary.pages_excluded_from_public_seo_scoring || 0;
+  const preflightComplete = Boolean(preflightReport && preflightReport.status !== 'not_run' && (preflightReport.pages_scanned || 0) > 0);
+  const crawlComplete = project.latest_crawl_status === 'completed';
+  const auditComplete = Boolean(project.latest_audit_id && audit.report);
 
-          <div className="rounded-xl border border-white/15 bg-white/10 p-5 self-start">
-            <h2 className="text-lg font-bold mb-4">Displayed Data</h2>
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-300">Business</span>
-                <span className="font-semibold text-right">{customer.business_name}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-300">Website</span>
-                <span className="font-semibold text-right">{activeDomain}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-300">Crawl Job</span>
-                <span className="font-semibold text-right">{latestProject?.latest_crawl_id ? `#${latestProject.latest_crawl_id}` : 'none'}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-300">Audit Report</span>
-                <span className="font-semibold text-right">{latestProject?.latest_audit_id ? `#${latestProject.latest_audit_id}` : 'none'}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="text-gray-300">Pages Crawled</span>
-                <span className="font-semibold text-right">{latestProject?.latest_pages_crawled ?? 0}</span>
-              </div>
+  return (
+    <div className="space-y-7">
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 bg-slate-950 px-5 py-5 text-white md:px-7">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-300">Completed audit results</p>
+              <h1 className="mt-2 text-3xl font-bold">{project.name}</h1>
+              <p className="mt-1 text-slate-300">{project.domain}</p>
+              <p className="mt-3 text-sm text-slate-400">
+                Audit #{audit.id} · {new Date(audit.created_at).toLocaleString()} · {summary.total_pages} pages examined
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={project.id}
+                onChange={(event) => setSearchParams({ project: event.target.value })}
+                className="rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-semibold text-white"
+                aria-label="Choose audited website"
+              >
+                {projects.map((item) => <option key={item.id} value={item.id} className="text-slate-950">{item.name} · {item.domain}</option>)}
+              </select>
+              <button onClick={() => navigate(`/audit/${audit.id}`)} className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-bold hover:bg-white/20">
+                <Eye className="h-4 w-4" /> Full audit
+              </button>
+              <button onClick={() => downloads.auditCsv(audit.id)} className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-bold hover:bg-white/20">
+                <Download className="h-4 w-4" /> CSV
+              </button>
+              <button onClick={() => openFiles.auditPdf(audit.id)} className="inline-flex items-center gap-2 rounded-lg bg-brand-orange px-3 py-2 text-sm font-bold text-brand-dark hover:bg-brand-accent hover:text-white">
+                <FileText className="h-4 w-4" /> Open report
+              </button>
             </div>
           </div>
         </div>
-      </div>
 
-      {hasActiveProcess && (
-        <ProcessActivityPanel
-          title={isCrawling ? 'Starting scan' : hasActiveAudit ? 'Audit report compiling' : 'Site scan running'}
-          business={isCrawling ? enteredDomain : latestProject?.name}
-          domain={isCrawling ? enteredDomain : latestProject?.domain}
-          status={isCrawling ? 'queueing' : hasActiveAudit ? 'audit compiling' : latestProject?.latest_crawl_status}
-          detail={isCrawling ? 'Creating project and queueing crawl job' : hasActiveAudit ? 'Scoring crawl data and writing report files' : 'Live crawl job is active for this website'}
-          progress={processProgress}
-        />
-      )}
-
-      {isLoading ? (
-        <div className="card text-gray-500">Loading live dashboard data...</div>
-      ) : !latestProject ? (
-        <div className="card text-gray-500">No live project data yet. Start an audit to populate this dashboard.</div>
-      ) : (
-        <>
-          <div className="card border-cyan-100 bg-cyan-50">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-start gap-3">
-                <div className="w-11 h-11 rounded-lg bg-white text-brand-accent flex items-center justify-center">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-gray-900">Preflight Readiness</h2>
-                  <p className="text-sm text-gray-600">
-                    {preflightReport && preflightReport.status !== 'not_run'
-                      ? `${preflightReport.pages_scanned || 0} pages scanned for ${latestProject.domain}`
-                      : `No preflight report has been run for ${latestProject.domain}`}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={handleRunPreflight}
-                disabled={isRunningPreflight}
-                className="px-4 py-2 rounded-lg bg-brand-orange text-brand-dark font-semibold hover:bg-brand-accent hover:text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {isRunningPreflight && <Activity className="w-4 h-4 animate-pulse" />}
-                {isRunningPreflight ? 'Running Preflight' : preflightReport?.status !== 'not_run' ? 'Re-run Preflight' : 'Run Preflight'}
-              </button>
+        <div className="grid md:grid-cols-4">
+          <div className="border-b border-slate-200 p-5 md:border-b-0 md:border-r">
+            <div className="flex items-center gap-3">
+              <span className={`flex h-9 w-9 items-center justify-center rounded-full font-bold ${preflightComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>1</span>
+              <div><p className="font-bold text-slate-950">Preflight</p><p className={`text-xs ${preflightComplete ? 'text-emerald-700' : 'text-amber-700'}`}>{preflightComplete ? 'Complete' : 'Required'}</p></div>
             </div>
-
-            {preflightReport && preflightReport.status !== 'not_run' ? (
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-5">
-                <div className="rounded-lg bg-white px-3 py-3">
-                  <p className="text-xl font-bold text-gray-900">{preflightReport.pages_scanned || 0}</p>
-                  <p className="text-xs text-gray-500">Pages</p>
-                </div>
-                <div className="rounded-lg bg-white px-3 py-3">
-                  <p className="text-xl font-bold text-gray-900">
-                    {preflightReport.confidence == null ? '-' : `${Math.round(preflightReport.confidence * 100)}%`}
-                  </p>
-                  <p className="text-xs text-gray-500">Confidence</p>
-                </div>
-                <div className="rounded-lg bg-white px-3 py-3">
-                  <p className="text-xl font-bold text-gray-900">{preflightReport.detected?.sitemap_xml ? 'Yes' : 'No'}</p>
-                  <p className="text-xs text-gray-500">Sitemap</p>
-                </div>
-                <div className="rounded-lg bg-white px-3 py-3">
-                  <p className="text-xl font-bold text-gray-900">{preflightReport.detected?.has_auth_pages ? 'Yes' : 'No'}</p>
-                  <p className="text-xs text-gray-500">Auth Pages</p>
-                </div>
-                <div className="rounded-lg bg-white px-3 py-3">
-                  <p className="text-xl font-bold text-gray-900">{preflightReport.warnings?.length || 0}</p>
-                  <p className="text-xs text-gray-500">Warnings</p>
-                </div>
-              </div>
-            ) : null}
           </div>
+          <div className="border-b border-slate-200 p-5 md:border-b-0 md:border-r">
+            <div className="flex items-center gap-3">
+              <span className={`flex h-9 w-9 items-center justify-center rounded-full font-bold ${crawlComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>2</span>
+              <div><p className="font-bold text-slate-950">Crawl</p><p className={`text-xs ${crawlComplete ? 'text-emerald-700' : 'text-slate-500'}`}>{crawlComplete ? 'Complete' : 'Required'}</p></div>
+            </div>
+          </div>
+          <div className="border-b border-slate-200 p-5 md:border-b-0 md:border-r">
+            <div className="flex items-center gap-3">
+              <span className={`flex h-9 w-9 items-center justify-center rounded-full font-bold ${auditComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>3</span>
+              <div><p className="font-bold text-slate-950">Final Audit</p><p className={`text-xs ${auditComplete ? 'text-emerald-700' : 'text-slate-500'}`}>{auditComplete ? 'Complete' : 'Required'}</p></div>
+            </div>
+          </div>
+          <div className={`p-5 ${preflightComplete && crawlComplete && auditComplete ? 'bg-cyan-50' : ''}`}>
+            <div className="flex items-center gap-3">
+              <span className={`flex h-9 w-9 items-center justify-center rounded-full font-bold ${preflightComplete && crawlComplete && auditComplete ? 'bg-brand-accent text-white' : 'bg-slate-100 text-slate-500'}`}>4</span>
+              <div><p className="font-bold text-slate-950">ORBS</p><p className={`text-xs ${preflightComplete && crawlComplete && auditComplete ? 'font-semibold text-brand-blue' : 'text-slate-500'}`}>{preflightComplete && crawlComplete && auditComplete ? 'Ready for integration review' : 'Locked until evidence is complete'}</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-700">Overall Score</h3>
-                <Zap className="w-5 h-5 text-brand-orange" />
+      {error && <div className="card border-red-200 bg-red-50 text-sm font-semibold text-red-700">{error}</div>}
+
+      <section aria-labelledby="score-heading" className="card">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Audit health</p>
+            <h2 id="score-heading" className="mt-1 text-xl font-bold text-slate-950">Complete scorecard</h2>
+          </div>
+          <p className="text-sm text-slate-500">Every scoring category returned by the audit</p>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+          {Object.entries(scores).map(([key, value]) => (
+            <div key={key} className={`rounded-xl border p-4 ${metricTone(value)}`}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-bold uppercase tracking-[0.08em]">{scoreLabel(key)}</p>
+                {key === 'overall' && <Sparkles className="h-4 w-4" />}
               </div>
-              {scores?.overall !== undefined ? (
-                <div className="flex items-center gap-4">
-                  <ScoreCircle score={Math.round(scores.overall)} size="sm" />
-                  <p className={`text-2xl font-bold ${getScoreColor(scores.overall)}`}>
-                    {Math.round(scores.overall)}/100
-                  </p>
+              <p className="mt-2 text-3xl font-bold">{Math.round(value)}</p>
+              <p className="text-xs opacity-75">out of 100</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section aria-labelledby="evidence-heading">
+        <div className="mb-4">
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Website evidence</p>
+          <h2 id="evidence-heading" className="mt-1 text-xl font-bold text-slate-950">What the audit examined</h2>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <DataTile label="Total pages" value={summary.total_pages} note="All routes examined" />
+          <DataTile label="Public pages" value={publicPages} note="Included in public scoring" />
+          <DataTile label="Protected routes" value={excludedPages} note="Used for ORB awareness only" />
+          <DataTile label="Average load" value={summary.avg_load_time ? `${(summary.avg_load_time / 1000).toFixed(2)}s` : '—'} />
+          <DataTile label="Context entities" value={summary.orb_context_entities ?? '—'} note="Detected site concepts" />
+          <DataTile label="Thin pages" value={summary.orb_context_thin_content_pages ?? '—'} note="Low-context routes" />
+        </div>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="card">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Findings</p>
+              <h2 className="mt-1 text-xl font-bold text-slate-950">Issues by severity</h2>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-bold text-slate-700">{summary.total_issues} total</span>
+          </div>
+          <div className="mt-5 grid grid-cols-3 gap-3">
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4"><p className="text-2xl font-bold text-red-700">{summary.critical_count}</p><p className="text-xs font-bold text-red-700">Critical</p></div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-2xl font-bold text-amber-700">{summary.warning_count}</p><p className="text-xs font-bold text-amber-700">Warnings</p></div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4"><p className="text-2xl font-bold text-blue-700">{summary.opportunity_count}</p><p className="text-xs font-bold text-blue-700">Opportunities</p></div>
+          </div>
+          <div className="mt-5 max-h-[34rem] space-y-3 overflow-y-auto pr-1">
+            {allIssues.length > 0 ? allIssues.map((issue, index) => <IssueCard key={`${issue.title}-${index}`} issue={issue} />) : (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">No audit issues were returned.</div>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-5">
+          <div className="card">
+            <div className="flex items-center gap-3">
+              <MapPinned className="h-5 w-5 text-brand-accent" />
+              <div><p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Route classification</p><h2 className="text-lg font-bold text-slate-950">Website areas</h2></div>
+            </div>
+            <div className="mt-4 space-y-3">
+              {Object.keys(routeCounts).length > 0 ? Object.entries(routeCounts).map(([key, value]) => (
+                <div key={key} className="flex items-center justify-between gap-4 border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                  <span className="text-sm font-medium capitalize text-slate-700">{key.replace(/_/g, ' ')}</span>
+                  <span className="font-bold text-slate-950">{value}</span>
                 </div>
-              ) : (
-                <p className="text-gray-500">No audit report yet</p>
-              )}
-            </div>
-
-            <div className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-700">GA4 Sessions</h3>
-                <BarChart3 className="w-5 h-5 text-green-500" />
-              </div>
-              <p className="text-3xl font-bold text-gray-900">{sessions.toLocaleString()}</p>
-              <p className="text-sm text-gray-500 mt-1">Live GA4 total when connected</p>
-            </div>
-
-            <div className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-700">Pages Crawled</h3>
-                <Globe className="w-5 h-5 text-blue-500" />
-              </div>
-              <p className="text-3xl font-bold text-gray-900">
-                {Number(dashboardData?.crawl_summary?.total_pages || summary?.total_pages || 0)}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">{summary?.critical_count || 0} critical issues found</p>
-            </div>
-
-            <div className="card">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-gray-700">Avg Load Time</h3>
-                <Clock className="w-5 h-5 text-yellow-500" />
-              </div>
-              <p className="text-3xl font-bold text-gray-900">
-                {summary?.avg_load_time ? `${(summary.avg_load_time / 1000).toFixed(2)}s` : '-'}
-              </p>
-              <p className="text-sm text-gray-500 mt-1">From the latest completed crawl</p>
+              )) : <p className="text-sm text-slate-500">This audit predates route classification.</p>}
             </div>
           </div>
 
-          {scores && (
-            <div className="card">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">SEO Score Breakdown</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-6">
-                {Object.entries(scores).map(([key, score]) => (
-                  <div key={key} className="text-center">
-                    <ScoreCircle score={Math.round(score)} size="sm" />
-                    <p className="mt-2 text-sm font-medium text-gray-600 capitalize">{key}</p>
-                  </div>
-                ))}
-              </div>
+          <div className={`card ${pointerSummary?.status === 'passed' ? 'border-emerald-200' : 'border-amber-200'}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3"><Target className="h-5 w-5 text-brand-accent" /><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Pointer map</p><h2 className="text-lg font-bold text-slate-950">Interaction coverage</h2></div></div>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${pointerSummary?.status === 'passed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{pointerSummary?.status || 'not available'}</span>
             </div>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900">Top Issues</h2>
-                <button
-                  onClick={() => navigate('/projects')}
-                  className="text-brand-accent hover:text-brand-blue font-medium flex items-center gap-1"
-                >
-                  View Projects <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                {topIssues.length > 0 ? (
-                  topIssues.map((issue, idx) => <IssueCard key={idx} issue={issue} />)
-                ) : (
-                  <div className="card text-gray-500">No audit issues available yet.</div>
-                )}
-              </div>
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              <DataTile label="Pointers" value={pointerSummary?.record_count ?? 0} />
+              <DataTile label="Routes" value={pointerSummary?.routes_with_pointers ?? 0} />
+              <DataTile label="Duplicates" value={pointerSummary?.duplicate_target_ids ?? 0} />
             </div>
-
-            <div className="space-y-6">
-              <div className="card">
-                <h3 className="font-bold text-gray-900 mb-4">Issues Breakdown</h3>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <AlertTriangle className="w-5 h-5 text-red-600" />
-                      <span className="font-medium text-red-700">Critical</span>
-                    </div>
-                    <span className="text-xl font-bold text-red-700">{summary?.critical_count || 0}</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <AlertTriangle className="w-5 h-5 text-yellow-600" />
-                      <span className="font-medium text-yellow-700">Warnings</span>
-                    </div>
-                    <span className="text-xl font-bold text-yellow-700">{summary?.warning_count || 0}</span>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-blue-600" />
-                      <span className="font-medium text-blue-700">Opportunities</span>
-                    </div>
-                    <span className="text-xl font-bold text-blue-700">{summary?.opportunity_count || 0}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card">
-                <h3 className="font-bold text-gray-900 mb-4">Device Breakdown</h3>
-                <div className="space-y-3">
-                  {devices.length > 0 ? (
-                    devices.map((device) => {
-                      const deviceSessions = Number(device.sessions || 0);
-                      const percent = sessions > 0 ? (deviceSessions / sessions) * 100 : 0;
-                      return (
-                        <div key={String(device.device || device.name)}>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium capitalize text-gray-700">
-                              {String(device.device || device.name)}
-                            </span>
-                            <span className="text-sm text-gray-500">{percent.toFixed(1)}%</span>
-                          </div>
-                          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-brand-orange rounded-full" style={{ width: `${percent}%` }} />
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <p className="text-gray-500">No GA4 device data available.</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div onClick={() => navigate('/projects')} className="card cursor-pointer hover:shadow-md transition-shadow group">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center group-hover:bg-blue-200 transition-colors">
-                  <Globe className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900">Manage Projects</h3>
-                  <p className="text-sm text-gray-500">Add and configure websites</p>
-                </div>
-                <ArrowRight className="w-5 h-5 text-gray-400 ml-auto group-hover:text-brand-orange transition-colors" />
-              </div>
-            </div>
-
-            {latestProject.ga4_property_id && (
-              <div
-                onClick={() => navigate(`/ga4/${latestProject.ga4_property_id}`)}
-                className="card cursor-pointer hover:shadow-md transition-shadow group"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center group-hover:bg-green-200 transition-colors">
-                    <BarChart3 className="w-6 h-6 text-green-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-gray-900">GA4 Analytics</h3>
-                    <p className="text-sm text-gray-500">View connected property data</p>
-                  </div>
-                  <ArrowRight className="w-5 h-5 text-gray-400 ml-auto group-hover:text-brand-orange transition-colors" />
-                </div>
+            {Object.keys(targetCounts).length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {Object.entries(targetCounts).map(([key, value]) => <span key={key} className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold capitalize text-slate-700">{key.replace(/_/g, ' ')} {value}</span>)}
               </div>
             )}
           </div>
-        </>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-center gap-3">
+            <Wrench className="h-5 w-5 text-brand-accent" />
+            <div><p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Integration evidence</p><h2 className="text-xl font-bold text-slate-950">Planned support actions</h2></div>
+          </div>
+          <span className="rounded-full bg-violet-100 px-3 py-1 text-sm font-bold text-violet-700">{plannedToolCalls.length} planned calls</span>
+        </div>
+        <div className="mt-5 grid gap-5 lg:grid-cols-[0.7fr_1.3fr]">
+          <div className="space-y-2">
+            {Object.entries(integrationGroups).map(([tool, count]) => (
+              <div key={tool} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2">
+                <span className="text-sm font-semibold text-slate-700">{tool}</span><span className="font-bold text-slate-950">{count}</span>
+              </div>
+            ))}
+            {plannedToolCalls.length === 0 && <p className="text-sm text-slate-500">No integration actions were generated.</p>}
+          </div>
+          <div className="max-h-96 overflow-y-auto rounded-xl border border-slate-200">
+            {plannedToolCalls.map((tool) => (
+              <div key={tool.id} className="grid gap-2 border-b border-slate-100 p-3 last:border-0 sm:grid-cols-[1fr_auto]">
+                <div><p className="font-bold text-slate-900">{tool.tool}</p><p className="text-xs text-slate-500">{tool.purpose || tool.section || tool.trigger}</p>{tool.route && <p className="mt-1 truncate text-xs text-brand-blue">{tool.route}</p>}</div>
+                <span className={`self-start rounded-full px-2.5 py-1 text-xs font-bold ${tool.requires_mcp ? 'bg-violet-100 text-violet-700' : 'bg-emerald-100 text-emerald-700'}`}>{tool.requires_mcp ? 'Approval gated' : tool.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="card">
+        <div className="flex items-center gap-3"><Layers3 className="h-5 w-5 text-brand-accent" /><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Prioritized response</p><h2 className="text-xl font-bold text-slate-950">Recommended action plan</h2></div></div>
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          {report.top_issues.map((issue, index) => (
+            <div key={`${issue.title}-${index}`} className="flex gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-brand-orange text-sm font-bold text-brand-dark">{index + 1}</span>
+              <div><h3 className="font-bold text-slate-950">{issue.title}</h3><p className="mt-1 text-sm text-slate-600">{issue.recommendation}</p><div className="mt-3 flex flex-wrap gap-2"><span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-700">Impact {issue.impact_score}</span><span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold capitalize text-slate-700">{issue.severity}</span></div></div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="grid gap-5 lg:grid-cols-[1fr_auto]">
+        <details className="card group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+            <div className="flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-brand-accent" /><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Supporting check</p><h2 className="text-lg font-bold text-slate-950">Preflight readiness</h2></div></div>
+            <span className="text-sm font-bold text-brand-blue">{preflightReport?.status && preflightReport.status !== 'not_run' ? `${preflightReport.pages_scanned || 0} pages checked` : 'Not run'}</span>
+          </summary>
+          <div className="mt-5 border-t border-slate-200 pt-5">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <DataTile label="Pages checked" value={preflightReport?.pages_scanned || 0} />
+              <DataTile label="Confidence" value={preflightReport?.confidence == null ? '—' : `${Math.round(preflightReport.confidence * 100)}%`} />
+              <DataTile label="Sitemap" value={preflightReport?.detected?.sitemap_xml ? 'Found' : 'Not found'} />
+              <DataTile label="Warnings" value={preflightReport?.warnings?.length || 0} />
+            </div>
+            <button onClick={handleRunPreflight} disabled={isRunningPreflight} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-bold text-brand-blue hover:bg-cyan-100 disabled:opacity-50">
+              {isRunningPreflight && <Activity className="h-4 w-4 animate-pulse" />}{isRunningPreflight ? 'Running…' : preflightReport?.status !== 'not_run' ? 'Re-run preflight' : 'Run preflight'}
+            </button>
+          </div>
+        </details>
+
+        <div className="rounded-2xl bg-slate-950 p-6 text-white shadow-sm lg:w-80">
+          {preflightComplete && crawlComplete && auditComplete ? <CheckCircle2 className="h-7 w-7 text-emerald-400" /> : <Clock3 className="h-7 w-7 text-amber-300" />}
+          <h2 className="mt-4 text-xl font-bold">
+            {!preflightComplete ? 'Preflight is required' : !crawlComplete ? 'Crawl is required' : !auditComplete ? 'Final Audit is required' : 'Technical evidence is complete'}
+          </h2>
+          <p className="mt-2 text-sm text-slate-300">
+            {!preflightComplete
+              ? `Run Preflight for ${project.name} before the ORBS integration review can begin.`
+              : !crawlComplete
+                ? `Complete the project crawl before the Final Audit and ORBS integration review.`
+                : !auditComplete
+                  ? `Run the Final Audit before any package recommendation or purchase action is shown.`
+                  : `Review the site-specific ORBS integration assessment for ${project.name}.`}
+          </p>
+          {!preflightComplete ? (
+            <button onClick={handleRunPreflight} disabled={isRunningPreflight} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-orange px-4 py-3 font-bold text-brand-dark hover:bg-brand-accent hover:text-white disabled:opacity-50">
+              {isRunningPreflight && <Activity className="h-4 w-4 animate-pulse" />}{isRunningPreflight ? 'Running Preflight…' : 'Run Preflight'}
+            </button>
+          ) : !crawlComplete ? (
+            <button onClick={() => navigate(`/projects?project=${encodeURIComponent(project.id)}`)} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-orange px-4 py-3 font-bold text-brand-dark hover:bg-brand-accent hover:text-white">
+              Run Crawl <ArrowRight className="h-4 w-4" />
+            </button>
+          ) : !auditComplete ? (
+            <button onClick={handleRunFinalAudit} disabled={isStartingAudit} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-orange px-4 py-3 font-bold text-brand-dark hover:bg-brand-accent hover:text-white disabled:opacity-50">
+              {isStartingAudit && <Activity className="h-4 w-4 animate-pulse" />}{isStartingAudit ? 'Starting Final Audit…' : 'Run Final Audit'}
+            </button>
+          ) : (
+            <button onClick={() => navigate(`/orbs/${project.id}`)} className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-orange px-4 py-3 font-bold text-brand-dark hover:bg-brand-accent hover:text-white">
+              Review ORBS Integration <ArrowRight className="h-4 w-4" />
+            </button>
+          )}
+          <button onClick={() => navigate(`/reports/${project.id}`)} className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-white/20 px-4 py-2.5 text-sm font-bold hover:bg-white/10">
+            Review report files <FileText className="h-4 w-4" />
+          </button>
+        </div>
+      </section>
+
+      {sessions > 0 && (
+        <section className="card flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3"><BarChart3 className="h-5 w-5 text-emerald-600" /><div><p className="font-bold text-slate-950">Connected GA4 activity</p><p className="text-sm text-slate-500">{sessions.toLocaleString()} sessions in the current reporting window</p></div></div>
+          <button onClick={() => navigate(project.ga4_property_id ? `/ga4/${project.ga4_property_id}` : '/ga4')} className="text-sm font-bold text-brand-blue">View analytics</button>
+        </section>
       )}
     </div>
   );

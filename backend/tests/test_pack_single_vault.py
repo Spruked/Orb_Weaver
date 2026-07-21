@@ -1,11 +1,17 @@
 import json
+import importlib
+import sys
 import zipfile
 
-from app.pack_generator import generate_pack_file
 
+def test_downloaded_orb_pack_contains_exactly_one_vault_system(tmp_path, monkeypatch):
+    from app.core import storage
 
-def test_downloaded_orb_pack_contains_exactly_one_vault_system(tmp_path):
-    result = generate_pack_file(
+    monkeypatch.setattr(storage, "VAULT_ROOT", tmp_path)
+    sys.modules.pop("app.pack_generator.generator", None)
+    sys.modules.pop("app.pack_generator", None)
+    generator = importlib.import_module("app.pack_generator.generator")
+    result = generator.generate_pack_file(
         scan_data={"pages": [{"url": "https://example.test/"}]},
         site_id="42",
         domain="Example.Test",

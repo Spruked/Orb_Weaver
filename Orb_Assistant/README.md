@@ -108,10 +108,45 @@ All CALI outputs are **advisory, recorded, and timestamped**.
 - 🖱️ **Cursor Tracking**: Maintains ~350px distance from cursor
 - 🧠 **Cognitive Integration**: Uses ECM and SKG for intelligent assistance
 - 🤖 **Automation**: Can automate typing and clicks with permission
+- 🧭 **Admin Navigation Awareness**: The owner ORB may use verified route maps, pointer escalation, and canonical tools to inspect/administer Spruked/CALI operator sections.
 - 📊 **Habit Learning**: Learns your usage patterns via SKG
 - 🔒 **Privacy-First**: Requires explicit permission for all features
 
+## Admin, Tools, and Pointer Authority
+
+The owner ORB must have access to:
+
+- canonical runtime tools in `/home/bryan/projects/Orb_Weaver/tools`
+- local tools symlink at `Orb_Assistant/tools -> /home/bryan/projects/Orb_Weaver/tools`
+- pointer escalation contracts in `pointer_escalation/`
+- verified admin routes such as Spruked `/admin`
+- CALI CRM/admin status through the Spruked runtime on `http://localhost:21010/`
+
+Navigation remains fail-closed: if a destination, route identity, or pointer target cannot be verified, the ORB must not move or click. Admin authority expands what the owner ORB is allowed to inspect; it does not remove route verification.
+
 ## Architecture
+
+### Cognitive routing and authority
+
+`SF_ORB_Controller.cognitively_emerge()` is the sole cognitive entry point, but
+connected components are activated by deterministic routing conditions rather
+than forced to run for every stimulus:
+
+- `vault_supported_fast` uses retrieved Vault evidence, lightweight deductive
+  review, and the matching validation witness. Retrieval is evidence and never
+  an authoritative return that bypasses cognition.
+- `ordinary_reasoning` activates HLSF, Core-4, Bayesian integration, and the
+  logic seeds and validators applicable to the stimulus. CALI reflection may
+  be deferred.
+- `full_escalation` activates all deductive, inductive, and intuitive seeds,
+  all three validators, deeper HLSF traversal, Core-4, Bayesian integration,
+  advisory convergence, and CALI reflection. Explicit deep reasoning,
+  conflicts, high complexity, or low-confidence signals select this lane.
+
+Parallelism applies to the cognitive components activated for the selected
+lane. Cognitive output remains advisory and cannot select or advance an ORBS
+Stage Governor transition. All cognitive traces and learned state remain in
+the repository's sole `vault_system/`.
 
 ### Core Components
 
@@ -169,6 +204,9 @@ All CALI outputs are **advisory, recorded, and timestamped**.
   - Echoes status/query responses for UI testing
 
 ## Configuration & Environment Variables
+
+- `ORB_WEAVER_API_URL` and `ORB_WEAVER_CUSTOMER_TOKEN`
+  - When both are present, the Python bridge configures the read-only ORBS adapter against Orb Weaver's authenticated `/api/projects/{project_id}/orbs-stage` and `/orbs-stage/actions` contracts. The token is read at request time and is not copied into workflow state.
 
 - `ORB_DISABLE_PYTHON_BRIDGE=1`
   - Disables Python bridge startup in Electron main.

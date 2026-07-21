@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from vault_system.paths import LOGS_ROOT, client_root
+from vault_system.paths import LOGS_ROOT, client_root, require_vault_path
 
 
 class FetchedResponse:
@@ -317,9 +317,9 @@ class PreflightScanner:
 
     def __init__(self, root_url: str, output_dir: str):
         self.root_url = normalize_url(root_url)
-        self.output_dir = output_dir
         self.domain = get_domain(self.root_url)
         self.vault_output_dir = client_root(self.domain) / "preflight"
+        self.output_dir = str(require_vault_path(output_dir, "Preflight scan output"))
         self.parsed_root = urlparse(self.root_url)
         self.session: Optional[aiohttp.ClientSession] = None
         self.semaphore: Optional[asyncio.Semaphore] = None
@@ -995,8 +995,8 @@ class PreflightScanner:
                 "confidence": confidence,
             }
 
-            # The canonical client vault is mandatory. output_dir remains an
-            # optional export destination for standalone compatibility.
+            # The canonical client Vault is mandatory. output_dir is accepted
+            # only when it is another namespace inside that same Vault.
             self.vault_output_dir.mkdir(parents=True, exist_ok=True)
             vault_report_path = self.vault_output_dir / "site_preflight_report.json"
             with vault_report_path.open("w", encoding="utf-8") as f:

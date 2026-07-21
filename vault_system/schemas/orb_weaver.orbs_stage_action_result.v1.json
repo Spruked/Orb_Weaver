@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orb_weaver.orbs_stage_action_result.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "accepted", "action", "idempotency_key", "transition_applied", "fresh_snapshot", "recorded_at"],
+  "properties": {
+    "schema": {"const": "orb_weaver.orbs_stage_action_result.v1"},
+    "accepted": {"type": "boolean"},
+    "action": {"type": "string"},
+    "idempotency_key": {"type": "string"},
+    "transition_applied": {"type": "boolean"},
+    "rejection_code": {"type": ["string", "null"]},
+    "fresh_snapshot": {"$ref": "orb_weaver.orbs_stage_snapshot.v1.json"},
+    "recorded_at": {"type": "string", "format": "date-time"}
+  }
+}

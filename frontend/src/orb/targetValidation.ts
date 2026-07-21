@@ -203,8 +203,8 @@ export function validateOrbPointerTarget(
     return { ok: false, targetId, reason: "invalid_target_id", fallbackPosition };
   }
 
-  const confidenceBlocked = record.confidence_class === "UNCERTAIN" || record.confidence_class === "BLOCKED";
-  if (confidenceBlocked || record.runtime_policy?.may_point === false) {
+  const confidenceAllowsGuidance = record.confidence_class === "VERIFIED" || record.confidence_class === "STABLE";
+  if (!confidenceAllowsGuidance || record.runtime_policy?.may_point !== true) {
     options.kineticTransit?.haltToSafePosition();
     logger.warn("[orb-target-validation]", {
       targetId,

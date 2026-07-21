@@ -232,11 +232,28 @@
 
 .ow-v2-primary,
 .ow-v2-secondary {
+  appearance: none;
+  cursor: pointer;
   border-radius: 8px;
   padding: 14px 18px;
   text-decoration: none;
   font-size: 14px;
   font-weight: 800;
+}
+
+.ow-v2-primary:disabled,
+.ow-v2-secondary:disabled,
+.ow-v2-packages button:disabled {
+  cursor: wait;
+  opacity: .58;
+}
+
+.ow-v2-cta-error {
+  max-width: 580px;
+  margin: 14px 0 0;
+  color: #fecaca;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .ow-v2-primary {
@@ -266,6 +283,78 @@
   content: "•";
   margin-right: 7px;
   color: var(--ow-v2-gold);
+}
+
+.ow-v2-packages {
+  position: relative;
+  z-index: 2;
+  width: min(1240px, calc(100% - 52px));
+  margin: 30px auto 0;
+  padding: 70px 0 90px;
+  border-top: 1px solid rgba(91, 200, 230, .16);
+}
+
+.ow-v2-package-heading {
+  max-width: 680px;
+}
+
+.ow-v2-package-heading h2 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(32px, 4vw, 54px);
+  line-height: 1.05;
+  letter-spacing: -.035em;
+}
+
+.ow-v2-package-heading > p:last-child {
+  color: #9eb3bf;
+  line-height: 1.7;
+}
+
+.ow-v2-package-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 32px;
+}
+
+.ow-v2-package-grid article {
+  display: flex;
+  min-height: 230px;
+  flex-direction: column;
+  padding: 24px;
+  border: 1px solid rgba(91, 200, 230, .2);
+  border-radius: 14px;
+  background: rgba(6, 17, 31, .72);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .18);
+}
+
+.ow-v2-package-grid article > span {
+  color: var(--ow-v2-cyan);
+  font-size: 18px;
+  font-weight: 850;
+}
+
+.ow-v2-package-grid article p {
+  flex: 1;
+  color: #9eb3bf;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.ow-v2-package-grid button {
+  cursor: pointer;
+  border: 1px solid rgba(91, 200, 230, .42);
+  border-radius: 8px;
+  padding: 11px 12px;
+  background: rgba(91, 200, 230, .1);
+  color: #e8f7fd;
+  font-weight: 800;
+}
+
+.ow-v2-package-grid button:hover {
+  background: var(--ow-v2-cyan);
+  color: #03101a;
 }
 
 .ow-v2-autonomous-orb {
@@ -300,6 +389,10 @@
 
 .ow-v2-orb-position {
   position: absolute;
+}
+
+.ow-v2-orb-position.onboarding-safe-mode {
+  display: none;
 }
 
 .ow-v2-orb-body {
@@ -719,6 +812,10 @@
   .ow-v2-lower {
     grid-template-columns: 1fr;
   }
+
+  .ow-v2-package-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 560px) {
@@ -726,6 +823,15 @@
   .ow-v2-hero,
   .ow-v2-lower {
     width: min(100% - 30px, 1240px);
+  }
+
+  .ow-v2-packages {
+    width: min(100% - 30px, 1240px);
+    padding: 54px 0 70px;
+  }
+
+  .ow-v2-package-grid {
+    grid-template-columns: 1fr;
   }
 
   .ow-v2-nav a {

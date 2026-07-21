@@ -1,0 +1,124 @@
+/home/bryan/projects/Orb_Weaver/Orb_Assistant/src
+├── __pycache__
+│   ├── bayesian_engine.cpython-312.pyc
+│   ├── bayesian_engine.cpython-314.pyc
+│   ├── floating_assistant_orb.cpython-312.pyc
+│   ├── orb_controller.cpython-312.pyc
+│   ├── orb_controller.cpython-314.pyc
+│   ├── orb_skg_manager.cpython-312.pyc
+│   ├── test_bridge.cpython-312.pyc
+│   ├── test_full_pipeline.cpython-312.pyc
+│   └── test_pipeline.cpython-312.pyc
+├── bayesian_engine.py
+├── cali-launcher.js
+├── components
+│   ├── FloatingOrb.css
+│   ├── FloatingOrb.jsx
+│   ├── LivingOrb.css
+│   ├── LivingOrb.jsx
+│   └── core_4_minds
+│       ├── __pycache__
+│       │   └── tribunal.cpython-312.pyc
+│       ├── bspinoza
+│       │   └── spinoza_monism_skg.json
+│       ├── hhume
+│       │   └── hume_skepticism_skg.json
+│       ├── hlocke
+│       │   └── locke_empiricism_skg.json
+│       ├── ikant
+│       │   └── kant_critical_skg.json
+│       └── tribunal.py
+├── floating_assistant_orb.py
+├── hlsf_geometry
+│   ├── __pycache__
+│   │   └── engine.cpython-312.pyc
+│   └── engine.py
+├── index.html
+├── interface
+│   ├── gravity_field_2d.py
+│   └── orb_window.py
+├── logic_seeds
+│   ├── __pycache__
+│   │   └── validation_pipeline.cpython-314.pyc
+│   ├── deductive_SKG
+│   │   ├── job
+│   │   │   └── execute.py
+│   │   ├── jobs
+│   │   │   └── execute.py
+│   │   ├── logic
+│   │   │   ├── __pycache__
+│   │   │   │   └── deductive_logic.cpython-314.pyc
+│   │   │   ├── cognitive_state.py
+│   │   │   └── deductive_logic.py
+│   │   └── worker.json
+│   ├── deductive_validator
+│   │   ├── job
+│   │   │   └── validate.py
+│   │   ├── logic
+│   │   │   ├── __pycache__
+│   │   │   │   └── deductive_validation.cpython-314.pyc
+│   │   │   ├── deductive_validation.py
+│   │   │   └── validation_state.py
+│   │   └── worker.json
+│   ├── inductive
+│   │   ├── cursor_habit.json
+│   │   └── moral_habit.json
+│   ├── inductive_skg
+│   │   └── logic
+│   │       ├── __pycache__
+│   │       │   └── inductive_logic.cpython-314.pyc
+│   │       ├── cognitive_stat.py
+│   │       ├── cognitive_state.py
+│   │       └── inductive_logic.py
+│   ├── inductive_validator
+│   │   ├── logic
+│   │   │   ├── __pycache__
+│   │   │   │   └── inductive_validation.cpython-314.pyc
+│   │   │   ├── inductive_validation.py
+│   │   │   └── validation_state.py
+│   │   └── worker.json
+│   ├── intuitive
+│   │   └── pattern_recognition.json
+│   ├── intuitive_skg
+│   │   └── logic
+│   │       ├── __pycache__
+│   │       │   └── intuitive_logic.cpython-314.pyc
+│   │       ├── cognitive_state.py
+│   │       └── intuitive_logic.py
+│   ├── intuitive_validator
+│   │   ├── logic
+│   │   │   ├── __pycache__
+│   │   │   │   └── intuitive_validation.cpython-314.pyc
+│   │   │   ├── intuitive_validation.py
+│   │   │   └── validation_state.py
+│   │   └── worker.json
+│   └── validation_pipeline.py
+├── main.jsx
+├── orb_controller.py
+├── orb_skg_manager.py
+├── orbs_integration
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-314.pyc
+│   │   ├── confirmation_policy.cpython-314.pyc
+│   │   ├── stage_actions.cpython-314.pyc
+│   │   ├── stage_articulation.cpython-314.pyc
+│   │   ├── stage_client.cpython-314.pyc
+│   │   └── stage_snapshot.cpython-314.pyc
+│   ├── confirmation_policy.py
+│   ├── stage_actions.py
+│   ├── stage_articulation.py
+│   ├── stage_client.py
+│   └── stage_snapshot.py
+├── settings.html
+├── test_bridge.py
+├── test_full_pipeline.py
+├── test_pipeline.py
+└── voice
+    ├── README.md
+    ├── fallback_responses.json
+    ├── latency_fillers.json
+    └── recovery_and_status.json
+
+40 directories, 81 files
+((.venv) ) bryan@ProPrimeSeries:~/projects/Orb_Weaver$ 

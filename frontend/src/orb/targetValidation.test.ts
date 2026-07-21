@@ -36,6 +36,8 @@ describe("validateOrbPointerTarget", () => {
       semantic_locator: "a[href='/demo']",
       content_fingerprint: "demo",
       meaning: "nav: Demonstration Station",
+      confidence_class: "VERIFIED",
+      runtime_policy: { may_point: true },
       structural_context: { parent_locator: "nav", tag: "a" },
     });
 
@@ -63,6 +65,8 @@ describe("validateOrbPointerTarget", () => {
       semantic_locator: "a[href='/checkout']",
       content_fingerprint: "checkout",
       meaning: "nav: Checkout",
+      confidence_class: "VERIFIED",
+      runtime_policy: { may_point: true },
       structural_context: { parent_locator: "nav", tag: "a" },
     }, { logger: { warn: jest.fn(), info: jest.fn() } });
 
@@ -89,6 +93,20 @@ describe("validateOrbPointerTarget", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("policy_blocked");
     expect(haltToSafePosition).toHaveBeenCalled();
+  });
+
+  it("refuses unclassified pointers by default", () => {
+    document.body.innerHTML = '<button data-orb-target="legacy">Legacy target</button>';
+
+    const result = validateOrbPointerTarget({
+      target_id: "legacy",
+      semantic_locator: "button[data-orb-target='legacy']",
+      content_fingerprint: "legacy",
+      meaning: "button: Legacy target",
+    }, { logger: { warn: jest.fn(), info: jest.fn() } });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("policy_blocked");
   });
 
   it("honors an explicit runtime may-point denial", () => {

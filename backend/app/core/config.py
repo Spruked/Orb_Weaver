@@ -16,7 +16,9 @@ class Settings(BaseSettings):
     # must never create a Windows-looking directory inside Linux.
     ORB_WEAVER_SUBSTRATE_ROOT: str = "../vault_system"
     PUBLIC_BASE_URL: str = "https://orbweaver.spruked.com"
-    CALI_CRM_URL: str = "http://localhost:16610"
+    CALI_CRM_URL: str = "http://localhost:21010/"
+    CALI_CRM_TOKEN: Optional[str] = "spruked-admin-local"
+    CALI_CRM_SYNC_ON_SIGNUP: bool = True
     # Orb Weaver owns only the outbound CRM bridge records it creates. Those
     # records remain inside this repository's canonical vault.
     CALI_CRM_SUBSTRATE_ROOT: str = "../vault_system/integrations/cali_crm"
@@ -30,6 +32,7 @@ class Settings(BaseSettings):
 
     # Checkout
     STRIPE_SECRET_KEY: Optional[str] = None
+    STRIPE_WEBHOOK_SECRET: Optional[str] = None
     STRIPE_API_VERSION: str = "2026-02-25.clover"
     PAYPAL_CLIENT_ID: Optional[str] = None
     PAYPAL_CLIENT_SECRET: Optional[str] = None
@@ -47,6 +50,10 @@ class Settings(BaseSettings):
     CRAWL_USER_AGENT: str = "Orb-Weaver/1.0"
     CRAWL_RESPECT_ROBOTS: bool = True
     CRAWL_MAX_DEPTH: int = 5
+    # Owner/admin crawls should be aware of private operator surfaces that are
+    # often absent from sitemap discovery. Public preflight scans do not use
+    # these seeds.
+    ORB_ADMIN_ROUTE_SEEDS: List[str] = ["/admin"]
     LOCAL_LLM_URL: Optional[str] = None
     LOCAL_LLM_MODEL: Optional[str] = None
     LOCAL_LLM_TIMEOUT_SECONDS: float = 60.0

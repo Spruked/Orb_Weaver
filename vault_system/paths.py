@@ -7,6 +7,12 @@ import re
 from pathlib import Path
 
 
+IMMUTABLE_STORAGE_LAW = (
+    "All persisted data must be written beneath and read authoritatively from "
+    "the repository's sole vault_system root."
+)
+
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 _WINDOWS_DRIVE_PATH = re.compile(r"^[A-Za-z]:[\\/]")
 
@@ -43,6 +49,7 @@ TPC_ROOT = LONG_TERM_MEMORY_ROOT / "tpc"
 WORKER_VAULTS_ROOT = COGNITION_ROOT / "workers"
 REPORTS_ROOT = VAULT_ROOT / "reports"
 INDEXES_ROOT = VAULT_ROOT / "indexes"
+GLOBAL_INTELLIGENCE_ROOT = INDEXES_ROOT / "global_intelligence"
 MANIFESTS_ROOT = VAULT_ROOT / "manifests"
 SCHEMAS_ROOT = VAULT_ROOT / "schemas"
 INTEGRATIONS_ROOT = VAULT_ROOT / "integrations"
@@ -52,6 +59,15 @@ BROWSER_REVIEWS_ROOT = RUNTIME_ROOT / "browser_reviews"
 STATE_ROOT = RUNTIME_ROOT / "state"
 LOGS_ROOT = RUNTIME_ROOT / "logs"
 BACKUPS_ROOT = VAULT_ROOT / "backups"
+
+
+def require_vault_path(path: Path | str, purpose: str = "persistent data") -> Path:
+    """Return a resolved Vault path or reject a parallel/component-local store."""
+    resolved = Path(path).expanduser().resolve()
+    vault = VAULT_ROOT.resolve()
+    if resolved != vault and vault not in resolved.parents:
+        raise ValueError(f"{purpose} must remain inside the canonical vault_system: {resolved}")
+    return resolved
 
 
 def normalize_client_key(domain_or_url: str) -> str:

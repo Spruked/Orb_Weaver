@@ -45,6 +45,10 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
     ...(customer.is_admin ? [{ path: '/admin/customers', icon: Shield, label: 'Admin' }] : []),
     { path: '/account', icon: User, label: 'Account' },
   ];
+  const pageTitle = location.pathname === '/welcome'
+    ? 'Workspace Setup'
+    : navItems.find(n => location.pathname === n.path ||
+      (n.path !== '/' && location.pathname.startsWith(n.path)))?.label || 'Dashboard';
 
   useEffect(() => {
     setIsSidebarOpen(false);
@@ -137,8 +141,7 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
         <header className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3 md:px-8">
           <div className="flex items-center justify-between gap-4">
             <h2 className="min-w-0 truncate text-xl font-bold text-gray-800 md:text-2xl">
-              {navItems.find(n => location.pathname === n.path ||
-                (n.path !== '/' && location.pathname.startsWith(n.path)))?.label || 'Dashboard'}
+              {pageTitle}
             </h2>
             <div className="flex min-w-0 items-center gap-3 md:gap-5">
               <Link to="/account" className="p-2 hover:bg-gray-100 rounded-lg" title="Account">

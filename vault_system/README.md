@@ -1,5 +1,12 @@
 # Orb Weaver Canonical Vault
 
+> **IMMUTABLE AND REQUIRED:** This directory is the sole authoritative home
+> for all persisted Orb Weaver data, including raw scans, customer and session
+> records, projects, checkout, verified payments, entitlements, workflow state,
+> reports, caches, and cognition. Every producer and consumer must write here
+> and read authoritative state from here. No component-local store is valid.
+> The complete law is in `../IMMUTABLE_VAULT_STORAGE_LAW.md`.
+
 `vault_system/` is the single storage authority for this repository and for
 every downloadable customer ORB. A repository or installed ORB must contain
 exactly one directory named `vault_system`; components receive namespaces

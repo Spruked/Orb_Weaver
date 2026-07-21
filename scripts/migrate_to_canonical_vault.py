@@ -304,6 +304,15 @@ def migrate_known_storage(
         operations=operations,
     )
 
+    migrate_tree(
+        REPO_ROOT / "substrate" / "global_intelligence",
+        VAULT_ROOT / "indexes" / "global_intelligence",
+        "substrate-global-intelligence",
+        apply=apply,
+        finalize=finalize,
+        operations=operations,
+    )
+
     malformed_roots = malformed_client_roots()
     for index, source_root in enumerate(malformed_roots, start=1):
         migrate_tree(

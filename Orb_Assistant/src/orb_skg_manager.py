@@ -6,18 +6,108 @@ Prevents performance degradation under high-frequency orb operations
 
 import asyncio
 import time
-import psutil
 import json
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import threading
 import queue
-import numpy as np
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
-from vault_logic_system_template.seed_vault import MasterSeedVault
-from worker_forge.forge_engine import SKGForgeEngine
-from ucm_4_core.ecm.epistemic_convergence import EpistemicConvergenceMatrix
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
+from vault_system.paths import require_vault_path, worker_vault
+
+try:
+    from vault_logic_system_template.seed_vault import MasterSeedVault
+    from worker_forge.forge_engine import SKGForgeEngine
+    from ucm_4_core.ecm.epistemic_convergence import EpistemicConvergenceMatrix
+except ImportError:
+    MasterSeedVault = None
+    SKGForgeEngine = None
+    EpistemicConvergenceMatrix = None
+
+
+class SKGUsageLedger:
+    """Auditable proof that the SF-ORB cognitive graph participated in a result."""
+
+    def __init__(self):
+        self.path = require_vault_path(
+            worker_vault("sf_orb_controller") / "cognitive_component_usage.jsonl",
+            "SF-ORB cognitive usage ledger",
+        )
+        self.last_error = None
+        self._queue = queue.Queue()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def record(self, stimulus: Dict[str, Any], component_trace: Dict[str, Any]) -> None:
+        canonical_stimulus = json.dumps(stimulus, sort_keys=True, default=str)
+        record = {
+            "timestamp": time.time(),
+            "stimulus_hash": __import__("hashlib").sha256(
+                canonical_stimulus.encode("utf-8")
+            ).hexdigest(),
+            "components": component_trace,
+        }
+        self._queue.put(record)
+
+    def flush(self) -> None:
+        """Wait for queued records; intended for shutdown and deterministic tests."""
+        self._queue.join()
+
+    def _run(self) -> None:
+        while True:
+            record = self._queue.get()
+            try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                with self.path.open("a", encoding="utf-8") as handle:
+                    handle.write(
+                        json.dumps(record, sort_keys=True, default=str) + "\n"
+                    )
+                self.last_error = None
+            except Exception as exc:
+                self.last_error = str(exc)
+            finally:
+                self._queue.task_done()
+
+
+class AsyncCALIReflectionRecorder:
+    """Persist advisory CALI reflections off the user-visible response path."""
+
+    def __init__(self):
+        self.path = require_vault_path(
+            worker_vault("cali_reflection") / "deferred_reflections.jsonl",
+            "CALI reflection ledger",
+        )
+        self._queue = queue.Queue()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def defer(self, reflection: Dict[str, Any]) -> None:
+        self._queue.put(dict(reflection))
+
+    def flush(self) -> None:
+        """Wait for queued records; intended for shutdown and deterministic tests."""
+        self._queue.join()
+
+    def _run(self) -> None:
+        while True:
+            reflection = self._queue.get()
+            try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                with self.path.open("a", encoding="utf-8") as handle:
+                    handle.write(
+                        json.dumps(reflection, sort_keys=True, default=str) + "\n"
+                    )
+            finally:
+                self._queue.task_done()
 
 
 @dataclass
@@ -49,6 +139,12 @@ class SKGRebuildEngine:
     """
 
     def __init__(self, vault_path: str, worker_id: str):
+        if not all(
+            (MasterSeedVault, SKGForgeEngine, EpistemicConvergenceMatrix, psutil, np)
+        ):
+            raise RuntimeError(
+                "SKG rebuild dependencies are not installed; cognitive usage auditing remains available"
+            )
         self.vault = MasterSeedVault(vault_path)
         self.forge = SKGForgeEngine(worker_id=worker_id)
         self.ecm = EpistemicConvergenceMatrix(vault_path)

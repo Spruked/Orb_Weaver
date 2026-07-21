@@ -46,9 +46,9 @@ class FinalValidationLayer:
     """
 
     def __init__(self):
-        self.deductive = DeductiveValidator(Path("deductive_validator"))
-        self.inductive = InductiveValidator(Path("inductive_validator"))
-        self.intuitive = IntuitiveValidator(Path("intuitive_validator"))
+        self.deductive = DeductiveValidator(worker_vault("deductive_validator"))
+        self.inductive = InductiveValidator(worker_vault("inductive_validator"))
+        self.intuitive = IntuitiveValidator(worker_vault("intuitive_validator"))
 
     def create_signed_witness_envelope(self, validation_record: Dict) -> Dict:
         """
@@ -56,6 +56,25 @@ class FinalValidationLayer:
         Provides cryptographic provenance of what the system believed at delivery time.
         """
         # Extract the core content to be signed
+        compact_observations = {}
+        for validator_name, observation in validation_record[
+            "witness_validations"
+        ].items():
+            compact_observations[validator_name] = {
+                key: observation[key]
+                for key in (
+                    "observation_id",
+                    "validation_id",
+                    "check_status",
+                    "parallel_confidence",
+                    "historical_support",
+                    "alignment",
+                    "symmetry_calculated",
+                    "geometry_validated",
+                )
+                if key in observation
+            }
+
         envelope_content = {
             "delivery_timestamp": validation_record["delivery_timestamp"],
             "original_verdict_hash": hashlib.sha256(
@@ -63,44 +82,7 @@ class FinalValidationLayer:
                     validation_record["original_verdict"], sort_keys=True
                 ).encode()
             ).hexdigest()[:16],
-            "validator_observations": {
-                "deductive": {
-                    "observation_id": validation_record["witness_validations"][
-                        "deductive"
-                    ]["observation_id"],
-                    "check_status": validation_record["witness_validations"][
-                        "deductive"
-                    ]["check_status"],
-                    "parallel_confidence": validation_record["witness_validations"][
-                        "deductive"
-                    ]["parallel_confidence"],
-                    "alignment": validation_record["witness_validations"]["deductive"][
-                        "alignment"
-                    ],
-                },
-                "inductive": {
-                    "validation_id": validation_record["witness_validations"][
-                        "inductive"
-                    ]["validation_id"],
-                    "historical_support": validation_record["witness_validations"][
-                        "inductive"
-                    ]["historical_support"],
-                    "alignment": validation_record["witness_validations"]["inductive"][
-                        "alignment"
-                    ],
-                },
-                "intuitive": {
-                    "validation_id": validation_record["witness_validations"][
-                        "intuitive"
-                    ]["validation_id"],
-                    "symmetry_calculated": validation_record["witness_validations"][
-                        "intuitive"
-                    ]["symmetry_calculated"],
-                    "geometry_validated": validation_record["witness_validations"][
-                        "intuitive"
-                    ]["geometry_validated"],
-                },
-            },
+            "validator_observations": compact_observations,
             "consensus_analysis": validation_record["consensus_analysis"],
         }
 
@@ -123,7 +105,7 @@ class FinalValidationLayer:
             "signature_method": "SHA256_deterministic",
             "tamper_evidence": {
                 "content_length": len(content_str),
-                "validator_count": 3,
+                "validator_count": len(compact_observations),
                 "consensus_congruent": envelope_content["consensus_analysis"][
                     "congruent"
                 ],
@@ -132,7 +114,9 @@ class FinalValidationLayer:
 
         return signed_envelope
 
-    def validate_for_delivery(self, core_verdict: Dict, context: Dict) -> Dict:
+    def validate_for_delivery(
+        self, core_verdict: Dict, context: Dict, validator_names=None
+    ) -> Dict:
         """
         Final check before user sees result.
         Documents everything, changes nothing.
@@ -144,29 +128,27 @@ class FinalValidationLayer:
             "timestamp": time.time(),
         }
 
-        # Run all three validations (parallel in production)
-        ded_val = self.deductive.validate_verdict(package)
-        ind_val = self.inductive.validate_verdict(package)
-
-        # Intuitive needs HLSF context
+        selected = tuple(
+            validator_names or ("deductive", "inductive", "intuitive")
+        )
         package["hlsf_context"] = context.get("hlsf", {})
-        int_val = self.intuitive.validate_verdict(package)
+        validators = {
+            "deductive": self.deductive,
+            "inductive": self.inductive,
+            "intuitive": self.intuitive,
+        }
+        witness_validations = {
+            name: validators[name].validate_verdict(package)["validation_layer"]
+            for name in selected
+        }
 
         # Compile validation record
         validation_record = {
             "delivery_timestamp": time.time(),
             "original_verdict": core_verdict,
-            "witness_validations": {
-                "deductive": ded_val["validation_layer"],
-                "inductive": ind_val["validation_layer"],
-                "intuitive": int_val["validation_layer"],
-            },
+            "witness_validations": witness_validations,
             "consensus_analysis": self._analyze_consensus(
-                [
-                    ded_val["validation_layer"],
-                    ind_val["validation_layer"],
-                    int_val["validation_layer"],
-                ]
+                list(witness_validations.values())
             ),
             "delivery_status": "delivered_with_validation",
             "user_message": "Original verdict preserved with validation witness",
@@ -188,7 +170,7 @@ class FinalValidationLayer:
             **core_verdict,  # Original untouched
             "_validation_witness": {
                 "checked": True,
-                "validators": ["deductive", "inductive", "intuitive"],
+                "validators": list(selected),
                 "record_id": validation_record["delivery_timestamp"],
                 "congruent": validation_record["consensus_analysis"]["congruent"],
                 "signed_envelope_id": signed_envelope["envelope_id"],

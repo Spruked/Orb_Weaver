@@ -67,6 +67,55 @@ class SEOAuditor:
         path = urlparse(page.url).path.lower().rstrip("/")
         return path.endswith("/sitemap.xml") or path.endswith("/robots.txt")
 
+    def _route_category(self, page: PageData) -> str:
+        semantic = page.semantic_analysis or {}
+        admin_awareness = semantic.get("admin_awareness") if isinstance(semantic, dict) else {}
+        if isinstance(admin_awareness, dict) and admin_awareness.get("is_admin_section"):
+            return "admin"
+
+        parsed = urlparse(page.url)
+        path = parsed.path.lower().rstrip("/") or "/"
+
+        if path.endswith("/sitemap.xml") or path.endswith("/robots.txt"):
+            return "system"
+        if path == "/admin" or path.startswith("/admin/"):
+            return "admin"
+        if path == "/cart" or path.startswith("/cart/") or path == "/checkout" or path.startswith("/checkout/"):
+            return "transactional"
+        if path in {"/dashboard", "/account"} or path.startswith("/dashboard/") or path.startswith("/account/"):
+            return "private"
+        if path in {"/login", "/signup", "/artifacts"} or path.startswith("/login/") or path.startswith("/signup/"):
+            return "utility"
+        return "public_content"
+
+    def _is_admin_page(self, page: PageData) -> bool:
+        return self._route_category(page) == "admin"
+
+    def _public_scoring_pages(self, pages: List[PageData]) -> List[PageData]:
+        by_route: Dict[str, PageData] = {}
+        for page in pages:
+            if self._route_category(page) != "public_content":
+                continue
+            key = self._normalized_audit_route(page.url)
+            existing = by_route.get(key)
+            if not existing:
+                by_route[key] = page
+                continue
+            existing_score = (existing.status_code == 200, existing.word_count or 0)
+            candidate_score = (page.status_code == 200, page.word_count or 0)
+            if candidate_score > existing_score:
+                by_route[key] = page
+        return list(by_route.values())
+
+    def _normalized_audit_route(self, url: str) -> str:
+        parsed = urlparse(url)
+        path = parsed.path.rstrip("/") or "/"
+        return f"{parsed.scheme}://{parsed.netloc}{path}"
+
+    def _route_category_counts(self, pages: List[PageData]) -> Dict[str, int]:
+        counts = Counter(self._route_category(page) for page in pages)
+        return {key: counts.get(key, 0) for key in ("public_content", "admin", "transactional", "utility", "system", "private")}
+
     def _check_title_tags(self, pages: List[PageData]) -> Tuple[float, List[SEOIssue]]:
         issues = []
         total_score = 100
@@ -600,6 +649,7 @@ class SEOAuditor:
                 "id": f"page:{page_id}",
                 "type": "page",
                 "url": page.url,
+                "route_category": self._route_category(page),
                 "title": page.title,
                 "h1": page.h1,
                 "crawl_depth": page.crawl_depth,
@@ -645,20 +695,32 @@ class SEOAuditor:
         self.issues = []
         crawl_control_pages = [page for page in pages if self._is_crawl_control_page(page)]
         html_pages = [page for page in pages if not self._is_crawl_control_page(page)]
+        public_html_pages = self._public_scoring_pages(html_pages)
+        route_category_counts = self._route_category_counts(pages)
+        excluded_public_scoring_pages = [
+            page for page in html_pages if self._route_category(page) != "public_content"
+        ]
+        excluded_by_category = {
+            category: [page.url for page in excluded_public_scoring_pages if self._route_category(page) == category][:25]
+            for category in ("admin", "transactional", "utility", "private")
+        }
 
-        # Run all checks
-        title_score, title_issues = self._check_title_tags(html_pages)
-        desc_score, desc_issues = self._check_meta_descriptions(html_pages)
-        heading_score, heading_issues = self._check_headings(html_pages)
-        content_score, content_issues = self._check_content_quality(html_pages)
+        # Public SEO/content checks must not be polluted by owner/admin,
+        # transactional, utility, system, or private pages. Those pages are
+        # still scanned and preserved for ORB/operator awareness, performance,
+        # accessibility, security, and runtime context.
+        title_score, title_issues = self._check_title_tags(public_html_pages)
+        desc_score, desc_issues = self._check_meta_descriptions(public_html_pages)
+        heading_score, heading_issues = self._check_headings(public_html_pages)
+        content_score, content_issues = self._check_content_quality(public_html_pages)
         perf_score, perf_issues = self._check_performance(html_pages)
         security_score, security_issues = self._check_security(html_pages)
         image_score, image_issues = self._check_images(html_pages)
         mobile_score, mobile_issues = self._check_mobile(html_pages)
-        tech_score, tech_issues = self._check_technical(html_pages, stats)
-        schema_score, schema_issues = self._check_schema(html_pages)
-        index_score, index_issues = self._check_indexability(html_pages)
-        link_graph_score, link_graph_issues = self._check_internal_link_graph(html_pages)
+        tech_score, tech_issues = self._check_technical(public_html_pages, stats)
+        schema_score, schema_issues = self._check_schema(public_html_pages)
+        index_score, index_issues = self._check_indexability(public_html_pages)
+        link_graph_score, link_graph_issues = self._check_internal_link_graph(public_html_pages)
 
         # Collect all issues
         all_issues = (title_issues + desc_issues + heading_issues + content_issues + 
@@ -708,6 +770,15 @@ class SEOAuditor:
                 'warning_count': len(warnings),
                 'opportunity_count': len(opportunities),
                 'total_pages': len(html_pages),
+                'public_pages': len(public_html_pages),
+                'route_category_counts': route_category_counts,
+                'pages_excluded_from_public_seo_scoring': len(excluded_public_scoring_pages),
+                'excluded_from_public_seo_scoring': excluded_by_category,
+                'admin_pages_scanned': route_category_counts.get("admin", 0),
+                'admin_pages_excluded_from_public_seo_scoring': len(excluded_by_category.get("admin", [])),
+                'admin_urls': excluded_by_category.get("admin", []),
+                'transactional_pages_excluded_from_public_seo_scoring': len(excluded_by_category.get("transactional", [])),
+                'transactional_urls': excluded_by_category.get("transactional", []),
                 'crawl_control_resources': len(crawl_control_pages),
                 'avg_load_time': stats.get('avg_load_time', 0),
                 'orb_context_entities': orb_context["summary"]["entities"],

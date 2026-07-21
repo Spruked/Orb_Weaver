@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict
 
+from app.core.storage import require_vault_path
+
 
 VAULT_DIRECTORIES = (
     "apriori/",
@@ -56,7 +58,7 @@ def _safe_name(value: str) -> str:
 
 
 def generate_pack_file(scan_data: Dict, site_id: str, domain: str, tier: str, output_dir: Path | str) -> Dict:
-    output_root = Path(output_dir)
+    output_root = require_vault_path(output_dir, "ORB pack output")
     output_root.mkdir(parents=True, exist_ok=True)
     generated_at = datetime.utcnow().isoformat()
     filename = f"{_safe_name(domain)}_{tier}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.orbpack"

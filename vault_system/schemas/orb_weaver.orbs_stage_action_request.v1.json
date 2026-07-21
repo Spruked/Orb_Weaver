@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orb_weaver.orbs_stage_action_request.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "customer_id", "project_id", "action", "expected_stage", "snapshot_version", "inputs", "idempotency_key"],
+  "properties": {
+    "schema": {"const": "orb_weaver.orbs_stage_action_request.v1"},
+    "customer_id": {"type": "string"},
+    "project_id": {"type": "string"},
+    "build_order_id": {"type": ["string", "null"]},
+    "action": {"type": "string", "minLength": 1, "maxLength": 120},
+    "expected_stage": {"type": "string"},
+    "snapshot_version": {"type": "string"},
+    "inputs": {"type": "object"},
+    "confirmation_evidence": {"type": ["object", "null"]},
+    "idempotency_key": {"type": "string", "minLength": 8, "maxLength": 255}
+  }
+}

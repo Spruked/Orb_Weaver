@@ -98,8 +98,10 @@ class OrbWeaverCrawler:
         max_depth: int = None,
         progress_callback=None,
         tier: str = "authenticated",
+        include_admin_sections: bool = True,
     ):
         self.tier = "free" if tier == "free" else "authenticated"
+        self.include_admin_sections = include_admin_sections and self.tier != "free"
         requested_pages = max_pages or settings.CRAWL_MAX_PAGES
         requested_depth = max_depth or settings.CRAWL_MAX_DEPTH
         if self.tier == "free":
@@ -130,6 +132,8 @@ class OrbWeaverCrawler:
         self.total_pages_scraped = 0
         self.rejected_external_urls: Set[str] = set()
         self.discovery_provenance: Dict[str, List[Dict]] = {}
+        self.admin_seed_urls: Set[str] = set()
+        self.admin_section_urls: Set[str] = set()
 
     def _record_discovery(
         self,
@@ -165,6 +169,10 @@ class OrbWeaverCrawler:
     def _is_crawl_control_resource(self, url: str) -> bool:
         path = urlparse(url).path.lower().rstrip("/")
         return path.endswith("/sitemap.xml") or path.endswith("/robots.txt")
+
+    def _is_admin_section_url(self, url: str) -> bool:
+        path = urlparse(url).path.lower().rstrip("/") or "/"
+        return path == "/admin" or path.startswith("/admin/")
 
     def _looks_like_spa_shell(self, html: str) -> bool:
         compact = re.sub(r"\s+", "", html.lower())
@@ -819,7 +827,14 @@ class OrbWeaverCrawler:
             "pointer_plot_records": pointer_plot_records,
             "pointer_plot_record_count": len(pointer_plot_records),
             "discovery_provenance": self.discovery_provenance.get(normalized_url, []),
+            "admin_awareness": {
+                "is_admin_section": self._is_admin_section_url(normalized_url),
+                "admin_scan_enabled": self.include_admin_sections,
+                "requires_owner_authority": self._is_admin_section_url(normalized_url),
+            },
         }
+        if self._is_admin_section_url(normalized_url):
+            self.admin_section_urls.add(normalized_url)
 
         page_data = PageData(
             url=url,
@@ -891,10 +906,33 @@ class OrbWeaverCrawler:
 
         return page_data
 
+    def _configured_admin_seed_urls(self, start_url: str) -> List[str]:
+        if not self.include_admin_sections:
+            return []
+        resolved = []
+        seen = set()
+        for raw_seed in settings.ORB_ADMIN_ROUTE_SEEDS or []:
+            seed = (raw_seed or "").strip()
+            if not seed:
+                continue
+            seed_url = self._normalize_url(urljoin(start_url.rstrip("/") + "/", seed))
+            if seed_url in seen or not self._is_same_domain(seed_url):
+                if seed_url and not self._is_same_domain(seed_url):
+                    self.rejected_external_urls.add(seed_url)
+                continue
+            seen.add(seed_url)
+            resolved.append(seed_url)
+        return resolved
+
     def _resolve_seed_urls(self, start_url: str, seed_urls: Optional[List[str]] = None) -> List[str]:
         resolved = []
         seen = set()
-        for seed in seed_urls or []:
+        seed_records = [(seed, "owner_seed", "owner_seed") for seed in seed_urls or []]
+        seed_records.extend(
+            (seed, "admin_seed", "admin_section")
+            for seed in self._configured_admin_seed_urls(start_url)
+        )
+        for seed, source_type, discovery_zone in seed_records:
             raw_seed = (seed or "").strip()
             if not raw_seed:
                 continue
@@ -910,7 +948,10 @@ class OrbWeaverCrawler:
             seen.add(normalized)
             resolved.append(normalized)
             self.discovered_urls.add(normalized)
-            self._record_discovery(normalized, "owner_seed", discovery_zone="owner_seed")
+            if source_type == "admin_seed":
+                self.admin_seed_urls.add(normalized)
+                self.admin_section_urls.add(normalized)
+            self._record_discovery(normalized, source_type, discovery_zone=discovery_zone)
         return resolved
 
     async def crawl(self, start_url: str, seed_urls: Optional[List[str]] = None) -> List[PageData]:
@@ -998,6 +1039,12 @@ class OrbWeaverCrawler:
             'current_depth': dict(list(self.current_depth.items())[:5000]),
             'rejected_external_urls': sorted(self.rejected_external_urls)[:200],
             'crawl_provenance': self.discovery_provenance,
+            'admin_scan_enabled': self.include_admin_sections,
+            'admin_seed_urls': sorted(self.admin_seed_urls),
+            'admin_section_urls_found': len(self.admin_section_urls),
+            'admin_section_pages_scanned': sum(
+                1 for page in self.crawled_data if self._is_admin_section_url(page.url)
+            ),
             'host_normalization': {
                 'input_host': self.domain,
                 'canonical_host_key': self.domain_key,

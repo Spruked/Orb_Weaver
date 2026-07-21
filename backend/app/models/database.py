@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, JSON, ForeignKey, BigInteger, inspect, text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, JSON, ForeignKey, BigInteger, UniqueConstraint, inspect, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
@@ -158,6 +158,8 @@ class CheckoutOrder(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
+    build_order_id = Column(Integer, nullable=True, index=True)
     provider = Column(String(50), nullable=False)
     status = Column(String(50), default="created")
     amount_cents = Column(Integer, nullable=False)
@@ -166,6 +168,7 @@ class CheckoutOrder(Base):
     checkout_url = Column(Text, nullable=True)
     line_items = Column(JSON, default=list)
     error = Column(Text, nullable=True)
+    payment_verified_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -286,6 +289,127 @@ class ReviewItem(Base):
     decided_at = Column(DateTime, nullable=True)
 
     lifecycle_job = relationship("LifecycleJob", back_populates="review_items")
+
+
+class OrbsGuestSession(Base):
+    __tablename__ = "orbs_guest_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    guest_session_id = Column(String(128), nullable=False, unique=True, index=True)
+    landing_intent = Column(String(255), nullable=False)
+    selected_tier_interest = Column(String(80), nullable=True)
+    website_url = Column(Text, nullable=True)
+    original_cta_destination = Column(String(500), nullable=False)
+    current_onboarding_step = Column(String(80), nullable=False, default="landing")
+    completed_onboarding_steps = Column(JSON, default=list)
+    non_sensitive_questionnaire_answers = Column(JSON, default=dict)
+    version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    consumed_at = Column(DateTime, nullable=True, index=True)
+    consumed_by_customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
+    merged_project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
+    merge_idempotency_key = Column(String(255), nullable=True, index=True)
+    merge_request_hash = Column(String(64), nullable=True)
+    merge_result = Column(JSON, default=dict)
+
+
+class OrbsOnboardingRecord(Base):
+    __tablename__ = "orbs_onboarding_records"
+    __table_args__ = (
+        UniqueConstraint("project_id", name="uq_orbs_onboarding_project"),
+        UniqueConstraint("guest_session_id", name="uq_orbs_onboarding_guest_session"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    guest_session_id = Column(String(128), nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    original_cta_destination = Column(String(500), nullable=False)
+    landing_intent = Column(String(255), nullable=False)
+    selected_tier_interest = Column(String(80), nullable=True)
+    current_onboarding_step = Column(String(80), nullable=False)
+    completed_onboarding_steps = Column(JSON, default=list)
+    transferred_progress = Column(JSON, default=dict)
+    version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class OrbsBuildOrder(Base):
+    __tablename__ = "orbs_build_orders"
+    __table_args__ = (UniqueConstraint("project_id", name="uq_orbs_build_order_project"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    current_stage = Column(String(80), nullable=False, default="orbs", index=True)
+    stage_status = Column(String(50), nullable=False, default="ready")
+    version = Column(Integer, nullable=False, default=1)
+    blocking_reason = Column(Text, nullable=True)
+    customer_action_required = Column(Text, nullable=True)
+    package_product_id = Column(Integer, ForeignKey("marketplace_products.id"), nullable=True, index=True)
+    package_sku = Column(String(120), nullable=True, index=True)
+    package_tier = Column(String(50), nullable=True)
+    questionnaire = Column(JSON, default=dict)
+    build_configuration = Column(JSON, default=dict)
+    final_order = Column(JSON, default=dict)
+    signature = Column(JSON, default=dict)
+    checkout_order_id = Column(Integer, ForeignKey("checkout_orders.id"), nullable=True, index=True)
+    payment_status = Column(String(50), nullable=False, default="not_started", index=True)
+    fulfillment_status = Column(String(50), nullable=False, default="not_started", index=True)
+    package_artifact = Column(JSON, default=dict)
+    installation = Column(JSON, default=dict)
+    launch_verification = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class OrbsStageEvent(Base):
+    __tablename__ = "orbs_stage_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    build_order_id = Column(Integer, ForeignKey("orbs_build_orders.id"), nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    event_type = Column(String(80), nullable=False, index=True)
+    action_name = Column(String(120), nullable=True, index=True)
+    from_stage = Column(String(80), nullable=True)
+    to_stage = Column(String(80), nullable=True)
+    snapshot_version = Column(String(120), nullable=False)
+    reason_code = Column(String(80), nullable=True, index=True)
+    payload = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class OrbsIdempotencyRecord(Base):
+    __tablename__ = "orbs_idempotency_records"
+    __table_args__ = (UniqueConstraint("customer_id", "idempotency_key", name="uq_orbs_idempotency_customer_key"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    idempotency_key = Column(String(255), nullable=False, index=True)
+    request_hash = Column(String(64), nullable=False)
+    response_status = Column(Integer, nullable=False)
+    response_payload = Column(JSON, default=dict)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class OrbsEntitlement(Base):
+    __tablename__ = "orbs_entitlements"
+    __table_args__ = (UniqueConstraint("build_order_id", name="uq_orbs_entitlement_build_order"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    build_order_id = Column(Integer, ForeignKey("orbs_build_orders.id"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    checkout_order_id = Column(Integer, ForeignKey("checkout_orders.id"), nullable=False, index=True)
+    package_sku = Column(String(120), nullable=False, index=True)
+    package_tier = Column(String(50), nullable=False)
+    status = Column(String(50), nullable=False, default="active", index=True)
+    granted_at = Column(DateTime, default=datetime.utcnow)
+    revoked_at = Column(DateTime, nullable=True)
 
 class GA4Data(Base):
     __tablename__ = "ga4_data"
@@ -433,6 +557,7 @@ def init_db(engine):
     _ensure_project_customer_column(engine)
     _ensure_project_ga4_measurement_column(engine)
     _ensure_customer_profile_columns(engine)
+    _ensure_checkout_governor_columns(engine)
     _ensure_default_admin_customer(engine)
     _ensure_marketplace_number_sequence(engine)
 
@@ -528,6 +653,24 @@ def _ensure_customer_profile_columns(engine):
     with engine.begin() as connection:
         for name, type_name in missing:
             connection.execute(text(f"ALTER TABLE customers ADD COLUMN {name} {type_name}"))
+
+
+def _ensure_checkout_governor_columns(engine):
+    inspector = inspect(engine)
+    if "checkout_orders" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("checkout_orders")}
+    columns = {
+        "project_id": "INTEGER",
+        "build_order_id": "INTEGER",
+        "payment_verified_at": "DATETIME",
+    }
+    missing = [(name, type_name) for name, type_name in columns.items() if name not in existing]
+    if not missing:
+        return
+    with engine.begin() as connection:
+        for name, type_name in missing:
+            connection.execute(text(f"ALTER TABLE checkout_orders ADD COLUMN {name} {type_name}"))
 
 
 def _ensure_default_admin_customer(engine):

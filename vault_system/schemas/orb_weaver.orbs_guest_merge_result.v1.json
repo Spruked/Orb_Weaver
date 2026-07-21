@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orb_weaver.orbs_guest_merge_result.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "merge_status", "guest_session_id", "customer_id", "project_id", "onboarding_record_id", "original_cta_destination", "transferred_fields", "consumed_at", "fresh_snapshot"],
+  "properties": {
+    "schema": {"const": "orb_weaver.orbs_guest_merge_result.v1"},
+    "merge_status": {"enum": ["merged", "idempotent_replay"]},
+    "guest_session_id": {"type": "string"},
+    "customer_id": {"type": "string"},
+    "project_id": {"type": "string"},
+    "onboarding_record_id": {"type": "string"},
+    "original_cta_destination": {"type": "string"},
+    "transferred_fields": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "consumed_at": {"type": "string", "format": "date-time"},
+    "fresh_snapshot": {"$ref": "orb_weaver.orbs_stage_snapshot.v1.json"}
+  }
+}

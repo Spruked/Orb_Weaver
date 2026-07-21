@@ -17,8 +17,9 @@ def load_app(tmp_path, monkeypatch):
     if backend_path not in sys.path:
         sys.path.insert(0, backend_path)
     sys.modules.pop("main", None)
-    sys.modules.pop("app.core.config", None)
-    sys.modules.pop("app.core.storage", None)
+    for module_name in tuple(sys.modules):
+        if module_name == "app" or module_name.startswith("app."):
+            sys.modules.pop(module_name, None)
     main = importlib.import_module("main")
     return main, TestClient(main.app)
 
@@ -193,6 +194,62 @@ def test_site_scan_requires_an_approved_map(tmp_path, monkeypatch):
     assert "approved Map Crawl" in response.json()["detail"]
 
 
+def test_active_crawl_and_linked_lifecycle_can_be_cancelled_by_owner(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    owner_token = signup(client, "cancel-owner@example.com")
+    other_token = signup(client, "cancel-other@example.com")
+    project_id = int(client.post(
+        "/api/projects",
+        headers=auth(owner_token),
+        json={"name": "Cancelable", "domain": "cancelable.test"},
+    ).json()["id"])
+
+    with main.SessionLocal() as db:
+        crawl = main.CrawlJob(project_id=project_id, status="running", pages_crawled=12, pages_found=20)
+        db.add(crawl)
+        db.flush()
+        lifecycle = main.LifecycleJob(
+            project_id=project_id,
+            job_type="MAP_CRAWL",
+            status="RUNNING",
+            phase="crawling_pages",
+            result={"crawl_job_id": str(crawl.id)},
+        )
+        db.add(lifecycle)
+        db.commit()
+        crawl_id = crawl.id
+        lifecycle_id = lifecycle.id
+
+    assert client.post(f"/api/crawl-jobs/{crawl_id}/cancel", headers=auth(other_token)).status_code == 404
+    response = client.post(f"/api/crawl-jobs/{crawl_id}/cancel", headers=auth(owner_token))
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "cancel_requested"
+
+    with main.SessionLocal() as db:
+        assert db.get(main.CrawlJob, crawl_id).status == "cancel_requested"
+        assert db.get(main.LifecycleJob, lifecycle_id).status == "CANCEL_REQUESTED"
+
+
+def test_pending_lifecycle_cancel_is_immediate(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    token = signup(client, "cancel-pending@example.com")
+    project_id = int(client.post(
+        "/api/projects",
+        headers=auth(token),
+        json={"name": "Pending Cancel", "domain": "pending-cancel.test"},
+    ).json()["id"])
+    with main.SessionLocal() as db:
+        job = main.LifecycleJob(project_id=project_id, job_type="MAP_CRAWL", status="PENDING", phase="queued")
+        db.add(job)
+        db.commit()
+        job_id = job.id
+
+    response = client.post(f"/api/lifecycle-jobs/{job_id}/cancel", headers=auth(token))
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "CANCELLED"
+    assert response.json()["phase"] == "cancelled_by_user"
+
+
 def test_orb_scan_automatically_queues_exactly_one_pointer_recovery_pass(tmp_path, monkeypatch):
     main, client = load_app(tmp_path, monkeypatch)
     token = signup(client, "pointer-recovery@example.com")
@@ -245,7 +302,7 @@ def test_orb_scan_automatically_queues_exactly_one_pointer_recovery_pass(tmp_pat
         orb_scan_id = orb_scan.id
 
     def evidence_root(_domain, run_id):
-        root = tmp_path / "evidence" / str(run_id)
+        root = tmp_path / "vault_system" / "evidence" / str(run_id)
         root.mkdir(parents=True, exist_ok=True)
         return root
 
@@ -295,8 +352,11 @@ def test_evidence_manifest_detects_tampering_and_snapshots_absolute_sqlite(tmp_p
         verify_evidence_run,
         write_json_artifact,
     )
+    from app.core import storage
 
-    monkeypatch.setattr(evidence_module, "client_root", lambda _domain: tmp_path / "vault" / "clients" / "example.test")
+    test_vault = tmp_path / "vault"
+    monkeypatch.setattr(storage, "VAULT_ROOT", test_vault)
+    monkeypatch.setattr(evidence_module, "client_root", lambda _domain: test_vault / "clients" / "example.test")
     source = tmp_path / "source.db"
     with sqlite3.connect(source) as connection:
         connection.execute("CREATE TABLE evidence (id INTEGER PRIMARY KEY, value TEXT)")

@@ -8,6 +8,13 @@ from typing import Iterable
 from app.core.config import settings
 
 
+IMMUTABLE_STORAGE_LAW = (
+    "All persisted Orb Weaver data—including scans, raw evidence, customer, "
+    "checkout, payment, entitlement, and workflow records—must be written "
+    "beneath and read authoritatively from the sole vault_system root."
+)
+
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BACKEND_ROOT = REPO_ROOT / "backend"
 DEFAULT_VAULT_ROOT = REPO_ROOT / "vault_system"
@@ -55,6 +62,7 @@ TPC_ROOT = LONG_TERM_MEMORY_ROOT / "tpc"
 WORKER_VAULTS_ROOT = COGNITION_ROOT / "workers"
 REPORTS_ROOT = VAULT_ROOT / "reports"
 INDEXES_ROOT = VAULT_ROOT / "indexes"
+GLOBAL_INTELLIGENCE_ROOT = INDEXES_ROOT / "global_intelligence"
 MANIFESTS_ROOT = VAULT_ROOT / "manifests"
 SCHEMAS_ROOT = VAULT_ROOT / "schemas"
 INTEGRATIONS_ROOT = VAULT_ROOT / "integrations"
@@ -90,6 +98,7 @@ CANONICAL_VAULT_DIRECTORIES: tuple[Path, ...] = (
     WORKER_VAULTS_ROOT,
     REPORTS_ROOT,
     INDEXES_ROOT,
+    GLOBAL_INTELLIGENCE_ROOT,
     MANIFESTS_ROOT,
     SCHEMAS_ROOT,
     INTEGRATIONS_ROOT,
@@ -103,18 +112,27 @@ CANONICAL_VAULT_DIRECTORIES: tuple[Path, ...] = (
 )
 
 
+def require_vault_path(path: Path | str, purpose: str = "persistent data") -> Path:
+    """Fail closed when a durable artifact is directed outside the sole Vault."""
+    resolved = Path(path).expanduser().resolve()
+    vault = VAULT_ROOT.resolve()
+    if resolved != vault and vault not in resolved.parents:
+        raise ValueError(f"{purpose} must remain inside the canonical vault_system: {resolved}")
+    return resolved
+
+
 def ensure_vault_layout(extra_directories: Iterable[Path] = ()) -> None:
     for directory in (*CANONICAL_VAULT_DIRECTORIES, *tuple(extra_directories)):
-        directory.mkdir(parents=True, exist_ok=True)
+        require_vault_path(directory, "Vault directory").mkdir(parents=True, exist_ok=True)
 
 
 def canonical_database_url(configured_url: str | None) -> str:
-    """Keep non-SQLite services unchanged; force every SQLite file into the vault."""
+    """Force the authoritative application database into Vault databases."""
     value = (configured_url or "").strip()
     if value and not value.startswith("sqlite"):
-        return value
+        raise ValueError("External application databases violate the immutable Vault storage law")
     if value in {"sqlite:///:memory:", "sqlite+pysqlite:///:memory:"}:
-        return value
+        raise ValueError("In-memory application databases violate the immutable Vault storage law")
 
     database_name = "orb_weaver.db"
     if value and "/" in value:

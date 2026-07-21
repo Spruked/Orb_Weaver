@@ -1,4 +1,8 @@
+import json
+from collections import Counter, deque
+from dataclasses import asdict
 from pathlib import Path
+from typing import Dict
 from .cognitive_state import InductiveCognition
 from vault_system.paths import worker_vault
 
@@ -11,14 +15,59 @@ class InductiveEngine:
 
         # Placeholder for existing methods
         self.conjunction_memory = self.cognition.conjunction_memory
+        seed_root = Path(__file__).resolve().parents[2] / "inductive"
+        self.seed_definitions = [
+            self._load_seed(seed_root / "cursor_habit.json"),
+            self._load_seed(seed_root / "moral_habit.json"),
+        ]
+        cursor_seed = self.seed_definitions[0]
+        parameters = cursor_seed.get("learning_parameters", {})
+        self.minimum_samples = int(parameters.get("min_samples", 3))
+        self.observations = deque(
+            maxlen=int(parameters.get("conjunction_window", 5))
+        )
+
+    @staticmethod
+    def _load_seed(path: Path) -> Dict:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
 
     def observe_stimulus(self, stimulus):
-        # Placeholder
-        pass
+        if stimulus.get("type") != "cursor_movement":
+            return None
+        coordinates = stimulus.get("coordinates", [0, 0])
+        x, y = float(coordinates[0]), float(coordinates[1])
+        quadrant = ("N" if y < 540 else "S") + ("W" if x < 960 else "E")
+        if len(self.observations) >= 2:
+            context = "→".join(item["quadrant"] for item in list(self.observations)[-2:])
+            memory = self.conjunction_memory.setdefault(context, Counter())
+            memory[quadrant] += 1
+        observation = {
+            "quadrant": quadrant,
+            "coordinates": [x, y],
+            "velocity": float(stimulus.get("velocity", 0.0)),
+        }
+        self.observations.append(observation)
+        return observation
 
     def predict_next(self):
-        # Placeholder
-        return {"predictive": False}
+        if len(self.observations) < self.minimum_samples:
+            return {"predictive": False}
+        context = "→".join(item["quadrant"] for item in list(self.observations)[-2:])
+        targets = self.conjunction_memory.get(context)
+        if not targets:
+            return {"predictive": False}
+        predicted_next, count = targets.most_common(1)[0]
+        total = sum(targets.values()) or 1
+        confidence = count / total
+        return {
+            "predictive": True,
+            "pattern": f"{context}→{predicted_next}",
+            "predicted_next": predicted_next,
+            "confidence": confidence,
+            "vivacity": min(1.0, total / max(self.minimum_samples, 1)),
+            "seed_ids": [seed.get("seed_id") for seed in self.seed_definitions],
+        }
 
     # New additions
     def advise_orb(self, stimulus: Dict, hlsf_context: Dict) -> Dict:
@@ -63,6 +112,7 @@ class InductiveEngine:
             "verdict": "novel_situation",
             "confidence": 0.0,
             "weight": 0.05,
+            "seed_ids": [seed.get("seed_id") for seed in self.seed_definitions],
         }
 
     def validate_verdict(self, verdict_id: str, actual: str):

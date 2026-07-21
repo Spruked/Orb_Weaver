@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orb_weaver.orbs_guest_merge_request.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "guest_session_id", "idempotency_key"],
+  "properties": {
+    "schema": {"const": "orb_weaver.orbs_guest_merge_request.v1"},
+    "guest_session_id": {"type": "string", "minLength": 32},
+    "idempotency_key": {"type": "string", "minLength": 8, "maxLength": 255},
+    "attach_project_id": {"type": ["string", "null"]},
+    "project_display_name": {"type": ["string", "null"], "maxLength": 255}
+  }
+}

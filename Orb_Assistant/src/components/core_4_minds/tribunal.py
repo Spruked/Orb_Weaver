@@ -23,13 +23,16 @@ class FourMindTribunal:
         return {"id": path.stem, "status": "missing"}
 
     def generate_epistemic_shadow(
-        self, stimulus: Dict[str, Any]
+        self, stimulus: Dict[str, Any], mind_names=None
     ) -> Dict[str, Dict[str, Any]]:
         """Return deterministic confidence traces for each mind."""
         canonical = json.dumps(stimulus, sort_keys=True)
         base_hash = int(hashlib.sha256(canonical.encode()).hexdigest(), 16)
         shadows = {}
+        selected = set(mind_names or self.minds)
         for idx, (mind, payload) in enumerate(self.minds.items()):
+            if mind not in selected:
+                continue
             confidence = ((base_hash >> (idx * 8)) & 0xFF) / 255
             shadows[mind] = {
                 "confidence": round(0.5 + 0.5 * confidence, 3),

@@ -138,3 +138,50 @@ def test_orb_websocket_is_origin_checked_and_route_aware(tmp_path, monkeypatch):
             "target_url": "https://demo.openai.chatgpt.site/about",
             "route": "/about",
         }
+
+
+def test_runtime_blocks_stale_signup_route_suggestion(tmp_path, monkeypatch):
+    main, _client = load_app(tmp_path, monkeypatch)
+    website_context = {
+        "domain": "campaign.orbweaver.spruked.com",
+        "route_hints": {"login": "/login"},
+        "visitor_tools": [
+            {
+                "id": "signup_guidance",
+                "keywords": ["signup", "sign up", "create account"],
+                "spoken_output": "Create an account from the signup page.",
+                "suggested_route": "/signup",
+            }
+        ],
+        "authority_flow": {"pages": [{"url": "https://campaign.orbweaver.spruked.com/login"}]},
+    }
+
+    result = main._lookup_domain_runtime_tool(website_context, "show me how to sign up for an account")
+
+    assert result["suggested_route"] is None
+    assert result["navigation"]["status"] == "blocked"
+    assert result["navigation"]["route"] == "/signup"
+    assert "will not move" in result["spoken_output"]
+
+
+def test_runtime_allows_account_signup_guidance_to_existing_login_route(tmp_path, monkeypatch):
+    main, _client = load_app(tmp_path, monkeypatch)
+    website_context = {
+        "domain": "campaign.orbweaver.spruked.com",
+        "route_hints": {"login": "/login"},
+        "visitor_tools": [
+            {
+                "id": "signup_guidance",
+                "keywords": ["signup", "sign up", "create account", "account"],
+                "spoken_output": "Create or log into an account from the login page.",
+                "suggested_route": "/login",
+            }
+        ],
+        "authority_flow": {"pages": [{"url": "https://campaign.orbweaver.spruked.com/login"}]},
+    }
+
+    result = main._lookup_domain_runtime_tool(website_context, "show me how to sign up for an account")
+
+    assert result["suggested_route"] == "/login"
+    assert result["navigation"]["status"] == "verified"
+    assert result["navigation"]["may_navigate"] is True

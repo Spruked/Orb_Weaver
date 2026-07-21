@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from vault_system.paths import CLIENTS_ROOT, LOGS_ROOT
+from vault_system.paths import CLIENTS_ROOT, LOGS_ROOT, require_vault_path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -112,7 +112,7 @@ async def run_preflight(request: PreflightRunRequest) -> Dict[str, Any]:
         )
 
     root_url = request.root_url.strip()
-    output_dir = request.output_dir.strip()
+    output_dir = str(require_vault_path(request.output_dir.strip(), "SSI preflight output"))
 
     if not root_url.startswith(("http://", "https://")):
         root_url = "https://" + root_url
@@ -135,19 +135,19 @@ async def run_preflight(request: PreflightRunRequest) -> Dict[str, Any]:
 @router.post("/query/skg")
 async def query_skg_endpoint(request: QueryRequest) -> Dict[str, Any]:
     """Query the Cognitive SKG layer."""
-    return query_skg(request.query, request.output_dir)
+    return query_skg(request.query, str(require_vault_path(request.output_dir, "SKG query output")))
 
 
 @router.post("/query/morb")
 async def query_morb_endpoint(request: QueryRequest) -> Dict[str, Any]:
     """Query the MORB Corpus layer."""
-    return query_morb(request.query, request.output_dir)
+    return query_morb(request.query, str(require_vault_path(request.output_dir, "MORB query output")))
 
 
 @router.post("/query/llm")
 async def query_llm_endpoint(request: QueryRequest) -> Dict[str, Any]:
     """Query the LLM Context Pack layer."""
-    return query_llm_pack(request.query, request.output_dir)
+    return query_llm_pack(request.query, str(require_vault_path(request.output_dir, "LLM pack output")))
 
 
 @router.get("/health")

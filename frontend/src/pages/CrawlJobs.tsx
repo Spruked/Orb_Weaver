@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Download, Eye, FileText, RefreshCw, RotateCw, Search, ShieldCheck } from 'lucide-react';
+import { Activity, Download, Eye, FileText, RefreshCw, RotateCw, Search, ShieldCheck, Square } from 'lucide-react';
 import { api, CrawlJob, downloads } from '../services/api';
 
-const ACTIVE_STATUSES = new Set(['pending', 'running']);
+const ACTIVE_STATUSES = new Set(['pending', 'running', 'cancel_requested']);
 const WEBSITE_CONTEXT_SEED_URLS = [
   '/',
   '/admin',
@@ -23,6 +23,8 @@ const WEBSITE_CONTEXT_SEED_URLS = [
 
 const statusClass = (status: string) => {
   if (status === 'completed') return 'bg-green-100 text-green-700';
+  if (status === 'cancel_requested') return 'bg-amber-100 text-amber-800';
+  if (status === 'cancelled') return 'bg-gray-100 text-gray-600';
   if (ACTIVE_STATUSES.has(status)) return 'bg-blue-100 text-blue-700';
   if (status === 'failed') return 'bg-red-100 text-red-700';
   return 'bg-gray-100 text-gray-600';
@@ -48,6 +50,7 @@ const CrawlJobs: React.FC = () => {
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [recrawlingJobId, setRecrawlingJobId] = useState('');
+  const [stoppingJobId, setStoppingJobId] = useState('');
   const [error, setError] = useState('');
 
   const loadJobs = async (showLoading = true) => {
@@ -103,13 +106,27 @@ const CrawlJobs: React.FC = () => {
         delay: Number(job.config?.delay || 1),
         max_depth: Number(job.config?.max_depth || 8),
         competitor_domains: job.config?.competitor_domains || [],
-        seed_urls: job.config?.seed_urls?.length ? job.config.seed_urls : WEBSITE_CONTEXT_SEED_URLS
+        seed_urls: job.config?.seed_urls?.length ? job.config.seed_urls : WEBSITE_CONTEXT_SEED_URLS,
+        include_admin_sections: job.config?.include_admin_sections !== false
       });
       navigate(`/crawl/${crawl.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to restart crawl');
     } finally {
       setRecrawlingJobId('');
+    }
+  };
+
+  const stopJob = async (job: CrawlJob) => {
+    setError('');
+    setStoppingJobId(job.id);
+    try {
+      await api.cancelCrawlJob(job.id);
+      await loadJobs(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to stop crawl');
+    } finally {
+      setStoppingJobId('');
     }
   };
 
@@ -218,6 +235,16 @@ const CrawlJobs: React.FC = () => {
                         <Eye className="w-4 h-4" />
                         View
                       </button>
+                      {isActive && (
+                        <button
+                          onClick={() => stopJob(job)}
+                          disabled={stoppingJobId === job.id || job.status === 'cancel_requested'}
+                          className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                        >
+                          <Square className="h-4 w-4 fill-current" />
+                          {stoppingJobId === job.id || job.status === 'cancel_requested' ? 'Stopping' : 'Stop'}
+                        </button>
+                      )}
                       <button
                         onClick={() => downloads.crawlCsv(job.id)}
                         disabled={job.status !== 'completed'}

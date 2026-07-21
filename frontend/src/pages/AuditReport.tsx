@@ -213,6 +213,43 @@ const AuditReport: React.FC = () => {
         </div>
       </div>
 
+      {(report.summary.pages_excluded_from_public_seo_scoring || report.summary.admin_pages_scanned || 0) > 0 && (
+        <div className="card border-blue-200 bg-blue-50">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div>
+              <h2 className="font-bold text-gray-900">Owner / Runtime Route Awareness</h2>
+              <p className="text-sm text-gray-700 mt-1">
+                {report.summary.pages_excluded_from_public_seo_scoring || report.summary.admin_pages_scanned || 0} non-public scoring route{(report.summary.pages_excluded_from_public_seo_scoring || report.summary.admin_pages_scanned || 0) === 1 ? '' : 's'} scanned for ORB awareness and excluded from public SEO/content scoring.
+              </p>
+              {(report.summary.admin_urls || []).length > 0 && (
+                <p className="text-xs text-blue-700 mt-2 truncate">
+                  Admin: {(report.summary.admin_urls || []).join(', ')}
+                </p>
+              )}
+              {(report.summary.transactional_urls || []).length > 0 && (
+                <p className="text-xs text-blue-700 mt-1 truncate">
+                  Transactional: {(report.summary.transactional_urls || []).join(', ')}
+                </p>
+              )}
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div className="rounded-lg bg-white/80 border border-blue-100 px-3 py-2">
+                <p className="text-xs text-gray-500">Public pages scored</p>
+                <p className="font-bold text-gray-900">{report.summary.public_pages ?? report.summary.total_pages}</p>
+              </div>
+              <div className="rounded-lg bg-white/80 border border-blue-100 px-3 py-2">
+                <p className="text-xs text-gray-500">Admin pages excluded</p>
+                <p className="font-bold text-gray-900">{report.summary.admin_pages_excluded_from_public_seo_scoring || report.summary.admin_pages_scanned}</p>
+              </div>
+              <div className="rounded-lg bg-white/80 border border-blue-100 px-3 py-2">
+                <p className="text-xs text-gray-500">Transactional excluded</p>
+                <p className="font-bold text-gray-900">{report.summary.transactional_pages_excluded_from_public_seo_scoring || 0}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className={`card ${pointerSummary?.status === 'passed' ? 'border-green-200 bg-green-50' : 'border-yellow-200 bg-yellow-50'}`}>
           <div className="flex items-start justify-between gap-4">
