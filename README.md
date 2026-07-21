@@ -98,6 +98,41 @@ vault_system/
 
 Component folders such as `backend/`, `Orb_Assistant/`, and legacy `substrate/` paths may contain source code or compatibility links, but they must not own independent data stores.
 
+## Current Implementation Checkpoint
+
+Checkpoint commit: `7f65f5a`
+
+Orb Weaver now includes:
+
+- Immutable single-Vault enforcement for authoritative and persistent data.
+- Routed SF-ORB cognition with Vault-supported fast, ordinary reasoning, and full escalation lanes.
+- Fault-isolated asynchronous cognitive usage recording.
+- ORBS Stage Governor contracts and deterministic allowed-action handling.
+- Vault-backed guest onboarding sessions and authenticated idempotent merge.
+- Intent-preserving signup and project-bound Welcome workspace.
+- Verified pointer destination enforcement.
+- GA4 integration and non-sensitive analytics support.
+
+The implemented onboarding path is:
+
+`Landing intent → Guest session → Account creation → Authenticated merge → First website project → Preflight snapshot → Governor-approved next action`
+
+The broader ORBS customer path is:
+
+`Preflight → Crawl → Final Audit → ORBS Integration Review → Package Recommendation → Final Closer Questionnaire → Package Selection → Build Configuration → Checkout → Verified Payment → Fulfillment → Installation → Launch Verification → Live`
+
+### Authority boundaries
+
+- Vault System: persistent authority
+- ORBS Stage Governor: customer workflow authority
+- SF-ORB / Triple Triple Controller — Triad C: cognitive authority
+- Language model: optional articulation only
+- Weaver: customer guidance and verified navigation
+
+### Verification status
+
+The implementation is preserved in commit `7f65f5a`. A controlled rebuild, restart, live route verification, and complete post-restart regression remain required before release.
+
 ## Architecture
 
 ```text
