@@ -63,7 +63,7 @@ export function calculateSpatialVector(element: VerifiedTargetElement): SpatialG
   };
 }
 
-// --- Continuous target-lock (the real gap the last drafts caught) -----
+// --- Continuous target-lock ---------------------------------------------
 // Keeps tracking the verified element for the life of an active command,
 // not just once at departure. Cancels itself if the element leaves the DOM.
 
@@ -121,41 +121,80 @@ export function validateCommand(
   return { ok: true };
 }
 
-// --- End-effector deployment (ping) -------------------------------------
-// position: fixed matches getBoundingClientRect() viewport coordinates.
-// Asset is a bundled import path, not a broken external URL.
+// --- End-effector deployment (Ping Light) -------------------------------
+// The Ping Light is pure DOM/CSS, so it cannot fail because an image asset is
+// missing. It follows the verified element while the page scrolls and starts
+// its visible duration only after the target enters the viewport.
 
 export function deployEndEffector(
   element: VerifiedTargetElement,
   duration: import("./robotMovement.types").PingDuration,
   intensity: import("./robotMovement.types").PingIntensity,
 ): void {
-  const goal = calculateSpatialVector(element);
-  let container = document.getElementById("orb-active-ping");
-  if (!container) {
-    container = document.createElement("div");
-    container.id = "orb-active-ping";
-    container.className = "orb-target-ping";
+  deactivateEndEffector();
 
-    const img = document.createElement("img");
-    img.src = "/orb-assets/pointer-light.png"; // bundled asset, not a bare URL
-    img.className = "orb-pointer-image";
-    container.appendChild(img);
-    document.body.appendChild(container);
-  }
-
+  const container = document.createElement("div");
+  container.id = "orb-active-ping";
+  container.className = "orb-target-ping";
+  container.setAttribute("aria-hidden", "true");
   container.style.setProperty("--ping-alpha", String(PING_INTENSITY_ALPHA[intensity]));
-  container.style.left = `${goal.normalizedX * window.innerWidth}px`;
-  container.style.top = `${goal.normalizedY * window.innerHeight}px`;
 
-  window.setTimeout(() => {
-    container?.parentNode?.removeChild(container);
-  }, PING_DURATION_MS[duration]);
+  const core = document.createElement("span");
+  core.className = "orb-pointer-core";
+  const innerRing = document.createElement("span");
+  innerRing.className = "orb-pointer-ring orb-pointer-ring-inner";
+  const outerRing = document.createElement("span");
+  outerRing.className = "orb-pointer-ring orb-pointer-ring-outer";
+  container.append(core, innerRing, outerRing);
+  document.body.appendChild(container);
+
+  let frameId = 0;
+  let visibleStartedAt: number | null = null;
+  const visibleDuration = PING_DURATION_MS[duration];
+
+  const track = (timestamp: number) => {
+    if (!container.isConnected) return;
+    if (!element.isConnected || !document.body.contains(element) || !isVisible(element)) {
+      deactivateEndEffector();
+      return;
+    }
+
+    const rect = element.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    container.style.left = `${centerX}px`;
+    container.style.top = `${centerY}px`;
+
+    const inViewport =
+      rect.bottom >= 0 &&
+      rect.right >= 0 &&
+      rect.top <= window.innerHeight &&
+      rect.left <= window.innerWidth;
+
+    if (inViewport) {
+      container.classList.add("is-visible");
+      visibleStartedAt ??= timestamp;
+      if (timestamp - visibleStartedAt >= visibleDuration) {
+        deactivateEndEffector();
+        return;
+      }
+    } else {
+      container.classList.remove("is-visible");
+      visibleStartedAt = null;
+    }
+
+    frameId = requestAnimationFrame(track);
+    container.dataset.frameId = String(frameId);
+  };
+
+  frameId = requestAnimationFrame(track);
+  container.dataset.frameId = String(frameId);
 }
 
 export function deactivateEndEffector(): void {
   const existing = document.getElementById("orb-active-ping");
-  if (existing?.parentNode) {
-    existing.parentNode.removeChild(existing);
-  }
+  if (!existing) return;
+  const frameId = Number(existing.dataset.frameId || 0);
+  if (frameId) cancelAnimationFrame(frameId);
+  existing.remove();
 }
