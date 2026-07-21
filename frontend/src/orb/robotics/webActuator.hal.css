@@ -1,23 +1,76 @@
 .orb-target-ping {
+  --ping-alpha: 0.4;
   position: fixed;
-  transform: translate(-50%, -50%);
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -50%) scale(0.86);
   pointer-events: none;
   z-index: 999999;
+  opacity: 0;
+  filter: drop-shadow(0 0 12px rgba(91, 200, 230, 0.72));
+  transition: opacity 140ms ease, transform 180ms ease;
   will-change: transform, left, top, opacity;
 }
-.orb-pointer-image { width: 32px; height: 32px; display: block; }
-.orb-target-ping::after {
-  content: '';
-  position: absolute;
-  top: 50%; left: 50%;
-  width: 10px; height: 10px;
-  background: rgba(0, 229, 255, var(--ping-alpha, 0.4));
-  border: 2px solid #00E5FF;
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  animation: robotic-ping-pulse 1.5s cubic-bezier(0.1, 0.8, 0.3, 1) infinite;
+
+.orb-target-ping.is-visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
 }
-@keyframes robotic-ping-pulse {
-  0% { width: 10px; height: 10px; opacity: 1; }
-  100% { width: 120px; height: 120px; opacity: 0; }
+
+.orb-pointer-core,
+.orb-pointer-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+
+.orb-pointer-core {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(232, 247, 253, 0.98);
+  background: rgba(91, 200, 230, 0.96);
+  box-shadow:
+    0 0 0 4px rgba(91, 200, 230, calc(var(--ping-alpha) * 0.34)),
+    0 0 20px rgba(91, 200, 230, 0.92);
+}
+
+.orb-pointer-ring {
+  border: 2px solid rgba(91, 200, 230, var(--ping-alpha));
+  animation: orb-ping-light-ring 1.1s cubic-bezier(0.16, 0.78, 0.24, 1) infinite;
+}
+
+.orb-pointer-ring-inner {
+  width: 28px;
+  height: 28px;
+}
+
+.orb-pointer-ring-outer {
+  width: 42px;
+  height: 42px;
+  animation-delay: 260ms;
+}
+
+@keyframes orb-ping-light-ring {
+  0% {
+    opacity: 0.94;
+    transform: translate(-50%, -50%) scale(0.45);
+  }
+  72% {
+    opacity: 0.22;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(2.45);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb-pointer-ring {
+    animation: none;
+  }
+  .orb-target-ping.is-visible {
+    transform: translate(-50%, -50%) scale(1);
+  }
 }

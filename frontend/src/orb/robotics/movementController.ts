@@ -130,7 +130,11 @@ export class OrbRoboticsMovementController {
       return { ok: false, reason: targetValidation.reason };
     }
 
-    const verifiedTarget = requireVerifiedTargetElement(targetValidation.element, command.targetId);
+    // validateOrbPointerTarget has already bound the pointer record to the live
+    // semantic locator, visible text, structural scope, confidence class, and
+    // runtime may-point policy. data-orb-target is a human-readable locator and
+    // is not required to equal the scan-generated target_<hash> identity.
+    const verifiedTarget = requireVerifiedTargetElement(targetValidation.element);
     if (!verifiedTarget.ok) {
       this.emit(command, "TARGET_LOST", onTelemetry, verifiedTarget.reason);
       this.emit(command, "COMMAND_CANCELLED", onTelemetry, verifiedTarget.reason);
@@ -183,7 +187,7 @@ export class OrbRoboticsMovementController {
         this.emit(command, "TARGET_LOST", onTelemetry, refreshed.reason);
         return null;
       }
-      const verified = requireVerifiedTargetElement(refreshed.element, command.targetId);
+      const verified = requireVerifiedTargetElement(refreshed.element);
       if (!verified.ok) {
         this.emit(command, "TARGET_LOST", onTelemetry, verified.reason);
         return null;
