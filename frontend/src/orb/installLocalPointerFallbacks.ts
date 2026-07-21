@@ -182,10 +182,11 @@ export const installLocalPointerFallbacks = (): void => {
     }
 
     serverRecords = Array.isArray(pointerMap.records) ? [...pointerMap.records] : [];
-    activeRecords = [...serverRecords];
+    const mergedRecords: WebsiteOrbPointerRecord[] = [...serverRecords];
+    activeRecords = mergedRecords;
     refreshActiveRecords();
 
-    if (!observer) {
+    if (!observer && typeof MutationObserver !== "undefined") {
       observer = new MutationObserver(() => refreshActiveRecords());
       observer.observe(document.documentElement, {
         childList: true,
@@ -199,9 +200,9 @@ export const installLocalPointerFallbacks = (): void => {
 
     return {
       ...pointerMap,
-      records: activeRecords,
-      record_count: activeRecords.length,
-      by_page: activeRecords.reduce<Record<string, string[]>>((pages, record) => {
+      records: mergedRecords,
+      record_count: mergedRecords.length,
+      by_page: mergedRecords.reduce<Record<string, string[]>>((pages, record) => {
         (pages[record.page_route] ||= []).push(record.target_id);
         return pages;
       }, {}),
