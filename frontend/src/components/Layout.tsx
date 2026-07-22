@@ -38,7 +38,7 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
     { path: '/ga4', icon: BarChart3, label: 'GA4 Analytics' },
     { path: '/reports', icon: FileText, label: 'Reports' },
     { path: '/marketplace', icon: Store, label: 'Marketplace', reload: true },
-    { path: '/web-weave', icon: BrainCircuit, label: 'Web Weave' },
+    { path: '/web-weave', icon: BrainCircuit, label: 'Site Update' },
     { path: '/demo', icon: Sparkles, label: 'Demo' },
     { path: '/diagnostics', icon: Activity, label: 'Diagnostics', reload: true },
     { path: '/cart', icon: ShoppingCart, label: 'Cart' },

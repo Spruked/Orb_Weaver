@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Activity,
-  AlertTriangle,
   ArrowRight,
   BarChart3,
   CheckCircle2,
@@ -19,7 +18,6 @@ import {
   Target,
   Wrench
 } from 'lucide-react';
-import ScoreCircle from '../components/ScoreCircle';
 import IssueCard from '../components/IssueCard';
 import {
   api,
@@ -65,6 +63,13 @@ const DataTile: React.FC<{ label: string; value: React.ReactNode; note?: string 
     {note && <p className="mt-1 text-xs text-slate-500">{note}</p>}
   </div>
 );
+
+const siteReviewPanels = [
+  ['What Site Review includes', 'Public crawl evidence, final audit results, route classification, technical and content issues, report exports, pointer coverage, and ORB integration readiness.'],
+  ['How it differs from Public Preflight', 'Preflight is a public fit check. Site Review uses authenticated project evidence, deeper crawl and audit records, downloadable reports, and readiness gates.'],
+  ['How findings are prioritized', 'Findings are grouped as critical items, warnings, and opportunities. Each item should explain what was found, why it matters, affected pages when available, and the recommended next action.'],
+  ['How it connects to ORB readiness', 'Preflight, crawl, final audit, and pointer evidence determine whether ORB integration review can proceed and where visitor guidance needs owner review.'],
+];
 
 const EmptyDashboard: React.FC<{
   domain: string;
@@ -383,6 +388,31 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
       </section>
 
       {error && <div className="card border-red-200 bg-red-50 text-sm font-semibold text-red-700">{error}</div>}
+
+      <section className="card">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Site Review</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-950">Evidence-backed website review</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Site Review turns this project&apos;s crawl, final audit, reports, route categories, pointer map, and
+              preflight readiness into a practical website assessment. It summarizes existing evidence and does not
+              promise findings the scan or audit did not produce.
+            </p>
+          </div>
+          <button onClick={() => navigate(`/reports/${project.id}`)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
+            Review report files <FileText className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {siteReviewPanels.map(([title, body]) => (
+            <article key={title} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-bold text-slate-950">{title}</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{body}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <section aria-labelledby="score-heading" className="card">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">

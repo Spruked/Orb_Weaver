@@ -2,6 +2,35 @@ import React, { FormEvent, useMemo, useState } from 'react';
 import PublicHeader from '../components/PublicHeader';
 import { api, PublicPreflightReport } from '../services/api';
 
+const publicScanAreas = [
+  ['Website structure', 'Public pages, navigation, links, sitemap signals, robots rules, and visible website patterns.'],
+  ['Visitor pathways', 'Products, services, contact options, forms, booking routes, cart and checkout routes, account routes, and public destinations where visitors may need guidance.'],
+  ['Installation fit', 'A practical readiness result: ready for a Basic Website ORB, needs review before installation, or not recommended yet.'],
+];
+
+const preflightLimits = [
+  'Not a full technical audit.',
+  'Not a penetration test.',
+  'Not a legal accessibility certification.',
+  'Not a private-page scan.',
+  'Not an installation.',
+  'No automatic website modification.',
+];
+
+const readinessResults = [
+  ['Ready for a Basic Website ORB', 'The public site appears to have enough visible structure and visitor pathways to begin ORB planning.'],
+  ['Needs review before installation', 'Orb Weaver found useful public signals, but the site needs closer review before an ORB recommendation is made.'],
+  ['Not recommended yet', 'The public site may need clearer pages, pathways, or readiness work before a website guide can serve visitors reliably.'],
+];
+
+const customerReceives = [
+  'A plain-language readiness outcome.',
+  'A fit score based on the public sample.',
+  'Visible reasons behind the result.',
+  'Basic public signals such as pages sampled, sitemap and robots detection, forms, products, booking, and warnings when available.',
+  'Recommended next steps without requiring an account.',
+];
+
 const PublicPreflight: React.FC = () => {
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [report, setReport] = useState<PublicPreflightReport | null>(null);
@@ -210,7 +239,7 @@ const PublicPreflight: React.FC = () => {
                 </h3>
 
                 <p className="mt-3 max-w-4xl leading-relaxed text-slate-300">
-                  The purpose is not to place a generic chat bubble on your site. The purpose is to
+                  The purpose is not to place a generic overlay on your site. The purpose is to
                   prepare an ORB that understands your visible public structure well enough to guide
                   someone toward the right service, product, department, form, page, or contact option.
                 </p>
@@ -298,17 +327,24 @@ const PublicPreflight: React.FC = () => {
 
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
                     <a
-                      href="/marketplace/products/basic-visitor-orb"
+                      href="/signup?intent=site_review"
                       className="rounded-lg bg-cyan-300 px-5 py-3 text-center text-sm font-bold text-slate-950 transition hover:bg-cyan-200"
                     >
-                      Explore the Basic Visitor ORB
+                      Proceed to Site Review
+                    </a>
+
+                    <a
+                      href="/signup?intent=site_update"
+                      className="rounded-lg border border-cyan-200/30 px-5 py-3 text-center text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/10"
+                    >
+                      Request a Site Update
                     </a>
 
                     <a
                       href="/marketplace"
                       className="rounded-lg border border-cyan-200/30 px-5 py-3 text-center text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/10"
                     >
-                      View ORB options
+                      Explore ORB packages
                     </a>
                   </div>
 
@@ -384,30 +420,88 @@ const PublicPreflight: React.FC = () => {
           )}
 
           {!report && (
-            <section className="mt-14 grid gap-5 border-t border-white/10 pt-10 md:grid-cols-3">
-              <article className="rounded-xl border border-cyan-300/15 bg-white/[0.025] p-5">
-                <p className="text-sm font-bold text-cyan-200">Website structure</p>
-                <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                  Orb Weaver checks public pages, navigation, links, sitemap signals, robots rules,
-                  and visible website patterns.
-                </p>
-              </article>
+            <section className="mt-14 space-y-8 border-t border-white/10 pt-10">
+              <div className="grid gap-5 md:grid-cols-3">
+                {publicScanAreas.map(([title, body]) => (
+                  <article key={title} className="rounded-xl border border-cyan-300/15 bg-white/[0.025] p-5">
+                    <p className="text-sm font-bold text-cyan-200">{title}</p>
+                    <p className="mt-3 text-sm leading-relaxed text-slate-300">{body}</p>
+                  </article>
+                ))}
+              </div>
 
-              <article className="rounded-xl border border-cyan-300/15 bg-white/[0.025] p-5">
-                <p className="text-sm font-bold text-cyan-200">Visitor pathways</p>
-                <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                  The scan looks for services, products, contact options, forms, booking paths,
-                  live chat, and other public destinations where visitors may need help.
-                </p>
-              </article>
+              <section className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
+                <article className="rounded-xl border border-cyan-300/15 bg-slate-900/45 p-6">
+                  <p className="text-sm font-bold uppercase tracking-[0.18em] text-cyan-300">What Public Preflight is</p>
+                  <h2 className="mt-3 text-2xl font-bold text-white">A no-account public readiness check.</h2>
+                  <p className="mt-3 text-sm leading-relaxed text-slate-300">
+                    Public Preflight is for owners, marketers, operators, and builders who want to know whether a public
+                    website has enough visible structure for an embodied website guide. It reviews only publicly accessible
+                    information and does not log in, submit forms, install code, or change the website.
+                  </p>
+                </article>
 
-              <article className="rounded-xl border border-cyan-300/15 bg-white/[0.025] p-5">
-                <p className="text-sm font-bold text-cyan-200">Installation fit</p>
-                <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                  You receive a practical recommendation: ready for a Basic Website ORB, needs
-                  review first, or not recommended yet.
-                </p>
-              </article>
+                <article className="rounded-xl border border-amber-300/20 bg-amber-400/[0.06] p-6">
+                  <p className="text-sm font-bold uppercase tracking-[0.18em] text-amber-200">Safety boundary</p>
+                  <h2 className="mt-3 text-2xl font-bold text-white">No website changes are made.</h2>
+                  <p className="mt-3 text-sm leading-relaxed text-slate-300">
+                    The scan samples public website information only. Private pages, account areas, checkout actions,
+                    admin routes, sensitive transactions, and owner-only systems remain outside the public scan boundary.
+                  </p>
+                </article>
+              </section>
+
+              <section className="rounded-xl border border-white/10 bg-white/[0.025] p-6">
+                <p className="text-sm font-bold uppercase tracking-[0.18em] text-cyan-300">Possible readiness results</p>
+                <div className="mt-5 grid gap-4 md:grid-cols-3">
+                  {readinessResults.map(([title, body]) => (
+                    <article key={title} className="rounded-lg border border-white/10 bg-slate-950/40 p-4">
+                      <h3 className="font-bold text-white">{title}</h3>
+                      <p className="mt-2 text-sm leading-relaxed text-slate-300">{body}</p>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section className="grid gap-5 lg:grid-cols-2">
+                <article className="rounded-xl border border-cyan-300/15 bg-slate-900/45 p-6">
+                  <p className="text-sm font-bold uppercase tracking-[0.18em] text-cyan-300">What you receive</p>
+                  <ul className="mt-4 space-y-2 text-sm leading-relaxed text-slate-300">
+                    {customerReceives.map((item) => (
+                      <li key={item} className="flex gap-2"><span className="text-cyan-300">•</span><span>{item}</span></li>
+                    ))}
+                  </ul>
+                </article>
+
+                <article className="rounded-xl border border-white/10 bg-white/[0.025] p-6">
+                  <p className="text-sm font-bold uppercase tracking-[0.18em] text-cyan-300">Clear limitations</p>
+                  <ul className="mt-4 grid gap-2 text-sm leading-relaxed text-slate-300 sm:grid-cols-2">
+                    {preflightLimits.map((item) => (
+                      <li key={item} className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2">{item}</li>
+                    ))}
+                  </ul>
+                </article>
+              </section>
+
+              <section className="rounded-xl border border-cyan-300/20 bg-gradient-to-br from-cyan-400/[0.08] to-blue-950/25 p-6">
+                <p className="text-sm font-bold uppercase tracking-[0.18em] text-cyan-300">After the scan</p>
+                <div className="grid gap-5 lg:grid-cols-[1fr_0.9fr]">
+                  <div>
+                    <h2 className="mt-3 text-2xl font-bold text-white">Preflight helps choose the next step.</h2>
+                    <p className="mt-3 text-sm leading-relaxed text-slate-300">
+                      A paid website scan goes deeper: it can crawl more pages, preserve project evidence, compile audit
+                      reports, prioritize findings, and connect recommendations to ORB readiness. Public Preflight is the
+                      first public fit check, not the full review.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                    <a href="/signup?intent=site_review" className="rounded-lg bg-cyan-300 px-5 py-3 text-center text-sm font-bold text-slate-950 transition hover:bg-cyan-200">Proceed to Site Review</a>
+                    <a href="/signup?intent=site_update" className="rounded-lg border border-cyan-200/30 px-5 py-3 text-center text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/10">Request a Site Update</a>
+                    <a href="/marketplace" className="rounded-lg border border-cyan-200/30 px-5 py-3 text-center text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/10">Explore ORB Packages</a>
+                    <a href="/signup" className="rounded-lg border border-white/15 px-5 py-3 text-center text-sm font-bold text-slate-200 transition hover:bg-white/10">Create an Account</a>
+                  </div>
+                </div>
+              </section>
             </section>
           )}
         </section>
