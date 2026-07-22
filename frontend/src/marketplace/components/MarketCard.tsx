@@ -12,6 +12,7 @@ const AUTHORITY_PRODUCT_SLUGS: Record<string, string> = {
   orb_basic_visitor: 'basic-visitor-orb',
   orb_enhanced_website: 'enhanced-website-orb',
   orb_premium_website: 'premium-website-orb',
+  orb_platinum_plus_website: 'platinum-plus-website-orbs',
 };
 
 const MarketCard: React.FC<MarketCardProps> = ({ item, onAddToCart }) => {

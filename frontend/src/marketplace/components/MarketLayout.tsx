@@ -23,8 +23,8 @@ const MarketLayout: React.FC<MarketLayoutProps> = ({ title, subtitle, children }
           </div>
           <aside className="ow-market-featured-offer" aria-label="Featured offer">
             <p>Featured Offer</p>
-            <h2>Basic Visitor ORB</h2>
-            <span>One-time website ORB install powered by Orb Weaver scan intelligence. No monthly SaaS fee.</span>
+            <h2>Enhanced Visitor ORBS</h2>
+            <span>One-time website ORBS install powered by Orb Weaver scan intelligence. No monthly SaaS fee.</span>
             <Link to="/marketplace/products/basic-visitor-orb" className="ow-market-featured-cta">
               View Product Page
             </Link>

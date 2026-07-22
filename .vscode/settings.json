@@ -1,0 +1,5 @@
+{
+    "chat.utilityModel": "customendpoint/qwen2.5-coder:3b",
+    "chat.utilitySmallModel": "customendpoint/qwen2.5-coder:3b",
+    "files.autoSave": "afterDelay"
+}

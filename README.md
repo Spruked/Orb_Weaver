@@ -53,6 +53,13 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 - Skin selection is an appearance-only PATCH operation: it does not rebuild Site World or Pointer Map, restart the runtime, or disconnect the WebSocket.
 - The repository and local container image can include these files without implying that the public `orbweaver.spruked.com` loader has been deployed.
 
+### ORB Marketplace and Skins
+
+- The marketplace catalog lives in `frontend/src/marketplace/data/marketplaceData.ts` with product detail routes under `frontend/src/marketplace/pages/MarketplaceProduct.tsx`.
+- Current Website ORBS package labels are Enhanced Visitor ORBS, Semantic Website ORBS, Platinum Website ORBS, and the scoped Platinum Plus Website ORBS lane.
+- First-party orb-skin images are served from `frontend/public/orb-skins/` and include the robot, crystal, plastic, digital-age, earthy, work, and DockStation infographic assets used by marketplace listings.
+- New skin listings remain non-purchasable until the owner approves the live price catalog and checkout entitlement mapping.
+
 ### Pointer Quality Gate
 
 - Pointer extraction count and duplicate-ID checks are not deployment approval. Confidence quality must also pass the Pointer Recovery doctrine.

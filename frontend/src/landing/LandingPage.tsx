@@ -43,8 +43,9 @@ const LandingPage: React.FC = () => {
           </h1>
 
           <p className="ow-v2-sub">
-            Orb Weaver scans your website, maps what matters, and creates an ORB
-            presence that helps visitors find the right next move.
+            Orb Weaver scans and understands your website, finds technical and
+            content problems, maps important controls, and creates an ORB that
+            helps visitors find the right next action.
           </p>
 
           <div className="ow-v2-actions">
@@ -52,7 +53,7 @@ const LandingPage: React.FC = () => {
               id="landing-free-preflight"
               data-orb-target="run-free-preflight"
               className="ow-v2-primary"
-              onClick={() => begin('/signup?intent=preflight', 'preflight')}
+              onClick={() => window.location.assign('/preflight')}
               disabled={Boolean(pendingTarget)}
             >
               {pendingTarget === '/signup?intent=preflight' ? 'Preparing…' : 'Run a Free Preflight Scan'}
@@ -72,8 +73,8 @@ const LandingPage: React.FC = () => {
               Campaign, Beta & Investor Portal
             </a>
 
-            <a className="ow-v2-secondary" href="#how">
-              See the Intelligence Layer
+            <a className="ow-v2-secondary" href="#orb-tools">
+              Explore ORB Tools
             </a>
           </div>
 
@@ -87,64 +88,92 @@ const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      <section id="how" className="ow-v2-lower">
-        <article>
-          <span>01</span>
-          <h2>Scan the site.</h2>
-          <p>Structure, content, links, forms, routes, and visitor pathways.</p>
-        </article>
-
-        <article id="intelligence">
-          <span>02</span>
-          <h2>Build intelligence.</h2>
-          <p>Semantic context, target maps, reports, and usable guidance.</p>
-        </article>
-
-        <article>
-          <span>03</span>
-          <h2>Give it presence.</h2>
-          <p>A site-native ORB that knows where help is actually needed.</p>
-        </article>
+      <section className="ow-v2-intelligence" aria-labelledby="intelligence-heading">
+        <div className="ow-v2-intelligence-copy">
+          <p className="ow-v2-kicker">WEBSITE INTELLIGENCE</p>
+          <h2 id="intelligence-heading">Understand your website before adding the ORB.</h2>
+          <p>
+            Orb Weaver examines site structure, technical SEO, content, links,
+            forms, routes, analytics, and visitor pathways. It compiles that
+            evidence into a Site World that gives Weaver verified knowledge of
+            the website it serves.
+          </p>
+        </div>
       </section>
 
-      <section className="ow-v2-packages" aria-labelledby="package-heading">
-        <div className="ow-v2-package-heading">
-          <p className="ow-v2-kicker">WEBSITE ORBS</p>
-          <h2 id="package-heading">Start with interest. Confirm fit with evidence.</h2>
-          <p>Package eligibility and final recommendations follow Preflight, Crawl, and Final Audit.</p>
+      <section id="orb-tools" className="ow-v2-tools" aria-labelledby="tools-heading">
+        <div className="ow-v2-tools-heading">
+          <p className="ow-v2-kicker">ORB SITE TOOLS</p>
+          <h2 id="tools-heading">Explore the Orb Weaver website intelligence tools.</h2>
+          <p>Use a tool directly, or ask Weaver to guide you.</p>
         </div>
-        <div className="ow-v2-package-grid">
-          {([
-            ['basic', 'Basic', 'Visitor guidance for a focused public website.'],
-            ['enhanced', 'Enhanced', 'Deeper routing across services and departments.'],
-            ['premium', 'Premium', 'Branded guidance with broader semantic support.'],
-          ] as const).map(([tier, label, description]) => (
-            <article key={tier}>
-              <span>{label}</span>
-              <p>{description}</p>
-              <button
-                id={`landing-package-${tier}`}
-                data-orb-target={`package-${tier}`}
-                onClick={() => begin(`/signup?intent=package&tier=${tier}`, 'package', tier)}
-                disabled={Boolean(pendingTarget)}
-              >
-                Explore {label}
-              </button>
-            </article>
+        <ul className="ow-v2-tool-list">
+          {[
+            ['Website Preflight', 'A fast first review of technical, content, and search-visibility concerns.'],
+            ['Site Crawl', 'Maps public pages, links, forms, routes, headings, metadata, and visitor pathways.'],
+            ['Technical SEO Audit', 'Checks titles, descriptions, headings, canonicals, indexability, structured data, and other search signals.'],
+            ['Final Audit', 'Verifies the completed website and produces evidence-based findings before an ORB package is recommended.'],
+            ['Site World', 'Compiles the pages, controls, services, content, and verified facts Weaver needs to understand the website.'],
+            ['Pointer Map', 'Connects Weaver to buttons, forms, links, products, and page sections so it can guide visitors accurately.'],
+            ['Reports', 'Turns crawl and audit evidence into clear findings, priorities, and client-ready recommendations.'],
+            ['ORB Visitor Guidance', 'Adds website-aware conversation, movement, pointing, navigation, and visitor assistance.'],
+            ['Google Analytics', 'Connects GA4 behavior and visitor evidence to site findings and visitor pathways.'],
+            ['Dashboard', 'Manages scans, audits, reports, Site World data, and ORB controls.'],
+          ].map(([title, description]) => (
+            <li key={title} className="ow-v2-tool-item">
+              <span className="ow-v2-tool-marker" aria-hidden="true" />
+              <div className="ow-v2-tool-copy">
+                <strong>{title}</strong>
+                <span>{description}</span>
+              </div>
+            </li>
           ))}
-          <article>
-            <span>Enterprise</span>
-            <p>Preserve enterprise interest for an evidence-led supported discussion.</p>
+        </ul>
+
+        <div className="ow-v2-ask-weaver">
+          <h2>Not sure where to begin?</h2>
+          <p>Ask Weaver. He can explain each tool and guide you to the right next step.</p>
+          <div className="ow-v2-actions ow-v2-actions-inline">
             <button
-              id="landing-enterprise"
-              data-orb-target="package-enterprise"
-              onClick={() => begin('/signup?intent=enterprise', 'enterprise')}
+              id="landing-ask-weaver"
+              data-orb-target="ask-weaver"
+              className="ow-v2-secondary"
+              onClick={() => window.dispatchEvent(new CustomEvent('orb:request-assistance', {
+                detail: {
+                  source: 'landing',
+                  topic: 'orb-site-tools',
+                },
+              }))}
+            >
+              Ask Weaver
+            </button>
+            <button
+              id="landing-preflight-close"
+              className="ow-v2-primary"
+              onClick={() => window.location.assign('/preflight')}
               disabled={Boolean(pendingTarget)}
             >
-              Discuss Enterprise
+              {pendingTarget === '/signup?intent=preflight' ? 'Preparing…' : 'Run a Free Preflight'}
             </button>
-          </article>
+          </div>
         </div>
+      </section>
+
+      <section className="ow-v2-preflight-close" aria-labelledby="preflight-heading">
+        <p className="ow-v2-kicker">START WITH PREFLIGHT</p>
+        <h2 id="preflight-heading">Begin with a free website Preflight.</h2>
+        <p>
+          Every website is different. Preflight identifies the strongest next
+          step before a package is recommended.
+        </p>
+        <button
+          id="landing-start-preflight"
+          className="ow-v2-primary"
+          onClick={() => window.location.assign('/preflight')}
+          disabled={Boolean(pendingTarget)}
+        >
+          {pendingTarget === '/signup?intent=preflight' ? 'Preparing…' : 'Start With Preflight'}
+        </button>
       </section>
     </main>
   );

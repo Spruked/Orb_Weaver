@@ -26,13 +26,13 @@ const AUTHORITY_PRODUCTS: AuthorityProductContent[] = [
   {
     slug: 'basic-visitor-orb',
     itemId: 'orb_basic_visitor',
-    heroSummary: 'One-time website ORB installation for visitor guidance.',
-    launchPriceLabel: 'Launch Price: $488.88',
-    ctaLabel: 'Start Installation',
+    heroSummary: 'One-time installation of Enhanced Visitor ORBS for visitor guidance.',
+    launchPriceLabel: 'Launch Price: $588.88',
+    ctaLabel: 'Start Enhanced Installation',
     sections: [
       {
         heading: 'What It Is',
-        body: 'A one-time installed website guide ORB powered by Orb Weaver scan intelligence to help visitors reach the right destination faster.',
+        body: 'A one-time installed Enhanced Visitor ORBS package powered by Orb Weaver scan intelligence to help visitors reach the right destination faster.',
       },
       {
         heading: 'Who It Is For',
@@ -46,10 +46,10 @@ const AUTHORITY_PRODUCTS: AuthorityProductContent[] = [
       {
         heading: 'What Is Included',
         bullets: [
-          'Basic website ORB install',
-          'Initial target map',
+          'Enhanced website ORB install',
+          'Priority visitor routing',
           'Customer account access',
-          'Basic appearance setup',
+          'Basic Dock access',
           'Standard handoff behavior',
         ],
       },
@@ -72,7 +72,7 @@ const AUTHORITY_PRODUCTS: AuthorityProductContent[] = [
       },
       {
         heading: 'Upgrade Path',
-        body: 'Upgrade to Enhanced Website ORB for deeper routing precision and additional intelligence mapping.',
+        body: 'Upgrade to Semantic Website ORBS for deeper routing precision and additional intelligence mapping.',
       },
       {
         heading: 'Example Use Cases',
@@ -86,24 +86,24 @@ const AUTHORITY_PRODUCTS: AuthorityProductContent[] = [
     faq: [
       {
         question: 'Is there a monthly subscription?',
-        answer: 'No. This is a one-time installed ORB with optional annual maintenance.',
+        answer: 'No. This is a one-time installed ORBS package with optional annual maintenance.',
       },
       {
         question: 'Can we upgrade later?',
-        answer: 'Yes. Basic Visitor ORB can be upgraded into Enhanced and Premium tiers.',
+        answer: 'Yes. Enhanced Visitor ORBS can be upgraded into Semantic and Platinum tiers.',
       },
     ],
   },
   {
     slug: 'enhanced-website-orb',
     itemId: 'orb_enhanced_website',
-    heroSummary: 'Advanced routing and intent mapping for higher-conversion website guidance.',
-    launchPriceLabel: 'Launch Price: $988',
-    ctaLabel: 'Start Enhanced Installation',
+    heroSummary: 'Advanced routing and intent mapping for higher-conversion Semantic Website ORBS.',
+    launchPriceLabel: 'Launch Price: $988.88',
+    ctaLabel: 'Start Semantic Installation',
     sections: [
       {
         heading: 'What It Is',
-        body: 'Enhanced Website ORB extends visitor guidance with deeper service and department precision across more intent paths.',
+        body: 'Semantic Website ORBS extends visitor guidance with deeper service and department precision across more intent paths.',
       },
       {
         heading: 'Who It Is For',
@@ -140,7 +140,7 @@ const AUTHORITY_PRODUCTS: AuthorityProductContent[] = [
       },
       {
         heading: 'Upgrade Path',
-        body: 'Upgrade to Premium Website ORB for branded behavior profiles and semantic graph-driven intelligence.',
+        body: 'Upgrade to Platinum Website ORBS for branded behavior profiles and semantic graph-driven intelligence.',
       },
       {
         heading: 'Example Use Cases',
@@ -154,11 +154,11 @@ const AUTHORITY_PRODUCTS: AuthorityProductContent[] = [
     faq: [
       {
         question: 'Is this still one-time installed?',
-        answer: 'Yes. Enhanced Website ORB is one-time installed with optional annual maintenance.',
+        answer: 'Yes. Semantic Website ORBS is one-time installed with optional annual maintenance.',
       },
       {
         question: 'Does this include custom branding?',
-        answer: 'Branding depth increases with Premium Website ORB, which is the next tier upgrade.',
+        answer: 'Branding depth increases with Platinum Website ORBS, which is the next tier upgrade.',
       },
     ],
   },
@@ -166,12 +166,12 @@ const AUTHORITY_PRODUCTS: AuthorityProductContent[] = [
     slug: 'premium-website-orb',
     itemId: 'orb_premium_website',
     heroSummary: 'Authority-grade branded ORB with semantic intelligence and custom behavior design.',
-    launchPriceLabel: 'Launch Price: $1,988+',
-    ctaLabel: 'Start Premium Installation',
+    launchPriceLabel: 'Launch Price: $1,988.88',
+    ctaLabel: 'Start Platinum Installation',
     sections: [
       {
         heading: 'What It Is',
-        body: 'Premium Website ORB is the high-authority implementation tier for organizations that need custom behavior and branded intelligence design.',
+        body: 'Platinum Website ORBS is the high-authority implementation tier for organizations that need custom behavior and branded intelligence design.',
       },
       {
         heading: 'Who It Is For',
@@ -200,7 +200,7 @@ const AUTHORITY_PRODUCTS: AuthorityProductContent[] = [
       },
       {
         heading: 'Installation and Delivery',
-        body: 'Implemented as a guided premium deployment with branded integration, testing cycles, and launch handoff standards.',
+        body: 'Implemented as a guided platinum deployment with branded integration, testing cycles, and launch handoff standards.',
       },
       {
         heading: 'Maintenance and Scan Allowance',
@@ -221,12 +221,59 @@ const AUTHORITY_PRODUCTS: AuthorityProductContent[] = [
     ],
     faq: [
       {
-        question: 'Is Premium a subscription?',
-        answer: 'No. Premium is a one-time installed authority package with optional annual maintenance.',
+        question: 'Is Platinum a subscription?',
+        answer: 'No. Platinum is a one-time installed authority package with optional annual maintenance.',
       },
       {
         question: 'Can this support custom enterprise behavior?',
-        answer: 'Yes. Premium is the gateway to advanced and enterprise ORB behavior programs.',
+        answer: 'Yes. Platinum is the gateway to advanced and enterprise ORB behavior programs.',
+      },
+    ],
+  },
+  {
+    slug: 'platinum-plus-website-orbs',
+    itemId: 'orb_platinum_plus_website',
+    heroSummary: 'Custom Platinum Plus Website ORBS planning for advanced tools, functions, and enterprise installation.',
+    ctaLabel: 'Discuss Platinum Plus',
+    sections: [
+      {
+        heading: 'What It Is',
+        body: 'Platinum Plus Website ORBS is the custom planning lane for advanced website guidance, specialized tools, and higher-touch installation needs.',
+      },
+      {
+        heading: 'Who It Is For',
+        bullets: [
+          'Organizations that need custom ORB functions',
+          'Enterprise or multi-property websites',
+          'Teams with specialized workflow, compliance, or integration needs',
+        ],
+      },
+      {
+        heading: 'What Is Included',
+        bullets: [
+          'Custom tools and behavior planning',
+          'Installation support',
+          'Enterprise negotiation path',
+          'Priority implementation scoping',
+        ],
+      },
+      {
+        heading: 'Installation and Delivery',
+        body: 'Delivery is scoped after Preflight and implementation review so the recommended work matches the website, tool surface, and operating requirements.',
+      },
+      {
+        heading: 'Upgrade Path',
+        body: 'Designed as the expansion path beyond Platinum for custom Website ORBS and larger corporate deployments.',
+      },
+    ],
+    faq: [
+      {
+        question: 'Can this be purchased immediately?',
+        answer: 'No. Platinum Plus requires scoping before purchase so custom work can be priced and installed correctly.',
+      },
+      {
+        question: 'Is this only for large corporations?',
+        answer: 'No. Large corporations are a natural fit, but any site that needs custom ORB tools or advanced installation can enter this planning lane.',
       },
     ],
   },
@@ -372,39 +419,43 @@ const MarketplaceProduct: React.FC = () => {
           </section>
         </article>
       ) : (
-        <article className="ow-market-product-detail">
+        <article className={`ow-market-product-detail${item.item_id === 'orb_scan_bundle_10' ? ' ow-market-product-detail-scan' : ''}`}>
           <header>
             <p>{item.badge}</p>
             <span>{item.price}</span>
           </header>
-          {imageSrc && !imageFailed ? (
-            <img
-              className="ow-market-product-image"
-              src={imageSrc}
-              alt={item.name}
-              loading="lazy"
-              onError={() => setImageFailed(true)}
-            />
-          ) : (
-            <div className="ow-market-orb-preview ow-market-product-preview" aria-hidden="true" />
-          )}
-          <MarketIndexCode value={item.market_index_code} />
-          <p>{item.description}</p>
-          <ul className="ow-market-feature-list">
-            {item.features.map((feature) => (
-              <li key={feature}>{feature}</li>
-            ))}
-          </ul>
-          <div className="ow-market-meta">
-            <span>{item.rights_status}</span>
-            <span>{item.rarity}</span>
-            <span>{item.category}</span>
-          </div>
-          <div className="ow-market-actions">
-            <button type="button" disabled={!item.purchasable} onClick={() => addToCart(item)}>
-              {item.purchasable ? 'Add to Cart' : 'Planned'}
-            </button>
-            <Link to="/marketplace">Back to shelves</Link>
+          <div className="ow-market-product-detail-shell">
+            {imageSrc && !imageFailed ? (
+              <img
+                className="ow-market-product-image"
+                src={imageSrc}
+                alt={item.name}
+                loading="lazy"
+                onError={() => setImageFailed(true)}
+              />
+            ) : (
+              <div className="ow-market-orb-preview ow-market-product-preview" aria-hidden="true" />
+            )}
+            <div className="ow-market-product-detail-copy">
+              <MarketIndexCode value={item.market_index_code} />
+              <p>{item.description}</p>
+              <ul className="ow-market-feature-list">
+                {item.features.map((feature) => (
+                  <li key={feature}>{feature}</li>
+                ))}
+              </ul>
+              <div className="ow-market-meta">
+                <span>{item.rights_status}</span>
+                <span>{item.rarity}</span>
+                <span>{item.category}</span>
+              </div>
+              <div className="ow-market-actions">
+                <button type="button" disabled={!item.purchasable} onClick={() => addToCart(item)}>
+                  {item.purchasable ? 'Add to Cart' : 'Planned'}
+                </button>
+                <Link to="/marketplace">Back to shelves</Link>
+              </div>
+            </div>
           </div>
         </article>
       )}

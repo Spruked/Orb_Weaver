@@ -9,6 +9,9 @@
   --ow-market-bone: #f7f1e4;
   --ow-market-ink: #1b1720;
   --ow-market-line: rgba(244, 184, 74, 0.34);
+  --ow-market-button: #1d4ed8;
+  --ow-market-button-hover: #7dd3fc;
+  --ow-market-button-border: rgba(96, 165, 250, 0.8);
 }
 
 .ow-market-shell {
@@ -30,7 +33,7 @@
 }
 
 .ow-market-topbar-inner {
-  max-width: 1120px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 12px 20px;
   display: flex;
@@ -56,7 +59,7 @@
 }
 
 .ow-market-main {
-  max-width: 1120px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 28px 20px 56px;
 }
@@ -187,18 +190,31 @@
 .ow-market-search button,
 .ow-market-actions button,
 .ow-market-actions a {
-  border: 1px solid var(--ow-market-line);
+  border: 1px solid var(--ow-market-button-border);
   border-radius: 999px;
-  padding: 8px 14px;
-  background: rgba(18, 16, 24, 0.86);
+  padding: 6px 12px;
+  background: var(--ow-market-button);
   color: var(--ow-market-bone);
   text-decoration: none;
   cursor: pointer;
+  transition: transform 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.ow-market-chip-row button:hover,
+.ow-market-link-button:hover,
+.ow-market-search button:hover,
+.ow-market-actions button:hover,
+.ow-market-actions a:hover {
+  background: var(--ow-market-button-hover);
+  color: #0f172a;
+  box-shadow: 0 8px 18px rgba(125, 211, 252, 0.32);
+  transform: translateY(-1px);
 }
 
 .ow-market-chip-row button.active {
-  background: rgba(139, 92, 246, 0.24);
-  border-color: rgba(139, 92, 246, 0.58);
+  background: rgba(125, 211, 252, 0.18);
+  border-color: rgba(125, 211, 252, 0.7);
+  color: var(--ow-market-bone);
 }
 
 .ow-market-feedback,
@@ -274,8 +290,8 @@
 
 .ow-market-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
 }
 
 .ow-market-card,
@@ -413,11 +429,19 @@
   max-width: 140px;
   aspect-ratio: 1 / 1;
   object-fit: cover;
-  border-radius: 10px;
+  border-radius: 14px;
   margin: 6px auto 4px;
   display: block;
   border: 1px solid rgba(139, 92, 246, 0.28);
   box-shadow: 0 0 18px rgba(55, 198, 255, 0.2);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.ow-market-orb-image:hover,
+.ow-market-orb-image:focus-visible {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 0 28px rgba(125, 211, 252, 0.4), inset 0 0 10px rgba(125, 211, 252, 0.18);
+  filter: brightness(1.03) saturate(1.15);
 }
 
 .ow-market-product-image {
