@@ -1,17 +1,57 @@
-import React from 'react';
-import { Customer } from '../services/api';
+import React, { useEffect, useState } from 'react';
+import { api, AuditDelta, CrawlJob, Customer, Project } from '../services/api';
+import CrawlChangeSummary from '../components/CrawlChangeSummary';
+import OrbAssemblyStatus from '../components/OrbAssemblyStatus';
+import AuditChangeSummary from '../components/AuditChangeSummary';
 
 interface AccountProps {
   customer: Customer;
   onLogout: () => void;
 }
 
-const Account: React.FC<AccountProps> = ({ customer, onLogout }) => (
-  <div className="space-y-6">
-    <div>
-      <h1 className="text-2xl font-bold text-gray-900">Account</h1>
-      <p className="text-gray-500 mt-1">Customer record and access status</p>
-    </div>
+const Account: React.FC<AccountProps> = ({ customer, onLogout }) => {
+  const [latestProject, setLatestProject] = useState<Project | null>(null);
+  const [latestCrawl, setLatestCrawl] = useState<CrawlJob | null>(null);
+  const [auditDelta, setAuditDelta] = useState<AuditDelta | null>(null);
+  const [workspaceError, setWorkspaceError] = useState('');
+
+  useEffect(() => {
+    let stopped = false;
+    const loadWorkspace = async () => {
+      try {
+        const projects = await api.listProjects();
+        const latest = [...projects].sort((left, right) =>
+          String(right.created_at || '').localeCompare(String(left.created_at || ''))
+        )[0] || null;
+        if (stopped) return;
+        setLatestProject(latest);
+        if (!latest) return;
+        const dashboard = await api.getCombinedDashboard(latest.id);
+        if (!stopped) {
+          setLatestCrawl(dashboard.latest_crawl || null);
+          setAuditDelta(dashboard.audit_delta || null);
+        }
+      } catch (err) {
+        if (!stopped) setWorkspaceError(err instanceof Error ? err.message : 'Unable to load workspace scan status');
+      }
+    };
+    void loadWorkspace();
+    return () => { stopped = true; };
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Account</h1>
+        <p className="text-gray-500 mt-1">Customer record, workspace status, and latest scan differences</p>
+      </div>
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        <OrbAssemblyStatus assembly={latestCrawl?.assembly_status} compact />
+        <CrawlChangeSummary crawl={latestCrawl} title={latestProject ? `What changed for ${latestProject.name}` : 'What changed in the latest workspace crawl'} />
+        <AuditChangeSummary delta={auditDelta} />
+      </section>
+      {workspaceError && <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{workspaceError}</div>}
 
     <div className="card max-w-4xl">
       <div className="mb-6 border-b border-gray-100 pb-5">
@@ -113,6 +153,7 @@ const Account: React.FC<AccountProps> = ({ customer, onLogout }) => (
       </button>
     </div>
   </div>
-);
+  );
+};
 
 export default Account;

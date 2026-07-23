@@ -248,6 +248,108 @@ export interface OrbsStageSnapshot {
   allowed_actions: OrbsAllowedAction[];
 }
 
+export interface DockBusinessObjective {
+  objective_id: string;
+  name: string;
+  enabled: boolean;
+  completion_evidence: string[];
+  required_fields: string[];
+  permitted_routes: string[];
+  permitted_tools: string[];
+  escalation_route: string;
+  success_condition: string;
+  failure_condition: string;
+}
+
+export interface DockAdditionalGuideRail {
+  guide_rail_id: string;
+  name: string;
+  enabled: boolean;
+  applies_when: string;
+  orb_should: string;
+  orb_must_not: string;
+  permitted_actions: string[];
+  required_evidence: string[];
+  escalate_when: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  effective_from?: string | null;
+  effective_until?: string | null;
+  owner_note: string;
+}
+
+export interface DockSituationConditions {
+  current_pages: string[];
+  visitor_types: string[];
+  workflow_stages: string[];
+  product_categories: string[];
+  business_hours: string[];
+  geographic_eligibility: string[];
+  minimum_confidence?: number | null;
+  authentication_states: Array<'anonymous' | 'authenticated'>;
+  active_promotions: string[];
+  prior_history_terms: string[];
+}
+
+export interface DockSituationalGuideRail {
+  guide_rail_id: string;
+  name: string;
+  enabled: boolean;
+  conditions: DockSituationConditions;
+  orb_should: string;
+  orb_must_not: string;
+  permitted_actions: string[];
+  required_evidence: string[];
+  escalate_when: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  owner_note: string;
+}
+
+export interface DockConfiguration {
+  schema: 'orb_weaver.orb_dock_configuration.v1';
+  appearance: { skin_id: string };
+  llm: { provider: 'runtime_default' | 'ollama_local'; model?: string | null };
+  business_objectives: DockBusinessObjective[];
+  additional_guide_rails: DockAdditionalGuideRail[];
+  situational_guide_rails: DockSituationalGuideRail[];
+}
+
+export interface DockCompileIssue {
+  path: string;
+  code: string;
+  message: string;
+}
+
+export interface OrbDockStation {
+  schema: 'orb_weaver.orb_dock_station.v1';
+  project: { id: string; name: string; domain: string };
+  locked_doctrine: { hash: string; rules: Array<{ id: string; label: string; rule: string }> };
+  configuration: DockConfiguration;
+  publication: {
+    status: 'draft' | 'published';
+    version: number;
+    compiled_hash?: string | null;
+    published_at?: string | null;
+    updated_at?: string | null;
+  };
+  compile: {
+    publishable: boolean;
+    blockers: DockCompileIssue[];
+    warnings: DockCompileIssue[];
+    preview_hash: string;
+  };
+  latest_crawl?: CrawlJob | null;
+  skins: Array<{ skin_id: string; display_name: string; asset_path: string; factory_default?: boolean }>;
+  llm_options: Array<{ id: 'runtime_default' | 'ollama_local'; label: string; description: string }>;
+}
+
+export interface DockOllamaStatus {
+  configured: boolean;
+  reachable: boolean;
+  endpoint?: string | null;
+  message: string;
+  models: Array<{ name: string; size: number; modified_at?: string | null }>;
+}
+
 export interface OrbsActionSubmission {
   project_id: string;
   build_order_id?: string | null;
@@ -465,6 +567,23 @@ export interface AdminCustomer extends Customer {
   last_checkout_status?: string | null;
 }
 
+export interface CaliCrmContact {
+  id: string | number;
+  display_name: string;
+  contact_type: string;
+  company_name?: string | null;
+  role_title?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  website?: string | null;
+  relationship_status: string;
+  tags: string[];
+  notes?: string;
+  dossier_path?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface CrawlConfig {
   max_pages: number;
   delay: number;
@@ -472,6 +591,35 @@ export interface CrawlConfig {
   competitor_domains?: string[];
   seed_urls?: string[];
   include_admin_sections?: boolean;
+}
+
+export interface ScanAssemblyMetric {
+  label: string;
+  value: number | string | boolean;
+  total?: number | string | null;
+}
+
+export interface ScanAssemblyStage {
+  id: string;
+  label: string;
+  status: 'not_started' | 'waiting' | 'running' | 'complete' | 'failed' | string;
+  metrics: ScanAssemblyMetric[];
+  note?: string | null;
+}
+
+export interface ScanAssemblyStatus {
+  schema: 'orb_weaver.scan_assembly_status.v1';
+  crawl_job_id: string;
+  overall_status: string;
+  crawl_delay_seconds: number;
+  stages: ScanAssemblyStage[];
+}
+
+export interface AuditDelta {
+  has_previous: boolean;
+  latest_audit_id?: string;
+  previous_audit_id?: string;
+  deltas: Record<string, number>;
 }
 
 export interface PreflightReport {
@@ -593,6 +741,7 @@ export interface CrawlJob {
   pages_found?: number;
   errors_count?: number;
   stats?: Record<string, number | boolean | string | Record<string, number | boolean | string | null>>;
+  assembly_status?: ScanAssemblyStatus;
   pointer_summary?: PointerSummary;
   planned_tool_calls?: PlannedToolCall[];
   pages?: CrawledPage[];
@@ -1022,6 +1171,24 @@ export const api = {
       headers: { 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify(payload)
     }),
+  getOrbDock: (projectId: string) =>
+    request<OrbDockStation>(`/api/projects/${projectId}/orb-dock`),
+  saveOrbDock: (projectId: string, payload: DockConfiguration) =>
+    request<OrbDockStation>(`/api/projects/${projectId}/orb-dock`, {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    }),
+  compileOrbDock: (projectId: string) =>
+    request<OrbDockStation>(`/api/projects/${projectId}/orb-dock/compile`, { method: 'POST' }),
+  publishOrbDock: (projectId: string) =>
+    request<OrbDockStation>(`/api/projects/${projectId}/orb-dock/publish`, { method: 'POST' }),
+  getOrbDockOllama: (projectId: string) =>
+    request<DockOllamaStatus>(`/api/projects/${projectId}/orb-dock/ollama`),
+  pullOrbDockOllamaModel: (projectId: string, model: string) =>
+    request<{ status: string; model: string }>(`/api/projects/${projectId}/orb-dock/ollama/pull`, {
+      method: 'POST',
+      body: JSON.stringify({ model })
+    }),
   websiteOrbVoice: (
     audio: Blob,
     signal?: AbortSignal,
@@ -1175,8 +1342,31 @@ export const api = {
   listCheckoutOrders: () => request<CheckoutOrder[]>('/api/checkout/orders'),
   adminListCustomers: () => request<AdminCustomer[]>('/api/admin/customers'),
   adminExportCustomersToCaliCrm: () =>
-    request<{ status: string; record_count: number; path: string; crm_url: string }>('/api/admin/cali-crm/export-customers', {
+    request<{
+      status: string;
+      record_count: number;
+      path: string;
+      crm_url: string;
+    }>('/api/admin/cali-crm/export-customers', {
       method: 'POST'
+    }),
+  adminListCaliCrmContacts: () =>
+    request<{ schema: string; database_path: string; dossier_root: string; contacts: CaliCrmContact[] }>('/api/admin/cali-crm/contacts'),
+  adminCreateCaliCrmContact: (payload: {
+    display_name: string;
+    contact_type?: string;
+    company_name?: string | null;
+    role_title?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    website?: string | null;
+    relationship_status?: string;
+    tags?: string[];
+    notes?: string;
+  }) =>
+    request<{ schema: string; database_path: string; contact: CaliCrmContact; dossier: { path: string; manifest: string; folders: string[] } }>('/api/admin/cali-crm/contacts', {
+      method: 'POST',
+      body: JSON.stringify(payload)
     }),
   adminBrowserLabTools: () => request<BrowserLabCatalog>('/api/admin/browser-lab/tools'),
   adminRunBrowserLabTool: (payload: { tool: string; params: Record<string, unknown> }) =>
@@ -1282,7 +1472,9 @@ export const api = {
     request<{
       project: Project;
       crawl_summary?: Record<string, number | boolean> | null;
+      latest_crawl?: CrawlJob | null;
       latest_audit?: AuditReportResponse | null;
+      audit_delta?: AuditDelta | null;
       audit_scores?: Record<string, number> | null;
       audit_issues?: AuditReportPayload['summary'] | null;
       ga4_data?: GA4FullReport | null;

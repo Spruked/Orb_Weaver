@@ -9,9 +9,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  min-height: 64px;
-  padding: 12px clamp(16px, 4vw, 42px);
+  gap: 20px;
+  min-height: 94px;
+  padding: 18px clamp(20px, 4vw, 54px);
   border-bottom: 1px solid rgba(103, 232, 249, 0.22);
   backdrop-filter: blur(16px);
 }
@@ -30,28 +30,29 @@
 .ow-public-brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 15px;
   color: inherit;
-  font-size: 13px;
+  font-size: 20px;
   font-weight: 900;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.16em;
   text-decoration: none;
   white-space: nowrap;
 }
 
-.ow-public-brand-dot {
-  width: 11px;
-  height: 11px;
-  border-radius: 999px;
-  background: #67e8f9;
-  box-shadow: 0 0 18px rgba(103, 232, 249, 0.8);
+.ow-public-brand-logo {
+  width: 58px;
+  height: 58px;
+  flex: 0 0 auto;
+  border-radius: 15px;
+  object-fit: cover;
+  box-shadow: 0 0 24px rgba(103, 232, 249, 0.28);
 }
 
 .ow-public-nav {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
 }
 
 .ow-public-nav a {
@@ -59,8 +60,8 @@
   text-decoration: none;
   border: 1px solid rgba(103, 232, 249, 0.24);
   border-radius: 999px;
-  padding: 7px 11px;
-  font-size: 12px;
+  padding: 10px 15px;
+  font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.03em;
   background: rgba(8, 47, 73, 0.22);

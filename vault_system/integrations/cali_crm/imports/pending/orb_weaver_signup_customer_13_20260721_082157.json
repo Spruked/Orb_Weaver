@@ -1,0 +1,28 @@
+{
+  "schema": "orb_weaver.cali_crm_customer_signup.v1",
+  "generated_at": "2026-07-21T08:21:57.986786",
+  "source": "orb_weaver_signup",
+  "target": "cali_crm",
+  "record": {
+    "schema": "orb_weaver.crm_contact_import.v1",
+    "source": "orb_weaver",
+    "source_record_id": "13",
+    "name": "Bryan Anthony Spruk",
+    "type": "orb_weaver_customer",
+    "phone": null,
+    "email": "bspruked@icloud.com",
+    "lead_source": "orb_weaver",
+    "tags": [
+      "orb_weaver",
+      "website_orb",
+      "customer_base"
+    ],
+    "metadata_payload": {
+      "business_name": "Pro Prime Series",
+      "company_name": null,
+      "status": "active",
+      "project_count": 0,
+      "projects": []
+    }
+  }
+}

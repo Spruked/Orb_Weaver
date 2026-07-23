@@ -75,6 +75,7 @@ export interface OrbBootstrapResponse {
     reversible: boolean;
     fallback_enabled: boolean;
   };
+  operating_policy?: ({ version?: number } & Record<string, unknown>) | null;
   capabilities: Record<string, unknown>;
   endpoints: Record<string, string>;
   observed_page?: OrbSiteSnapshot;

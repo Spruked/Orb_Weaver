@@ -12,6 +12,15 @@ type UseMarketplaceState = {
   searchTerm: string;
 };
 
+const mergeWithLocalSkinCatalog = (items: MarketplaceItem[]) => {
+  const localSkinItems = fallbackMarketplaceItems.filter((item) => item.category === 'skins' && item.image_src);
+  const seen = new Set(items.map((item) => item.item_id));
+  return [
+    ...items,
+    ...localSkinItems.filter((item) => !seen.has(item.item_id)),
+  ];
+};
+
 export const useMarketplace = () => {
   const [state, setState] = useState<UseMarketplaceState>({
     items: [],
@@ -31,9 +40,10 @@ export const useMarketplace = () => {
         const category = state.selectedCategory !== 'all' ? state.selectedCategory : undefined;
         const data = await marketplaceApi.listItems(category);
         if (!isCancelled) {
+          const sourceItems = data && data.length ? mergeWithLocalSkinCatalog(data) : fallbackMarketplaceItems;
           setState((prev) => ({
             ...prev,
-            items: data && data.length ? data : fallbackMarketplaceItems,
+            items: category ? sourceItems.filter((item) => item.category === category) : sourceItems,
             loading: false,
           }));
         }

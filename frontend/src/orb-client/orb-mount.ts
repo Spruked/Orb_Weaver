@@ -250,6 +250,16 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
     try {
       const response = await client.bootstrap(snapshot, abortController.signal);
       pointers = response.pointer_map.records || [];
+      if (response.orb_identity?.customization_state === 'CUSTOM') {
+        await setSkin({
+          skinId: response.orb_identity.skin_id,
+          displayName: response.orb_identity.display_name,
+          bodyAssetUrl: new URL(response.orb_identity.asset_path, window.location.origin).toString(),
+          customizationState: 'CUSTOM',
+        });
+      } else if (currentSkinId !== FACTORY_SKIN.skinId) {
+        restoreFactory();
+      }
       const ready = response.status === 'ready';
       const recoveringPointers = response.pointer_guidance?.status === 'recovery_required';
       setStatus(ready ? 'online' : 'pending', ready ? (recoveringPointers ? 'Connected · pointer recovery' : 'Connected') : 'Connected · scan pending');
@@ -259,7 +269,14 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
           ? 'I am connected to ' + name + '. I can answer questions while the pointer map completes recovery; only verified guidance is enabled.'
           : 'I am connected to ' + name + ' and ready to guide you.'
         : 'The loader is connected. This published site still needs its first Orb Weaver scan.');
-      log('Runtime connected', { status: response.status, pointerGuidance: response.pointer_guidance?.status, pointerTargets: pointers.length, page: snapshot });
+      log('Runtime connected', {
+        status: response.status,
+        pointerGuidance: response.pointer_guidance?.status,
+        pointerTargets: pointers.length,
+        policyVersion: response.operating_policy?.version,
+        skinId: response.orb_identity?.skin_id,
+        page: snapshot,
+      });
       log('Pointer targets discovered', { count: pointers.length });
       client.reportRoute(snapshot);
     } catch (error) {

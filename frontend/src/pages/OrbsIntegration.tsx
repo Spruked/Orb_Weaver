@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Activity, AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, CircleDashed, LockKeyhole, ShieldCheck } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowLeft, ArrowRight, CheckCircle2, CircleDashed, LockKeyhole, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import { api, OrbsAllowedAction, OrbsStageSnapshot } from '../services/api';
 
 const JOURNEY = [
@@ -133,9 +133,14 @@ const OrbsIntegration: React.FC = () => {
     <div className="space-y-6">
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="bg-slate-950 px-6 py-7 text-white md:px-8">
-          <button onClick={() => navigate(`/dashboard?project=${encodeURIComponent(snapshot.project_id)}`)} className="inline-flex items-center gap-2 text-sm font-bold text-cyan-200 hover:text-white">
-            <ArrowLeft className="h-4 w-4" /> Back to technical results
-          </button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button onClick={() => navigate(`/dashboard?project=${encodeURIComponent(snapshot.project_id)}`)} className="inline-flex items-center gap-2 text-sm font-bold text-cyan-200 hover:text-white">
+              <ArrowLeft className="h-4 w-4" /> Back to technical results
+            </button>
+            <button onClick={() => navigate(`/orbs/${snapshot.project_id}/dock`)} className="inline-flex items-center gap-2 rounded-md border border-cyan-300/50 px-4 py-2 text-sm font-bold text-cyan-100 hover:bg-white/10">
+              <SlidersHorizontal className="h-4 w-4" /> Dock Station
+            </button>
+          </div>
           <p className="mt-5 text-xs font-bold uppercase tracking-[0.16em] text-cyan-300">Project-bound supported integration</p>
           <h1 className="mt-2 text-3xl font-bold md:text-4xl">ORBS — Origin of Reasoning Bilateral Substrate</h1>
           <p className="mt-3 text-lg text-slate-200">Review and support for Website {snapshot.project_display_name} integration.</p>

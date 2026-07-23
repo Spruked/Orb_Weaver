@@ -19,10 +19,14 @@ import {
   Wrench
 } from 'lucide-react';
 import IssueCard from '../components/IssueCard';
+import OrbAssemblyStatus from '../components/OrbAssemblyStatus';
+import AuditChangeSummary from '../components/AuditChangeSummary';
 import {
   api,
+  AuditDelta,
   AuditReportPayload,
   AuditReportResponse,
+  CrawlJob,
   Customer,
   downloads,
   GA4FullReport,
@@ -36,6 +40,8 @@ const ACTIVE_CRAWL_STATUSES = new Set(['pending', 'running']);
 type DashboardPayload = {
   project: Project;
   crawl_summary?: Record<string, number | boolean> | null;
+  latest_crawl?: CrawlJob | null;
+  audit_delta?: AuditDelta | null;
   latest_audit?: AuditReportResponse | null;
   audit_scores?: Record<string, number> | null;
   audit_issues?: AuditReportPayload['summary'] | null;
@@ -207,6 +213,8 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
   ] : [], [report]);
   const sessions = Number(dashboardData?.ga4_data?.traffic_overview?.totals?.sessions || 0);
   const activeCrawl = !!project?.latest_crawl_status && ACTIVE_CRAWL_STATUSES.has(project.latest_crawl_status);
+  const assemblyStatus = dashboardData?.latest_crawl?.assembly_status || null;
+  const auditDelta = dashboardData?.audit_delta || null;
 
   useEffect(() => {
     if (!activeCrawl || !project) return;
@@ -223,7 +231,7 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
       const createdProject = await api.createProject({ domain: normalizedDomain, ga4_property_id: null });
       const crawl = await api.startCrawl(createdProject.id, {
         max_pages: 150,
-        delay: 1,
+        delay: 1.5,
         max_depth: 5,
         competitor_domains: competitorDomains.split(',').map((item) => item.trim()).filter(Boolean),
         seed_urls: includeAdminSections ? ['/admin'] : [],
@@ -297,6 +305,7 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
             </div>
           </div>
         )}
+        <OrbAssemblyStatus assembly={assemblyStatus} />
         <EmptyDashboard
           domain={domain}
           competitorDomains={competitorDomains}
@@ -388,6 +397,9 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
       </section>
 
       {error && <div className="card border-red-200 bg-red-50 text-sm font-semibold text-red-700">{error}</div>}
+
+      <OrbAssemblyStatus assembly={assemblyStatus} />
+      <AuditChangeSummary delta={auditDelta} />
 
       <section className="card">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">

@@ -27,7 +27,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 import httpx
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.analytics.ga4 import GA4Connector
 from app.audit.engine import SEOAuditor
@@ -85,6 +85,7 @@ from app.models.database import (
     MarketplaceProduct,
     MarketplaceProductImage,
     MarketplaceThemeSetting,
+    OrbDockPolicy,
     OrbRecentContext,
     OrbToolCache,
     OrbUserMemory,
@@ -104,6 +105,17 @@ from app.orbs_contracts import (
     OrbsStageSnapshotContract,
 )
 from app.orbs_guest import create_guest_session, merge_guest_session
+from app.orb_dock import (
+    DockConfiguration,
+    LOCKED_ORB_DOCTRINE,
+    SKINS,
+    active_policy_directives,
+    compile_configuration,
+    default_configuration,
+    doctrine_hash,
+    public_runtime_policy,
+    safe_model_name,
+)
 from app.orbs_governor import (
     GovernorRejection,
     active_entitlement,
@@ -250,12 +262,16 @@ class ProjectCreate(BaseModel):
 class ProjectGA4Config(BaseModel):
     ga4_property_id: Optional[str] = None
     ga4_measurement_id: Optional[str] = None
+
+
+class OllamaModelPullRequest(BaseModel):
+    model: str = Field(min_length=1, max_length=160)
     days: int = Field(default=30, ge=1, le=365)
 
 
 class CrawlConfig(BaseModel):
     max_pages: int = Field(default=100, ge=1, le=5000)
-    delay: float = Field(default=1.0, ge=0.1, le=10.0)
+    delay: float = Field(default=1.5, ge=0.1, le=10.0)
     max_depth: int = Field(default=5, ge=1, le=10)
     tier: str = Field(default="authenticated", pattern="^(free|authenticated)$")
     competitor_domains: List[str] = Field(default_factory=list)
@@ -396,7 +412,7 @@ class PreflightRunConfig(BaseModel):
 
 class LifecycleJobConfig(BaseModel):
     max_pages: int = Field(default=100, ge=1, le=5000)
-    delay: float = Field(default=1.0, ge=0.1, le=10.0)
+    delay: float = Field(default=1.5, ge=0.1, le=10.0)
     max_depth: int = Field(default=5, ge=1, le=10)
     tier: str = Field(default="authenticated", pattern="^(free|authenticated)$")
     seed_urls: List[str] = Field(default_factory=list)
@@ -1463,6 +1479,132 @@ def _owned_project(project_id: str, customer: Customer, db: Session) -> Project:
     return project
 
 
+def _project_for_domain(domain: str, db: Session) -> Optional[Project]:
+    normalized = _domain_from_url(domain)
+    if not normalized:
+        return None
+    for project in db.query(Project).filter(Project.is_active.is_(True)).all():
+        if _domain_from_url(project.domain) == normalized:
+            return project
+    return None
+
+
+def _dock_record(project: Project, customer: Customer, db: Session, *, create: bool = False) -> Optional[OrbDockPolicy]:
+    record = db.query(OrbDockPolicy).filter(OrbDockPolicy.project_id == project.id).first()
+    if record and record.customer_id != customer.id:
+        raise HTTPException(status_code=403, detail="Dock Station project binding does not match")
+    if not record and create:
+        record = OrbDockPolicy(
+            project_id=project.id,
+            customer_id=customer.id,
+            draft_configuration=default_configuration(),
+        )
+        db.add(record)
+        db.flush()
+    return record
+
+
+def _published_dock_policy_for_target(target_url: Optional[str], db: Session) -> Optional[Dict[str, Any]]:
+    project = _project_for_domain(_domain_from_url(target_url), db)
+    if not project:
+        return None
+    record = (
+        db.query(OrbDockPolicy)
+        .filter(
+            OrbDockPolicy.project_id == project.id,
+            OrbDockPolicy.publication_status == "published",
+        )
+        .first()
+    )
+    return record.compiled_policy if record and record.compiled_policy else None
+
+
+def _dock_compile(project: Project, record: OrbDockPolicy) -> Dict[str, Any]:
+    configuration = DockConfiguration.model_validate(record.draft_configuration or default_configuration())
+    website_context = _load_domain_website_context(_project_target_url(project))
+    return compile_configuration(
+        configuration,
+        website_context,
+        project_id=str(project.id),
+        domain=_domain_from_url(project.domain),
+        next_version=int(record.version or 0) + 1,
+    )
+
+
+def _serialize_dock(project: Project, record: OrbDockPolicy, compile_result: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    preview = compile_result or _dock_compile(project, record)
+    db = object_session(record)
+    latest_crawl = (
+        db.query(CrawlJob)
+        .filter(CrawlJob.project_id == project.id)
+        .order_by(CrawlJob.id.desc())
+        .first()
+        if db else None
+    )
+    latest_crawl_payload = _serialize_crawl_job(latest_crawl, db) if latest_crawl and db else None
+    return {
+        "schema": "orb_weaver.orb_dock_station.v1",
+        "project": {"id": str(project.id), "name": project.name, "domain": project.domain},
+        "locked_doctrine": {"hash": doctrine_hash(), "rules": LOCKED_ORB_DOCTRINE},
+        "configuration": record.draft_configuration or default_configuration(),
+        "publication": {
+            "status": record.publication_status,
+            "version": int(record.version or 0),
+            "compiled_hash": record.compiled_hash,
+            "published_at": record.published_at.isoformat() if record.published_at else None,
+            "updated_at": record.updated_at.isoformat() if record.updated_at else None,
+        },
+        "compile": {
+            "publishable": preview["publishable"],
+            "blockers": preview["blockers"],
+            "warnings": preview["warnings"],
+            "preview_hash": preview["compiled_hash"],
+        },
+        "latest_crawl": latest_crawl_payload,
+        "skins": SKINS,
+        "llm_options": [
+            {"id": "runtime_default", "label": "Orb Weaver runtime default", "description": "Use the model configured for this Orb Weaver runtime."},
+            {"id": "ollama_local", "label": "Local Ollama", "description": "Use an installed Ollama model reachable by this local Orb Weaver backend."},
+        ],
+    }
+
+
+def _ollama_base_url() -> Optional[str]:
+    raw = (settings.LOCAL_LLM_URL or "").strip().rstrip("/")
+    if not raw:
+        return None
+    for suffix in ("/api/generate", "/api/chat"):
+        if raw.endswith(suffix):
+            return raw[: -len(suffix)]
+    return raw
+
+
+def _dock_orb_identity(compiled_policy: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    appearance = (compiled_policy or {}).get("appearance") or {}
+    skin_id = str(appearance.get("skin_id") or "orb_factory_default_v1")
+    asset_path = str(appearance.get("asset_path") or "/orb-skins/tuxorb.png")
+    display_name = str(appearance.get("display_name") or "O.R.B.S. Factory Default")
+    factory_default = skin_id == "orb_factory_default_v1"
+    asset_file = Path(__file__).resolve().parent.parent / "frontend" / "public" / asset_path.lstrip("/")
+    asset_hash = ""
+    try:
+        asset_hash = hashlib.sha256(asset_file.read_bytes()).hexdigest()
+    except OSError:
+        asset_hash = "unavailable"
+    return {
+        "skin_id": skin_id,
+        "display_name": display_name,
+        "asset_path": asset_path,
+        "asset_sha256": asset_hash,
+        "customization_state": "FACTORY_DEFAULT" if factory_default else "CUSTOM",
+        "owner_consent_required": not factory_default,
+        "owner_editable": not factory_default,
+        "immutable_default": factory_default,
+        "reversible": True,
+        "fallback_enabled": True,
+    }
+
+
 def _owned_crawl_job(job_id: str, customer: Customer, db: Session) -> CrawlJob:
     try:
         job_pk = int(job_id)
@@ -2503,12 +2645,19 @@ async def _llm_orb_spoken_output(
     memory_context: Optional[Dict[str, Any]] = None,
     website_context: Optional[Dict[str, Any]] = None,
     page_capsule: Optional[Dict[str, Any]] = None,
+    operating_policy: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, str]:
     if _is_orb_identity_question(transcript):
         return {"spoken_output": ORB_PUBLIC_IDENTITY_ANSWER, "llm_source": "deterministic-identity"}
 
     fallback = _fallback_orb_spoken_output(transcript, pulse, memory_context, website_context)
-    if not settings.LOCAL_LLM_URL or not settings.LOCAL_LLM_MODEL:
+    llm_configuration = (operating_policy or {}).get("llm") or {}
+    configured_model = (
+        str(llm_configuration.get("model") or "").strip()
+        if llm_configuration.get("provider") == "ollama_local"
+        else str(settings.LOCAL_LLM_MODEL or "").strip()
+    )
+    if not settings.LOCAL_LLM_URL or not configured_model:
         return {"spoken_output": fallback, "llm_source": "local-fallback"}
 
     pulse_brief = {
@@ -2524,6 +2673,18 @@ async def _llm_orb_spoken_output(
         "recent_context": (memory_context or {}).get("recent_context") if (memory_context or {}).get("durable") else None,
     }
     weaver_envelope = _build_website_weaver_envelope(website_context, page_capsule, transcript)
+    owner_policy = active_policy_directives(
+        operating_policy,
+        route=str((page_capsule or {}).get("route") or "/"),
+        authenticated=bool((memory_context or {}).get("durable")),
+        confidence=(pulse or {}).get("epistemic_alignment"),
+    )
+    weaver_envelope["owner_operating_policy"] = {
+        "version": (operating_policy or {}).get("version"),
+        "locked_doctrine_hash": ((operating_policy or {}).get("locked_doctrine") or {}).get("hash"),
+        "business_objectives": (operating_policy or {}).get("business_objectives") or [],
+        **owner_policy,
+    }
     prompt = (
         "You are Weaver. Obey the Website Weaver envelope as the authoritative operating contract.\n"
         f"Website Weaver envelope: {json.dumps(weaver_envelope, ensure_ascii=False)}\n"
@@ -2539,7 +2700,7 @@ async def _llm_orb_spoken_output(
             response = await client.post(
                 settings.LOCAL_LLM_URL,
                 json={
-                    "model": settings.LOCAL_LLM_MODEL,
+                    "model": configured_model,
                     "prompt": prompt,
                     "stream": False,
                     "keep_alive": settings.LOCAL_LLM_KEEP_ALIVE,
@@ -2553,7 +2714,8 @@ async def _llm_orb_spoken_output(
             response.raise_for_status()
             payload = response.json()
         spoken = str(payload.get("response") or payload.get("text") or "").strip()
-        return {"spoken_output": spoken or fallback, "llm_source": "local-llm"}
+        source = "ollama-owner-model" if llm_configuration.get("provider") == "ollama_local" else "local-llm"
+        return {"spoken_output": spoken or fallback, "llm_source": source}
     except Exception:
         return {"spoken_output": fallback, "llm_source": "local-fallback"}
 
@@ -2885,6 +3047,224 @@ def _cali_crm_import_dir() -> Path:
     return INTEGRATIONS_ROOT / "cali_crm" / "imports" / "pending"
 
 
+def _cali_crm_contacts_root() -> Path:
+    return INTEGRATIONS_ROOT / "cali_crm" / "contacts"
+
+
+def _cali_crm_database_path() -> Path:
+    return INTEGRATIONS_ROOT / "cali_crm" / "database" / "cali_crm.sqlite"
+
+
+def _ensure_cali_crm_database() -> Path:
+    db_path = require_vault_path(_cali_crm_database_path(), "CALI CRM database")
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS contacts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                display_name TEXT NOT NULL,
+                contact_type TEXT NOT NULL DEFAULT 'business_contact',
+                company_name TEXT,
+                role_title TEXT,
+                email TEXT,
+                phone TEXT,
+                website TEXT,
+                relationship_status TEXT NOT NULL DEFAULT 'active',
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                notes TEXT NOT NULL DEFAULT '',
+                dossier_path TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS contact_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contact_id INTEGER NOT NULL,
+                event_type TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(contact_id) REFERENCES contacts(id)
+            )
+            """
+        )
+    return db_path
+
+
+def _safe_crm_contact_slug(*values: Optional[str]) -> str:
+    raw = next((str(value).strip() for value in values if str(value or "").strip()), "contact")
+    cleaned = re.sub(r"[^a-zA-Z0-9._-]+", "_", raw.lower()).strip("._-")
+    return cleaned or "contact"
+
+
+def _crm_contact_dossier_path(contact_id: str, display_name: Optional[str], email: Optional[str]) -> Path:
+    slug = _safe_crm_contact_slug(display_name, email)
+    return _cali_crm_contacts_root() / f"{contact_id}_{slug}"
+
+
+def _crm_dossier_template(contact: Dict[str, Any]) -> Dict[str, Any]:
+    now = datetime.utcnow().isoformat()
+    return {
+        "schema": "orb_weaver.cali_crm_contact_dossier.v1",
+        "generated_at": now,
+        "source": "cali_crm_manual_contact",
+        "contact": contact,
+        "dossier_sections": {
+            "profile": {
+                "purpose": "Business contact profile and manually maintained relationship context.",
+                "recommended_files": ["profile.json", "relationship_notes.md"],
+            },
+            "documents": {
+                "purpose": "Owner-added documents, attachments, contracts, notes, call summaries, screenshots, and relevant correspondence.",
+                "recommended_folders": ["documents/inbox", "documents/contracts", "documents/notes", "documents/screenshots"],
+            },
+            "research": {
+                "purpose": "Manual research notes with source links, dates checked, and relevance notes.",
+                "recommended_files": ["research/research_notes.md", "research/source_index.json"],
+            },
+            "web_history": {
+                "purpose": "Business website history, submitted links, observed public pages, project scan history, and owner-entered website notes.",
+                "recommended_files": ["web_history/web_history.md", "web_history/submitted_sites.json"],
+            },
+            "knowledge": {
+                "purpose": "Business-relevant knowledge, preferences, relationship context, follow-ups, needs, objections, and approved facts.",
+                "recommended_files": ["knowledge/contact_knowledge.md", "knowledge/followups.json"],
+            },
+            "provenance": {
+                "purpose": "Source, consent, sensitivity, and verification notes for manually added CRM knowledge.",
+                "recommended_files": ["provenance/source_log.json", "provenance/governance.md"],
+            },
+        },
+        "orb_weaver_project_history": [],
+        "manual_data_boundary": {
+            "automated_research_enabled": False,
+            "manual_document_drop_enabled": True,
+            "source_notes_required_for_research_entries": True,
+            "sensitive_data_review_required": True,
+        },
+    }
+
+
+def _write_text_if_missing(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(content, encoding="utf-8")
+
+
+def _ensure_crm_contact_dossier(contact: Dict[str, Any]) -> Dict[str, Any]:
+    display_name = str(contact.get("display_name") or contact.get("name") or contact.get("email") or "contact")
+    contact_id = str(contact.get("id") or contact.get("source_record_id") or _safe_crm_contact_slug(display_name))
+    dossier_dir = require_vault_path(
+        _crm_contact_dossier_path(contact_id, display_name, contact.get("email")),
+        "CALI CRM contact dossier",
+    )
+    for folder in (
+        "documents/inbox",
+        "documents/contracts",
+        "documents/notes",
+        "documents/screenshots",
+        "research",
+        "web_history",
+        "knowledge",
+        "provenance",
+    ):
+        (dossier_dir / folder).mkdir(parents=True, exist_ok=True)
+
+    _write_json(dossier_dir / "dossier.json", _crm_dossier_template(contact))
+    _write_text_if_missing(
+        dossier_dir / "relationship_notes.md",
+        "# Relationship Notes\n\nAdd owner-provided business relationship notes, meeting summaries, context, and open questions here.\n",
+    )
+    _write_text_if_missing(
+        dossier_dir / "research" / "research_notes.md",
+        "# Research Notes\n\nAdd manual research notes here. Include source URL, date checked, and why the note matters.\n",
+    )
+    _write_json(
+        dossier_dir / "research" / "source_index.json",
+        {"schema": "orb_weaver.cali_crm_source_index.v1", "sources": []},
+    )
+    _write_text_if_missing(
+        dossier_dir / "web_history" / "web_history.md",
+        "# Web History\n\nAdd submitted websites, public website observations, relevant page history, and scan notes here.\n",
+    )
+    _write_json(
+        dossier_dir / "web_history" / "submitted_sites.json",
+        {"schema": "orb_weaver.cali_crm_submitted_sites.v1", "sites": []},
+    )
+    _write_text_if_missing(
+        dossier_dir / "knowledge" / "contact_knowledge.md",
+        "# Contact Knowledge\n\nAdd business-relevant facts, preferences, needs, objections, follow-ups, and approved context here.\n",
+    )
+    _write_json(
+        dossier_dir / "knowledge" / "followups.json",
+        {"schema": "orb_weaver.cali_crm_followups.v1", "followups": []},
+    )
+    _write_text_if_missing(
+        dossier_dir / "provenance" / "governance.md",
+        "# Governance\n\nRecord source, authorization, sensitivity, retention, and verification notes for manually added CRM material.\n",
+    )
+    _write_json(
+        dossier_dir / "provenance" / "source_log.json",
+        {"schema": "orb_weaver.cali_crm_source_log.v1", "entries": []},
+    )
+    return {
+        "path": str(dossier_dir),
+        "manifest": str(dossier_dir / "dossier.json"),
+        "folders": [
+            "documents/inbox",
+            "documents/contracts",
+            "documents/notes",
+            "documents/screenshots",
+            "research",
+            "web_history",
+            "knowledge",
+            "provenance",
+        ],
+    }
+
+
+def _serialize_cali_crm_contact(row: sqlite3.Row | Tuple[Any, ...]) -> Dict[str, Any]:
+    keys = [
+        "id",
+        "display_name",
+        "contact_type",
+        "company_name",
+        "role_title",
+        "email",
+        "phone",
+        "website",
+        "relationship_status",
+        "tags_json",
+        "notes",
+        "dossier_path",
+        "created_at",
+        "updated_at",
+    ]
+    data = dict(zip(keys, row)) if not isinstance(row, sqlite3.Row) else dict(row)
+    try:
+        data["tags"] = json.loads(data.pop("tags_json") or "[]")
+    except Exception:
+        data["tags"] = []
+    return data
+
+
+class CaliCrmContactCreate(BaseModel):
+    display_name: str = Field(min_length=1, max_length=255)
+    contact_type: str = Field(default="business_contact", max_length=80)
+    company_name: Optional[str] = Field(default=None, max_length=255)
+    role_title: Optional[str] = Field(default=None, max_length=255)
+    email: Optional[str] = Field(default=None, max_length=255)
+    phone: Optional[str] = Field(default=None, max_length=80)
+    website: Optional[str] = Field(default=None, max_length=500)
+    relationship_status: str = Field(default="active", max_length=80)
+    tags: List[str] = Field(default_factory=list)
+    notes: str = ""
+
+
 def _customer_crm_import_record(customer: Customer, db: Session) -> Dict:
     projects = db.query(Project).filter(Project.customer_id == customer.id).all()
     return {
@@ -3132,6 +3512,7 @@ def _score_keyword_match(transcript: str, keywords: List[str]) -> float:
 def _lookup_domain_runtime_tool(
     website_context: Optional[Dict[str, Any]],
     transcript: str,
+    operating_policy: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     if not website_context:
         return None
@@ -3155,7 +3536,20 @@ def _lookup_domain_runtime_tool(
         return None
 
     score, entry, source = sorted(candidates, key=lambda item: item[0], reverse=True)[0]
+    enforcement = (operating_policy or {}).get("enforcement") or {}
+    allowed_tools = set(enforcement.get("allowed_tools") or [])
+    tool_id = str(entry.get("id") or "")
+    if operating_policy and tool_id and tool_id not in allowed_tools:
+        return None
     navigation = _navigation_decision(website_context, entry.get("suggested_route"))
+    allowed_routes = set(enforcement.get("allowed_routes") or [])
+    if operating_policy and navigation["may_navigate"] and navigation["route"] not in allowed_routes:
+        navigation = {
+            "status": "blocked",
+            "may_navigate": False,
+            "route": navigation["route"],
+            "reason": "route_not_permitted_by_owner_policy",
+        }
     spoken_output = str(entry.get("spoken_output") or "").strip()
     if navigation["status"] == "blocked":
         spoken_output = "I cannot verify that destination in the approved site map, so I will not move you there."
@@ -3163,6 +3557,7 @@ def _lookup_domain_runtime_tool(
         "spoken_output": spoken_output,
         "llm_source": source,
         "cache_entry_id": entry.get("id"),
+        "policy_version": (operating_policy or {}).get("version"),
         "cache_score": round(score, 3),
         "suggested_route": navigation["route"] if navigation["may_navigate"] else None,
         "navigation": navigation,
@@ -3914,6 +4309,111 @@ def _compute_stats(pages: List[CrawledPage]) -> Dict:
     return stats
 
 
+def _count_lexical_terms(pages: List[CrawledPage]) -> int:
+    terms = set()
+    for page in pages:
+        semantic = page.semantic_analysis or {}
+        for item in semantic.get("top_terms") or []:
+            if isinstance(item, dict) and item.get("term"):
+                terms.add(str(item["term"]).strip().lower())
+        score = semantic.get("orb_semantic_score") or {}
+        for term in score.get("expected_terms") or []:
+            if term:
+                terms.add(str(term).strip().lower())
+    return len({term for term in terms if term})
+
+
+def _count_entities(pages: List[CrawledPage]) -> int:
+    entities = set()
+    for page in pages:
+        entity_data = page.entity_analysis or {}
+        for bucket in ("named_entities", "people", "organizations", "locations", "product_names", "schema_org_entities"):
+            for entity in entity_data.get(bucket) or []:
+                if entity:
+                    entities.add(f"{bucket}:{str(entity).strip().lower()}")
+    return len(entities)
+
+
+def _scan_stage(
+    stage_id: str,
+    label: str,
+    status: str,
+    metrics: Optional[List[Dict[str, Any]]] = None,
+    note: Optional[str] = None,
+) -> Dict[str, Any]:
+    return {
+        "id": stage_id,
+        "label": label,
+        "status": status,
+        "metrics": metrics or [],
+        "note": note,
+    }
+
+
+def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: Dict) -> Dict[str, Any]:
+    status = crawl_job.status
+    running = status in {"pending", "running", "cancel_requested"}
+    complete = status == "completed"
+    failed = status in {"failed", "cancelled"}
+    stage_status = "complete" if complete else "running" if running else "failed" if failed else "not_started"
+    pages_crawled = int(crawl_job.pages_crawled or len(pages) or stats.get("total_pages") or 0)
+    pages_found = int(crawl_job.pages_found or stats.get("discovered_urls") or stats.get("visited_urls") or pages_crawled)
+    total_sections = sum(
+        len((page.h2_tags or [])) + (1 if page.h1 else 0) + (1 if page.title else 0)
+        for page in pages
+    )
+    lexical_terms = _count_lexical_terms(pages)
+    entity_count = _count_entities(pages)
+    relationship_count = len((crawl_job.config or {}).get("knowledge_graph", {}).get("edges", []) or [])
+    pointer_summary = stats.get("pointer_summary") or _pointer_summary_from_pages(pages)
+    pointer_count = int(pointer_summary.get("record_count") or 0)
+    dynamic_controls = int(pointer_summary.get("target_type_counts", {}).get("dynamic_control", 0) or 0)
+    route_categories = (stats.get("route_category_counts") or (crawl_job.config or {}).get("route_category_counts") or {})
+    route_count = sum(int(value or 0) for value in route_categories.values()) if isinstance(route_categories, dict) else 0
+
+    derived_note = "Derived from crawl semantic fields until the first-class lexicon records are implemented."
+    unavailable_note = "Backend subsystem not implemented yet; no fake scan step is reported."
+    future_status = "not_started" if complete else "waiting" if running else stage_status
+
+    return {
+        "schema": "orb_weaver.scan_assembly_status.v1",
+        "crawl_job_id": str(crawl_job.id),
+        "overall_status": "orb_ready" if complete else status,
+        "crawl_delay_seconds": float((crawl_job.config or {}).get("delay") or 0),
+        "stages": [
+            _scan_stage("page_content_scan", "Page Content Scan", stage_status, [
+                {"label": "pages processed", "value": pages_crawled, "total": pages_found or None},
+            ]),
+            _scan_stage("semantic_indexing", "Semantic Indexing", stage_status, [
+                {"label": "content sections analyzed", "value": total_sections},
+                {"label": "thin pages", "value": int(stats.get("semantic_thin_pages") or 0)},
+            ]),
+            _scan_stage("lexical_indexing", "Lexical Indexing", stage_status, [
+                {"label": "canonical terms discovered", "value": lexical_terms},
+                {"label": "aliases resolved", "value": 0},
+            ], derived_note),
+            _scan_stage("entity_extraction", "Entity Extraction", stage_status, [
+                {"label": "unique entities extracted", "value": entity_count},
+            ]),
+            _scan_stage("relationship_mapping", "Relationship Mapping", "complete" if complete and relationship_count else future_status, [
+                {"label": "relationships mapped", "value": relationship_count},
+            ]),
+            _scan_stage("pointer_mapping", "Pointer Mapping", stage_status, [
+                {"label": "controls confirmed", "value": pointer_count},
+                {"label": "dynamic controls detected", "value": dynamic_controls},
+            ]),
+            _scan_stage("route_classification", "Route Classification", "complete" if complete and route_count else future_status, [
+                {"label": "routes classified", "value": route_count},
+            ]),
+            _scan_stage("knowledge_chunking", "Knowledge Chunking", "not_started", [], unavailable_note),
+            _scan_stage("retrieval_index_build", "Retrieval Index Build", "not_started", [], unavailable_note),
+            _scan_stage("source_validation", "Source Validation", stage_status, [
+                {"label": "source links validated", "value": int(stats.get("indexable_pages") or 0), "total": pages_crawled or None},
+            ]),
+        ],
+    }
+
+
 def _pointer_summary_from_pages(pages: List[CrawledPage]) -> Dict:
     records = []
     route_ids: Dict[str, List[str]] = {}
@@ -4508,6 +5008,7 @@ def _serialize_crawl_job(crawl_job: CrawlJob, db: Session, include_pages: bool =
         "pages_found": crawl_job.pages_found,
         "errors_count": crawl_job.errors_count,
         "stats": stats,
+        "assembly_status": _scan_assembly_status(crawl_job, pages, stats),
         "pointer_summary": stats.get("pointer_summary") or _pointer_summary_from_pages(pages),
         "planned_tool_calls": stats.get("planned_tool_calls") or _planned_tool_calls(stats.get("pointer_summary") or {}, stats),
         "historical": config.get("historical"),
@@ -4539,6 +5040,48 @@ def _serialize_audit_report(report: AuditReport) -> Dict:
         } if project else None,
         "created_at": report.created_at.isoformat() if report.created_at else None,
         "report": report.report_data,
+    }
+
+
+def _audit_delta(latest_audit: Optional[AuditReport], db: Session) -> Optional[Dict[str, Any]]:
+    if not latest_audit:
+        return None
+    previous = (
+        db.query(AuditReport)
+        .filter(
+            AuditReport.project_id == latest_audit.project_id,
+            AuditReport.id != latest_audit.id,
+        )
+        .order_by(AuditReport.id.desc())
+        .first()
+    )
+    if not previous:
+        return {"has_previous": False, "deltas": {}}
+
+    latest_payload = latest_audit.report_data or {}
+    previous_payload = previous.report_data or {}
+    latest_scores = latest_payload.get("scores") or {}
+    previous_scores = previous_payload.get("scores") or {}
+    latest_summary = latest_payload.get("summary") or {}
+    previous_summary = previous_payload.get("summary") or {}
+    keys = {
+        **{f"score_{key}": (latest_scores.get(key), previous_scores.get(key)) for key in sorted(set(latest_scores) | set(previous_scores))},
+        "total_issues": (latest_summary.get("total_issues"), previous_summary.get("total_issues")),
+        "critical_count": (latest_summary.get("critical_count"), previous_summary.get("critical_count")),
+        "warning_count": (latest_summary.get("warning_count"), previous_summary.get("warning_count")),
+        "opportunity_count": (latest_summary.get("opportunity_count"), previous_summary.get("opportunity_count")),
+        "total_pages": (latest_summary.get("total_pages"), previous_summary.get("total_pages")),
+    }
+    deltas = {
+        key: float(current or 0) - float(prior or 0)
+        for key, (current, prior) in keys.items()
+        if current is not None or prior is not None
+    }
+    return {
+        "has_previous": True,
+        "latest_audit_id": str(latest_audit.id),
+        "previous_audit_id": str(previous.id),
+        "deltas": deltas,
     }
 
 
@@ -5340,6 +5883,7 @@ async def website_orb_voice(
     memory_context = _orb_memory_summary(customer, db)
     context_target_url = _orb_context_target_url(target_url, site_id, origin)
     website_context = _load_domain_website_context(context_target_url)
+    operating_policy = _published_dock_policy_for_target(context_target_url or target_url, db)
     if website_context is not None:
         website_context["current_url"] = target_url
         website_context["current_domain"] = _domain_from_url(target_url)
@@ -5356,7 +5900,7 @@ async def website_orb_voice(
     mark("cognitive_pulse", started)
 
     pointer_matches = _lookup_pointer_context(website_context, transcript)
-    domain_cache_hit = _lookup_domain_runtime_tool(website_context, transcript)
+    domain_cache_hit = _lookup_domain_runtime_tool(website_context, transcript, operating_policy)
     if domain_cache_hit and domain_cache_hit.get("spoken_output"):
         spoken_output = domain_cache_hit["spoken_output"]
         tts_cache_before = _tts_cache_probe(spoken_output)
@@ -5405,7 +5949,14 @@ async def website_orb_voice(
         }
 
     started = time.perf_counter()
-    llm_result = await _llm_orb_spoken_output(transcript, cognitive_pulse, memory_context, website_context, page_capsule)
+    llm_result = await _llm_orb_spoken_output(
+        transcript,
+        cognitive_pulse,
+        memory_context,
+        website_context,
+        page_capsule,
+        operating_policy,
+    )
     mark("answer_selection", started)
 
     tts_cache_before = _tts_cache_probe(llm_result["spoken_output"])
@@ -5462,6 +6013,7 @@ async def website_orb_text(
     target_url = payload.target_url or (_project_target_url(project) if project else None)
     context_target_url = _orb_context_target_url(target_url, payload.site_id, origin)
     website_context = _load_domain_website_context(context_target_url)
+    operating_policy = _published_dock_policy_for_target(context_target_url or target_url, db)
     page_capsule = _build_page_capsule(context_target_url or "") if context_target_url else None
     if website_context is not None:
         website_context["current_url"] = target_url
@@ -5495,7 +6047,7 @@ async def website_orb_text(
             "memory_context": memory_context,
             **tts_result,
         }
-    domain_cache_hit = _lookup_domain_runtime_tool(website_context, transcript)
+    domain_cache_hit = _lookup_domain_runtime_tool(website_context, transcript, operating_policy)
     if domain_cache_hit and domain_cache_hit.get("spoken_output"):
         tts_result = {
             "tts_audio_url": domain_cache_hit.get("tts_audio_url"),
@@ -5522,7 +6074,14 @@ async def website_orb_text(
             **tts_result,
         }
     cognitive_pulse = _orb_cognitive_pulse(transcript)
-    llm_result = await _llm_orb_spoken_output(transcript, cognitive_pulse, memory_context, website_context, page_capsule)
+    llm_result = await _llm_orb_spoken_output(
+        transcript,
+        cognitive_pulse,
+        memory_context,
+        website_context,
+        page_capsule,
+        operating_policy,
+    )
     tts_result = (
         await _synthesize_orb_tts(llm_result["spoken_output"])
         if payload.synthesize_tts
@@ -5597,6 +6156,7 @@ async def website_orb_bootstrap(
     ready = bool(website_context) and int(pointer_map.get("record_count") or 0) > 0
     pointer_quality = pointer_map.get("quality") or assess_pointer_quality(pointer_map)
     pointer_recovery_required = bool(pointer_quality.get("recovery_required"))
+    compiled_policy = _published_dock_policy_for_target(context_target_url or target_url, db)
     return {
         "schema": "orb_weaver.loader_bootstrap.v1",
         "status": "ready" if ready else "awaiting_scan",
@@ -5629,18 +6189,8 @@ async def website_orb_bootstrap(
             "passed": ready and not pointer_recovery_required,
             "blockers": ["POINTER_RECOVERY_REQUIRED"] if pointer_recovery_required else [],
         },
-        "orb_identity": {
-            "skin_id": "orb_factory_default_v1",
-            "display_name": "O.R.B.S. Factory Default",
-            "asset_path": "/orb-skins/tuxorb.png",
-            "asset_sha256": "f447043b007e9aba07c0c67e3b5749751f8db327b21b09f1a763eca359e73ca5",
-            "customization_state": "FACTORY_DEFAULT",
-            "owner_consent_required": False,
-            "owner_editable": False,
-            "immutable_default": True,
-            "reversible": True,
-            "fallback_enabled": True,
-        },
+        "orb_identity": _dock_orb_identity(compiled_policy),
+        "operating_policy": public_runtime_policy(compiled_policy),
         "capabilities": _orb_capabilities(),
         "endpoints": {
             "bootstrap": "/api/orb/bootstrap",
@@ -5996,7 +6546,106 @@ async def admin_export_customers_to_cali_crm(
     }
     output_path = import_dir / f"orb_weaver_customers_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
     _write_json(output_path, payload)
-    return {"status": "exported", "record_count": len(customers), "path": str(output_path), "crm_url": settings.CALI_CRM_URL}
+    return {
+        "status": "exported",
+        "record_count": len(customers),
+        "path": str(output_path),
+        "crm_url": settings.CALI_CRM_URL,
+    }
+
+
+@app.get("/api/admin/cali-crm/contacts")
+async def admin_list_cali_crm_contacts(_admin: Customer = Depends(require_admin)):
+    db_path = _ensure_cali_crm_database()
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT id, display_name, contact_type, company_name, role_title, email, phone, website,
+                   relationship_status, tags_json, notes, dossier_path, created_at, updated_at
+            FROM contacts
+            ORDER BY updated_at DESC, id DESC
+            """
+        ).fetchall()
+    return {
+        "schema": "orb_weaver.cali_crm_contact_list.v1",
+        "database_path": str(db_path),
+        "dossier_root": str(_cali_crm_contacts_root()),
+        "contacts": [_serialize_cali_crm_contact(row) for row in rows],
+    }
+
+
+@app.post("/api/admin/cali-crm/contacts")
+async def admin_create_cali_crm_contact(
+    payload: CaliCrmContactCreate,
+    _admin: Customer = Depends(require_admin),
+):
+    db_path = _ensure_cali_crm_database()
+    now = datetime.utcnow().isoformat()
+    tags = [tag.strip() for tag in payload.tags if tag.strip()]
+    with sqlite3.connect(db_path) as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO contacts (
+                display_name, contact_type, company_name, role_title, email, phone, website,
+                relationship_status, tags_json, notes, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                payload.display_name.strip(),
+                payload.contact_type.strip() or "business_contact",
+                payload.company_name,
+                payload.role_title,
+                payload.email,
+                payload.phone,
+                payload.website,
+                payload.relationship_status.strip() or "active",
+                json.dumps(tags),
+                payload.notes,
+                now,
+                now,
+            ),
+        )
+        contact_id = cursor.lastrowid
+        contact_record = {
+            "id": str(contact_id),
+            "display_name": payload.display_name.strip(),
+            "contact_type": payload.contact_type.strip() or "business_contact",
+            "company_name": payload.company_name,
+            "role_title": payload.role_title,
+            "email": payload.email,
+            "phone": payload.phone,
+            "website": payload.website,
+            "relationship_status": payload.relationship_status.strip() or "active",
+            "tags": tags,
+            "notes": payload.notes,
+        }
+        dossier = _ensure_crm_contact_dossier(contact_record)
+        connection.execute(
+            "UPDATE contacts SET dossier_path = ?, updated_at = ? WHERE id = ?",
+            (dossier["path"], now, contact_id),
+        )
+        connection.execute(
+            """
+            INSERT INTO contact_events (contact_id, event_type, summary, metadata_json, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (contact_id, "contact_created", "Manual CALI CRM contact created", json.dumps({"dossier": dossier}), now),
+        )
+        row = connection.execute(
+            """
+            SELECT id, display_name, contact_type, company_name, role_title, email, phone, website,
+                   relationship_status, tags_json, notes, dossier_path, created_at, updated_at
+            FROM contacts WHERE id = ?
+            """,
+            (contact_id,),
+        ).fetchone()
+    return {
+        "schema": "orb_weaver.cali_crm_contact_created.v1",
+        "database_path": str(db_path),
+        "contact": _serialize_cali_crm_contact(row),
+        "dossier": dossier,
+    }
 
 
 @app.get("/api/admin/browser-lab/tools")
@@ -7501,9 +8150,15 @@ async def export_audit_pdf(audit_id: str, db: Session = Depends(get_db), custome
 async def report_compiler(project_id: str, db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
     project = _owned_project(project_id, customer, db)
 
-    latest_crawl = (
+    latest_completed_crawl = (
         db.query(CrawlJob)
         .filter(CrawlJob.project_id == project.id, CrawlJob.status == "completed")
+        .order_by(CrawlJob.id.desc())
+        .first()
+    )
+    latest_crawl = (
+        db.query(CrawlJob)
+        .filter(CrawlJob.project_id == project.id)
         .order_by(CrawlJob.id.desc())
         .first()
     )
@@ -7565,6 +8220,163 @@ async def merge_orbs_guest_session(
             status_code=rejection.status_code,
             content={"code": rejection.code, "detail": str(rejection)},
         )
+
+
+@app.get("/api/projects/{project_id}/orb-dock")
+async def get_orb_dock_station(
+    project_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    record = _dock_record(project, customer, db, create=True)
+    db.commit()
+    db.refresh(record)
+    return _serialize_dock(project, record)
+
+
+@app.put("/api/projects/{project_id}/orb-dock")
+async def save_orb_dock_draft(
+    project_id: str,
+    payload: DockConfiguration,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    record = _dock_record(project, customer, db, create=True)
+    record.draft_configuration = payload.model_dump(mode="json")
+    record.publication_status = "draft"
+    record.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(record)
+    return _serialize_dock(project, record)
+
+
+@app.post("/api/projects/{project_id}/orb-dock/compile")
+async def compile_orb_dock_draft(
+    project_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    record = _dock_record(project, customer, db, create=True)
+    compile_result = _dock_compile(project, record)
+    db.commit()
+    db.refresh(record)
+    return _serialize_dock(project, record, compile_result)
+
+
+@app.post("/api/projects/{project_id}/orb-dock/publish")
+async def publish_orb_dock_policy(
+    project_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    record = _dock_record(project, customer, db, create=True)
+    compile_result = _dock_compile(project, record)
+    if not compile_result["publishable"]:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "code": "dock_policy_not_publishable",
+                "detail": "Resolve the Dock Station compile blockers before publication.",
+                "blockers": compile_result["blockers"],
+                "warnings": compile_result["warnings"],
+            },
+        )
+    record.compiled_policy = compile_result["compiled_policy"]
+    record.compiled_hash = compile_result["compiled_hash"]
+    record.version = int(record.version or 0) + 1
+    record.publication_status = "published"
+    record.published_at = datetime.utcnow()
+    record.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(record)
+
+    policy_root = client_root(project.domain) / "website_orb_context"
+    policy_root.mkdir(parents=True, exist_ok=True)
+    policy_path = require_vault_path(policy_root / "orb_dock_policy.json", "Website ORB Dock policy")
+    temporary_path = policy_path.with_suffix(".json.tmp")
+    temporary_path.write_text(
+        json.dumps(record.compiled_policy, indent=2, sort_keys=True, ensure_ascii=True),
+        encoding="utf-8",
+    )
+    temporary_path.replace(policy_path)
+    return _serialize_dock(project, record, compile_result)
+
+
+@app.get("/api/projects/{project_id}/orb-dock/ollama")
+async def inspect_orb_dock_ollama(
+    project_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    _owned_project(project_id, customer, db)
+    base_url = _ollama_base_url()
+    if not base_url:
+        return {
+            "configured": False,
+            "reachable": False,
+            "endpoint": None,
+            "models": [],
+            "message": "Configure LOCAL_LLM_URL on the local Orb Weaver backend to connect Ollama.",
+        }
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(f"{base_url}/api/tags")
+            response.raise_for_status()
+        models = [
+            {
+                "name": str(item.get("name") or item.get("model") or ""),
+                "size": int(item.get("size") or 0),
+                "modified_at": item.get("modified_at"),
+            }
+            for item in response.json().get("models") or []
+            if item.get("name") or item.get("model")
+        ]
+        return {
+            "configured": True,
+            "reachable": True,
+            "endpoint": base_url,
+            "models": models,
+            "message": f"{len(models)} local Ollama model{'s' if len(models) != 1 else ''} available.",
+        }
+    except Exception as exc:
+        return {
+            "configured": True,
+            "reachable": False,
+            "endpoint": base_url,
+            "models": [],
+            "message": f"Ollama is configured but unavailable: {str(exc)[:240]}",
+        }
+
+
+@app.post("/api/projects/{project_id}/orb-dock/ollama/pull")
+async def pull_orb_dock_ollama_model(
+    project_id: str,
+    payload: OllamaModelPullRequest,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    _owned_project(project_id, customer, db)
+    base_url = _ollama_base_url()
+    if not base_url:
+        raise HTTPException(status_code=503, detail="LOCAL_LLM_URL is not configured on this local Orb Weaver backend")
+    try:
+        model = safe_model_name(payload.model)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    try:
+        async with httpx.AsyncClient(timeout=900.0) as client:
+            response = await client.post(
+                f"{base_url}/api/pull",
+                json={"model": model, "stream": False},
+            )
+            response.raise_for_status()
+        return {"status": "downloaded", "model": model, "ollama": response.json()}
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Ollama model download failed: {str(exc)[:240]}")
 
 
 @app.get("/api/projects/{project_id}/orbs-stage")
@@ -7942,13 +8754,16 @@ async def get_combined_dashboard(project_id: str, db: Session = Depends(get_db),
         except Exception:
             ga4_data = None
 
-    crawl_summary = _serialize_crawl_job(latest_crawl, db).get("stats") if latest_crawl else None
+    latest_crawl_payload = _serialize_crawl_job(latest_crawl, db) if latest_crawl else None
+    crawl_summary = _serialize_crawl_job(latest_completed_crawl, db).get("stats") if latest_completed_crawl else None
     audit_payload = latest_audit.report_data if latest_audit and latest_audit.report_data else None
 
     return {
         "project": _serialize_project(project, db),
         "crawl_summary": crawl_summary,
+        "latest_crawl": latest_crawl_payload,
         "latest_audit": _serialize_audit_report(latest_audit) if audit_payload else None,
+        "audit_delta": _audit_delta(latest_audit, db) if latest_audit else None,
         "audit_scores": audit_payload.get("scores") if audit_payload else None,
         "audit_issues": audit_payload.get("summary") if audit_payload else None,
         "ga4_data": ga4_data,

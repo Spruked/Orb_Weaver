@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Globe, CheckCircle, XCircle, Image, Search, Download, Activity, Square } from 'lucide-react';
 import { api, CrawledPage, CrawlJob as CrawlJobType, downloads } from '../services/api';
+import OrbAssemblyStatus from '../components/OrbAssemblyStatus';
+import CrawlChangeSummary from '../components/CrawlChangeSummary';
 
 const RUNNING_STATUSES = new Set(['pending', 'running', 'cancel_requested']);
 
@@ -305,13 +307,18 @@ const CrawlJob: React.FC = () => {
       {crawlData.error && <div className="card text-red-600">{crawlData.error}</div>}
 
       {isActiveCrawl && (
-        <CrawlProgressPanel
-          status={crawlData.status}
-          progress={progress}
-          pagesCrawled={pagesCrawled}
-          pagesFound={pagesFound}
-        />
+        <div className="space-y-4">
+          <CrawlProgressPanel
+            status={crawlData.status}
+            progress={progress}
+            pagesCrawled={pagesCrawled}
+            pagesFound={pagesFound}
+          />
+          <OrbAssemblyStatus assembly={crawlData.assembly_status} />
+        </div>
       )}
+
+      {!isActiveCrawl && <OrbAssemblyStatus assembly={crawlData.assembly_status} />}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card">
@@ -790,23 +797,7 @@ const CrawlJob: React.FC = () => {
         </div>
       )}
       {activeTab === 'history' && (
-        <div className="card">
-          <h3 className="font-bold text-gray-900 mb-4">Historical Delta</h3>
-          {!crawlData.historical?.has_previous ? (
-            <p className="text-gray-500">No previous completed crawl exists for this project.</p>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {Object.entries(crawlData.historical.deltas || {}).map(([key, value]) => (
-                <div key={key} className="flex justify-between py-2 border-b border-gray-100">
-                  <span className="text-gray-600 capitalize">{key.replace(/_/g, ' ')}</span>
-                  <span className={`font-semibold ${value > 0 ? 'text-blue-600' : value < 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                    {value > 0 ? '+' : ''}{Number(value).toFixed(key.includes('load_time') ? 1 : 0)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <CrawlChangeSummary crawl={crawlData} />
       )}
       {activeTab === 'competitors' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

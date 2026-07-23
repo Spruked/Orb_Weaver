@@ -19,7 +19,7 @@ const PublicHeader: React.FC<PublicHeaderProps> = ({ theme = 'dark' }) => {
   return (
     <header className={`ow-public-header ow-public-header-${theme}`}>
       <a className="ow-public-brand" href="/" aria-label="Orb Weaver home">
-        <span className="ow-public-brand-dot" />
+        <img className="ow-public-brand-logo" src="/apple-touch-icon.png" alt="" aria-hidden="true" />
         <span>ORB WEAVER</span>
       </a>
       <nav className="ow-public-nav" aria-label="Public site navigation">

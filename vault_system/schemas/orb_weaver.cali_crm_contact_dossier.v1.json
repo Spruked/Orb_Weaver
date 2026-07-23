@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orb_weaver.cali_crm_contact_dossier.v1",
+  "title": "CALI CRM Contact Dossier",
+  "type": "object",
+  "required": ["schema", "generated_at", "source", "contact", "dossier_sections", "manual_data_boundary"],
+  "properties": {
+    "schema": {
+      "const": "orb_weaver.cali_crm_contact_dossier.v1"
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "contact": {
+      "type": "object"
+    },
+    "dossier_sections": {
+      "type": "object",
+      "properties": {
+        "profile": { "type": "object" },
+        "documents": { "type": "object" },
+        "research": { "type": "object" },
+        "web_history": { "type": "object" },
+        "knowledge": { "type": "object" },
+        "provenance": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "orb_weaver_project_history": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "manual_data_boundary": {
+      "type": "object",
+      "required": [
+        "automated_research_enabled",
+        "manual_document_drop_enabled",
+        "source_notes_required_for_research_entries",
+        "sensitive_data_review_required"
+      ],
+      "properties": {
+        "automated_research_enabled": { "type": "boolean" },
+        "manual_document_drop_enabled": { "type": "boolean" },
+        "source_notes_required_for_research_entries": { "type": "boolean" },
+        "sensitive_data_review_required": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

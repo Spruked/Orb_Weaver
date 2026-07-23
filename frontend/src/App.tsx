@@ -11,6 +11,7 @@ import CrawlJobs from './pages/CrawlJobs';
 import CrawlJob from './pages/CrawlJob';
 import AuditReport from './pages/AuditReport';
 import OrbsIntegration from './pages/OrbsIntegration';
+import OrbDockStation from './pages/OrbDockStation';
 import GA4Dashboard from './pages/GA4Dashboard';
 import ReportCompiler from './pages/ReportCompiler';
 import AuthPage, { AuthenticationOutcome } from './pages/AuthPage';
@@ -166,6 +167,7 @@ function App() {
             <Route path="/crawl/:jobId" element={<CrawlJob />} />
             <Route path="/audit/:auditId" element={<AuditReport />} />
             <Route path="/orbs/:projectId" element={<OrbsIntegration />} />
+            <Route path="/orbs/:projectId/dock" element={<OrbDockStation />} />
             <Route path="/ga4" element={<GA4Dashboard />} />
             <Route path="/ga4/:propertyId" element={<GA4Dashboard />} />
             <Route path="/reports" element={<ReportCompiler />} />

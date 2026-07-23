@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     # must never create a Windows-looking directory inside Linux.
     ORB_WEAVER_SUBSTRATE_ROOT: str = "../vault_system"
     PUBLIC_BASE_URL: str = "https://orbweaver.spruked.com"
-    CALI_CRM_URL: str = "http://localhost:21010/"
+    CALI_CRM_URL: str = "http://localhost:21000/"
+    PRIME_MAIL_URL: str = "http://localhost:19000/"
     CALI_CRM_TOKEN: Optional[str] = "spruked-admin-local"
     CALI_CRM_SYNC_ON_SIGNUP: bool = True
     # Orb Weaver owns only the outbound CRM bridge records it creates. Those

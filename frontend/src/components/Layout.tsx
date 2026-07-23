@@ -15,6 +15,7 @@ import {
   Activity,
   BrainCircuit,
   ChevronLeft,
+  Mail,
   Menu
 } from 'lucide-react';
 import { Customer } from '../services/api';
@@ -42,11 +43,19 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
     { path: '/demo', icon: Sparkles, label: 'Demo' },
     { path: '/diagnostics', icon: Activity, label: 'Diagnostics', reload: true },
     { path: '/cart', icon: ShoppingCart, label: 'Cart' },
-    ...(customer.is_admin ? [{ path: '/admin/customers', icon: Shield, label: 'Admin' }] : []),
+    ...(customer.is_admin ? [
+      { path: '/admin/customers', icon: Shield, label: 'Admin' },
+      { path: 'http://localhost:21010/', icon: BrainCircuit, label: 'CALI CRM', reload: true },
+      { path: 'http://localhost:19000', icon: Mail, label: 'Prime Mail', reload: true },
+    ] : []),
     { path: '/account', icon: User, label: 'Account' },
   ];
   const pageTitle = location.pathname === '/welcome'
     ? 'Workspace Setup'
+    : location.pathname.endsWith('/dock')
+      ? 'Dock Station'
+      : location.pathname.startsWith('/orbs/')
+        ? 'Website ORBS'
     : navItems.find(n => location.pathname === n.path ||
       (n.path !== '/' && location.pathname.startsWith(n.path)))?.label || 'Dashboard';
 

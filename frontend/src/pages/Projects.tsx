@@ -336,7 +336,7 @@ const Projects: React.FC = () => {
     try {
       const config = {
         max_pages: 500,
-        delay: 1,
+        delay: 1.5,
         max_depth: 8,
         seed_urls: WEBSITE_CONTEXT_SEED_URLS,
         include_admin_sections: includeAdminSections,
@@ -394,7 +394,7 @@ const Projects: React.FC = () => {
     try {
       await api.startLifecycleJob(projectId, jobType, jobType === 'MAP_CRAWL' ? {
         max_pages: 500,
-        delay: 1,
+        delay: 1.5,
         max_depth: 8,
         seed_urls: WEBSITE_CONTEXT_SEED_URLS,
         include_admin_sections: includeAdminSections,

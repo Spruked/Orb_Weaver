@@ -365,6 +365,23 @@ class OrbsBuildOrder(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class OrbDockPolicy(Base):
+    __tablename__ = "orb_dock_policies"
+    __table_args__ = (UniqueConstraint("project_id", name="uq_orb_dock_policy_project"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    draft_configuration = Column(JSON, default=dict)
+    compiled_policy = Column(JSON, default=dict)
+    publication_status = Column(String(40), nullable=False, default="draft", index=True)
+    version = Column(Integer, nullable=False, default=0)
+    compiled_hash = Column(String(64), nullable=True)
+    published_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class OrbsStageEvent(Base):
     __tablename__ = "orbs_stage_events"
 

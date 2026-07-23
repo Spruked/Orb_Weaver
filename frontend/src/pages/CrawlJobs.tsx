@@ -103,7 +103,7 @@ const CrawlJobs: React.FC = () => {
     try {
       const crawl = await api.recrawlProject(job.project_id, {
         max_pages: Number(job.config?.max_pages || 500),
-        delay: Number(job.config?.delay || 1),
+        delay: 1.5,
         max_depth: Number(job.config?.max_depth || 8),
         competitor_domains: job.config?.competitor_domains || [],
         seed_urls: job.config?.seed_urls?.length ? job.config.seed_urls : WEBSITE_CONTEXT_SEED_URLS,

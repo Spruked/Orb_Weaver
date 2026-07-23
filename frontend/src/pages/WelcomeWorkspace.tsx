@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import {
   ApiError,
   api,
+  AuditDelta,
+  CrawlJob,
   Customer,
   OrbsAllowedAction,
   OrbsGuestMergeResult,
@@ -14,6 +16,9 @@ import {
   currentGuestReference,
   mergeIdempotencyKey,
 } from '../onboarding/guestOnboarding';
+import CrawlChangeSummary from '../components/CrawlChangeSummary';
+import OrbAssemblyStatus from '../components/OrbAssemblyStatus';
+import AuditChangeSummary from '../components/AuditChangeSummary';
 import './Onboarding.css';
 
 interface WelcomeWorkspaceProps {
@@ -51,6 +56,19 @@ const WelcomeWorkspace: React.FC<WelcomeWorkspaceProps> = ({
   const [loading, setLoading] = useState(!initialMergeResult);
   const [workingAction, setWorkingAction] = useState('');
   const [error, setError] = useState(initialMergeError);
+  const [latestCrawl, setLatestCrawl] = useState<CrawlJob | null>(null);
+  const [auditDelta, setAuditDelta] = useState<AuditDelta | null>(null);
+
+  const loadProjectEvidence = useCallback(async (projectId: string) => {
+    try {
+      const dashboard = await api.getCombinedDashboard(projectId);
+      setLatestCrawl(dashboard.latest_crawl || null);
+      setAuditDelta(dashboard.audit_delta || null);
+    } catch {
+      setLatestCrawl(null);
+      setAuditDelta(null);
+    }
+  }, []);
 
   const recoverAuthoritativeState = useCallback(async () => {
     setLoading(true);
@@ -66,6 +84,7 @@ const WelcomeWorkspace: React.FC<WelcomeWorkspaceProps> = ({
         });
         clearMergedGuestReference(guestSessionId);
         setSnapshot(result.fresh_snapshot);
+        void loadProjectEvidence(result.fresh_snapshot.project_id);
         trackOnboardingEvent('guest_merge_completed', { outcome: result.merge_status });
         trackOnboardingEvent('onboarding_completed', { outcome: 'recovered' });
         return;
@@ -73,7 +92,9 @@ const WelcomeWorkspace: React.FC<WelcomeWorkspaceProps> = ({
 
       const requestedProject = new URLSearchParams(window.location.search).get('project');
       if (requestedProject) {
-        setSnapshot(await api.getOrbsStage(requestedProject));
+        const fresh = await api.getOrbsStage(requestedProject);
+        setSnapshot(fresh);
+        void loadProjectEvidence(fresh.project_id);
         return;
       }
 
@@ -82,23 +103,26 @@ const WelcomeWorkspace: React.FC<WelcomeWorkspaceProps> = ({
         String(right.created_at || '').localeCompare(String(left.created_at || ''))
       )[0];
       if (!latest) throw new Error('No website project is attached to this account yet.');
-      setSnapshot(await api.getOrbsStage(String(latest.id)));
+      const fresh = await api.getOrbsStage(String(latest.id));
+      setSnapshot(fresh);
+      void loadProjectEvidence(fresh.project_id);
     } catch (caught) {
       const message = caught instanceof ApiError ? caught.message : caught instanceof Error ? caught.message : 'Unable to load the authoritative project state.';
       setError(message);
     } finally {
       setLoading(false);
     }
-  }, [customer.business_name]);
+  }, [customer.business_name, loadProjectEvidence]);
 
   useEffect(() => {
     if (initialMergeResult) {
       clearMergedGuestReference(initialMergeResult.guest_session_id);
+      void loadProjectEvidence(initialMergeResult.fresh_snapshot.project_id);
       setLoading(false);
       return;
     }
     void recoverAuthoritativeState();
-  }, [initialMergeResult, recoverAuthoritativeState]);
+  }, [initialMergeResult, recoverAuthoritativeState, loadProjectEvidence]);
 
   const invoke = async (action: OrbsAllowedAction) => {
     if (!snapshot) return;
@@ -133,6 +157,7 @@ const WelcomeWorkspace: React.FC<WelcomeWorkspaceProps> = ({
         } : {}),
       }, idempotencyKey);
       setSnapshot(fresh);
+      void loadProjectEvidence(fresh.project_id);
       const eventName = EVENT_BY_ACTION[action.name as keyof typeof EVENT_BY_ACTION];
       if (eventName) trackOnboardingEvent(eventName, { action: action.name });
       navigate(verifiedDestination);
@@ -214,6 +239,12 @@ const WelcomeWorkspace: React.FC<WelcomeWorkspaceProps> = ({
           </div>
           {error ? <p className="welcome-inline-error" role="alert">{error}</p> : null}
         </aside>
+      </div>
+
+      <div className="mt-6 grid gap-4">
+        <OrbAssemblyStatus assembly={latestCrawl?.assembly_status} compact />
+        <CrawlChangeSummary crawl={latestCrawl} title="What changed in this workspace recrawl" />
+        <AuditChangeSummary delta={auditDelta} />
       </div>
     </section>
   );
