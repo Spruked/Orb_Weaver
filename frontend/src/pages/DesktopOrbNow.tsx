@@ -32,6 +32,26 @@ const movementIntents = [
   'WARN',
 ];
 
+const statusCards = [
+  {
+    icon: Monitor,
+    title: 'Movement contract',
+    description: 'FieldMotion baseline, shared intent vocabulary, anti-linger doctrine, target clearance, and platform-specific renderers.',
+  },
+  {
+    icon: Activity,
+    title: 'Diagnostic surface',
+    description: 'A bounded, read-only system scan covering hardware, Windows, networking, applications, security, and ORB runtime health.',
+  },
+  {
+    icon: MousePointer2,
+    title: 'Endpoint and pointer logic',
+    description: 'Local endpoint discovery plus deterministic Windows UI Automation and accessibility-tree targets for verified guidance.',
+  },
+];
+
+const scanIcons = [Settings, FileText, Globe, ShieldCheck, Server, Search];
+
 const scanGroups: SurfaceGroup[] = [
   {
     title: 'System and hardware',
@@ -140,21 +160,14 @@ const DesktopOrbNow: React.FC = () => {
 
       <section className="px-5 py-14 sm:px-8 lg:px-16">
         <div className="mx-auto grid max-w-7xl gap-5 md:grid-cols-3">
-          {[
-            [Monitor, 'Movement contract', 'FieldMotion baseline, shared intent vocabulary, anti-linger doctrine, target clearance, and platform-specific renderers.'],
-            [Activity, 'Diagnostic surface', 'A bounded, read-only system scan covering hardware, Windows, networking, applications, security, and ORB runtime health.'],
-            [MousePointer2, 'Endpoint and pointer logic', 'Local endpoint discovery plus deterministic Windows UI Automation and accessibility-tree targets for verified guidance.'],
-          ].map(([Icon, title, description]) => {
-            const CardIcon = Icon as React.ComponentType<{ className?: string }>;
-            return (
-              <article key={String(title)} className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-                <CardIcon className="h-6 w-6 text-cyan-300" />
-                <h2 className="mt-4 text-xl font-bold">{String(title)}</h2>
-                <p className="mt-3 text-sm leading-6 text-slate-300">{String(description)}</p>
-                <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-orange-300">Prepared architecture</p>
-              </article>
-            );
-          })}
+          {statusCards.map(({ icon: Icon, title, description }) => (
+            <article key={title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
+              <Icon className="h-6 w-6 text-cyan-300" />
+              <h2 className="mt-4 text-xl font-bold">{title}</h2>
+              <p className="mt-3 text-sm leading-6 text-slate-300">{description}</p>
+              <p className="mt-5 text-xs font-bold uppercase tracking-[0.2em] text-orange-300">Prepared architecture</p>
+            </article>
+          ))}
         </div>
       </section>
 
@@ -199,8 +212,7 @@ const DesktopOrbNow: React.FC = () => {
           <h2 className="mt-3 text-3xl font-black">Observe the system. Interpret the evidence. Research only what the evidence requires.</h2>
           <div className="mt-9 grid gap-5 lg:grid-cols-2">
             {scanGroups.map((group, index) => {
-              const icons = [Settings, FileText, Globe, ShieldCheck, Server, Search];
-              const Icon = icons[index];
+              const Icon = scanIcons[index] || Activity;
               return (
                 <article key={group.title} className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
                   <div className="flex items-center gap-3">
