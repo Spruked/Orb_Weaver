@@ -88,6 +88,32 @@ const LandingPage: React.FC = () => {
         </div>
       </section>
 
+      <section id="desktop-orb-now" className="ow-v2-intelligence" aria-labelledby="desktop-orb-now-heading">
+        <div className="ow-v2-intelligence-copy">
+          <p className="ow-v2-kicker">NOW // DESKTOP ORB ASSISTANT</p>
+          <h2 id="desktop-orb-now-heading">Movement with intent. Diagnostics without entering the personal domain.</h2>
+          <p>
+            Orb Weaver is preparing the shared movement contract, system-only diagnostic surface,
+            endpoint discovery, and verified desktop pointer logic for the Desktop ORB Assistant.
+            The ORB will observe machine health, interpret evidence, and guide the owner to controls
+            without scanning personal documents, email, browser history, passwords, or financial data.
+          </p>
+          <div className="ow-v2-actions ow-v2-actions-inline">
+            <a
+              id="landing-desktop-orb-now"
+              data-orb-target="desktop-orb-now"
+              className="ow-v2-primary"
+              href="/now/desktop-orb"
+            >
+              Open Desktop ORB Now
+            </a>
+            <a className="ow-v2-secondary" href="/diagnostics">
+              Diagnostics Bay
+            </a>
+          </div>
+        </div>
+      </section>
+
       <section className="ow-v2-intelligence" aria-labelledby="intelligence-heading">
         <div className="ow-v2-intelligence-copy">
           <p className="ow-v2-kicker">WEBSITE INTELLIGENCE</p>

@@ -16,7 +16,8 @@ import {
   BrainCircuit,
   ChevronLeft,
   Mail,
-  Menu
+  Menu,
+  Monitor
 } from 'lucide-react';
 import { Customer } from '../services/api';
 
@@ -41,6 +42,7 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
     { path: '/marketplace', icon: Store, label: 'Marketplace', reload: true },
     { path: '/web-weave', icon: BrainCircuit, label: 'Site Update' },
     { path: '/demo', icon: Sparkles, label: 'Demo' },
+    { path: '/now/desktop-orb', icon: Monitor, label: 'Desktop ORB Now', reload: true },
     { path: '/diagnostics', icon: Activity, label: 'Diagnostics', reload: true },
     { path: '/cart', icon: ShoppingCart, label: 'Cart' },
     ...(customer.is_admin ? [
