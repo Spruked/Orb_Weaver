@@ -5,6 +5,7 @@ import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Demo from './pages/Demo';
 import DiagnosticsPlaceholder from './pages/DiagnosticsPlaceholder';
+import DesktopOrbNow from './pages/DesktopOrbNow';
 import WebWeave from './pages/WebWeave';
 import Projects from './pages/Projects';
 import CrawlJobs from './pages/CrawlJobs';
@@ -120,6 +121,9 @@ function App() {
   if (publicPath === '/investor-contact') {
     return renderPublicPage(<PublicLeadPage type="investor" />);
   }
+  if (publicPath === '/now/desktop-orb') {
+    return renderPublicPage(<DesktopOrbNow />);
+  }
   if (!customer && publicPath === '/privacy') {
     return renderPublicPage(<LegalPage type="privacy" />);
   }
@@ -161,6 +165,7 @@ function App() {
             <Route path="/welcome" element={<WelcomeWorkspace customer={customer} initialMergeResult={authenticationOutcome?.mergeResult} initialMergeError={authenticationOutcome?.mergeError} />} />
             <Route path="/demo" element={<Demo customer={customer} />} />
             <Route path="/diagnostics" element={<DiagnosticsPlaceholder customer={customer} />} />
+            <Route path="/now/desktop-orb" element={<DesktopOrbNow />} />
             <Route path="/web-weave" element={<WebWeave />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/crawl" element={<CrawlJobs />} />
