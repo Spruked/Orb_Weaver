@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Navigate, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
-import Demo from './pages/Demo';
 import DiagnosticsPlaceholder from './pages/DiagnosticsPlaceholder';
 import DesktopOrbNow from './pages/DesktopOrbNow';
 import WebWeave from './pages/WebWeave';
 import Projects from './pages/Projects';
+import ScanCenter from './pages/ScanCenter';
 import CrawlJobs from './pages/CrawlJobs';
 import CrawlJob from './pages/CrawlJob';
 import AuditReport from './pages/AuditReport';
@@ -79,7 +79,7 @@ function App() {
     const nextPath = outcome?.nextPath
       || (outcome?.mergeResult ? `/welcome?project=${encodeURIComponent(outcome.mergeResult.project_id)}` : null)
       || (outcome?.mergeError ? '/welcome?merge=pending' : null)
-      || (returnPath === '/demo' || returnPath === '/diagnostics' ? returnPath : '/dashboard');
+      || (returnPath === '/diagnostics' ? returnPath : '/dashboard');
     window.history.replaceState(
       null,
       '',
@@ -115,6 +115,9 @@ function App() {
     );
   }
 
+  if (publicPath === '/demo') {
+    return renderPublicPage(<Navigate to="/" replace />);
+  }
   if (publicPath === '/founding-beta') {
     return renderPublicPage(<PublicLeadPage type="beta" />);
   }
@@ -139,9 +142,6 @@ function App() {
   if (!customer && publicPath === '/diagnostics') {
     return renderPublicPage(<AuthPage onAuthenticated={handleAuthenticated} />);
   }
-  if (!customer && publicPath === '/demo') {
-    return renderPublicPage(<AuthPage onAuthenticated={handleAuthenticated} />);
-  }
   if (!customer && publicPath === '/login') {
     return renderPublicPage(<AuthPage onAuthenticated={handleAuthenticated} />);
   }
@@ -163,11 +163,12 @@ function App() {
             <Route path="/" element={<Dashboard customer={customer} />} />
             <Route path="/dashboard" element={<Dashboard customer={customer} />} />
             <Route path="/welcome" element={<WelcomeWorkspace customer={customer} initialMergeResult={authenticationOutcome?.mergeResult} initialMergeError={authenticationOutcome?.mergeError} />} />
-            <Route path="/demo" element={<Demo customer={customer} />} />
+            <Route path="/demo" element={<Navigate to="/" replace />} />
             <Route path="/diagnostics" element={<DiagnosticsPlaceholder customer={customer} />} />
             <Route path="/now/desktop-orb" element={<DesktopOrbNow />} />
             <Route path="/web-weave" element={<WebWeave />} />
             <Route path="/projects" element={<Projects />} />
+            <Route path="/scan-center" element={<ScanCenter />} />
             <Route path="/crawl" element={<CrawlJobs />} />
             <Route path="/crawl/:jobId" element={<CrawlJob />} />
             <Route path="/audit/:auditId" element={<AuditReport />} />
