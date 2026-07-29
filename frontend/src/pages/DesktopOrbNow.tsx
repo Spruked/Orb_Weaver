@@ -151,8 +151,8 @@ const DesktopOrbNow: React.FC = () => {
             <a className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-3 font-bold text-white hover:bg-orange-400" href="/diagnostics">
               Open Diagnostics Bay <ArrowRight className="h-4 w-4" />
             </a>
-            <a className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-5 py-3 font-bold text-white hover:bg-white/10" href="/demo">
-              Demonstration Station
+            <a className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-5 py-3 font-bold text-white hover:bg-white/10" href="https://campaign.orbweaver.spruked.com">
+              Campaign ORB Experience
             </a>
           </div>
         </div>
