@@ -1,4 +1,41 @@
-from app.orb import pointer_recovery
+from types import SimpleNamespace
+
+from app.orb import pointer_plot, pointer_recovery
+
+
+def _baseline_record(index: int):
+    return {
+        "target_id": f"target-{index}",
+        "page_route": "https://example.test/",
+        "target_type": "button",
+        "meaning": f"button: Target {index}",
+        "intent_aliases": [f"Target {index}"],
+        "direct_aliases": [f"Target {index}", f"open Target {index}"],
+        "topic_aliases": ["information about website", f"where is Target {index}"],
+        "content_fingerprint": f"target-{index}",
+        "semantic_locator": f"#target-{index}",
+        "confidence": 0.82,
+        "confidence_class": "STABLE",
+        "runtime_policy": {"may_point": True},
+        "confidence_evidence": {"locator_method": "element_id"},
+        "allowed_actions": ["point"],
+        "status": "active",
+    }
+
+
+def test_normal_baseline_map_builder_compacts_only_repeated_topic_aliases():
+    assert getattr(pointer_plot.pointer_plot_map_from_pages, "_orb_pointer_optimizer_installed", False) is True
+    page = SimpleNamespace(
+        url="https://example.test/",
+        semantic_analysis={"pointer_plot_records": [_baseline_record(index) for index in range(6)]},
+    )
+
+    pointer_map = pointer_plot.pointer_plot_map_from_pages([page])
+
+    assert pointer_map["record_count"] == 6
+    assert pointer_map["shared_topics_by_page"]["https://example.test/"] == ["information about website"]
+    assert all("information about website" not in record["topic_aliases"] for record in pointer_map["records"])
+    assert all(record["direct_aliases"] for record in pointer_map["records"])
 
 
 def test_normal_recovery_call_is_optimized_without_parallel_pipeline():
@@ -40,7 +77,7 @@ def test_normal_recovery_call_is_optimized_without_parallel_pipeline():
                     "viewport_size": size,
                     "candidates": [
                         {
-                            "identity_key": f"/|button|button|join beta|",
+                            "identity_key": "/|button|button|join beta|",
                             "route": "/",
                             "accessible_name": "Join Beta",
                             "text": "Join Beta",
