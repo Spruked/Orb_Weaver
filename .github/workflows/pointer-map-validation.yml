@@ -1,0 +1,54 @@
+name: Pointer Map Validation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "backend/app/orb/pointer_map_optimizer.py"
+      - "backend/app/orb/pointer_recovery_integration.py"
+      - "backend/app/orb/__init__.py"
+      - "backend/app/orb/pointer_recovery.py"
+      - "backend/app/orb/pointer_plot.py"
+      - "backend/tests/test_pointer_map_optimizer.py"
+      - "backend/tests/test_pointer_recovery.py"
+      - "backend/tests/test_pointer_recovery_integration.py"
+      - "scripts/validate_pointer_plot_map.py"
+      - ".github/workflows/pointer-map-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pointer-map-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r backend/requirements.txt
+
+      - name: Compile changed Python modules
+        run: |
+          python -m py_compile \
+            backend/app/orb/pointer_map_optimizer.py \
+            backend/app/orb/pointer_recovery_integration.py \
+            scripts/validate_pointer_plot_map.py
+
+      - name: Run pointer-map tests
+        env:
+          PYTHONPATH: backend
+        run: |
+          python -m pytest -q \
+            backend/tests/test_pointer_map_optimizer.py \
+            backend/tests/test_pointer_recovery.py \
+            backend/tests/test_pointer_recovery_integration.py
