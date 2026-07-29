@@ -121,6 +121,8 @@ def install_scope_support(crawler_type) -> None:
         # circular import back into the crawler package.
         page_type = original_crawl.__globals__["PageData"]
         baseline = _baseline_pages(page_type, self.domain)
+        baseline_has_sitemap = any(page.has_sitemap for page in baseline)
+        self.has_sitemap_file = baseline_has_sitemap
         context_seeds = self._resolve_seed_urls(start_url, clean_seeds)
         if not context_seeds:
             raise ValueError("A scoped scan requires at least one same-domain page or section URL")
@@ -155,6 +157,7 @@ def install_scope_support(crawler_type) -> None:
         scanned = list(self.crawled_data)
         self._orb_pages_scanned_this_run = len(scanned)
         for page in scanned:
+            page.has_sitemap = baseline_has_sitemap
             page.has_robots_txt = self.robots_rules is not None
 
         if scope in {"exact", "changed"}:
