@@ -1,6 +1,6 @@
 """Deterministic scan-scope support for Orb Weaver crawls.
 
-The public CrawlConfig already carries owner-provided seed_urls.  This module
+The public CrawlConfig already carries owner-provided seed_urls. This module
 adds an internal marker protocol so the existing crawl endpoint can perform a
 true section or exact-page refresh without widening into a full-site crawl.
 Scoped refreshes merge their newly measured pages into the last authoritative
@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, Set, Tuple
 from urllib.parse import urlparse
 
@@ -63,7 +62,11 @@ def _baseline_pages(page_type, domain: str) -> List:
     except (OSError, json.JSONDecodeError):
         return []
     rows = ((payload.get("crawl") or {}).get("pages") or [])
-    return [_page_from_dict(page_type, row) for row in rows if isinstance(row, dict) and row.get("url")]
+    return [
+        _page_from_dict(page_type, row)
+        for row in rows
+        if isinstance(row, dict) and row.get("url")
+    ]
 
 
 def _deduplicate_pages(crawler, pages: Sequence) -> List:
@@ -113,8 +116,9 @@ def install_scope_support(crawler_type) -> None:
         parsed = urlparse(start_url)
         self.domain = parsed.netloc
         self.domain_key = self._domain_key(parsed.netloc)
-        baseline = _baseline_pages(type(self.crawled_data).__args__[0] if hasattr(type(self.crawled_data), "__args__") else None, self.domain) if False else []
-        # PageData is discoverable from the bound method's module without a circular import.
+
+        # PageData is discoverable from the original crawl method without a
+        # circular import back into the crawler package.
         page_type = original_crawl.__globals__["PageData"]
         baseline = _baseline_pages(page_type, self.domain)
         context_seeds = self._resolve_seed_urls(start_url, clean_seeds)
@@ -129,7 +133,10 @@ def install_scope_support(crawler_type) -> None:
             self._orb_allowed_prefixes = set()
             self.max_depth = 0
 
-        async with aiohttp.ClientSession(timeout=self.timeout, headers={"User-Agent": self.user_agent}) as session:
+        async with aiohttp.ClientSession(
+            timeout=self.timeout,
+            headers={"User-Agent": self.user_agent},
+        ) as session:
             robots_url = self._check_robots_txt(start_url)
             try:
                 async with session.get(robots_url, ssl=False) as response:
@@ -151,9 +158,15 @@ def install_scope_support(crawler_type) -> None:
             page.has_robots_txt = self.robots_rules is not None
 
         if scope in {"exact", "changed"}:
-            untouched = [page for page in baseline if self._normalize_url(page.url) not in exact_urls]
+            untouched = [
+                page for page in baseline
+                if self._normalize_url(page.url) not in exact_urls
+            ]
         else:
-            untouched = [page for page in baseline if not _path_matches_prefix(page.url, prefixes)]
+            untouched = [
+                page for page in baseline
+                if not _path_matches_prefix(page.url, prefixes)
+            ]
 
         merged = _deduplicate_pages(self, [*untouched, *scanned])
         _recalculate_duplicate_risk(merged)
