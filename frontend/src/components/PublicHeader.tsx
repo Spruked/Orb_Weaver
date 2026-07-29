@@ -12,7 +12,6 @@ const publicNavItems = [
   { href: '/founding-beta', label: 'Founding Beta' },
   { href: '/investor-contact', label: 'Investors' },
   { href: '/marketplace', label: 'Marketplace' },
-  { href: '/demo', label: 'Demonstration Station' },
   { href: '/login', label: 'Login' },
 ];
 
