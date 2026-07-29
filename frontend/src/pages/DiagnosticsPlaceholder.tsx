@@ -30,8 +30,8 @@ const DiagnosticsPlaceholder: React.FC<DiagnosticsPlaceholderProps> = ({ custome
             <a className="btn-primary inline-flex items-center gap-2" href="/now/desktop-orb">
               Desktop ORB Now <Monitor className="h-4 w-4" />
             </a>
-            <a className="btn-secondary inline-flex items-center gap-2" href="/demo">
-              Demonstration Station <ArrowRight className="h-4 w-4" />
+            <a className="btn-secondary inline-flex items-center gap-2" href="/scan-center">
+              Scan Center <ArrowRight className="h-4 w-4" />
             </a>
             <a className="btn-secondary inline-flex items-center gap-2" href="/marketplace">
               Marketplace <Store className="h-4 w-4" />
