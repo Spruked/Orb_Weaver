@@ -123,6 +123,10 @@ def install_scope_support(crawler_type) -> None:
         baseline = _baseline_pages(page_type, self.domain)
         baseline_has_sitemap = any(page.has_sitemap for page in baseline)
         self.has_sitemap_file = baseline_has_sitemap
+
+        # Targeted scans must never inherit configured admin seeds. Only the
+        # explicit owner-selected paths are in scope.
+        self.include_admin_sections = False
         context_seeds = self._resolve_seed_urls(start_url, clean_seeds)
         if not context_seeds:
             raise ValueError("A scoped scan requires at least one same-domain page or section URL")
