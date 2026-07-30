@@ -246,7 +246,8 @@ async function startApplication() {
     host: CONTROL_PLANE_HOST,
     port: CONTROL_PLANE_PORT,
     token,
-    getRuntimeProfile: () => buildRuntimeProfile(withCredentialFlags(currentConfig))
+    getRuntimeProfile: () => buildRuntimeProfile(withCredentialFlags(currentConfig)),
+    getRuntimeCredential: (slot) => getCredential(currentConfig.activeProfileId, slot)
   });
   controlPlaneAddress = await controlPlane.start();
 
