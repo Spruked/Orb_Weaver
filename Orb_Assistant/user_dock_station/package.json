@@ -31,6 +31,7 @@
       "config.js",
       "control-plane.js",
       "provider-router.js",
+      "articulation-contract.js",
       "runtime-client.js",
       "package.json"
     ],
