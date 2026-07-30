@@ -1,8 +1,11 @@
 {
   "name": "orb-assistant-root",
   "version": "1.0.0",
+  "private": true,
   "scripts": {
-    "start": "cd electron && npm start"
+    "start": "cd electron && npm start",
+    "dock": "cd user_dock_station && npm start",
+    "dock:test": "cd user_dock_station && npm test"
   },
   "devDependencies": {
     "electron": "^27.0.0"
