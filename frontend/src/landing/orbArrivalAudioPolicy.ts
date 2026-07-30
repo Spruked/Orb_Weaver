@@ -19,7 +19,10 @@ export function installWarmArrivalAudioPolicy(): void {
   const sourcePrototype = window.AudioBufferSourceNode?.prototype;
   if (!AudioContextCtor || !sourcePrototype) return;
 
+  const suppressedSources = new WeakSet<AudioBufferSourceNode>();
   const originalStart = sourcePrototype.start;
+  const originalStop = sourcePrototype.stop;
+
   sourcePrototype.start = function guardedStart(
     this: AudioBufferSourceNode,
     when?: number,
@@ -34,16 +37,22 @@ export function installWarmArrivalAudioPolicy(): void {
     );
 
     if (isLegacyArrivalScreech) {
-      try {
-        this.stop(when || 0);
-      } catch {
-        // A source that never starts may reject stop(); silence is still achieved.
-      }
-      queueMicrotask(() => this.dispatchEvent(new Event('ended')));
+      suppressedSources.add(this);
       return;
     }
 
     originalStart.call(this, when, offset, duration);
+  };
+
+  sourcePrototype.stop = function guardedStop(
+    this: AudioBufferSourceNode,
+    when?: number
+  ): void {
+    if (suppressedSources.has(this)) {
+      suppressedSources.delete(this);
+      return;
+    }
+    originalStop.call(this, when);
   };
 
   controlledWindow[POLICY_KEY] = true;
