@@ -7,9 +7,45 @@
   "type": "commonjs",
   "scripts": {
     "start": "electron .",
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "pack": "electron-builder --dir",
+    "dist:win": "electron-builder --win nsis portable"
   },
   "devDependencies": {
-    "electron": "^27.0.0"
+    "electron": "^27.0.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.spruked.orb.dockstation",
+    "productName": "ORB Dock Station",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "styles.css",
+      "config.js",
+      "control-plane.js",
+      "runtime-client.js",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "artifactName": "ORB-Dock-Station-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ORB Dock Station"
+    }
   }
 }
