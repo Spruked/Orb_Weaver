@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self' http://127.0.0.1:*;" />
+  <title>ORB Dock Station</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-orb" aria-hidden="true"></div>
+        <div>
+          <h1>ORB Dock Station</h1>
+          <p>Owner control for every installed ORB</p>
+        </div>
+      </div>
+      <div class="status-row">
+        <div id="runtimeBadge" class="badge good"><span class="dot"></span><span>Runtime active</span></div>
+        <div id="encryptionBadge" class="badge"><span class="dot"></span><span>Checking key protection</span></div>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar" aria-label="Dock Station sections">
+        <button class="nav-button active" data-tab="overview">Overview <span>01</span></button>
+        <button class="nav-button" data-tab="personality">Behavior <span>02</span></button>
+        <button class="nav-button" data-tab="voice">Voice <span>03</span></button>
+        <button class="nav-button" data-tab="intelligence">Intelligence <span>04</span></button>
+        <button class="nav-button" data-tab="motion">Motion <span>05</span></button>
+        <button class="nav-button" data-tab="privacy">Privacy & Actions <span>06</span></button>
+        <button class="nav-button" data-tab="orbs">Connected ORBs <span>07</span></button>
+        <div class="sidebar-note">
+          Behavior, voice, and model choices are owner-controlled. Verified targets, permission requirements, and outcome checks remain locked.
+        </div>
+      </aside>
+
+      <main class="content">
+        <section id="overview" class="tab-panel active">
+          <div class="section-heading">
+            <h2>Control the presence</h2>
+            <p>One profile governs how assigned ORBs sound, behave, move, reason, and act.</p>
+          </div>
+          <div class="grid three">
+            <div class="card">
+              <div class="metric-label">Active profile</div>
+              <div id="activeProfileMetric" class="metric">—</div>
+            </div>
+            <div class="card">
+              <div class="metric-label">Primary intelligence</div>
+              <div id="primaryModelMetric" class="metric">—</div>
+            </div>
+            <div class="card">
+              <div class="metric-label">Connected ORBs</div>
+              <div id="connectedOrbsMetric" class="metric">0</div>
+            </div>
+          </div>
+
+          <div class="grid two" style="margin-top:14px">
+            <div class="card">
+              <h3>Profile identity</h3>
+              <p>Name this behavior profile so it is clear what experience it produces.</p>
+              <div class="field">
+                <label for="profileName">Profile name</label>
+                <input id="profileName" type="text" maxlength="80" />
+              </div>
+              <div class="field">
+                <label for="applyScope">Apply profile to</label>
+                <select id="applyScope">
+                  <option value="all_orbs">Every installed ORB</option>
+                  <option value="selected_orbs">Selected ORBs only</option>
+                </select>
+              </div>
+              <div id="orbIdsField" class="field" hidden>
+                <label for="orbIds">ORB IDs</label>
+                <textarea id="orbIds" placeholder="One ORB ID per line"></textarea>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3>Owner doctrine</h3>
+              <p>The ORB may be bold, persuasive, funny, and energetic. It may never sound angry, scold the visitor, diminish itself, or diminish the product.</p>
+              <div class="locked"><strong>Locked:</strong><span>Angry tone, hostility, scolding, self-deprecation, and diminished product language are prohibited in every profile.</span></div>
+              <div class="locked" style="margin-top:10px"><strong>Locked:</strong><span>Live claims must match runtime evidence even when the complete product contract is stated confidently.</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="personality" class="tab-panel">
+          <div class="section-heading">
+            <h2>Behavior and sales presence</h2>
+            <p>Correct the ORB’s temperament without rewriting its identity instructions.</p>
+          </div>
+          <div class="grid two">
+            <div class="card">
+              <div class="field"><label for="warmth">Warmth</label><div class="range-line"><input id="warmth" type="range" min="0" max="100" /><output class="range-output" for="warmth"></output></div></div>
+              <div class="field"><label for="enthusiasm">Enthusiasm</label><div class="range-line"><input id="enthusiasm" type="range" min="0" max="100" /><output class="range-output" for="enthusiasm"></output></div></div>
+              <div class="field"><label for="salesmanship">Salesmanship</label><div class="range-line"><input id="salesmanship" type="range" min="0" max="100" /><output class="range-output" for="salesmanship"></output></div></div>
+              <div class="field"><label for="humor">Humor</label><div class="range-line"><input id="humor" type="range" min="0" max="100" /><output class="range-output" for="humor"></output></div></div>
+            </div>
+            <div class="card">
+              <div class="field"><label for="directness">Directness</label><div class="range-line"><input id="directness" type="range" min="0" max="100" /><output class="range-output" for="directness"></output></div></div>
+              <div class="field"><label for="patience">Patience</label><div class="range-line"><input id="patience" type="range" min="0" max="100" /><output class="range-output" for="patience"></output></div></div>
+              <div class="field"><label for="initiative">Initiative</label><div class="range-line"><input id="initiative" type="range" min="0" max="100" /><output class="range-output" for="initiative"></output></div></div>
+              <div class="field"><label for="verbosity">Response length</label><div class="range-line"><input id="verbosity" type="range" min="0" max="100" /><output class="range-output" for="verbosity"></output></div></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="voice" class="tab-panel">
+          <div class="section-heading">
+            <h2>Voice</h2>
+            <p>Shape how the ORB sounds. The default profile favors warmth, conviction, and controlled enthusiasm.</p>
+          </div>
+          <div class="grid two">
+            <div class="card">
+              <div class="field-row"><div><label>Voice enabled</label><div class="help">Mute or restore speech without disabling the ORB.</div></div><label class="toggle"><input id="voiceEnabled" type="checkbox" /><span></span></label></div>
+              <div class="field"><label for="voiceProvider">Voice provider</label><input id="voiceProvider" type="text" /></div>
+              <div class="field"><label for="voiceId">Voice ID</label><input id="voiceId" type="text" /></div>
+              <div class="field"><label for="voiceStyle">Style direction</label><textarea id="voiceStyle"></textarea></div>
+            </div>
+            <div class="card">
+              <div class="field"><label for="volume">Volume</label><div class="range-line"><input id="volume" type="range" min="0" max="1" step="0.01" /><output class="range-output" for="volume"></output></div></div>
+              <div class="field"><label for="rate">Speaking rate</label><div class="range-line"><input id="rate" type="range" min="0.6" max="1.5" step="0.01" /><output class="range-output" for="rate"></output></div></div>
+              <div class="field"><label for="pitch">Pitch</label><div class="range-line"><input id="pitch" type="range" min="0.6" max="1.5" step="0.01" /><output class="range-output" for="pitch"></output></div></div>
+              <div class="field"><label for="voiceWarmth">Vocal warmth</label><div class="range-line"><input id="voiceWarmth" type="range" min="0" max="100" /><output class="range-output" for="voiceWarmth"></output></div></div>
+              <div class="field"><label for="voiceEnergy">Vocal energy</label><div class="range-line"><input id="voiceEnergy" type="range" min="0" max="100" /><output class="range-output" for="voiceEnergy"></output></div></div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:14px">
+            <div class="grid three">
+              <div class="field-row"><div><label>Greet on arrival</label></div><label class="toggle"><input id="greetOnArrival" type="checkbox" /><span></span></label></div>
+              <div class="field-row"><div><label>Speak first</label></div><label class="toggle"><input id="speakFirst" type="checkbox" /><span></span></label></div>
+              <div class="field-row"><div><label>Begin listening</label></div><label class="toggle"><input id="autoListen" type="checkbox" /><span></span></label></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="intelligence" class="tab-panel">
+          <div class="section-heading">
+            <h2>Intelligence provider</h2>
+            <p>Use a local model, OpenAI, Anthropic Claude, Google, or another OpenAI-compatible endpoint.</p>
+          </div>
+          <div id="encryptionNotice" class="notice" hidden>Operating-system credential encryption is unavailable. API keys will not be saved until secure storage is available.</div>
+          <div class="card" style="margin-bottom:14px">
+            <div class="field">
+              <label for="routingMode">Routing mode</label>
+              <select id="routingMode">
+                <option value="local_primary">Local primary with optional API fallback</option>
+                <option value="api_primary">API primary with optional local fallback</option>
+                <option value="local_only">Local only</option>
+                <option value="api_only">API only</option>
+              </select>
+            </div>
+          </div>
+          <div class="provider-grid">
+            <div class="provider-card">
+              <h3>Primary model</h3>
+              <div class="field"><label for="primaryProvider">Provider</label><select id="primaryProvider"></select></div>
+              <div class="field"><label for="primaryModel">Model</label><input id="primaryModel" type="text" placeholder="Model name" /></div>
+              <div class="field"><label for="primaryBaseUrl">Base URL</label><input id="primaryBaseUrl" type="text" placeholder="Local or provider endpoint" /></div>
+              <div class="field"><label for="primaryTimeout">Timeout in milliseconds</label><input id="primaryTimeout" type="number" min="5000" max="180000" step="1000" /></div>
+              <div class="field"><label for="primaryApiKey">API key</label><input id="primaryApiKey" type="password" autocomplete="off" placeholder="Stored through operating-system encryption" /></div>
+              <div class="credential-actions">
+                <button id="savePrimaryKey" class="button" type="button">Save key</button>
+                <button id="clearPrimaryKey" class="button danger" type="button">Clear</button>
+                <span id="primaryCredentialStatus" class="credential-status">No key stored</span>
+              </div>
+            </div>
+
+            <div class="provider-card">
+              <div class="field-row"><h3>Fallback model</h3><label class="toggle"><input id="fallbackEnabled" type="checkbox" /><span></span></label></div>
+              <div class="field"><label for="fallbackProvider">Provider</label><select id="fallbackProvider"></select></div>
+              <div class="field"><label for="fallbackModel">Model</label><input id="fallbackModel" type="text" placeholder="Model name" /></div>
+              <div class="field"><label for="fallbackBaseUrl">Base URL</label><input id="fallbackBaseUrl" type="text" placeholder="Provider endpoint" /></div>
+              <div class="field"><label for="fallbackTimeout">Timeout in milliseconds</label><input id="fallbackTimeout" type="number" min="5000" max="180000" step="1000" /></div>
+              <div class="field"><label for="fallbackApiKey">API key</label><input id="fallbackApiKey" type="password" autocomplete="off" placeholder="Stored through operating-system encryption" /></div>
+              <div class="credential-actions">
+                <button id="saveFallbackKey" class="button" type="button">Save key</button>
+                <button id="clearFallbackKey" class="button danger" type="button">Clear</button>
+                <span id="fallbackCredentialStatus" class="credential-status">No key stored</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="motion" class="tab-panel">
+          <div class="section-heading">
+            <h2>Motion and presence</h2>
+            <p>Control the ORB’s visual presence without letting motion make it unreachable.</p>
+          </div>
+          <div class="grid two">
+            <div class="card">
+              <div class="field-row"><div><label>Motion enabled</label></div><label class="toggle"><input id="motionEnabled" type="checkbox" /><span></span></label></div>
+              <div class="field"><label for="motionSpeed">Movement speed</label><div class="range-line"><input id="motionSpeed" type="range" min="0.05" max="1" step="0.01" /><output class="range-output" for="motionSpeed"></output></div></div>
+              <div class="field-row"><div><label>Expressive motion</label></div><label class="toggle"><input id="expressiveMotion" type="checkbox" /><span></span></label></div>
+            </div>
+            <div class="card">
+              <div class="field-row"><div><label>Avoid header band</label></div><label class="toggle"><input id="avoidHeaderBand" type="checkbox" /><span></span></label></div>
+              <div class="field-row"><div><label>Sleep mode available</label></div><label class="toggle"><input id="sleepEnabled" type="checkbox" /><span></span></label></div>
+              <div class="locked" style="margin-top:14px"><strong>Locked:</strong><span>The ORB remains visible and clickable whenever active. Motion may not make it inaccessible.</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="privacy" class="tab-panel">
+          <div class="section-heading">
+            <h2>Privacy, memory, and action</h2>
+            <p>The owner may enable capabilities. The visitor still controls consequential action and persistent memory.</p>
+          </div>
+          <div class="grid two">
+            <div class="card">
+              <h3>Memory</h3>
+              <div class="field-row"><div><label>Memory enabled</label></div><label class="toggle"><input id="memoryEnabled" type="checkbox" /><span></span></label></div>
+              <div class="field-row"><div><label>Remember across sessions</label></div><label class="toggle"><input id="rememberAcrossSessions" type="checkbox" /><span></span></label></div>
+              <div class="locked" style="margin-top:14px"><strong>Locked:</strong><span>Visitor approval is required before information is retained or carried into another experience.</span></div>
+            </div>
+            <div class="card">
+              <h3>Capabilities</h3>
+              <div class="field-row"><div><label>Speech</label></div><label class="toggle"><input id="permissionVoice" type="checkbox" /><span></span></label></div>
+              <div class="field-row"><div><label>Microphone</label></div><label class="toggle"><input id="permissionMicrophone" type="checkbox" /><span></span></label></div>
+              <div class="field-row"><div><label>Pointer guidance</label></div><label class="toggle"><input id="permissionPointer" type="checkbox" /><span></span></label></div>
+              <div class="field-row"><div><label>Browser actions</label></div><label class="toggle"><input id="permissionActions" type="checkbox" /><span></span></label></div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:14px">
+            <h3>Non-disableable operating boundaries</h3>
+            <div class="grid two">
+              <div class="locked"><strong>Verified targets only</strong><span>The ORB may not invent a control, route, or pointer destination.</span></div>
+              <div class="locked"><strong>Stage Governor required</strong><span>Live behavior must resolve to the current allowed-action set.</span></div>
+              <div class="locked"><strong>Approval required</strong><span>Consequential action requires an informed visitor decision.</span></div>
+              <div class="locked"><strong>Outcome verification</strong><span>The ORB confirms what happened before claiming success.</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="orbs" class="tab-panel">
+          <div class="section-heading">
+            <h2>Connected ORBs</h2>
+            <p>Installed ORBs register with the local control plane and read the active profile by revision.</p>
+          </div>
+          <div class="card">
+            <div class="field-row" style="margin-bottom:12px">
+              <div><strong>Local control plane</strong><div id="controlPlaneAddress" class="help">Starting…</div></div>
+              <button id="refreshOrbs" class="button" type="button">Refresh</button>
+            </div>
+            <div id="orbTableContainer" class="empty">No ORBs are currently connected.</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <footer class="footer">
+      <div id="footerStatus" class="footer-status">Loading Dock Station…</div>
+      <div class="footer-actions">
+        <button id="hideButton" class="button" type="button">Hide to tray</button>
+        <button id="saveButton" class="button primary" type="button">Save and apply</button>
+      </div>
+    </footer>
+  </div>
+  <script src="renderer.js"></script>
+</body>
+</html>
