@@ -42,13 +42,20 @@ function safeEqual(left, right) {
 }
 
 class OrbDockControlPlane {
-  constructor({ host = '127.0.0.1', port = 17420, token, getRuntimeProfile }) {
+  constructor({
+    host = '127.0.0.1',
+    port = 17420,
+    token,
+    getRuntimeProfile,
+    getRuntimeCredential = null
+  }) {
     if (!token) throw new Error('Dock control-plane token is required');
     if (typeof getRuntimeProfile !== 'function') throw new Error('getRuntimeProfile callback is required');
     this.host = host;
     this.port = port;
     this.token = token;
     this.getRuntimeProfile = getRuntimeProfile;
+    this.getRuntimeCredential = getRuntimeCredential;
     this.server = null;
     this.orbs = new Map();
   }
@@ -99,6 +106,16 @@ class OrbDockControlPlane {
 
     if (request.method === 'GET' && url.pathname === '/v1/runtime-profile') {
       return sendJson(response, 200, this.getRuntimeProfile());
+    }
+
+    const credentialMatch = url.pathname.match(/^\/v1\/runtime-credential\/(primary|fallback)$/);
+    if (request.method === 'GET' && credentialMatch) {
+      if (typeof this.getRuntimeCredential !== 'function') {
+        return sendJson(response, 501, { error: 'runtime credential service unavailable' });
+      }
+      const apiKey = this.getRuntimeCredential(credentialMatch[1]);
+      if (!apiKey) return sendJson(response, 404, { error: 'credential_not_configured' });
+      return sendJson(response, 200, { slot: credentialMatch[1], apiKey });
     }
 
     if (request.method === 'GET' && url.pathname === '/v1/orbs') {
