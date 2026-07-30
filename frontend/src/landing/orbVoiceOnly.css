@@ -1,0 +1,5 @@
+/* Website ORB is a voice surface, not a chat/status bubble. */
+.ow-v2-orb-status,
+.ow-v2-orb-rest-cue {
+  display: none !important;
+}
