@@ -2,7 +2,7 @@
 
 The Dock Station is the owner-facing desktop control surface for installed ORBs.
 
-It is not a developer-only settings page and it is not a second ORB runtime. It publishes one authoritative user profile that assigned ORBs consume through the authenticated local control plane.
+It publishes one authoritative owner profile and provides a local model gateway so assigned ORBs can change behavior, voice direction, and LLM provider without receiving provider credentials in website JavaScript.
 
 ## What the owner can change
 
@@ -30,9 +30,14 @@ The Dock Station cannot disable:
 - Outcome verification
 - Visitor approval for retained or transferred memory
 - ORB click/tap reachability while active
-- Prohibition on angry, hostile, scolding, self-deprecating, or product-diminishing articulation
+- Prohibition on angry, hostile, scolding, impatient, self-deprecating, or product-diminishing articulation
+- The distinction between confident product contract and verified live runtime claims
 
 These are runtime laws, not personality preferences.
+
+## Complete articulation contract
+
+`articulation-contract.js` is inserted as the provider-level system instruction for local models, OpenAI, Anthropic, Google, and custom compatible providers. Owner sliders adjust delivery emphasis but cannot weaken identity, truth, permission, governance, or non-diminishment rules.
 
 ## Start
 
@@ -49,19 +54,44 @@ Or from `Orb_Assistant`:
 npm run dock
 ```
 
-Run configuration tests with:
+Run tests with:
 
 ```bash
 npm test
 ```
 
-## Runtime control plane
+Build Windows installer and portable packages with:
 
-The Electron process binds only to:
+```bash
+npm run dist:win
+```
+
+## Runtime control plane and model gateway
+
+The Electron process binds to:
 
 ```text
 127.0.0.1:17420
 ```
+
+The local Ollama-compatible generation endpoint is:
+
+```text
+http://127.0.0.1:17420/api/generate
+```
+
+Orb Weaver can retain its existing Ollama-shaped request contract and point `LOCAL_LLM_URL` at this endpoint. The Dock Station then routes each request through the active owner-selected provider and applies the current behavior instruction.
+
+Example backend configuration when the Dock Station and backend share the same loopback network:
+
+```dotenv
+LOCAL_LLM_URL=http://127.0.0.1:17420/api/generate
+LOCAL_LLM_MODEL=dock-active
+```
+
+When the backend runs inside WSL and the Dock Station runs as a Windows application, the Windows-to-WSL network bridge must be configured before using the gateway URL. Do not expose the gateway to a LAN without an authenticated transport rule.
+
+## Credential protection
 
 The runtime token is generated at startup inside Electron's user-data directory:
 
@@ -77,6 +107,8 @@ orb-dock-credentials.json
 ```
 
 API keys are encrypted with Electron `safeStorage`. When operating-system encryption is unavailable, the Dock Station refuses to save the key.
+
+Credentials are decrypted only inside the Electron main process. They are not returned to the Dock Station renderer or website JavaScript.
 
 ## Installed ORB integration
 
@@ -97,26 +129,17 @@ const client = new OrbDockRuntimeClient({
   }
 });
 
-await client.start(async (profile, dock) => {
+await client.start(async (profile) => {
   runtime.applyBehavior(profile.behavior);
   runtime.applyVoice(profile.voice);
   runtime.applyMotion(profile.motion);
   runtime.applyPermissions(profile.permissions);
-
-  const provider = profile.llm.primary;
-  const apiKey = provider.apiKeyStored
-    ? await dock.getCredential('primary')
-    : null;
-
-  runtime.selectModel({ ...provider, apiKey });
 });
 ```
 
-The ORB registers itself, heartbeats, polls profile revisions, and applies a new revision without exposing credentials to website JavaScript.
+The ORB registers itself, heartbeats, polls profile revisions, and applies a new revision without exposing credentials to the page.
 
 ## Provider routing
-
-The Dock Station publishes provider configuration; the installed ORB's existing model adapter remains responsible for invoking the selected provider. This prevents the Dock Station from becoming a competing reasoning runtime.
 
 Routing modes:
 
@@ -125,8 +148,34 @@ Routing modes:
 - `local_only`
 - `api_only`
 
+The gateway supports:
+
+- Local OpenAI-compatible servers, including llama.cpp-compatible chat endpoints
+- OpenAI chat-completions-compatible APIs
+- Anthropic Messages API
+- Google Generative Language API
+- Custom OpenAI-compatible APIs
+
+A configured fallback is used only when the primary provider fails.
+
 ## Current build boundary
 
-The Dock Station application, profile persistence, encrypted credential storage, control plane, system-tray controls, and native runtime client are implemented.
+Implemented:
 
-Each production ORB package still needs to call the runtime client from its native bridge and map the received profile into that ORB's existing voice, motion, and model adapters.
+- Desktop Electron control panel
+- System-tray controls
+- Persistent owner profiles
+- Encrypted provider credentials
+- Live primary/fallback model routing
+- Full provider-level ORB articulation contract
+- Local Ollama-compatible gateway
+- Native ORB profile client
+- Windows installer and portable packaging definitions
+- Tests and CI safeguards
+
+Still requiring machine verification:
+
+- Install dependencies and launch the Electron application
+- Build the Windows installer
+- Connect the current WSL Orb Weaver backend to the Windows gateway
+- Verify a live local-model response, a live API-provider response, voice delivery, and profile revision switching
