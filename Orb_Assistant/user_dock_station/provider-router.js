@@ -1,3 +1,5 @@
+const { buildOwnerBehaviorInstruction } = require('./articulation-contract');
+
 function trimSlash(value) {
   return String(value || '').trim().replace(/\/+$/, '');
 }
@@ -82,7 +84,7 @@ class ProviderRouter {
     return profile.llm.fallback.enabled ? [primary, fallback] : [primary];
   }
 
-  async invokeSlot(slot, config, prompt, requestOptions = {}) {
+  async invokeSlot(slot, config, prompt, systemInstruction, requestOptions = {}) {
     const provider = config.provider;
     const model = String(config.model || requestOptions.model || '').trim();
     if (!model) throw new Error(`${slot} model is not configured`);
@@ -106,6 +108,7 @@ class ProviderRouter {
         },
         {
           model,
+          system: systemInstruction,
           max_tokens: maxTokens,
           temperature,
           messages: [{ role: 'user', content: prompt }]
@@ -125,6 +128,7 @@ class ProviderRouter {
         endpoint,
         {},
         {
+          systemInstruction: { parts: [{ text: systemInstruction }] },
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: {
             temperature,
@@ -139,6 +143,9 @@ class ProviderRouter {
     }
 
     const baseUrl = trimSlash(config.baseUrl) || (provider === 'openai' ? 'https://api.openai.com/v1' : 'http://127.0.0.1:40343/v1');
+    if (provider === 'custom_openai_compatible' && !trimSlash(config.baseUrl)) {
+      throw new Error('Custom OpenAI-compatible base URL is not configured');
+    }
     if (provider !== 'local_openai_compatible' && !apiKey) {
       throw new Error(`${provider} API key is not configured`);
     }
@@ -147,7 +154,10 @@ class ProviderRouter {
       apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
       {
         model,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [
+          { role: 'system', content: systemInstruction },
+          { role: 'user', content: prompt }
+        ],
         temperature,
         max_tokens: maxTokens,
         stream: false
@@ -163,11 +173,12 @@ class ProviderRouter {
     const cleanPrompt = String(prompt || '').trim();
     if (!cleanPrompt) throw new Error('Prompt is required');
     const profile = this.getRuntimeProfile();
+    const systemInstruction = buildOwnerBehaviorInstruction(profile);
     const attempts = [];
     for (const entry of this.orderedSlots(profile)) {
       if (entry.slot === 'fallback' && !profile.llm.fallback.enabled) continue;
       try {
-        const result = await this.invokeSlot(entry.slot, entry.config, cleanPrompt, {
+        const result = await this.invokeSlot(entry.slot, entry.config, cleanPrompt, systemInstruction, {
           model,
           temperature: options.temperature,
           maxTokens: options.num_predict
