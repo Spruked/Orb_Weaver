@@ -1,0 +1,35 @@
+name: ORB Dock Station
+
+on:
+  push:
+    paths:
+      - 'Orb_Assistant/user_dock_station/**'
+      - '.github/workflows/orb-dock-station.yml'
+  pull_request:
+    paths:
+      - 'Orb_Assistant/user_dock_station/**'
+      - '.github/workflows/orb-dock-station.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  profile-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Test Dock Station profile contract
+        run: node --test Orb_Assistant/user_dock_station/tests/*.test.js
+      - name: Syntax-check Dock Station runtime files
+        run: |
+          node --check Orb_Assistant/user_dock_station/config.js
+          node --check Orb_Assistant/user_dock_station/control-plane.js
+          node --check Orb_Assistant/user_dock_station/runtime-client.js
+          node --check Orb_Assistant/user_dock_station/main.js
+          node --check Orb_Assistant/user_dock_station/preload.js
+          node --check Orb_Assistant/user_dock_station/renderer.js
