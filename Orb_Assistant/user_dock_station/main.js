@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { ConfigStore, PROVIDER_TYPES, sanitizeConfig, buildRuntimeProfile } = require('./config');
 const { OrbDockControlPlane } = require('./control-plane');
+const { ProviderRouter } = require('./provider-router');
 
 const CONTROL_PLANE_HOST = '127.0.0.1';
 const CONTROL_PLANE_PORT = Number(process.env.ORB_DOCK_PORT || 17420);
@@ -99,11 +100,15 @@ function withCredentialFlags(config) {
   return safe;
 }
 
+function runtimeProfile() {
+  return buildRuntimeProfile(withCredentialFlags(currentConfig));
+}
+
 function persistConfig(nextConfig) {
   currentConfig = configStore.save(withCredentialFlags(nextConfig));
   currentConfig = withCredentialFlags(currentConfig);
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('dock:config-changed', buildRuntimeProfile(currentConfig));
+    mainWindow.webContents.send('dock:config-changed', runtimeProfile());
   }
   refreshTrayMenu();
   return currentConfig;
@@ -193,10 +198,11 @@ function getState() {
   currentConfig = withCredentialFlags(currentConfig);
   return {
     config: currentConfig,
-    runtimeProfile: buildRuntimeProfile(currentConfig),
+    runtimeProfile: runtimeProfile(),
     providers: PROVIDER_TYPES,
     connectedOrbs: controlPlane ? controlPlane.listOrbs() : [],
     controlPlane: controlPlaneAddress,
+    modelGatewayUrl: controlPlaneAddress ? `http://${controlPlaneAddress.host}:${controlPlaneAddress.port}/api/generate` : null,
     encryptionAvailable: safeStorage.isEncryptionAvailable()
   };
 }
@@ -205,7 +211,7 @@ function registerIpc() {
   ipcMain.handle('dock:get-state', () => getState());
 
   ipcMain.handle('dock:save-config', (_event, payload) => {
-    return { ok: true, state: { ...getState(), config: persistConfig(payload), runtimeProfile: buildRuntimeProfile(currentConfig) } };
+    return { ok: true, state: { ...getState(), config: persistConfig(payload), runtimeProfile: runtimeProfile() } };
   });
 
   ipcMain.handle('dock:save-credential', (_event, payload) => {
@@ -242,12 +248,17 @@ async function startApplication() {
 
   const tokenPath = path.join(userData, 'orb-dock-runtime.token');
   const token = ensureToken(tokenPath);
+  const providerRouter = new ProviderRouter({
+    getRuntimeProfile: runtimeProfile,
+    getCredential: async (slot) => getCredential(currentConfig.activeProfileId, slot)
+  });
   controlPlane = new OrbDockControlPlane({
     host: CONTROL_PLANE_HOST,
     port: CONTROL_PLANE_PORT,
     token,
-    getRuntimeProfile: () => buildRuntimeProfile(withCredentialFlags(currentConfig)),
-    getRuntimeCredential: (slot) => getCredential(currentConfig.activeProfileId, slot)
+    getRuntimeProfile: runtimeProfile,
+    getRuntimeCredential: (slot) => getCredential(currentConfig.activeProfileId, slot),
+    generate: (request) => providerRouter.generate(request)
   });
   controlPlaneAddress = await controlPlane.start();
 
