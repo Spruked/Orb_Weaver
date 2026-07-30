@@ -36,6 +36,7 @@ jobs:
           node --check Orb_Assistant/user_dock_station/config.js
           node --check Orb_Assistant/user_dock_station/control-plane.js
           node --check Orb_Assistant/user_dock_station/provider-router.js
+          node --check Orb_Assistant/user_dock_station/articulation-contract.js
           node --check Orb_Assistant/user_dock_station/runtime-client.js
           node --check Orb_Assistant/user_dock_station/main.js
           node --check Orb_Assistant/user_dock_station/preload.js
