@@ -41,13 +41,19 @@ function safeEqual(left, right) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+function isLoopback(request) {
+  const address = String(request.socket?.remoteAddress || '').toLowerCase();
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+
 class OrbDockControlPlane {
   constructor({
     host = '127.0.0.1',
     port = 17420,
     token,
     getRuntimeProfile,
-    getRuntimeCredential = null
+    getRuntimeCredential = null,
+    generate = null
   }) {
     if (!token) throw new Error('Dock control-plane token is required');
     if (typeof getRuntimeProfile !== 'function') throw new Error('getRuntimeProfile callback is required');
@@ -56,6 +62,7 @@ class OrbDockControlPlane {
     this.token = token;
     this.getRuntimeProfile = getRuntimeProfile;
     this.getRuntimeCredential = getRuntimeCredential;
+    this.generate = generate;
     this.server = null;
     this.orbs = new Map();
   }
@@ -88,6 +95,41 @@ class OrbDockControlPlane {
       }));
   }
 
+  async handleGenerate(request, response) {
+    if (!isLoopback(request)) {
+      return sendJson(response, 403, { error: 'loopback_only' });
+    }
+    if (typeof this.generate !== 'function') {
+      return sendJson(response, 503, { error: 'provider_gateway_unavailable' });
+    }
+    try {
+      const payload = await readJson(request, 1024 * 1024);
+      const prompt = String(payload.prompt || '').trim();
+      if (!prompt) return sendJson(response, 400, { error: 'prompt is required' });
+      const startedAt = Date.now();
+      const result = await this.generate({
+        prompt,
+        model: payload.model,
+        options: payload.options || {}
+      });
+      return sendJson(response, 200, {
+        model: result.model,
+        response: result.text,
+        done: true,
+        done_reason: 'stop',
+        provider: result.provider,
+        provider_slot: result.slot,
+        profile_revision: result.profileRevision,
+        total_duration_ms: Date.now() - startedAt
+      });
+    } catch (error) {
+      return sendJson(response, 502, {
+        error: String(error?.message || error).slice(0, 500),
+        attempts: Array.isArray(error?.attempts) ? error.attempts : []
+      });
+    }
+  }
+
   async handle(request, response) {
     const url = new URL(request.url, `http://${this.host}:${this.port}`);
 
@@ -96,8 +138,13 @@ class OrbDockControlPlane {
         status: 'ok',
         service: 'orb-user-dock-station',
         host: this.host,
-        port: this.port
+        port: this.port,
+        provider_gateway: typeof this.generate === 'function'
       });
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/generate') {
+      return this.handleGenerate(request, response);
     }
 
     if (!this.authenticate(request)) {
