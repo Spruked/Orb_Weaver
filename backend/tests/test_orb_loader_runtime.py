@@ -185,3 +185,66 @@ def test_runtime_allows_account_signup_guidance_to_existing_login_route(tmp_path
     assert result["suggested_route"] == "/login"
     assert result["navigation"]["status"] == "verified"
     assert result["navigation"]["may_navigate"] is True
+
+
+def test_website_orb_text_response_includes_cco_runtime_trace(tmp_path, monkeypatch):
+    _main, client = load_app(tmp_path, monkeypatch)
+    context_path = (
+        tmp_path
+        / "vault_system"
+        / "clients"
+        / "campaign.orbweaver.spruked.com"
+        / "website_orb_context"
+        / "latest_context.json"
+    )
+    context_path.write_text(
+        json.dumps(
+            {
+                "schema": "orb_weaver.site_world.v1",
+                "site_name": "Campaign",
+                "domain": "campaign.orbweaver.spruked.com",
+                "site_summary": "A campaign site for Orb Weaver.",
+                "route_hints": {"start": "/"},
+                "authority_flow": {"pages": [{"url": "https://campaign.orbweaver.spruked.com/"}]},
+                "visitor_tools": [
+                    {
+                        "id": "start_guidance",
+                        "keywords": ["start", "begin"],
+                        "spoken_output": "Use the Start control on this page.",
+                        "suggested_route": "/",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    response = client.post(
+        "/api/orb/website-text",
+        headers={"Origin": "https://demo.openai.chatgpt.site"},
+        json={
+            "transcript": "How do I start?",
+            "synthesize_tts": False,
+            "target_url": "https://demo.openai.chatgpt.site/",
+            "site_id": "orb-weaver-campaign",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["answer_state"] == "known"
+    assert payload["learning_record_id"]
+    trace = payload["cco_trace"]
+    assert trace["schema"] == "orb_weaver.cco_runtime_trace.v1"
+    assert trace["short_name"] == "CCO"
+    assert trace["site_id"] == "orb-weaver-campaign"
+    assert trace["domain"] == "campaign.orbweaver.spruked.com"
+    assert trace["selected_strategy"] == "vault_compile"
+    assert trace["task_profile"]["intent"]
+    assert trace["evidence_package"]["context_tokens"] >= 0
+    assert "retrieved.start_guidance" in trace["evidence_package"]["retrieved_fact_ids"]
+    assert trace["correspondence_result"]["answer_state"] == "known"
+    assert trace["correspondence_result"]["status"] == "supported"
+    assert trace["articulation"]["llm_source"] == "orb-runtime-context"
+    assert trace["write_back"]["posteriori_recorded"] is True
+    assert trace["write_back"]["learning_record_id"] == payload["learning_record_id"]

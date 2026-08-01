@@ -39,11 +39,40 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 ### Website ORB Voice Runtime
 
 - The live public Website ORB voice runtime is `frontend/src/landing/AutonomousOrb.tsx`.
-- One click starts microphone capture; end-of-speech detection submits automatically through `POST /api/orb/website-voice`.
+- The ORB is a voice-first surface. Browser permission rules still govern microphone/audio access, so commercial installs must be described honestly as browser-permission-bound.
+- End-of-speech detection submits automatically through `POST /api/orb/website-voice`.
 - The backend performs Faster Whisper STT, ORB cognition, protected identity answer selection, local LLM answers for ordinary questions, local TTS/cache, and WAV delivery.
 - Browser `SpeechRecognition` and browser `speechSynthesis` are not the canonical public ORB voice path.
 - Gold-master replication details live in `docs/ORB_VOICE_RUNTIME_REPLICATION_REPORT.md`.
 - Pointer/runtime intent details live in `docs/ORB_POINTER_RUNTIME_MODEL.md`.
+
+### Website ORB Runtime Intelligence
+
+- Website ORB responses now carry a CCO runtime trace through `cco_trace`.
+- CCO means **Context & Correspondence Orchestrator**. It is the governed runtime conductor that prepares context, coordinates correspondence analysis, and packages evidence for the next ORB decision.
+- The active CCO package lives at `Orb_Assistant/context_correspondence_orchestrator/`.
+- Live text and voice responses now expose the trace shape needed for acceptance:
+  - site ID and domain
+  - task profile
+  - selected strategy
+  - evidence package and retrieved fact IDs
+  - token budget and context token count
+  - correspondence result
+  - answer state
+  - posteriori learning record ID
+- CCO uses compatibility fields such as `crystal_tokens` and `crystal_data` internally for existing API/storage stability, but the architectural name is CCO.
+
+### Site-Scoped ORB Learning Loop
+
+- Every deployed Website ORB has a site-scoped learning vault under `vault_system/clients/<domain>/website_orb_learning/`.
+- Runtime answers are classified as `known`, `resolved`, `clarification_required`, or `unknown`.
+- Known answers come from current verified Site World/tool evidence.
+- Resolved answers come from approved equivalent posteriori cases.
+- Unknown answers are treated as governed outcomes and are written into the Stump Ledger for owner review.
+- Raw visitor conversations are not stored as reusable knowledge by default. Interaction records sanitize personal data and store minimal intent/context/evidence/outcome fields.
+- Downloadable `.orbpack` files include a clean-slate learning-loop template for future ORBS installs.
+- Details live in `docs/WEBSITE_ORB_COMMERCIAL_READINESS.md`.
+- The intended v2.1 download path is a Website Dock Station release repo bundle: basic Dock Station runtime, blank ORB template, injected Site World/owner policy, Live Test evidence, and single-vault storage packaged together. See `docs/WEBSITE_DOCK_STATION_DOWNLOAD_STRATEGY.md`.
 
 ### Universal ORB Loader and Factory Identity
 
@@ -119,6 +148,9 @@ Orb Weaver now includes:
 - Intent-preserving signup and project-bound Welcome workspace.
 - Verified pointer destination enforcement.
 - GA4 integration and non-sensitive analytics support.
+- Dock Station owner policy controls for behavior, greeting, voice posture, model/provider selection, job description, and must-follow/must-not rules.
+- Website ORB site-learning loop with posteriori interaction records, Stump Ledger, verified-case reuse, and clean-slate pack templates.
+- CCO runtime trace active in the Website ORB answer path.
 
 The implemented onboarding path is:
 
@@ -138,7 +170,16 @@ The broader ORBS customer path is:
 
 ### Verification status
 
-The implementation is preserved in commit `7f65f5a`. A controlled rebuild, restart, live route verification, and complete post-restart regression remain required before release.
+The historical checkpoint is preserved in commit `7f65f5a`. Since then, the local working tree has advanced with Dock Station behavior controls, Website ORB learning-loop records, CCO renaming, and live CCO tracing.
+
+Current commercial stance as of 2026-07-30:
+
+```text
+Ready to sell as a controlled, white-glove pilot installation.
+Not ready for broad self-serve SaaS sales.
+```
+
+Do not promise fully autonomous no-click browser voice activation, complete GPT/Claude runtime adapter switching, or unsupervised self-serve customer installs yet.
 
 ## Architecture
 

@@ -5,6 +5,7 @@ import { Orb } from "./Orb";
 import { api, type WebsiteOrbPointerRecord } from "../services/api";
 import { OrbRoboticsMovementController } from "../orb/robotics/movementController";
 import type { RobotCommand } from "../orb/robotics/robotMovement.types";
+import { selectOrbStartupGreeting } from "../orb/startupGreetings";
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, ms));
@@ -35,7 +36,8 @@ type Props = {
   className?: string;
 };
 
-const HEADER_SAFE = 0;
+const HEADER_SAFE = 96;
+const ORB_OVERLAY_Z_INDEX = 2147483000;
 const EDGE = 8;
 const IDLE_TRAVEL_MIN_MS = 6500;
 const IDLE_TRAVEL_MAX_MS = 10500;
@@ -54,6 +56,20 @@ const routeForUrl = (value?: string | null): string => {
   } catch {
     return "/";
   }
+};
+
+const startupGreetingText = (): string => {
+  const paragraphs = selectOrbStartupGreeting()
+    .text
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  return [
+    paragraphs[0] || "Welcome to Orb Weaver.",
+    paragraphs[1] || "I’m Weaver, your website ORB.",
+    "What brought you here?",
+  ].join("\n\n");
 };
 
 export const AutonomousOrb: React.FC<Props> = ({
@@ -94,6 +110,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const speechDetectedRef = useRef(false);
   const silenceStartedAtRef = useRef<number | null>(null);
   const speakerBoostRef = useRef(false);
+  const startupAutoStartedRef = useRef(false);
   const pageCapsuleRef = useRef<unknown>(null);
   const pointerTimerRef = useRef<number | null>(null);
   const [pulse, setPulse] = useState<PulseState>(null);
@@ -577,9 +594,19 @@ export const AutonomousOrb: React.FC<Props> = ({
     presence.stop();
   }, [move, presence]);
 
-  const speak = useCallback(async (text: string, audioUrl?: string | null, provider?: string | null) => {
-    showStatus();
-    setStatusLine(text);
+  const speak = useCallback(async (
+    text: string,
+    audioUrl?: string | null,
+    provider?: string | null,
+    options: { showTranscript?: boolean } = {},
+  ) => {
+    const showTranscript = options.showTranscript !== false;
+    if (showTranscript) {
+      showStatus();
+    } else {
+      setStatusVisible(false);
+    }
+    setStatusLine(showTranscript ? text : "Speaking.");
     setVoiceState("speaking");
     freezeOrbInPlace(4200);
 
@@ -930,6 +957,54 @@ export const AutonomousOrb: React.FC<Props> = ({
     avoidUntilRef.current = Date.now() + 900;
   }, [showStatus]);
 
+  const requestStartupMicrophonePermission = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setStatusTitle("Voice unavailable");
+      setStatusLine("Microphone recording is unavailable in this browser.");
+      showStatus(4200);
+      return false;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      stream.getTracks().forEach((track) => track.stop());
+      return true;
+    } catch {
+      setStatusTitle("Microphone blocked");
+      setStatusLine("Allow microphone access in the browser to talk with Weaver.");
+      showStatus(5200);
+      return false;
+    }
+  }, [showStatus]);
+
+  const runStartupVoiceSequence = useCallback(async () => {
+    if (startupAutoStartedRef.current || onboardingSafeMode) return;
+    startupAutoStartedRef.current = true;
+    unlockAudio();
+    const greeting = startupGreetingText();
+    const micReadyPromise = requestStartupMicrophonePermission();
+    try {
+      const tts = await api.websiteOrbTts(greeting);
+      await speak(greeting, tts.tts_audio_url, tts.tts_provider);
+    } catch {
+      speakRecovery(greeting);
+    }
+
+    const micReady = await micReadyPromise;
+    if (micReady && activeRef.current) {
+      window.setTimeout(() => {
+        if (!activeRef.current || voiceRequestInFlightRef.current) return;
+        void startOrbRecording();
+      }, 420);
+    }
+  }, [onboardingSafeMode, requestStartupMicrophonePermission, speak, speakRecovery, startOrbRecording, unlockAudio]);
+
   const handleOrbClick = useCallback(() => {
     markVisitorActivity();
     if (voiceState === "speaking") {
@@ -1109,6 +1184,7 @@ export const AutonomousOrb: React.FC<Props> = ({
 
         window.sessionStorage.setItem("orbweaver-intro-played", "1");
         setPulse(null);
+        void runStartupVoiceSequence();
       } else {
         surge.set({ scale: 1, opacity: 1, x: 0, rotate: 0 });
       }
@@ -1212,7 +1288,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       }
       window.removeEventListener("resize", handleResize);
     };
-  }, [clampPosition, glow, move, nextDestination, playLocalPresence, playStageScreech, presence, size, stopRecordingMonitor, surge, upperRightRestDestination, voiceState]);
+  }, [clampPosition, glow, move, nextDestination, playLocalPresence, playStageScreech, presence, runStartupVoiceSequence, size, stopRecordingMonitor, surge, upperRightRestDestination, voiceState]);
 
   // Voice resources are cancelled only when this ORB component unmounts.
   useEffect(() => {
@@ -1299,7 +1375,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         top: 0,
         width: size,
         height: size,
-        zIndex: 29,
+        zIndex: ORB_OVERLAY_Z_INDEX,
         pointerEvents: "auto",
         opacity: isResting ? REST_ORB_OPACITY : ACTIVE_ORB_OPACITY,
         "--ow-pointer-angle": `${pointerBloom?.originAngle || 0}deg`,
@@ -1389,14 +1465,8 @@ export const AutonomousOrb: React.FC<Props> = ({
         </motion.div>
       </motion.div>
       {statusVisible && (
-        <div className="ow-v2-orb-status" aria-live="polite">
-          <strong>{statusTitle}</strong>
+        <div className="ow-v2-orb-status" aria-live="polite" aria-label={statusTitle}>
           <span>{statusLine}</span>
-        </div>
-      )}
-      {isResting && (
-        <div className="ow-v2-orb-rest-cue" aria-live="polite">
-          Click me
         </div>
       )}
     </motion.div>

@@ -56,14 +56,77 @@ class AppearanceConfiguration(LockedModel):
 
 
 class LlmConfiguration(LockedModel):
-    provider: Literal["runtime_default", "ollama_local"] = "runtime_default"
+    provider: Literal["runtime_default", "ollama_local", "openai_api", "anthropic_api", "openai_compatible"] = "runtime_default"
     model: Optional[str] = Field(default=None, max_length=160)
+    base_url: Optional[str] = Field(default=None, max_length=500)
+    api_key_env: Optional[str] = Field(default=None, max_length=80)
+    temperature: float = Field(default=0.35, ge=0, le=1.5)
+    max_output_tokens: int = Field(default=160, ge=16, le=1200)
 
-    @field_validator("model")
+    @field_validator("model", "base_url", "api_key_env")
     @classmethod
-    def normalize_model(cls, value: Optional[str]) -> Optional[str]:
+    def normalize_optional_text(cls, value: Optional[str]) -> Optional[str]:
         normalized = (value or "").strip()
         return normalized or None
+
+    @field_validator("api_key_env")
+    @classmethod
+    def validate_api_key_env(cls, value: Optional[str]) -> Optional[str]:
+        if value and not re.fullmatch(r"[A-Z][A-Z0-9_]{2,79}", value):
+            raise ValueError("Use an uppercase environment variable name such as OPENAI_API_KEY")
+        return value
+
+
+class BehaviorConfiguration(LockedModel):
+    tone: Literal["warm", "calm", "professional", "playful", "direct"] = "warm"
+    response_style: Literal["concise", "guided", "diagnostic", "sales_assistant"] = "concise"
+    greeting_enabled: bool = True
+    startup_listening_enabled: bool = True
+    voice_only: bool = True
+    mute_by_default: bool = False
+    sleep_by_default: bool = False
+    greeting_script: str = Field(
+        default="Hi, I am Weaver. I am here, listening when you are ready.",
+        max_length=500,
+    )
+    job_description: str = Field(
+        default=(
+            "Serve as the visitor-facing Website ORB. Listen first, answer clearly, guide visitors only through verified site paths, "
+            "and help them complete approved owner objectives without pretending that unverified actions happened."
+        ),
+        max_length=2000,
+    )
+    persona_notes: str = Field(
+        default="Sound warm, patient, curious, and never irritated. Avoid scripted or scolding language.",
+        max_length=1500,
+    )
+    must_follow_rules: List[str] = Field(
+        default_factory=lambda: [
+            "Use one short spoken response unless the visitor asks for detail.",
+            "Ask one helpful clarifying question when the visitor intent is unclear.",
+            "Use only verified routes, tools, and owner-approved actions.",
+            "Say when something needs owner or staff follow-up.",
+        ],
+        max_length=30,
+    )
+    must_not_rules: List[str] = Field(
+        default_factory=lambda: [
+            "Do not sound angry, annoyed, sarcastic, rushed, or scripted.",
+            "Do not claim an action was completed without verified evidence.",
+            "Do not expose credentials, private owner data, or unrelated customer data.",
+            "Do not invent prices, policies, routes, tools, or availability.",
+        ],
+        max_length=30,
+    )
+    prohibited_tone: List[str] = Field(
+        default_factory=lambda: ["angry", "annoyed", "sarcastic", "rushed"],
+        max_length=20,
+    )
+
+    @field_validator("greeting_script", "job_description", "persona_notes")
+    @classmethod
+    def normalize_behavior_text(cls, value: str) -> str:
+        return (value or "").strip()
 
 
 class BusinessObjective(LockedModel):
@@ -126,6 +189,7 @@ class DockConfiguration(LockedModel):
     schema: Literal[DOCK_CONFIGURATION_SCHEMA] = DOCK_CONFIGURATION_SCHEMA
     appearance: AppearanceConfiguration = Field(default_factory=AppearanceConfiguration)
     llm: LlmConfiguration = Field(default_factory=LlmConfiguration)
+    behavior: BehaviorConfiguration = Field(default_factory=BehaviorConfiguration)
     business_objectives: List[BusinessObjective] = Field(default_factory=list, max_length=40)
     additional_guide_rails: List[AdditionalGuideRail] = Field(default_factory=list, max_length=80)
     situational_guide_rails: List[SituationalGuideRail] = Field(default_factory=list, max_length=80)
@@ -189,6 +253,20 @@ def compile_configuration(
         skin = SKIN_BY_ID["orb_factory_default_v1"]
     if configuration.llm.provider == "ollama_local" and not configuration.llm.model:
         blockers.append({"path": "llm.model", "code": "model_required", "message": "Select or download an Ollama model before publication."})
+    if configuration.llm.provider in {"openai_api", "anthropic_api"}:
+        if not configuration.llm.model:
+            blockers.append({"path": "llm.model", "code": "model_required", "message": "Select the API model before publication."})
+        if not configuration.llm.api_key_env:
+            blockers.append({"path": "llm.api_key_env", "code": "api_key_env_required", "message": "Name the server environment variable that holds this provider API key."})
+    if configuration.llm.provider == "openai_compatible":
+        if not configuration.llm.base_url:
+            blockers.append({"path": "llm.base_url", "code": "base_url_required", "message": "Enter the OpenAI-compatible API base URL."})
+        if not configuration.llm.model:
+            blockers.append({"path": "llm.model", "code": "model_required", "message": "Select the OpenAI-compatible model before publication."})
+        if not configuration.llm.api_key_env:
+            warnings.append({"path": "llm.api_key_env", "code": "api_key_env_missing", "message": "No API key env var is set; this only works for unauthenticated local-compatible endpoints."})
+    if configuration.behavior.greeting_enabled and not configuration.behavior.greeting_script:
+        blockers.append({"path": "behavior.greeting_script", "code": "greeting_required", "message": "A spoken greeting is required when startup greeting is enabled."})
 
     objective_ids: Set[str] = set()
     rail_ids: Set[str] = set()
@@ -275,6 +353,12 @@ def compile_configuration(
         "locked_doctrine": {"hash": doctrine_hash(), "rules": LOCKED_ORB_DOCTRINE},
         "appearance": {**skin, "customization_state": "FACTORY_DEFAULT" if skin.get("factory_default") else "CUSTOM"},
         "llm": configuration.llm.model_dump(mode="json"),
+        "behavior": {
+            **configuration.behavior.model_dump(mode="json"),
+            "must_follow_rules": _string_list(configuration.behavior.must_follow_rules),
+            "must_not_rules": _string_list(configuration.behavior.must_not_rules),
+            "prohibited_tone": _string_list(configuration.behavior.prohibited_tone),
+        },
         "business_objectives": compiled_objectives,
         "additional_guide_rails": compiled_additional,
         "situational_guide_rails": compiled_situational,
@@ -316,6 +400,7 @@ def public_runtime_policy(compiled_policy: Optional[Dict[str, Any]]) -> Optional
             "locked_doctrine",
             "appearance",
             "llm",
+            "behavior",
             "business_objectives",
             "additional_guide_rails",
             "situational_guide_rails",

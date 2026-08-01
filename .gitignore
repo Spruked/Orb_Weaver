@@ -34,6 +34,7 @@ backend/*.log
 /vault_system/clients/**
 /vault_system/databases/**
 /vault_system/posteriori/**
+/vault_system/**/posteriori/**
 /vault_system/cognition/**
 /vault_system/identity/**
 /vault_system/permissions/**
@@ -87,6 +88,9 @@ substrate/*
 !substrate/clients
 !substrate/global_intelligence
 data/tts_cache/
+
+# Audio cache/content generated locally.
+*.wav
 
 # Legacy Orb Assistant learned-memory locations. These paths must not be
 # recreated; the migration tool moves their contents into the one root vault.

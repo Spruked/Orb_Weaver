@@ -13,6 +13,8 @@ This directory is the central home for authored Orb Weaver documentation.
 - [Intelligence graph specification](ORB_WEAVER_INTELLIGENCE_GRAPH_SPEC.md)
 - [V1 transactional doctrine](ORB_WEAVER_V1_TRANSACTIONAL_DOCTRINE.md)
 - [Standard Website ORB blueprint](STANDARD_WEBSITE_ORB_BLUEPRINT.md)
+- [Website ORB commercial readiness](WEBSITE_ORB_COMMERCIAL_READINESS.md)
+- [Website Dock Station download strategy](WEBSITE_DOCK_STATION_DOWNLOAD_STRATEGY.md)
 
 ## Voice
 
@@ -33,6 +35,7 @@ This directory is the central home for authored Orb Weaver documentation.
 - [Product-plan handoff](handoffs/HANDOFF_PRODUCT_PLAN.md)
 - [Brand World handoff](handoffs/HANDOFF_BRAND_WORLD.md)
 - [Live route and voice handoff](handoffs/ORB_WEAVER_HANDOFF_LIVE_ORB_ROUTE_AND_VOICE.md)
+- [Website ORB CCO and learning-loop handoff](handoffs/HANDOFF_2026-07-30_WEBSITE_ORB_CCO_LEARNING.md)
 - [Product-plan development notes](planning/DEV_NOTES_PRODUCT_PLAN.md)
 - [Feature board](planning/Orb_Weaver_feature_board_v2.md)
 - [Engineering plan](planning/engineering-plan.md)

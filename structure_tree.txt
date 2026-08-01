@@ -1,0 +1,558 @@
+.
+├── .github
+│   └── workflows
+├── .runtime
+│   └── rdrive_mcp_server
+├── .vscode
+├── Orb_Assistant
+│   ├── context_correspondence_orchestrator
+│   │   ├── context_correspondence_orchestrator
+│   │   │   ├── api
+│   │   │   ├── core
+│   │   │   └── strategies
+│   │   └── correspondence_engine
+│   ├── electron_dock_adapter
+│   ├── orbskin-scaffold-v0.1
+│   │   └── orbskin
+│   │       ├── docs
+│   │       ├── loaders
+│   │       │   ├── Skins_Assets
+│   │       │   ├── electron
+│   │       │   ├── tauri
+│   │       │   └── web
+│   │       ├── packer
+│   │       ├── renderer
+│   │       └── shared
+│   │           ├── hash
+│   │           ├── types
+│   │           └── validator
+│   ├── pointer_escalation
+│   ├── src
+│   │   ├── components
+│   │   │   └── core_4_minds
+│   │   │       ├── bspinoza
+│   │   │       ├── hhume
+│   │   │       ├── hlocke
+│   │   │       └── ikant
+│   │   ├── hlsf_geometry
+│   │   ├── interface
+│   │   ├── logic_seeds
+│   │   │   ├── deductive_SKG
+│   │   │   │   ├── job
+│   │   │   │   ├── jobs
+│   │   │   │   └── logic
+│   │   │   ├── deductive_validator
+│   │   │   │   ├── job
+│   │   │   │   └── logic
+│   │   │   ├── inductive
+│   │   │   ├── inductive_skg
+│   │   │   │   └── logic
+│   │   │   ├── inductive_validator
+│   │   │   │   └── logic
+│   │   │   ├── intuitive
+│   │   │   ├── intuitive_skg
+│   │   │   │   └── logic
+│   │   │   └── intuitive_validator
+│   │   │       └── logic
+│   │   ├── orbs_integration
+│   │   └── voice
+│   │       └── weaver_voice_skg
+│   │           ├── cognitive_state
+│   │           ├── docs
+│   │           ├── logic
+│   │           ├── old_files
+│   │           ├── stage_mappings
+│   │           ├── templates
+│   │           ├── tests
+│   │           └── voice_presets
+│   └── tools -> /home/bryan/projects/Orb_Weaver/tools
+├── Preflight Scanner
+├── artifacts
+│   └── onboarding
+├── backend
+│   ├── R:\R_Drive_Substrate\orb_weaver
+│   │   ├── clients -> /home/bryan/projects/Orb_Weaver/vault_system/clients
+│   │   └── global_intelligence
+│   ├── app
+│   │   ├── analytics
+│   │   ├── api
+│   │   ├── audit
+│   │   ├── core
+│   │   ├── crawler
+│   │   ├── inference_gateway
+│   │   ├── lifecycle
+│   │   ├── models
+│   │   ├── orb
+│   │   ├── pack_generator
+│   │   └── services
+│   ├── data
+│   │   └── tts_cache -> /home/bryan/projects/Orb_Weaver/vault_system/runtime/tts_cache
+│   ├── report_compiler
+│   │   ├── 1_campaign
+│   │   ├── 1_dependency
+│   │   └── 1_lifecycle
+│   └── tests
+├── deploy
+│   ├── cloudflared
+│   ├── docker
+│   └── nginx
+├── docs
+│   ├── architecture
+│   ├── archive
+│   │   └── demo
+│   ├── handoffs
+│   ├── planning
+│   └── reference
+├── frontend
+│   ├── public
+│   │   ├── orb
+│   │   │   └── voice
+│   │   │       └── latency-fillers
+│   │   └── orb-skins
+│   ├── scripts
+│   └── src
+│       ├── adapters
+│       ├── assets
+│       ├── components
+│       ├── landing
+│       ├── marketplace
+│       │   ├── components
+│       │   ├── data
+│       │   ├── hooks
+│       │   ├── pages
+│       │   ├── services
+│       │   └── styles
+│       ├── onboarding
+│       ├── orb
+│       │   └── robotics
+│       ├── orb-client
+│       ├── pages
+│       │   └── marketplace
+│       └── services
+├── scripts
+├── substrate
+│   ├── clients -> /home/bryan/projects/Orb_Weaver/vault_system/clients
+│   └── global_intelligence -> ../vault_system/indexes/global_intelligence
+├── tools
+└── vault_system
+    ├── apriori
+    ├── audit
+    ├── backups
+    │   └── migration_conflicts
+    │       ├── backend-tts-cache
+    │       ├── malformed-client-root-1
+    │       ├── root-data
+    │       ├── runtime-dev
+    │       ├── substrate-global-intelligence-legacy-20260720
+    │       └── vault-global-intelligence-legacy-20260720
+    ├── client_or_owner_data
+    ├── clients
+    │   ├── 127.0.0.1
+    │   │   └── website_orb_learning
+    │   │       ├── indexes
+    │   │       ├── posteriori
+    │   │       ├── promotion_queue
+    │   │       └── stump_ledger
+    │   ├── 127.0.0.1_16510
+    │   │   ├── claims
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   ├── recommendations
+    │   │   ├── reports
+    │   │   └── website_orb_context
+    │   ├── ablehands.net
+    │   │   ├── approved_claims
+    │   │   ├── banned_claims
+    │   │   ├── claims
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_packs
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   ├── owner_seed_changes
+    │   │   ├── recommendations
+    │   │   ├── reports
+    │   │   ├── visitor_questions
+    │   │   └── website_orb_context
+    │   ├── campaign.orbweaver.spruked.com
+    │   │   ├── approved_claims
+    │   │   ├── banned_claims
+    │   │   ├── claims
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_packs
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   ├── owner_seed_changes
+    │   │   ├── recommendations
+    │   │   ├── reports
+    │   │   ├── runs
+    │   │   │   ├── 1
+    │   │   │   │   ├── baseline
+    │   │   │   │   │   ├── databases
+    │   │   │   │   │   ├── map
+    │   │   │   │   │   ├── orb
+    │   │   │   │   │   └── site
+    │   │   │   │   ├── exports
+    │   │   │   │   ├── failure_diagnostics
+    │   │   │   │   ├── preflight
+    │   │   │   │   ├── reconciliation
+    │   │   │   │   ├── reports
+    │   │   │   │   ├── review
+    │   │   │   │   ├── sentinel
+    │   │   │   │   └── verification
+    │   │   │   │       ├── databases
+    │   │   │   │       ├── map
+    │   │   │   │       ├── orb
+    │   │   │   │       └── site
+    │   │   │   ├── 2
+    │   │   │   │   ├── baseline
+    │   │   │   │   │   ├── databases
+    │   │   │   │   │   ├── map
+    │   │   │   │   │   ├── orb
+    │   │   │   │   │   └── site
+    │   │   │   │   ├── exports
+    │   │   │   │   ├── failure_diagnostics
+    │   │   │   │   ├── preflight
+    │   │   │   │   ├── reconciliation
+    │   │   │   │   ├── reports
+    │   │   │   │   ├── review
+    │   │   │   │   ├── sentinel
+    │   │   │   │   └── verification
+    │   │   │   │       ├── databases
+    │   │   │   │       ├── map
+    │   │   │   │       ├── orb
+    │   │   │   │       └── site
+    │   │   │   ├── 3
+    │   │   │   │   ├── baseline
+    │   │   │   │   │   ├── databases
+    │   │   │   │   │   ├── map
+    │   │   │   │   │   ├── orb
+    │   │   │   │   │   └── site
+    │   │   │   │   ├── exports
+    │   │   │   │   ├── failure_diagnostics
+    │   │   │   │   ├── preflight
+    │   │   │   │   ├── reconciliation
+    │   │   │   │   ├── reports
+    │   │   │   │   ├── review
+    │   │   │   │   ├── sentinel
+    │   │   │   │   └── verification
+    │   │   │   │       ├── databases
+    │   │   │   │       ├── map
+    │   │   │   │       ├── orb
+    │   │   │   │       └── site
+    │   │   │   ├── 4
+    │   │   │   │   ├── baseline
+    │   │   │   │   │   ├── databases
+    │   │   │   │   │   ├── map
+    │   │   │   │   │   ├── orb
+    │   │   │   │   │   └── site
+    │   │   │   │   ├── exports
+    │   │   │   │   ├── failure_diagnostics
+    │   │   │   │   ├── preflight
+    │   │   │   │   ├── reconciliation
+    │   │   │   │   ├── reports
+    │   │   │   │   ├── review
+    │   │   │   │   ├── sentinel
+    │   │   │   │   └── verification
+    │   │   │   │       ├── databases
+    │   │   │   │       ├── map
+    │   │   │   │       ├── orb
+    │   │   │   │       └── site
+    │   │   │   └── 5
+    │   │   │       ├── baseline
+    │   │   │       │   ├── databases
+    │   │   │       │   ├── map
+    │   │   │       │   ├── orb
+    │   │   │       │   └── site
+    │   │   │       ├── exports
+    │   │   │       ├── failure_diagnostics
+    │   │   │       ├── preflight
+    │   │   │       ├── reconciliation
+    │   │   │       ├── reports
+    │   │   │       ├── review
+    │   │   │       ├── sentinel
+    │   │   │       └── verification
+    │   │   │           ├── databases
+    │   │   │           ├── map
+    │   │   │           ├── orb
+    │   │   │           │   └── pointer_recovery_capture
+    │   │   │           └── site
+    │   │   ├── visitor_questions
+    │   │   └── website_orb_context
+    │   ├── chumbacasino.com
+    │   │   ├── claims
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   ├── recommendations
+    │   │   ├── reports
+    │   │   └── website_orb_context
+    │   ├── esahubble.org
+    │   │   ├── approved_claims
+    │   │   ├── banned_claims
+    │   │   ├── claims
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_packs
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   ├── owner_seed_changes
+    │   │   ├── recommendations
+    │   │   ├── reports
+    │   │   ├── visitor_questions
+    │   │   └── website_orb_context
+    │   ├── http_127.0.0.1_16510
+    │   │   ├── claims
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   ├── recommendations
+    │   │   ├── reports
+    │   │   └── website_orb_context
+    │   ├── orb.weaver.com
+    │   │   ├── approved_claims
+    │   │   ├── banned_claims
+    │   │   ├── claims
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_packs
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   ├── owner_seed_changes
+    │   │   ├── recommendations
+    │   │   ├── reports
+    │   │   ├── visitor_questions
+    │   │   └── website_orb_context
+    │   ├── orbweaver.spruked.com
+    │   │   ├── approved_claims
+    │   │   ├── banned_claims
+    │   │   ├── claims
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_packs
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   ├── owner_seed_changes
+    │   │   ├── preflight
+    │   │   ├── recommendations
+    │   │   ├── reports
+    │   │   ├── visitor_questions
+    │   │   └── website_orb_context
+    │   ├── shilohridgekatahdins.com
+    │   │   ├── approved_claims
+    │   │   ├── banned_claims
+    │   │   ├── claims
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_packs
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   ├── owner_seed_changes
+    │   │   ├── recommendations
+    │   │   ├── reports
+    │   │   ├── visitor_questions
+    │   │   └── website_orb_context
+    │   ├── spruked.com
+    │   │   ├── approved_claims
+    │   │   ├── banned_claims
+    │   │   ├── claims
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_packs
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   ├── owner_seed_changes
+    │   │   ├── recommendations
+    │   │   ├── reports
+    │   │   ├── visitor_questions
+    │   │   └── website_orb_context
+    │   ├── superiorpowersports.com
+    │   │   ├── approved_claims
+    │   │   ├── banned_claims
+    │   │   ├── claims
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_packs
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   ├── owner_seed_changes
+    │   │   ├── recommendations
+    │   │   ├── reports
+    │   │   ├── visitor_questions
+    │   │   └── website_orb_context
+    │   ├── www.pinterest.com
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   └── website_orb_context
+    │   ├── www.radarinc.com
+    │   │   ├── approved_claims
+    │   │   ├── banned_claims
+    │   │   ├── claims
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_packs
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   ├── owner_seed_changes
+    │   │   ├── preflight
+    │   │   ├── recommendations
+    │   │   ├── reports
+    │   │   ├── runs
+    │   │   │   └── 6
+    │   │   │       ├── baseline
+    │   │   │       │   ├── databases
+    │   │   │       │   ├── map
+    │   │   │       │   ├── orb
+    │   │   │       │   └── site
+    │   │   │       ├── exports
+    │   │   │       ├── failure_diagnostics
+    │   │   │       ├── preflight
+    │   │   │       ├── reconciliation
+    │   │   │       ├── reports
+    │   │   │       ├── review
+    │   │   │       ├── sentinel
+    │   │   │       └── verification
+    │   │   │           ├── databases
+    │   │   │           ├── map
+    │   │   │           ├── orb
+    │   │   │           └── site
+    │   │   ├── visitor_questions
+    │   │   └── website_orb_context
+    │   ├── www.spacex.com
+    │   │   ├── approved_claims
+    │   │   ├── banned_claims
+    │   │   ├── claims
+    │   │   ├── crm_context
+    │   │   ├── current
+    │   │   ├── dandy_packs
+    │   │   ├── dandy_sponsor_pack
+    │   │   ├── history
+    │   │   ├── local_index
+    │   │   ├── mail_context
+    │   │   ├── owner_seed_changes
+    │   │   ├── recommendations
+    │   │   ├── reports
+    │   │   ├── visitor_questions
+    │   │   └── website_orb_context
+    │   └── www.superiorpowersports.com
+    │       ├── crm_context
+    │       ├── current
+    │       ├── dandy_sponsor_pack
+    │       ├── history
+    │       ├── local_index
+    │       ├── mail_context
+    │       └── website_orb_context
+    ├── databases
+    ├── global_intelligence -> indexes/global_intelligence
+    ├── identity
+    ├── indexes
+    │   └── global_intelligence
+    ├── integrations
+    │   └── cali_crm
+    │       └── imports
+    │           └── pending
+    ├── long_term_memory
+    │   └── tpc
+    ├── manifests
+    ├── observations
+    │   └── cognition
+    │       └── workers
+    │           ├── cali_reflection
+    │           ├── deductive_skg
+    │           │   ├── apriori
+    │           │   └── trace
+    │           ├── deductive_validator
+    │           ├── final_validation
+    │           ├── inductive_skg
+    │           │   ├── apriori
+    │           │   └── trace
+    │           ├── inductive_validator
+    │           ├── intuitive_skg
+    │           │   ├── apriori
+    │           │   └── trace
+    │           ├── intuitive_validator
+    │           └── sf_orb_controller
+    ├── permissions
+    ├── persistent_cache
+    ├── posteriori
+    ├── reports
+    │   ├── 10_radar
+    │   │   └── preflight
+    │   ├── 11_pro_prime_series
+    │   │   └── preflight
+    │   ├── 12_able_hands_-_sarah_kurts
+    │   │   └── preflight
+    │   ├── 1_dependency
+    │   ├── 1_lifecycle
+    │   ├── 1_orb_weaver
+    │   │   └── preflight
+    │   ├── 2_dependency
+    │   ├── 2_pinterest
+    │   ├── 3_campaign
+    │   ├── 3_pops
+    │   │   └── preflight
+    │   ├── 3_superior_powersports
+    │   ├── 4_spruked_com
+    │   │   └── preflight
+    │   ├── 5_shiloh_ridge_farm
+    │   │   └── preflight
+    │   ├── 6_hubble
+    │   │   └── preflight
+    │   ├── 6_orb_weaver
+    │   │   └── preflight
+    │   ├── 7_space_x
+    │   │   └── preflight
+    │   ├── 8_power_sports
+    │   │   └── preflight
+    │   └── 9_open_ai
+    │       └── preflight
+    ├── runtime
+    │   ├── backend_data_compat
+    │   ├── browser_reviews
+    │   ├── inference_gateway
+    │   │   ├── logs
+    │   │   └── pids
+    │   ├── logs
+    │   ├── state
+    │   └── tts_cache
+    ├── runtime_state
+    ├── schemas
+    ├── short_term_memory
+    ├── site_or_environment_data
+    ├── verified_outcomes
+    └── workflow_state
+
+556 directories

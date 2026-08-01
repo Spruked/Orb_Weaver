@@ -16,6 +16,7 @@ import {
   SlidersHorizontal,
   Target,
   Trash2,
+  Volume2,
 } from 'lucide-react';
 import {
   api,
@@ -28,10 +29,11 @@ import {
 } from '../services/api';
 import OrbAssemblyStatus from '../components/OrbAssemblyStatus';
 
-type TabId = 'doctrine' | 'appearance' | 'models' | 'objectives' | 'additional' | 'situational';
+type TabId = 'doctrine' | 'behavior' | 'appearance' | 'models' | 'objectives' | 'additional' | 'situational';
 
 const TABS: Array<{ id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }> = [
   { id: 'doctrine', label: 'Locked Doctrine', icon: ShieldCheck },
+  { id: 'behavior', label: 'Behavior', icon: Volume2 },
   { id: 'appearance', label: 'ORB Skins', icon: Palette },
   { id: 'models', label: 'Models', icon: BrainCircuit },
   { id: 'objectives', label: 'Business Objectives', icon: Target },
@@ -41,6 +43,13 @@ const TABS: Array<{ id: TabId; label: string; icon: React.ComponentType<{ classN
 
 const inputClass = 'mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand-accent focus:outline-none focus:ring-2 focus:ring-brand-orange/20';
 const labelClass = 'block text-sm font-bold text-slate-800';
+const providerDefaults: Record<DockConfiguration['llm']['provider'], Partial<DockConfiguration['llm']>> = {
+  runtime_default: { model: null, base_url: null, api_key_env: null },
+  ollama_local: { model: null, base_url: null, api_key_env: null },
+  openai_api: { model: 'gpt-4.1-mini', base_url: null, api_key_env: 'OPENAI_API_KEY' },
+  anthropic_api: { model: 'claude-3-5-sonnet-latest', base_url: null, api_key_env: 'ANTHROPIC_API_KEY' },
+  openai_compatible: { model: '', base_url: 'http://127.0.0.1:11434/v1', api_key_env: null },
+};
 
 const lines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
 const lineText = (value: string[] | undefined) => (value || []).join('\n');
@@ -246,7 +255,7 @@ const OrbDockStationPage: React.FC = () => {
       await api.pullOrbDockOllamaModel(projectId, pullModel.trim());
       const status = await api.getOrbDockOllama(projectId);
       setOllama(status);
-      updateDraft((current) => ({ ...current, llm: { provider: 'ollama_local', model: pullModel.trim() } }));
+      updateDraft((current) => ({ ...current, llm: { ...current.llm, provider: 'ollama_local', model: pullModel.trim() } }));
       setNotice(`${pullModel.trim()} is available in local Ollama.`);
       setPullModel('');
     } catch (err) {
@@ -273,6 +282,22 @@ const OrbDockStationPage: React.FC = () => {
   const updateSituational = (index: number, patch: Partial<DockSituationalGuideRail>) => updateDraft((current) => ({
     ...current,
     situational_guide_rails: current.situational_guide_rails.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item),
+  }));
+  const updateBehavior = (patch: Partial<DockConfiguration['behavior']>) => updateDraft((current) => ({
+    ...current,
+    behavior: { ...current.behavior, ...patch },
+  }));
+  const updateLlm = (patch: Partial<DockConfiguration['llm']>) => updateDraft((current) => ({
+    ...current,
+    llm: { ...current.llm, ...patch },
+  }));
+  const selectProvider = (provider: DockConfiguration['llm']['provider']) => updateDraft((current) => ({
+    ...current,
+    llm: {
+      ...current.llm,
+      ...providerDefaults[provider],
+      provider,
+    },
   }));
 
   return (
@@ -354,6 +379,59 @@ const OrbDockStationPage: React.FC = () => {
         </section>
       )}
 
+      {tab === 'behavior' && (
+        <section className="max-w-5xl">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-950">ORB behavior</h2>
+              <p className="mt-2 text-sm text-slate-600">Set the spoken personality, greeting, and voice startup posture that publish with this ORB.</p>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-md border border-slate-200 bg-white p-5">
+              <h3 className="font-bold text-slate-950">Voice posture</h3>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className={labelClass}>Tone
+                  <select className={inputClass} value={draft.behavior.tone} onChange={(event) => updateBehavior({ tone: event.target.value as DockConfiguration['behavior']['tone'] })}>
+                    <option value="warm">Warm</option>
+                    <option value="calm">Calm</option>
+                    <option value="professional">Professional</option>
+                    <option value="playful">Playful</option>
+                    <option value="direct">Direct</option>
+                  </select>
+                </label>
+                <label className={labelClass}>Response style
+                  <select className={inputClass} value={draft.behavior.response_style} onChange={(event) => updateBehavior({ response_style: event.target.value as DockConfiguration['behavior']['response_style'] })}>
+                    <option value="concise">Concise</option>
+                    <option value="guided">Guided</option>
+                    <option value="diagnostic">Diagnostic</option>
+                    <option value="sales_assistant">Sales assistant</option>
+                  </select>
+                </label>
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <Toggle checked={draft.behavior.greeting_enabled} onChange={(greeting_enabled) => updateBehavior({ greeting_enabled })} label="Startup greeting" />
+                <Toggle checked={draft.behavior.startup_listening_enabled} onChange={(startup_listening_enabled) => updateBehavior({ startup_listening_enabled })} label="Auto listening" />
+                <Toggle checked={draft.behavior.voice_only} onChange={(voice_only) => updateBehavior({ voice_only })} label="Voice only" />
+                <Toggle checked={draft.behavior.mute_by_default} onChange={(mute_by_default) => updateBehavior({ mute_by_default })} label="Mute by default" />
+                <Toggle checked={draft.behavior.sleep_by_default} onChange={(sleep_by_default) => updateBehavior({ sleep_by_default })} label="Sleep by default" />
+              </div>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-white p-5">
+              <h3 className="font-bold text-slate-950">Job and rules</h3>
+              <div className="mt-4 space-y-4">
+                <TextAreaField label="Greeting script" value={draft.behavior.greeting_script} onChange={(greeting_script) => updateBehavior({ greeting_script })} rows={4} />
+                <TextAreaField label="Job description" value={draft.behavior.job_description} onChange={(job_description) => updateBehavior({ job_description })} rows={5} />
+                <TextAreaField label="Persona notes" value={draft.behavior.persona_notes} onChange={(persona_notes) => updateBehavior({ persona_notes })} rows={5} />
+                <ListField label="Must follow rules" value={draft.behavior.must_follow_rules} onChange={(must_follow_rules) => updateBehavior({ must_follow_rules })} />
+                <ListField label="Must not rules" value={draft.behavior.must_not_rules} onChange={(must_not_rules) => updateBehavior({ must_not_rules })} />
+                <ListField label="Prohibited tone" value={draft.behavior.prohibited_tone} onChange={(prohibited_tone) => updateBehavior({ prohibited_tone })} />
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {tab === 'appearance' && (
         <section>
           <h2 className="text-2xl font-bold text-slate-950">ORB skins</h2>
@@ -375,25 +453,52 @@ const OrbDockStationPage: React.FC = () => {
       )}
 
       {tab === 'models' && (
-        <section className="max-w-4xl">
+        <section className="max-w-5xl">
           <h2 className="text-2xl font-bold text-slate-950">LLM runtime</h2>
-          <p className="mt-2 text-sm text-slate-600">Choose the runtime default or a model installed in the Ollama service connected to this local Orb Weaver backend.</p>
+          <p className="mt-2 text-sm text-slate-600">Choose the owner model source. API keys stay on the backend as environment variable references.</p>
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             {dock.llm_options.map((option) => (
-              <button key={option.id} onClick={() => updateDraft((current) => ({ ...current, llm: { ...current.llm, provider: option.id } }))} className={`rounded-md border bg-white p-4 text-left ${draft.llm.provider === option.id ? 'border-brand-orange ring-2 ring-brand-orange/20' : 'border-slate-200'}`}>
+              <button key={option.id} onClick={() => selectProvider(option.id)} className={`rounded-md border bg-white p-4 text-left ${draft.llm.provider === option.id ? 'border-brand-orange ring-2 ring-brand-orange/20' : 'border-slate-200'}`}>
                 <div className="flex items-center justify-between gap-3"><h3 className="font-bold text-slate-950">{option.label}</h3>{draft.llm.provider === option.id && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}</div>
                 <p className="mt-2 text-sm text-slate-600">{option.description}</p>
               </button>
             ))}
           </div>
-          <div className="mt-6 border-t border-slate-200 pt-5">
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-md border border-slate-200 bg-white p-5">
+              <h3 className="font-bold text-slate-950">Model settings</h3>
+              <div className="mt-4 grid gap-4">
+                <label className={labelClass}>Model
+                  <input className={inputClass} value={draft.llm.model || ''} disabled={draft.llm.provider === 'runtime_default'} onChange={(event) => updateLlm({ model: event.target.value || null })} placeholder={draft.llm.provider === 'runtime_default' ? 'Runtime configured model' : 'Model name'} />
+                </label>
+                {draft.llm.provider === 'openai_compatible' && (
+                  <label className={labelClass}>Base URL
+                    <input className={inputClass} value={draft.llm.base_url || ''} onChange={(event) => updateLlm({ base_url: event.target.value || null })} placeholder="http://127.0.0.1:11434/v1" />
+                  </label>
+                )}
+                {draft.llm.provider !== 'runtime_default' && draft.llm.provider !== 'ollama_local' && (
+                  <label className={labelClass}>API key environment variable
+                    <input className={inputClass} value={draft.llm.api_key_env || ''} onChange={(event) => updateLlm({ api_key_env: event.target.value.toUpperCase() || null })} placeholder="OPENAI_API_KEY" />
+                  </label>
+                )}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className={labelClass}>Temperature
+                    <input type="number" min="0" max="1.5" step="0.05" className={inputClass} value={draft.llm.temperature} onChange={(event) => updateLlm({ temperature: Number(event.target.value) })} />
+                  </label>
+                  <label className={labelClass}>Max output tokens
+                    <input type="number" min="16" max="1200" step="16" className={inputClass} value={draft.llm.max_output_tokens} onChange={(event) => updateLlm({ max_output_tokens: Number(event.target.value) })} />
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-white p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><h3 className="font-bold text-slate-950">Local Ollama</h3><p className="mt-1 text-sm text-slate-600">{ollama?.message || 'Checking the configured local runtime...'}</p></div>
               <button onClick={() => projectId && api.getOrbDockOllama(projectId).then(setOllama)} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Refresh</button>
             </div>
             {ollama?.reachable && (
               <label className={`${labelClass} mt-4`}>Installed model
-                <select className={inputClass} value={draft.llm.model || ''} onChange={(event) => updateDraft((current) => ({ ...current, llm: { provider: 'ollama_local', model: event.target.value || null } }))}>
+                <select className={inputClass} value={draft.llm.model || ''} onChange={(event) => updateDraft((current) => ({ ...current, llm: { ...current.llm, provider: 'ollama_local', model: event.target.value || null } }))}>
                   <option value="">Select a model</option>
                   {ollama.models.map((model) => <option key={model.name} value={model.name}>{model.name} · {(model.size / 1_073_741_824).toFixed(1)} GB</option>)}
                 </select>
@@ -404,6 +509,7 @@ const OrbDockStationPage: React.FC = () => {
               <button onClick={() => void pull()} disabled={!ollama?.reachable || !pullModel.trim() || working === 'pull'} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-brand-orange px-4 py-2.5 text-sm font-bold text-brand-dark hover:bg-brand-accent hover:text-white disabled:opacity-45">
                 {working === 'pull' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Download with Ollama
               </button>
+            </div>
             </div>
           </div>
         </section>

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict
 
 from app.core.storage import require_vault_path
+from app.orb.site_learning import clean_slate_files, learning_loop_template
 
 
 VAULT_DIRECTORIES = (
@@ -49,6 +50,11 @@ CLIENT_DIRECTORIES = (
     "visitor_questions/",
     "owner_seed_changes/",
     "local_index/",
+    "website_orb_learning/",
+    "website_orb_learning/posteriori/",
+    "website_orb_learning/stump_ledger/",
+    "website_orb_learning/promotion_queue/",
+    "website_orb_learning/indexes/",
 )
 
 
@@ -78,6 +84,7 @@ def generate_pack_file(scan_data: Dict, site_id: str, domain: str, tier: str, ou
             "client_root": f"vault_system/clients/{client_key}",
             "rule": "No component may create a second vault_system or persist outside this root.",
         },
+        "site_learning_loop": learning_loop_template(site_id, domain),
     }
     vault_manifest = {
         "schema": "orb_weaver.single_vault.v1",
@@ -101,6 +108,8 @@ def generate_pack_file(scan_data: Dict, site_id: str, domain: str, tier: str, ou
         archive.writestr(client_base, "")
         for directory in CLIENT_DIRECTORIES:
             archive.writestr(f"{client_base}{directory}", "")
+        for relative_path, contents in clean_slate_files(site_id, domain).items():
+            archive.writestr(f"{client_base}{relative_path}", contents)
         scan_payload = json.dumps(scan_data, indent=2, default=str)
         archive.writestr(f"{client_base}current/scan_data.json", scan_payload)
     return {

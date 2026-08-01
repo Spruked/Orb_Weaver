@@ -1,0 +1,45 @@
+﻿Folder PATH listing for volume SSD Win10
+Volume serial number is 2A00-D9FE
+C:.
+|   demo_smoke_test.py
+|   README.md
+|   requirements.txt
+|   
++---context_correspondence_orchestrator
+|   |   config.py
+|   |   models.py
+|   |   orb_bridge.py
+|   |   __init__.py
+|   |   
+|   +---api
+|   |       main.py
+|   |       __init__.py
+|   |       
+|   +---core
+|   |       canary.py
+|   |       engine.py
+|   |       llm_abstraction.py
+|   |       store.py
+|   |       task_analyzer.py
+|   |       __init__.py
+|   |       
+|   \---strategies
+|           base.py
+|           hierarchical.py
+|           semantic_retrieval.py
+|           summary.py
+|           vault_compile.py
+|           __init__.py
+|           
+\---correspondence_engine
+        atoms.py
+        challenge.py
+        claims.py
+        evidence.py
+        gaps.py
+        geometry.py
+        sublimator.py
+        vault.py
+        vectors.py
+        __init__.py
+        

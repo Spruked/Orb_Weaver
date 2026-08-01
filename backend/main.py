@@ -67,6 +67,8 @@ from app.orb.pointer_recovery import (
     recovery_routes,
     run_pointer_recovery_capture,
 )
+from app.orb.site_learning import classify_answer_state, lookup_verified_case, record_interaction
+from app.orb.cco_runtime import build_runtime_trace
 from app.pack_generator import generate_pack_file
 from app.services.chrome_devtools import ChromeDevToolsReviewRunner
 from app.services.orb_desktop_mcp import DEFAULT_ORB_MCP_TOOLS, ORBDesktopMCPClient
@@ -320,6 +322,9 @@ class WebsiteOrbVoiceResponse(BaseModel):
     spoken_output: str
     cognitive_pulse: Optional[Dict[str, Any]] = None
     llm_source: str = "local-fallback"
+    answer_state: Optional[str] = None
+    learning_record_id: Optional[str] = None
+    cco_trace: Optional[Dict[str, Any]] = None
     memory_context: Optional[Dict[str, Any]] = None
     tts_audio_url: Optional[str] = None
     tts_provider: Optional[str] = None
@@ -1533,6 +1538,7 @@ def _dock_compile(project: Project, record: OrbDockPolicy) -> Dict[str, Any]:
 
 def _serialize_dock(project: Project, record: OrbDockPolicy, compile_result: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     preview = compile_result or _dock_compile(project, record)
+    configuration = DockConfiguration.model_validate(record.draft_configuration or default_configuration()).model_dump(mode="json")
     db = object_session(record)
     latest_crawl = (
         db.query(CrawlJob)
@@ -1546,7 +1552,7 @@ def _serialize_dock(project: Project, record: OrbDockPolicy, compile_result: Opt
         "schema": "orb_weaver.orb_dock_station.v1",
         "project": {"id": str(project.id), "name": project.name, "domain": project.domain},
         "locked_doctrine": {"hash": doctrine_hash(), "rules": LOCKED_ORB_DOCTRINE},
-        "configuration": record.draft_configuration or default_configuration(),
+        "configuration": configuration,
         "publication": {
             "status": record.publication_status,
             "version": int(record.version or 0),
@@ -1565,6 +1571,9 @@ def _serialize_dock(project: Project, record: OrbDockPolicy, compile_result: Opt
         "llm_options": [
             {"id": "runtime_default", "label": "Orb Weaver runtime default", "description": "Use the model configured for this Orb Weaver runtime."},
             {"id": "ollama_local", "label": "Local Ollama", "description": "Use an installed Ollama model reachable by this local Orb Weaver backend."},
+            {"id": "openai_api", "label": "OpenAI API", "description": "Use a server-side OpenAI API key reference such as OPENAI_API_KEY."},
+            {"id": "anthropic_api", "label": "Claude API", "description": "Use a server-side Anthropic API key reference such as ANTHROPIC_API_KEY."},
+            {"id": "openai_compatible", "label": "OpenAI-compatible API", "description": "Use a local or hosted endpoint that follows the OpenAI chat/completions shape."},
         ],
     }
 
@@ -2652,9 +2661,12 @@ async def _llm_orb_spoken_output(
 
     fallback = _fallback_orb_spoken_output(transcript, pulse, memory_context, website_context)
     llm_configuration = (operating_policy or {}).get("llm") or {}
+    provider = str(llm_configuration.get("provider") or "runtime_default").strip()
+    if provider in {"openai_api", "anthropic_api", "openai_compatible"}:
+        return {"spoken_output": fallback, "llm_source": f"{provider}-pending-adapter"}
     configured_model = (
         str(llm_configuration.get("model") or "").strip()
-        if llm_configuration.get("provider") == "ollama_local"
+        if provider == "ollama_local"
         else str(settings.LOCAL_LLM_MODEL or "").strip()
     )
     if not settings.LOCAL_LLM_URL or not configured_model:
@@ -2679,9 +2691,11 @@ async def _llm_orb_spoken_output(
         authenticated=bool((memory_context or {}).get("durable")),
         confidence=(pulse or {}).get("epistemic_alignment"),
     )
+    owner_behavior = (operating_policy or {}).get("behavior") or {}
     weaver_envelope["owner_operating_policy"] = {
         "version": (operating_policy or {}).get("version"),
         "locked_doctrine_hash": ((operating_policy or {}).get("locked_doctrine") or {}).get("hash"),
+        "behavior": owner_behavior,
         "business_objectives": (operating_policy or {}).get("business_objectives") or [],
         **owner_policy,
     }
@@ -2690,8 +2704,13 @@ async def _llm_orb_spoken_output(
         f"Website Weaver envelope: {json.dumps(weaver_envelope, ensure_ascii=False)}\n"
         f"Safe account memory, only if relevant: {json.dumps(memory_brief, ensure_ascii=False)}\n"
         f"Advisory cognitive pulse: {json.dumps(pulse_brief, ensure_ascii=False)}\n"
+        f"Owner job description: {owner_behavior.get('job_description') or 'Serve as the visitor-facing Website ORB.'}\n"
+        f"Owner must-follow rules: {json.dumps(owner_behavior.get('must_follow_rules') or [], ensure_ascii=False)}\n"
+        f"Owner must-not rules: {json.dumps(owner_behavior.get('must_not_rules') or [], ensure_ascii=False)}\n"
         f"Visitor question: {transcript}\n"
         "Answer the visitor as Weaver in exactly one short spoken sentence. "
+        "Follow the owner behavior settings for tone and response style. "
+        "Sound warm and patient, never angry, annoyed, sarcastic, or rushed. "
         "Follow tool availability and confirmation rules, never claim an action ran, and use no markdown or chat-UI language."
     )
     try:
@@ -2714,7 +2733,7 @@ async def _llm_orb_spoken_output(
             response.raise_for_status()
             payload = response.json()
         spoken = str(payload.get("response") or payload.get("text") or "").strip()
-        source = "ollama-owner-model" if llm_configuration.get("provider") == "ollama_local" else "local-llm"
+        source = "ollama-owner-model" if provider == "ollama_local" else "local-llm"
         return {"spoken_output": spoken or fallback, "llm_source": source}
     except Exception:
         return {"spoken_output": fallback, "llm_source": "local-fallback"}
@@ -3491,6 +3510,72 @@ def _load_domain_website_context(target_url: Optional[str]) -> Optional[Dict[str
                 payload.setdefault("domain", domain)
                 return payload
     return None
+
+
+def _record_site_learning_interaction(
+    *,
+    transcript: str,
+    spoken_output: str,
+    llm_source: str,
+    target_url: Optional[str],
+    context_target_url: Optional[str],
+    answer_state: Optional[str] = None,
+    evidence_refs: Optional[List[str]] = None,
+    retrieval_failure: Optional[str] = None,
+    operating_policy: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Optional[str]]:
+    domain = _domain_from_url(context_target_url or target_url)
+    if not domain:
+        return {"answer_state": answer_state, "learning_record_id": None}
+    state = answer_state or classify_answer_state(
+        source=llm_source,
+        transcript=transcript,
+        spoken_output=spoken_output,
+        evidence_refs=evidence_refs,
+    )
+    record_id = record_interaction(
+        domain=domain,
+        transcript=transcript,
+        spoken_output=spoken_output,
+        answer_state=state,
+        llm_source=llm_source,
+        target_url=target_url,
+        route=_route_from_url(target_url or context_target_url),
+        evidence_refs=evidence_refs,
+        retrieval_failure=retrieval_failure,
+        policy_version=(operating_policy or {}).get("version"),
+    )
+    return {"answer_state": state, "learning_record_id": record_id}
+
+
+def _cco_trace_for_answer(
+    *,
+    site_id: Optional[str],
+    transcript: str,
+    spoken_output: str,
+    llm_source: str,
+    target_url: Optional[str],
+    context_target_url: Optional[str],
+    website_context: Optional[Dict[str, Any]],
+    page_capsule: Optional[Dict[str, Any]],
+    operating_policy: Optional[Dict[str, Any]],
+    learning_meta: Dict[str, Optional[str]],
+    retrieved_ids: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    return build_runtime_trace(
+        site_id=site_id,
+        domain=_domain_from_url(context_target_url or target_url),
+        transcript=transcript,
+        target_url=target_url,
+        route=_route_from_url(target_url or context_target_url),
+        website_context=website_context,
+        page_capsule=page_capsule,
+        operating_policy=operating_policy,
+        answer_state=learning_meta.get("answer_state"),
+        llm_source=llm_source,
+        learning_record_id=learning_meta.get("learning_record_id"),
+        retrieved_ids=retrieved_ids,
+    )
 
 
 def _score_keyword_match(transcript: str, keywords: List[str]) -> float:
@@ -5903,6 +5988,29 @@ async def website_orb_voice(
     domain_cache_hit = _lookup_domain_runtime_tool(website_context, transcript, operating_policy)
     if domain_cache_hit and domain_cache_hit.get("spoken_output"):
         spoken_output = domain_cache_hit["spoken_output"]
+        learning_meta = _record_site_learning_interaction(
+            transcript=transcript,
+            spoken_output=spoken_output,
+            llm_source=domain_cache_hit["llm_source"],
+            target_url=target_url,
+            context_target_url=context_target_url,
+            answer_state="known",
+            evidence_refs=[str(domain_cache_hit.get("cache_entry_id") or "domain_runtime_tool")],
+            operating_policy=operating_policy,
+        )
+        cco_trace = _cco_trace_for_answer(
+            site_id=site_id,
+            transcript=transcript,
+            spoken_output=spoken_output,
+            llm_source=domain_cache_hit["llm_source"],
+            target_url=target_url,
+            context_target_url=context_target_url,
+            website_context=website_context,
+            page_capsule=page_capsule,
+            operating_policy=operating_policy,
+            learning_meta=learning_meta,
+            retrieved_ids=[str(domain_cache_hit.get("cache_entry_id") or "domain_runtime_tool")],
+        )
         tts_cache_before = _tts_cache_probe(spoken_output)
         started = time.perf_counter()
         tts_result = await _synthesize_orb_tts(spoken_output)
@@ -5944,6 +6052,64 @@ async def website_orb_voice(
                 "glow_intensity": 0.78,
             },
             "llm_source": domain_cache_hit["llm_source"],
+            **learning_meta,
+            "cco_trace": cco_trace,
+            "memory_context": memory_context,
+            **tts_result,
+        }
+
+    verified_case = lookup_verified_case(
+        _domain_from_url(context_target_url or target_url),
+        transcript,
+        _route_from_url(target_url or context_target_url),
+    ) if context_target_url or target_url else None
+    if verified_case and verified_case.get("spoken_output"):
+        spoken_output = verified_case["spoken_output"]
+        learning_meta = _record_site_learning_interaction(
+            transcript=transcript,
+            spoken_output=spoken_output,
+            llm_source=verified_case["llm_source"],
+            target_url=target_url,
+            context_target_url=context_target_url,
+            answer_state="resolved",
+            evidence_refs=[str(item) for item in (verified_case.get("evidence_refs") or [])],
+            operating_policy=operating_policy,
+        )
+        cco_trace = _cco_trace_for_answer(
+            site_id=site_id,
+            transcript=transcript,
+            spoken_output=spoken_output,
+            llm_source=verified_case["llm_source"],
+            target_url=target_url,
+            context_target_url=context_target_url,
+            website_context=website_context,
+            page_capsule=page_capsule,
+            operating_policy=operating_policy,
+            learning_meta=learning_meta,
+            retrieved_ids=[str(verified_case.get("case_id") or "verified_case")],
+        )
+        started = time.perf_counter()
+        tts_result = await _synthesize_orb_tts(spoken_output)
+        mark("tts", started)
+        started = time.perf_counter()
+        _update_orb_recent_context(customer, transcript, spoken_output, db)
+        mark("context_update", started)
+        timings["answer_selection"] = 0.0
+        timings["total"] = round((time.perf_counter() - route_started) * 1000, 1)
+        return {
+            "transcript": transcript,
+            "spoken_output": spoken_output,
+            "cognitive_pulse": {
+                **(cognitive_pulse or {}),
+                "cognitive_mode": "VERIFIED_POSTERIORI_CASE",
+                "case_id": verified_case.get("case_id"),
+                "cache_score": verified_case.get("cache_score"),
+                "pointer_matches": pointer_matches,
+                "glow_intensity": 0.74,
+            },
+            "llm_source": verified_case["llm_source"],
+            **learning_meta,
+            "cco_trace": cco_trace,
             "memory_context": memory_context,
             **tts_result,
         }
@@ -5967,6 +6133,27 @@ async def website_orb_voice(
 
     started = time.perf_counter()
     _update_orb_recent_context(customer, transcript, llm_result["spoken_output"], db)
+    learning_meta = _record_site_learning_interaction(
+        transcript=transcript,
+        spoken_output=llm_result["spoken_output"],
+        llm_source=llm_result["llm_source"],
+        target_url=target_url,
+        context_target_url=context_target_url,
+        retrieval_failure="no_verified_apriori_or_posteriori_match",
+        operating_policy=operating_policy,
+    )
+    cco_trace = _cco_trace_for_answer(
+        site_id=site_id,
+        transcript=transcript,
+        spoken_output=llm_result["spoken_output"],
+        llm_source=llm_result["llm_source"],
+        target_url=target_url,
+        context_target_url=context_target_url,
+        website_context=website_context,
+        page_capsule=page_capsule,
+        operating_policy=operating_policy,
+        learning_meta=learning_meta,
+    )
     mark("context_update", started)
 
     timings["total"] = round((time.perf_counter() - route_started) * 1000, 1)
@@ -5994,6 +6181,8 @@ async def website_orb_voice(
             "pointer_matches": pointer_matches,
         },
         "llm_source": llm_result["llm_source"],
+        **learning_meta,
+        "cco_trace": cco_trace,
         "memory_context": memory_context,
         **tts_result,
     }
@@ -6034,6 +6223,29 @@ async def website_orb_text(
         if payload.synthesize_tts and not tts_result["tts_audio_url"]:
             tts_result = await _synthesize_orb_tts(cache_hit["spoken_output"])
         _update_orb_recent_context(customer, transcript, cache_hit["spoken_output"], db)
+        learning_meta = _record_site_learning_interaction(
+            transcript=transcript,
+            spoken_output=cache_hit["spoken_output"],
+            llm_source=cache_hit["llm_source"],
+            target_url=target_url,
+            context_target_url=context_target_url,
+            answer_state="known",
+            evidence_refs=[str(cache_hit.get("cache_entry_id") or "project_tool_cache")],
+            operating_policy=operating_policy,
+        )
+        cco_trace = _cco_trace_for_answer(
+            site_id=payload.site_id,
+            transcript=transcript,
+            spoken_output=cache_hit["spoken_output"],
+            llm_source=cache_hit["llm_source"],
+            target_url=target_url,
+            context_target_url=context_target_url,
+            website_context=website_context,
+            page_capsule=page_capsule,
+            operating_policy=operating_policy,
+            learning_meta=learning_meta,
+            retrieved_ids=[str(cache_hit.get("cache_entry_id") or "project_tool_cache")],
+        )
         return {
             "transcript": transcript,
             "spoken_output": cache_hit["spoken_output"],
@@ -6044,6 +6256,8 @@ async def website_orb_text(
                 "glow_intensity": 0.72,
             },
             "llm_source": cache_hit["llm_source"],
+            **learning_meta,
+            "cco_trace": cco_trace,
             "memory_context": memory_context,
             **tts_result,
         }
@@ -6057,6 +6271,29 @@ async def website_orb_text(
         if payload.synthesize_tts and not tts_result["tts_audio_url"]:
             tts_result = await _synthesize_orb_tts(domain_cache_hit["spoken_output"])
         _update_orb_recent_context(customer, transcript, domain_cache_hit["spoken_output"], db)
+        learning_meta = _record_site_learning_interaction(
+            transcript=transcript,
+            spoken_output=domain_cache_hit["spoken_output"],
+            llm_source=domain_cache_hit["llm_source"],
+            target_url=target_url,
+            context_target_url=context_target_url,
+            answer_state="known",
+            evidence_refs=[str(domain_cache_hit.get("cache_entry_id") or "domain_runtime_tool")],
+            operating_policy=operating_policy,
+        )
+        cco_trace = _cco_trace_for_answer(
+            site_id=payload.site_id,
+            transcript=transcript,
+            spoken_output=domain_cache_hit["spoken_output"],
+            llm_source=domain_cache_hit["llm_source"],
+            target_url=target_url,
+            context_target_url=context_target_url,
+            website_context=website_context,
+            page_capsule=page_capsule,
+            operating_policy=operating_policy,
+            learning_meta=learning_meta,
+            retrieved_ids=[str(domain_cache_hit.get("cache_entry_id") or "domain_runtime_tool")],
+        )
         return {
             "transcript": transcript,
             "spoken_output": domain_cache_hit["spoken_output"],
@@ -6070,6 +6307,59 @@ async def website_orb_text(
                 "glow_intensity": 0.78,
             },
             "llm_source": domain_cache_hit["llm_source"],
+            **learning_meta,
+            "cco_trace": cco_trace,
+            "memory_context": memory_context,
+            **tts_result,
+        }
+    verified_case = lookup_verified_case(
+        _domain_from_url(context_target_url or target_url),
+        transcript,
+        _route_from_url(target_url or context_target_url),
+    ) if context_target_url or target_url else None
+    if verified_case and verified_case.get("spoken_output"):
+        tts_result = (
+            await _synthesize_orb_tts(verified_case["spoken_output"])
+            if payload.synthesize_tts
+            else {"tts_audio_url": None, "tts_provider": None, "tts_error": None}
+        )
+        _update_orb_recent_context(customer, transcript, verified_case["spoken_output"], db)
+        learning_meta = _record_site_learning_interaction(
+            transcript=transcript,
+            spoken_output=verified_case["spoken_output"],
+            llm_source=verified_case["llm_source"],
+            target_url=target_url,
+            context_target_url=context_target_url,
+            answer_state="resolved",
+            evidence_refs=[str(item) for item in (verified_case.get("evidence_refs") or [])],
+            operating_policy=operating_policy,
+        )
+        cco_trace = _cco_trace_for_answer(
+            site_id=payload.site_id,
+            transcript=transcript,
+            spoken_output=verified_case["spoken_output"],
+            llm_source=verified_case["llm_source"],
+            target_url=target_url,
+            context_target_url=context_target_url,
+            website_context=website_context,
+            page_capsule=page_capsule,
+            operating_policy=operating_policy,
+            learning_meta=learning_meta,
+            retrieved_ids=[str(verified_case.get("case_id") or "verified_case")],
+        )
+        return {
+            "transcript": transcript,
+            "spoken_output": verified_case["spoken_output"],
+            "cognitive_pulse": {
+                "cognitive_mode": "VERIFIED_POSTERIORI_CASE",
+                "case_id": verified_case.get("case_id"),
+                "cache_score": verified_case.get("cache_score"),
+                "pointer_matches": pointer_matches,
+                "glow_intensity": 0.74,
+            },
+            "llm_source": verified_case["llm_source"],
+            **learning_meta,
+            "cco_trace": cco_trace,
             "memory_context": memory_context,
             **tts_result,
         }
@@ -6088,6 +6378,27 @@ async def website_orb_text(
         else {"tts_audio_url": None, "tts_provider": None, "tts_error": None}
     )
     _update_orb_recent_context(customer, transcript, llm_result["spoken_output"], db)
+    learning_meta = _record_site_learning_interaction(
+        transcript=transcript,
+        spoken_output=llm_result["spoken_output"],
+        llm_source=llm_result["llm_source"],
+        target_url=target_url,
+        context_target_url=context_target_url,
+        retrieval_failure="no_verified_apriori_or_posteriori_match",
+        operating_policy=operating_policy,
+    )
+    cco_trace = _cco_trace_for_answer(
+        site_id=payload.site_id,
+        transcript=transcript,
+        spoken_output=llm_result["spoken_output"],
+        llm_source=llm_result["llm_source"],
+        target_url=target_url,
+        context_target_url=context_target_url,
+        website_context=website_context,
+        page_capsule=page_capsule,
+        operating_policy=operating_policy,
+        learning_meta=learning_meta,
+    )
     return {
         "transcript": transcript,
         "spoken_output": llm_result["spoken_output"],
@@ -6096,6 +6407,8 @@ async def website_orb_text(
             "pointer_matches": pointer_matches,
         },
         "llm_source": llm_result["llm_source"],
+        **learning_meta,
+        "cco_trace": cco_trace,
         "memory_context": memory_context,
         **tts_result,
     }

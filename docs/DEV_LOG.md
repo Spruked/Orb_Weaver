@@ -6,6 +6,53 @@ Update this file after meaningful code, configuration, runtime, testing, or doct
 
 ---
 
+## 2026-07-30 — Website ORB CCO Runtime Trace and Site Learning Loop
+
+### Commercial stance
+
+* The Website ORB is ready to sell as a controlled, white-glove pilot installation.
+* It is not ready for broad self-serve SaaS sales.
+* Do not promise no-click microphone activation, complete live GPT/Claude adapter switching, unsupervised self-install, or automatic self-promotion into trusted Site World.
+
+### Implemented
+
+* Renamed the standalone Context Crystal work into **Context & Correspondence Orchestrator (CCO)**.
+* New path: `Orb_Assistant/context_correspondence_orchestrator/`.
+* Public names: `ContextCorrespondenceOrchestrator`, `OrchestrationMetadata`, `CCOConfig`.
+* Added live Website ORB `cco_trace` output through `backend/app/orb/cco_runtime.py`.
+* Added site-scoped Website ORB learning loop in `backend/app/orb/site_learning.py`.
+* Runtime answer states now include `known`, `resolved`, `clarification_required`, and `unknown`.
+* Unknown answers write to the site-specific Stump Ledger.
+* Verified posteriori cases can be reused through the deterministic `resolved` path.
+* Downloadable ORB packs now include clean-slate `website_orb_learning/` templates.
+* Dock Station now controls ORB behavior, job description, must-follow/must-not rules, greeting, voice posture, and LLM provider metadata.
+* Added documentation: `docs/WEBSITE_ORB_COMMERCIAL_READINESS.md`.
+* Added handoff: `docs/handoffs/HANDOFF_2026-07-30_WEBSITE_ORB_CCO_LEARNING.md`.
+
+### Verification
+
+* Backend focused suite passed: `12 passed`.
+* Frontend `npm run typecheck` passed.
+* CCO package `compileall` passed.
+* CCO `demo_smoke_test.py` passed.
+* Live backend probe returned `cco_trace.schema = orb_weaver.cco_runtime_trace.v1` and a real `learning_record_id`.
+
+### Current local dev ports
+
+* Backend API: `http://127.0.0.1:16600`
+* Frontend UI: `http://127.0.0.1:16610`
+* Dock Station: `http://127.0.0.1:16610/orbs/11/dock`
+
+### Next work
+
+1. Build owner dashboard review for Stump Ledger entries.
+2. Add owner-approved promotion into Site A Priori records.
+3. Wire live OpenAI/Claude/OpenAI-compatible adapters behind server-side secret handling.
+4. Add production observability for answer states, CCO traces, unknown frequency, and voice latency.
+5. Create a controlled-pilot sales page for Founding Website ORBS Installation.
+
+---
+
 ## 2026-07-19 — Owner-Verified Pointer Authority Milestone
 
 ### Implemented

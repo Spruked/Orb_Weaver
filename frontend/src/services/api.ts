@@ -307,7 +307,29 @@ export interface DockSituationalGuideRail {
 export interface DockConfiguration {
   schema: 'orb_weaver.orb_dock_configuration.v1';
   appearance: { skin_id: string };
-  llm: { provider: 'runtime_default' | 'ollama_local'; model?: string | null };
+  llm: {
+    provider: 'runtime_default' | 'ollama_local' | 'openai_api' | 'anthropic_api' | 'openai_compatible';
+    model?: string | null;
+    base_url?: string | null;
+    api_key_env?: string | null;
+    temperature: number;
+    max_output_tokens: number;
+  };
+  behavior: {
+    tone: 'warm' | 'calm' | 'professional' | 'playful' | 'direct';
+    response_style: 'concise' | 'guided' | 'diagnostic' | 'sales_assistant';
+    greeting_enabled: boolean;
+    startup_listening_enabled: boolean;
+    voice_only: boolean;
+    mute_by_default: boolean;
+    sleep_by_default: boolean;
+    greeting_script: string;
+    job_description: string;
+    persona_notes: string;
+    must_follow_rules: string[];
+    must_not_rules: string[];
+    prohibited_tone: string[];
+  };
   business_objectives: DockBusinessObjective[];
   additional_guide_rails: DockAdditionalGuideRail[];
   situational_guide_rails: DockSituationalGuideRail[];
@@ -339,7 +361,7 @@ export interface OrbDockStation {
   };
   latest_crawl?: CrawlJob | null;
   skins: Array<{ skin_id: string; display_name: string; asset_path: string; factory_default?: boolean }>;
-  llm_options: Array<{ id: 'runtime_default' | 'ollama_local'; label: string; description: string }>;
+  llm_options: Array<{ id: DockConfiguration['llm']['provider']; label: string; description: string }>;
 }
 
 export interface DockOllamaStatus {
