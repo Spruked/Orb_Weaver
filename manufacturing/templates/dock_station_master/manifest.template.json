@@ -1,0 +1,46 @@
+{
+  "schema": "orb_weaver.dock_station_master_template.v1",
+  "template_id": "dock_station_master",
+  "template_version": "0.1.0",
+  "source": {
+    "name": "Orb Dock Station v2.1",
+    "repository": "https://github.com/Spruked/Orb_Dock_Station_v2.1.git",
+    "commit": "810f0d29dedae2439c9ed247a8400507cfad6e40"
+  },
+  "layout": {
+    "dock_station_app": "dock-station/app",
+    "orb_template": "dock-station/app/orb/template",
+    "deployment_manifest": "dock-station/deployment/manifest.json",
+    "verification_report": "dock-station/reports/verification-report.json"
+  },
+  "required_paths": [
+    { "path": "dock-station/app/backend", "type": "directory" },
+    { "path": "dock-station/app/backend/app", "type": "directory" },
+    { "path": "dock-station/app/backend/app/main.py", "type": "file" },
+    { "path": "dock-station/app/backend/app/models.py", "type": "file" },
+    { "path": "dock-station/app/backend/app/core/config.py", "type": "file" },
+    { "path": "dock-station/app/backend/app/core/security.py", "type": "file" },
+    { "path": "dock-station/app/backend/app/routers/live_test.py", "type": "file" },
+    { "path": "dock-station/app/backend/app/routers/appearance.py", "type": "file" },
+    { "path": "dock-station/app/backend/app/routers/profiles.py", "type": "file" },
+    { "path": "dock-station/app/backend/app/services/profile_service.py", "type": "file" },
+    { "path": "dock-station/app/backend/requirements.txt", "type": "file" },
+    { "path": "dock-station/app/frontend", "type": "directory" },
+    { "path": "dock-station/app/frontend/package.json", "type": "file" },
+    { "path": "dock-station/app/frontend/package-lock.json", "type": "file" },
+    { "path": "dock-station/app/frontend/src/main.jsx", "type": "file" },
+    { "path": "dock-station/app/frontend/src/App.jsx", "type": "file" },
+    { "path": "dock-station/app/frontend/src/services/api.js", "type": "file" },
+    { "path": "dock-station/app/frontend/src/panels/LiveTest.jsx", "type": "file" },
+    { "path": "dock-station/app/desktop", "type": "directory" },
+    { "path": "dock-station/app/desktop/package.json", "type": "file" },
+    { "path": "dock-station/app/desktop/main.js", "type": "file" },
+    { "path": "dock-station/app/desktop/preload.js", "type": "file" },
+    { "path": "dock-station/app/docker-compose.yml", "type": "file" },
+    { "path": "dock-station/app/install.sh", "type": "file" },
+    { "path": "dock-station/app/README.md", "type": "file" },
+    { "path": "dock-station/app/orb/template/runtime", "type": "directory" },
+    { "path": "dock-station/app/orb/template/deployment", "type": "directory" },
+    { "path": "dock-station/app/orb/template/assets", "type": "directory" }
+  ]
+}

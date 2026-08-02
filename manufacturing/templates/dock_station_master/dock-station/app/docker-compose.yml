@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  orb-dock-backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - orb_data:/app/data
+    environment:
+      - DEBUG=false
+      - SECRET_KEY=change-me-in-production
+      - DATA_DIR=/app/data
+
+  orb-dock-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - orb-dock-backend
+
+volumes:
+  orb_data:

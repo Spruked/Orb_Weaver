@@ -148,3 +148,8 @@ frontend/src/*.before-*
 frontend/src/**/*.before-*
 frontend/src/*.marketplace-root-backup
 frontend/src/**/*.marketplace-root-backup
+
+builds/
+IRS 
+EIN
+/EIN Number.pdf
