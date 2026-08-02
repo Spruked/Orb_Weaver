@@ -6,6 +6,8 @@ const statusTone = (status: string) => {
   if (status === 'complete') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (status === 'running') return 'border-blue-200 bg-blue-50 text-blue-700';
   if (status === 'waiting') return 'border-slate-200 bg-slate-50 text-slate-600';
+  if (status === 'needs_review' || status === 'required') return 'border-amber-200 bg-amber-50 text-amber-700';
+  if (status === 'blocked') return 'border-red-200 bg-red-50 text-red-700';
   if (status === 'failed') return 'border-red-200 bg-red-50 text-red-700';
   return 'border-slate-200 bg-white text-slate-500';
 };
@@ -13,7 +15,7 @@ const statusTone = (status: string) => {
 const StatusIcon: React.FC<{ status: string }> = ({ status }) => {
   if (status === 'complete') return <CheckCircle2 className="h-4 w-4" />;
   if (status === 'running') return <Activity className="h-4 w-4 animate-pulse" />;
-  if (status === 'failed') return <AlertTriangle className="h-4 w-4" />;
+  if (status === 'failed' || status === 'blocked' || status === 'required' || status === 'needs_review') return <AlertTriangle className="h-4 w-4" />;
   if (status === 'waiting') return <Clock3 className="h-4 w-4" />;
   return <CircleDashed className="h-4 w-4" />;
 };

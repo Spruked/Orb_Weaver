@@ -3,6 +3,12 @@ import { motion, useAnimationControls } from "framer-motion";
 import { Volume2, VolumeX } from "lucide-react";
 import { Orb } from "./Orb";
 import { api, type WebsiteOrbPointerRecord } from "../services/api";
+import {
+  ACTIVE_ORB_PROJECT_CONTEXT_EVENT,
+  ActiveOrbProjectContext,
+  buildCustomerPageCapsuleUrl,
+  getActiveOrbProjectContext,
+} from "../orb/activeProjectContext";
 import { OrbRoboticsMovementController } from "../orb/robotics/movementController";
 import type { RobotCommand } from "../orb/robotics/robotMovement.types";
 import { selectOrbStartupGreeting } from "../orb/startupGreetings";
@@ -76,7 +82,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   size = 190,
   className = "",
 }) => {
-  const onboardingSafeMode = ['/signup', '/login', '/welcome'].includes(window.location.pathname);
+  const onboardingSafeMode = ['/signup', '/login'].includes(window.location.pathname);
   const move = useAnimationControls();
   const surge = useAnimationControls();
   const glow = useAnimationControls();
@@ -118,6 +124,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusTitle, setStatusTitle] = useState("ORB online");
   const [statusLine, setStatusLine] = useState("Tap the ORB to speak.");
+  const [activeOrbContext, setActiveOrbContext] = useState<ActiveOrbProjectContext | null>(() => getActiveOrbProjectContext());
   const [speakerBoost, setSpeakerBoost] = useState(false);
   const [lastGuidedTarget, setLastGuidedTarget] = useState<string | null>(null);
   const [isResting, setIsResting] = useState(false);
@@ -721,8 +728,10 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     try {
       logVoice("website-voice", turnId);
+      const targetUrl = buildCustomerPageCapsuleUrl(activeOrbContext);
       const result = await api.websiteOrbVoice(audio, controller.signal, {
-        target_url: window.location.href,
+        project_id: activeOrbContext?.project_id,
+        target_url: targetUrl,
       });
       setStatusTitle("Voice response");
       setStatusLine(result.spoken_output);
@@ -745,7 +754,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       setVoiceState("idle");
       logVoice("finalized", turnId);
     }
-  }, [freezeOrbInPlace, guideToPointerTarget, logVoice, markVisitorActivity, playLatencyFiller, showStatus, speakRecovery, speakWithGeneratedAudio]);
+  }, [activeOrbContext, freezeOrbInPlace, guideToPointerTarget, logVoice, markVisitorActivity, playLatencyFiller, showStatus, speakRecovery, speakWithGeneratedAudio]);
 
   const stopOrbRecording = useCallback((cancel = false) => {
     if (recordingStopTimerRef.current) {
@@ -1086,10 +1095,18 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, []);
 
   useEffect(() => {
+    const updateContext = () => setActiveOrbContext(getActiveOrbProjectContext());
+    window.addEventListener(ACTIVE_ORB_PROJECT_CONTEXT_EVENT, updateContext);
+    window.addEventListener("storage", updateContext);
+    return () => {
+      window.removeEventListener(ACTIVE_ORB_PROJECT_CONTEXT_EVENT, updateContext);
+      window.removeEventListener("storage", updateContext);
+    };
+  }, []);
+
+  useEffect(() => {
     const controller = new AbortController();
-    const pointerDomain = ["127.0.0.1", "localhost"].includes(window.location.hostname)
-      ? "orbweaver.spruked.com"
-      : window.location.hostname;
+    const pointerDomain = activeOrbContext?.canonical_domain || window.location.hostname;
     api.websiteOrbPointerMap(pointerDomain, controller.signal)
       .then((pointerMap) => {
         pointerRecordsRef.current = Array.isArray(pointerMap.records) ? pointerMap.records : [];
@@ -1106,14 +1123,14 @@ export const AutonomousOrb: React.FC<Props> = ({
         bumpWorldStateSequence();
       });
     return () => controller.abort();
-  }, [bumpWorldStateSequence, guideToPointerTarget]);
+  }, [activeOrbContext?.canonical_domain, bumpWorldStateSequence, guideToPointerTarget]);
 
   useEffect(() => {
     let cancelled = false;
     let lastUrl = "";
 
     const preloadCapsule = () => {
-      const currentUrl = window.location.href;
+      const currentUrl = buildCustomerPageCapsuleUrl(activeOrbContext);
       if (currentUrl === lastUrl) return;
       lastUrl = currentUrl;
       api.websiteOrbPageCapsule(currentUrl)
@@ -1138,7 +1155,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       window.removeEventListener("popstate", preloadCapsule);
       window.removeEventListener("hashchange", preloadCapsule);
     };
-  }, []);
+  }, [activeOrbContext]);
 
   useEffect(() => {
     activeRef.current = true;

@@ -98,6 +98,53 @@ def test_bootstrap_accepts_registered_chatgpt_site_and_reports_page(tmp_path, mo
     assert payload["installation"]["pointer_policy_enforced"] is True
 
 
+def test_runtime_pointer_map_response_includes_project_and_crawl_provenance(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    with main.SessionLocal() as db:
+        project = main.Project(name="Campaign", domain="campaign.orbweaver.spruked.com", customer_id=1)
+        db.add(project)
+        db.flush()
+        crawl = main.CrawlJob(project_id=project.id, status="completed", pages_crawled=16, pages_found=25)
+        db.add(crawl)
+        db.commit()
+        project_id = project.id
+        crawl_id = crawl.id
+
+    response = client.get("/api/orb/pointer-map?domain=campaign.orbweaver.spruked.com")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["project_id"] == str(project_id)
+    assert payload["source_crawl_job_id"] == str(crawl_id)
+    assert payload["domain"] == "campaign.orbweaver.spruked.com"
+
+
+def test_uncertain_pointer_summary_blocks_runtime_guidance(tmp_path, monkeypatch):
+    main, _client = load_app(tmp_path, monkeypatch)
+
+    class Page:
+        url = "https://campaign.orbweaver.spruked.com/"
+        semantic_analysis = {
+            "pointer_plot_records": [
+                {
+                    "target_id": f"target-{index}",
+                    "page_route": "https://campaign.orbweaver.spruked.com/",
+                    "semantic_locator": "a[href='/website-orb']",
+                    "confidence_class": "UNCERTAIN",
+                    "runtime_policy": {"may_point": False},
+                }
+                for index in range(12)
+            ]
+        }
+
+    summary = main._pointer_summary_from_pages([Page()])
+    assert summary["extraction_status"] == "complete"
+    assert summary["status"] == "recovery_required"
+    assert summary["runtime_guidance_status"] == "blocked"
+    assert summary["pointer_recovery_status"] == "required"
+    assert summary["guidance_eligible_count"] == 0
+    assert summary["quality"]["status"] == "POINTER_RECOVERY_REQUIRED"
+
+
 def test_bootstrap_rejects_unapproved_origin(tmp_path, monkeypatch):
     _main, client = load_app(tmp_path, monkeypatch)
     response = client.post(

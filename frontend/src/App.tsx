@@ -179,6 +179,7 @@ function App() {
             <Route path="/reports" element={<ReportCompiler />} />
             <Route path="/reports/:projectId" element={<ReportCompiler />} />
             <Route path="/cart" element={<Cart />} />
+            <Route path="/checkout/success" element={<Cart />} />
             <Route path="/admin/customers" element={<AdminCustomers />} />
             <Route path="/privacy" element={<LegalPage type="privacy" />} />
             <Route path="/terms" element={<LegalPage type="terms" />} />

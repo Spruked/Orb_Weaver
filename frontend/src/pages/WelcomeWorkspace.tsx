@@ -19,6 +19,7 @@ import {
 import CrawlChangeSummary from '../components/CrawlChangeSummary';
 import OrbAssemblyStatus from '../components/OrbAssemblyStatus';
 import AuditChangeSummary from '../components/AuditChangeSummary';
+import { canonicalOrbBaseUrl, setActiveOrbProjectContext } from '../orb/activeProjectContext';
 import './Onboarding.css';
 
 interface WelcomeWorkspaceProps {
@@ -64,6 +65,15 @@ const WelcomeWorkspace: React.FC<WelcomeWorkspaceProps> = ({
       const dashboard = await api.getCombinedDashboard(projectId);
       setLatestCrawl(dashboard.latest_crawl || null);
       setAuditDelta(dashboard.audit_delta || null);
+      if (dashboard.project?.domain) {
+        setActiveOrbProjectContext({
+          project_id: String(dashboard.project.id || projectId),
+          canonical_domain: dashboard.project.domain,
+          canonical_base_url: canonicalOrbBaseUrl(dashboard.project.domain),
+          selected_crawl_job_id: dashboard.latest_crawl?.id || dashboard.project.latest_crawl_id || null,
+          active_customer_route: '/',
+        });
+      }
     } catch {
       setLatestCrawl(null);
       setAuditDelta(null);

@@ -353,6 +353,9 @@ class WebsiteOrbTtsResponse(BaseModel):
 class WebsiteOrbPointerMapResponse(BaseModel):
     schema: str
     generated_at: Optional[str] = None
+    project_id: Optional[str] = None
+    source_crawl_job_id: Optional[str] = None
+    domain: Optional[str] = None
     record_count: int = 0
     records: List[Dict[str, Any]] = Field(default_factory=list)
     by_page: Dict[str, List[str]] = Field(default_factory=dict)
@@ -408,7 +411,7 @@ class CartItemUpsert(BaseModel):
 
 
 class CheckoutCreate(BaseModel):
-    provider: str = Field(pattern="^(stripe|paypal)$")
+    provider: str = Field(pattern="^(stripe|paypal|square|venmo)$")
 
 
 class PreflightRunConfig(BaseModel):
@@ -933,7 +936,7 @@ async def _create_stripe_checkout(order: CheckoutOrder, customer: Customer) -> D
     return {"status": "checkout_created", "provider_order_id": payload.get("id"), "checkout_url": payload.get("url")}
 
 
-async def _create_paypal_checkout(order: CheckoutOrder) -> Dict:
+async def _create_paypal_checkout(order: CheckoutOrder, payment_source: str = "paypal") -> Dict:
     if not settings.PAYPAL_CLIENT_ID or not settings.PAYPAL_CLIENT_SECRET:
         return {"status": "provider_not_configured", "error": "PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET are not configured"}
 
@@ -947,31 +950,111 @@ async def _create_paypal_checkout(order: CheckoutOrder) -> Dict:
         if token_response.status_code >= 400:
             return {"status": "provider_error", "error": token_response.text}
         access_token = token_response.json().get("access_token")
+        order_payload: Dict[str, Any] = {
+            "intent": "CAPTURE",
+            "purchase_units": [
+                {
+                    "reference_id": str(order.id),
+                    "amount": {
+                        "currency_code": order.currency.upper(),
+                        "value": f"{order.amount_cents / 100:.2f}",
+                    },
+                }
+            ],
+        }
+        experience_context = {
+            "return_url": f"{settings.PUBLIC_BASE_URL}/checkout/success?order_id={order.id}",
+            "cancel_url": f"{settings.PUBLIC_BASE_URL}/cart?order_id={order.id}",
+            "brand_name": "Orb Weaver",
+            "shipping_preference": "NO_SHIPPING",
+        }
+        if payment_source == "venmo":
+            venmo_source: Dict[str, Any] = {"experience_context": experience_context}
+            buyer_email = order.customer.email if order.customer else None
+            if buyer_email:
+                venmo_source["email_address"] = buyer_email
+            order_payload["payment_source"] = {
+                "venmo": venmo_source
+            }
+        else:
+            order_payload["application_context"] = {
+                "return_url": experience_context["return_url"],
+                "cancel_url": experience_context["cancel_url"],
+            }
         order_response = await client.post(
             f"{settings.PAYPAL_API_BASE}/v2/checkout/orders",
             headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
-            json={
-                "intent": "CAPTURE",
-                "purchase_units": [
-                    {
-                        "reference_id": str(order.id),
-                        "amount": {
-                            "currency_code": order.currency.upper(),
-                            "value": f"{order.amount_cents / 100:.2f}",
-                        },
-                    }
-                ],
-                "application_context": {
-                    "return_url": f"{settings.PUBLIC_BASE_URL}/checkout/success?order_id={order.id}",
-                    "cancel_url": f"{settings.PUBLIC_BASE_URL}/cart?order_id={order.id}",
-                },
-            },
+            json=order_payload,
         )
     if order_response.status_code >= 400:
         return {"status": "provider_error", "error": order_response.text}
     payload = order_response.json()
     approve_url = next((link.get("href") for link in payload.get("links", []) if link.get("rel") == "approve"), None)
     return {"status": "checkout_created", "provider_order_id": payload.get("id"), "checkout_url": approve_url}
+
+
+async def _create_square_checkout(order: CheckoutOrder, customer: Customer) -> Dict:
+    if not settings.SQUARE_ACCESS_TOKEN or not settings.SQUARE_LOCATION_ID:
+        return {"status": "provider_not_configured", "error": "SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID are not configured"}
+
+    api_base = "https://connect.squareup.com"
+    if str(settings.SQUARE_ENVIRONMENT or "").lower() == "sandbox":
+        api_base = "https://connect.squareupsandbox.com"
+    redirect_url = settings.SQUARE_REDIRECT_URL or f"{settings.PUBLIC_BASE_URL}/cart?payment=square-return&order_id={order.id}"
+    items = order.line_items or []
+    if not items:
+        return {"status": "provider_error", "error": "Square checkout requires at least one line item"}
+
+    body = {
+        "idempotency_key": f"orb-weaver-checkout-{order.id}",
+        "quick_pay": {
+            "name": f"Orb Weaver order #{order.id}",
+            "price_money": {
+                "amount": int(order.amount_cents),
+                "currency": order.currency.upper(),
+            },
+            "location_id": settings.SQUARE_LOCATION_ID,
+        },
+        "checkout_options": {
+            "redirect_url": redirect_url,
+            "ask_for_shipping_address": False,
+        },
+        "pre_populated_data": {
+            "buyer_email": customer.email,
+        },
+        "payment_note": " | ".join(str(item.get("name") or item.get("sku") or "Orb Weaver item") for item in items[:6]),
+    }
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.post(
+            f"{api_base}/v2/online-checkout/payment-links",
+            headers={
+                "Authorization": f"Bearer {settings.SQUARE_ACCESS_TOKEN}",
+                "Content-Type": "application/json",
+                "Square-Version": settings.SQUARE_VERSION,
+            },
+            json=body,
+        )
+    if response.status_code >= 400:
+        return {"status": "provider_error", "error": response.text}
+    payload = response.json()
+    payment_link = payload.get("payment_link") or {}
+    return {
+        "status": "checkout_created",
+        "provider_order_id": payment_link.get("id") or payload.get("id"),
+        "checkout_url": payment_link.get("url") or payload.get("url"),
+    }
+
+
+async def _create_provider_checkout(order: CheckoutOrder, customer: Customer) -> Dict:
+    if order.provider == "stripe":
+        return await _create_stripe_checkout(order, customer)
+    if order.provider == "paypal":
+        return await _create_paypal_checkout(order)
+    if order.provider == "venmo":
+        return await _create_paypal_checkout(order, payment_source="venmo")
+    if order.provider == "square":
+        return await _create_square_checkout(order, customer)
+    return {"status": "provider_error", "error": f"Unsupported checkout provider: {order.provider}"}
 
 
 def _issue_customer_session(customer: Customer, db: Session) -> Dict:
@@ -3878,8 +3961,22 @@ def _runtime_pointer_map(domain: str, db: Session) -> Dict[str, Any]:
                 for record in unique_records:
                     recovered["by_page"].setdefault(str(record.get("page_route") or ""), []).append(record["target_id"])
                 recovered["recovered_from_crawl_id"] = str(crawl.id)
+                recovered["source_crawl_job_id"] = str(crawl.id)
                 pointer_map = recovered
                 break
+    project = db.query(Project).filter(Project.domain == domain).first()
+    if project:
+        pointer_map.setdefault("project_id", str(project.id))
+        pointer_map.setdefault("domain", project.domain)
+        if not pointer_map.get("source_crawl_job_id"):
+            latest_completed = (
+                db.query(CrawlJob)
+                .filter(CrawlJob.project_id == project.id, CrawlJob.status == "completed")
+                .order_by(CrawlJob.id.desc())
+                .first()
+            )
+            if latest_completed:
+                pointer_map["source_crawl_job_id"] = str(latest_completed.id)
     normalized_records = []
     for original in pointer_map.get("records") or []:
         if not isinstance(original, dict):
@@ -4113,6 +4210,12 @@ def _bucket_count(value: int) -> str:
 def _client_crawl_pack(project: Project, crawl_job: CrawlJob, pages: List[CrawledPage], db: Session) -> Dict:
     crawl_payload = _serialize_crawl_job(crawl_job, db, include_pages=True)
     pointer_plot_map = pointer_plot_map_from_pages(pages)
+    pointer_plot_map.update({
+        "project_id": str(project.id),
+        "source_crawl_job_id": str(crawl_job.id),
+        "domain": project.domain,
+    })
+    pointer_plot_map["quality"] = assess_pointer_quality(pointer_plot_map)
     return {
         "schema": "orb_weaver.client_crawl.v1",
         "saved_at": datetime.utcnow().isoformat(),
@@ -4450,9 +4553,15 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
     lexical_terms = _count_lexical_terms(pages)
     entity_count = _count_entities(pages)
     relationship_count = len((crawl_job.config or {}).get("knowledge_graph", {}).get("edges", []) or [])
-    pointer_summary = stats.get("pointer_summary") or _pointer_summary_from_pages(pages)
+    pointer_summary = _pointer_summary_from_pages(pages)
     pointer_count = int(pointer_summary.get("record_count") or 0)
     dynamic_controls = int(pointer_summary.get("target_type_counts", {}).get("dynamic_control", 0) or 0)
+    pointer_quality = pointer_summary.get("quality") if isinstance(pointer_summary.get("quality"), dict) else {}
+    recovery_required = bool(pointer_quality.get("recovery_required"))
+    stable_count = int(pointer_quality.get("stable_count") or 0)
+    uncertain_count = int(pointer_quality.get("uncertain_count") or 0)
+    duplicate_conflicts = int(pointer_quality.get("duplicate_conflict_count") or 0)
+    guidance_eligible_count = int(pointer_summary.get("guidance_eligible_count") or 0)
     route_categories = (stats.get("route_category_counts") or (crawl_job.config or {}).get("route_category_counts") or {})
     route_count = sum(int(value or 0) for value in route_categories.values()) if isinstance(route_categories, dict) else 0
 
@@ -4484,8 +4593,18 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
                 {"label": "relationships mapped", "value": relationship_count},
             ]),
             _scan_stage("pointer_mapping", "Pointer Mapping", stage_status, [
-                {"label": "controls confirmed", "value": pointer_count},
+                {"label": "targets extracted", "value": pointer_count},
                 {"label": "dynamic controls detected", "value": dynamic_controls},
+            ]),
+            _scan_stage("pointer_verification", "Pointer Verification", "waiting" if running else "needs_review" if recovery_required else stage_status, [
+                {"label": "stable targets", "value": stable_count},
+                {"label": "targets requiring verification", "value": uncertain_count},
+            ]),
+            _scan_stage("runtime_guidance", "Runtime Guidance", "waiting" if running else "blocked" if recovery_required else stage_status, [
+                {"label": "guidance-eligible targets", "value": guidance_eligible_count},
+            ]),
+            _scan_stage("pointer_recovery", "Pointer Recovery", "waiting" if running else "required" if recovery_required else "not_required", [
+                {"label": "route+locator conflicts", "value": duplicate_conflicts},
             ]),
             _scan_stage("route_classification", "Route Classification", "complete" if complete and route_count else future_status, [
                 {"label": "routes classified", "value": route_count},
@@ -4517,13 +4636,27 @@ def _pointer_summary_from_pages(pages: List[CrawledPage]) -> Dict:
             type_counts[target_type] = type_counts.get(target_type, 0) + 1
 
     duplicate_count = sum(1 for count in Counter(str(record.get("target_id")) for record in records).values() if count > 1)
+    pointer_map = pointer_plot_map_from_pages(pages)
+    quality = assess_pointer_quality(pointer_map)
+    recovery_required = bool(quality.get("recovery_required"))
+    guidance_eligible = sum(
+        1
+        for record in records
+        if record.get("confidence_class") in {"VERIFIED", "STABLE"}
+        and (record.get("runtime_policy") or {}).get("may_point") is not False
+    )
     return {
         "schema": "orb_weaver.pointer_summary.v1",
         "record_count": len(records),
         "routes_with_pointers": len(route_ids),
         "duplicate_target_ids": duplicate_count,
         "target_type_counts": type_counts,
-        "status": "passed" if records and duplicate_count == 0 else "needs_review",
+        "extraction_status": "complete" if records else "needs_review",
+        "runtime_guidance_status": "blocked" if recovery_required else "ready",
+        "pointer_recovery_status": "required" if recovery_required else "not_required",
+        "guidance_eligible_count": guidance_eligible,
+        "quality": quality,
+        "status": "recovery_required" if recovery_required else "passed" if records else "needs_review",
     }
 
 
@@ -4531,6 +4664,7 @@ def _planned_tool_calls(pointer_summary: Dict, stats: Optional[Dict] = None, pag
     stats = stats or {}
     record_count = int(pointer_summary.get("record_count") or 0)
     duplicate_count = int(pointer_summary.get("duplicate_target_ids") or 0)
+    runtime_ready = pointer_summary.get("runtime_guidance_status") == "ready"
     depth_limit_hit = bool(stats.get("depth_limit_hit"))
     max_page_limit_hit = bool(stats.get("max_page_limit_hit"))
 
@@ -4541,7 +4675,7 @@ def _planned_tool_calls(pointer_summary: Dict, stats: Optional[Dict] = None, pag
             "scope": "basic_customer_orb",
             "trigger": "website_orb_boot",
             "purpose": "Load verified pointable targets for the current site package.",
-            "status": "ready" if record_count > 0 and duplicate_count == 0 else "needs_review",
+            "status": "ready" if record_count > 0 and runtime_ready else "needs_review",
             "requires_mcp": False,
         },
         {
@@ -4550,7 +4684,7 @@ def _planned_tool_calls(pointer_summary: Dict, stats: Optional[Dict] = None, pag
             "scope": "basic_customer_orb",
             "trigger": "visitor_intent_match",
             "purpose": "Resolve a cached target record against the live DOM before moving or blooming.",
-            "status": "ready" if record_count > 0 and duplicate_count == 0 else "blocked_until_pointer_map_passes",
+            "status": "ready" if record_count > 0 and runtime_ready else "blocked_until_pointer_recovery",
             "requires_mcp": False,
         },
         {
@@ -4564,7 +4698,7 @@ def _planned_tool_calls(pointer_summary: Dict, stats: Optional[Dict] = None, pag
         },
     ]
 
-    if duplicate_count > 0 or record_count == 0:
+    if duplicate_count > 0 or record_count == 0 or not runtime_ready:
         planned.append(
             {
                 "id": "repair_pointer_map",
@@ -5078,6 +5212,7 @@ def _serialize_crawl_job(crawl_job: CrawlJob, db: Session, include_pages: bool =
     project = db.query(Project).filter(Project.id == crawl_job.project_id).first()
     config = crawl_job.config or {}
     stats = {**_compute_stats(pages), **(config.get("stats") or {})}
+    pointer_summary = _pointer_summary_from_pages(pages)
 
     payload = {
         "id": str(crawl_job.id),
@@ -5094,8 +5229,8 @@ def _serialize_crawl_job(crawl_job: CrawlJob, db: Session, include_pages: bool =
         "errors_count": crawl_job.errors_count,
         "stats": stats,
         "assembly_status": _scan_assembly_status(crawl_job, pages, stats),
-        "pointer_summary": stats.get("pointer_summary") or _pointer_summary_from_pages(pages),
-        "planned_tool_calls": stats.get("planned_tool_calls") or _planned_tool_calls(stats.get("pointer_summary") or {}, stats),
+        "pointer_summary": pointer_summary,
+        "planned_tool_calls": _planned_tool_calls(pointer_summary, stats),
         "historical": config.get("historical"),
         "trend_model": config.get("trend_model"),
         "internal_link_graph": config.get("internal_link_graph"),
@@ -6603,6 +6738,9 @@ async def website_orb_pointer_map(
     return {
         "schema": pointer_map.get("schema") or "orb_weaver.pointer_plot_map.v1",
         "generated_at": pointer_map.get("generated_at"),
+        "project_id": pointer_map.get("project_id"),
+        "source_crawl_job_id": pointer_map.get("source_crawl_job_id") or pointer_map.get("recovered_from_crawl_id"),
+        "domain": pointer_map.get("domain") or raw_domain,
         "record_count": int(pointer_map.get("record_count") or 0),
         "records": pointer_map.get("records") if isinstance(pointer_map.get("records"), list) else [],
         "by_page": pointer_map.get("by_page") if isinstance(pointer_map.get("by_page"), dict) else {},
@@ -7453,11 +7591,7 @@ async def create_checkout(
     db.commit()
     db.refresh(order)
 
-    provider_result = (
-        await _create_stripe_checkout(order, customer)
-        if payload.provider == "stripe"
-        else await _create_paypal_checkout(order)
-    )
+    provider_result = await _create_provider_checkout(order, customer)
     order.status = provider_result.get("status", "provider_error")
     order.provider_order_id = provider_result.get("provider_order_id")
     order.checkout_url = provider_result.get("checkout_url")

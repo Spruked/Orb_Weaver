@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     PAYPAL_CLIENT_ID: Optional[str] = None
     PAYPAL_CLIENT_SECRET: Optional[str] = None
     PAYPAL_API_BASE: str = "https://api-m.paypal.com"
+    SQUARE_ENVIRONMENT: str = "production"
+    SQUARE_APPLICATION_ID: Optional[str] = None
+    SQUARE_LOCATION_ID: Optional[str] = None
+    SQUARE_ACCESS_TOKEN: Optional[str] = None
+    SQUARE_VERSION: str = "2026-07-15"
+    SQUARE_REDIRECT_URL: Optional[str] = None
 
     # Google Analytics
     GA4_PROPERTY_ID: Optional[str] = None

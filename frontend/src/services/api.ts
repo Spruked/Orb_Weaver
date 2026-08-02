@@ -582,6 +582,8 @@ export interface CheckoutOrder {
   updated_at?: string | null;
 }
 
+export type CheckoutProvider = 'stripe' | 'paypal' | 'square' | 'venmo';
+
 export interface AdminCustomer extends Customer {
   project_count: number;
   cart_item_count: number;
@@ -829,6 +831,19 @@ export interface PointerSummary {
   routes_with_pointers: number;
   duplicate_target_ids: number;
   target_type_counts?: Record<string, number>;
+  extraction_status?: string;
+  runtime_guidance_status?: string;
+  pointer_recovery_status?: string;
+  guidance_eligible_count?: number;
+  quality?: {
+    status?: string;
+    recovery_required?: boolean;
+    stable_count?: number;
+    uncertain_count?: number;
+    duplicate_conflict_count?: number;
+    confidence_classes?: Record<string, number>;
+    triggers?: string[];
+  };
   status: string;
 }
 
@@ -1041,6 +1056,9 @@ export interface WebsiteOrbPointerRecord {
 export interface WebsiteOrbPointerMap {
   schema: string;
   generated_at?: string | null;
+  project_id?: string | null;
+  source_crawl_job_id?: string | null;
+  domain?: string | null;
   record_count: number;
   records: WebsiteOrbPointerRecord[];
   by_page: Record<string, string[]>;
@@ -1214,10 +1232,13 @@ export const api = {
   websiteOrbVoice: (
     audio: Blob,
     signal?: AbortSignal,
-    context?: { target_url?: string | null }
+    context?: { project_id?: string | null; target_url?: string | null }
   ) => {
     const formData = new FormData();
     formData.append('audio', audio, 'website-orb.webm');
+    if (context?.project_id) {
+      formData.append('project_id', context.project_id);
+    }
     if (context?.target_url) {
       formData.append('target_url', context.target_url);
     }
@@ -1356,7 +1377,7 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   deleteCartItem: (sku: string) => request<CartPayload>(`/api/cart/items/${encodeURIComponent(sku)}`, { method: 'DELETE' }),
-  createCheckout: (provider: 'stripe' | 'paypal') =>
+  createCheckout: (provider: CheckoutProvider) =>
     request<CheckoutOrder>('/api/cart/checkout', {
       method: 'POST',
       body: JSON.stringify({ provider })

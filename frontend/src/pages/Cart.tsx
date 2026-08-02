@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CreditCard, ShoppingCart, Trash2 } from 'lucide-react';
-import { api, CartPayload, CheckoutOrder, Product } from '../services/api';
+import { api, CartPayload, CheckoutOrder, CheckoutProvider, Product } from '../services/api';
 
 const money = (cents: number, currency = 'usd') =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: currency.toUpperCase() }).format(cents / 100);
@@ -43,7 +43,7 @@ const Cart: React.FC = () => {
     setCart(await api.deleteCartItem(sku));
   };
 
-  const checkout = async (provider: 'stripe' | 'paypal') => {
+  const checkout = async (provider: CheckoutProvider) => {
     setIsCheckingOut(provider);
     setError('');
     try {
@@ -123,11 +123,25 @@ const Cart: React.FC = () => {
                 {isCheckingOut === 'stripe' ? 'Starting...' : 'Stripe Checkout'}
               </button>
               <button
+                onClick={() => checkout('square')}
+                disabled={Boolean(isCheckingOut)}
+                className="w-full btn-secondary"
+              >
+                {isCheckingOut === 'square' ? 'Starting...' : 'Square Checkout'}
+              </button>
+              <button
                 onClick={() => checkout('paypal')}
                 disabled={Boolean(isCheckingOut)}
                 className="w-full btn-secondary"
               >
                 {isCheckingOut === 'paypal' ? 'Starting...' : 'PayPal Checkout'}
+              </button>
+              <button
+                onClick={() => checkout('venmo')}
+                disabled={Boolean(isCheckingOut)}
+                className="w-full btn-secondary"
+              >
+                {isCheckingOut === 'venmo' ? 'Starting...' : 'Venmo Checkout'}
               </button>
             </div>
           )}

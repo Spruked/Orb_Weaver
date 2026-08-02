@@ -19,6 +19,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { api, CrawlJob, LifecycleJob, LifecycleJobType, PreflightReport, Project } from '../services/api';
+import { canonicalOrbBaseUrl, setActiveOrbProjectContext } from '../orb/activeProjectContext';
 
 const ACTIVE_CRAWL_STATUSES = new Set(['pending', 'running', 'cancel_requested']);
 const ACTIVE_LIFECYCLE_STATUSES = new Set(['PENDING', 'RUNNING', 'CANCEL_REQUESTED']);
@@ -288,6 +289,18 @@ const Projects: React.FC = () => {
     () => selectedProject ? crawlJobs.filter((job) => job.project_id === selectedProject.id) : [],
     [crawlJobs, selectedProject]
   );
+
+  useEffect(() => {
+    if (!selectedProject?.domain) return;
+    const latestCrawlJob = selectedProjectCrawlJobs[0];
+    setActiveOrbProjectContext({
+      project_id: String(selectedProject.id),
+      canonical_domain: selectedProject.domain,
+      canonical_base_url: canonicalOrbBaseUrl(selectedProject.domain),
+      selected_crawl_job_id: latestCrawlJob?.id || selectedProject.latest_crawl_id || null,
+      active_customer_route: '/',
+    });
+  }, [selectedProject, selectedProjectCrawlJobs]);
 
   const handleSelectProject = (projectId: string) => {
     setSelectedProjectId(projectId);

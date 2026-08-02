@@ -4,6 +4,7 @@ import { Globe, CheckCircle, XCircle, Image, Search, Download, Activity, Square 
 import { api, CrawledPage, CrawlJob as CrawlJobType, downloads } from '../services/api';
 import OrbAssemblyStatus from '../components/OrbAssemblyStatus';
 import CrawlChangeSummary from '../components/CrawlChangeSummary';
+import { canonicalOrbBaseUrl, setActiveOrbProjectContext } from '../orb/activeProjectContext';
 
 const RUNNING_STATUSES = new Set(['pending', 'running', 'cancel_requested']);
 
@@ -172,7 +173,24 @@ const CrawlJob: React.FC = () => {
   const adminPagesScanned = adminPagesFromStats || adminPagesFromRows;
   const adminUrlsFound = Number(stats.admin_section_urls_found || adminPagesScanned || 0);
   const pointerSummary = crawlData?.pointer_summary;
+  const pointerQuality = pointerSummary?.quality || {};
+  const pointerRecoveryRequired = Boolean(pointerQuality.recovery_required || pointerSummary?.status === 'recovery_required');
+  const pointerExtractionStatus = pointerSummary?.extraction_status || (pointerSummary?.record_count ? 'complete' : 'needs_review');
+  const pointerGuidanceStatus = pointerSummary?.runtime_guidance_status || (pointerRecoveryRequired ? 'blocked' : pointerSummary?.status === 'passed' ? 'ready' : 'needs_review');
+  const pointerCardTone = pointerRecoveryRequired ? 'border-red-200 bg-red-50' : pointerGuidanceStatus === 'ready' ? 'border-green-200 bg-green-50' : 'border-yellow-200 bg-yellow-50';
+  const pointerBadgeTone = pointerRecoveryRequired ? 'bg-red-100 text-red-700' : pointerGuidanceStatus === 'ready' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700';
   const plannedToolCalls = crawlData?.planned_tool_calls || [];
+
+  useEffect(() => {
+    if (!crawlData?.project_id || !crawlData.project_domain) return;
+    setActiveOrbProjectContext({
+      project_id: String(crawlData.project_id),
+      canonical_domain: crawlData.project_domain,
+      canonical_base_url: canonicalOrbBaseUrl(crawlData.project_domain),
+      selected_crawl_job_id: String(crawlData.id || jobId || ''),
+      active_customer_route: '/',
+    });
+  }, [crawlData, jobId]);
 
   const getStatusColor = (status?: number | null) => {
     if (status === 200) return 'text-green-600 bg-green-50';
@@ -340,17 +358,20 @@ const CrawlJob: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className={`card ${pointerSummary?.status === 'passed' ? 'border-green-200 bg-green-50' : 'border-yellow-200 bg-yellow-50'}`}>
+        <div className={`card ${pointerCardTone}`}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-sm text-gray-500 mb-1">ORB Pointer Map</p>
               <p className="text-2xl font-bold text-gray-900">{pointerSummary?.record_count ?? 0}</p>
               <p className="text-sm text-gray-600 mt-1">
-                {pointerSummary?.routes_with_pointers ?? 0} routes with pointers · {pointerSummary?.duplicate_target_ids ?? 0} duplicate IDs
+                Extraction: {pointerExtractionStatus} · Runtime guidance: {pointerGuidanceStatus}
+              </p>
+              <p className="text-sm text-gray-600 mt-1">
+                {pointerSummary?.routes_with_pointers ?? 0} routes with pointers · {pointerSummary?.guidance_eligible_count ?? 0} guidance-eligible · {pointerQuality.duplicate_conflict_count ?? 0} route+locator conflicts
               </p>
             </div>
-            <span className={`px-3 py-1 rounded-full text-sm font-semibold ${pointerSummary?.status === 'passed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-              {pointerSummary?.status || 'needs_review'}
+            <span className={`px-3 py-1 rounded-full text-sm font-semibold ${pointerBadgeTone}`}>
+              {pointerRecoveryRequired ? 'recovery required' : pointerGuidanceStatus}
             </span>
           </div>
         </div>

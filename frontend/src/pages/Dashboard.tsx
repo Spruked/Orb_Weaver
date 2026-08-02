@@ -34,6 +34,7 @@ import {
   PreflightReport,
   Project
 } from '../services/api';
+import { canonicalOrbBaseUrl, setActiveOrbProjectContext } from '../orb/activeProjectContext';
 
 const ACTIVE_CRAWL_STATUSES = new Set(['pending', 'running']);
 
@@ -213,6 +214,17 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
   ] : [], [report]);
   const sessions = Number(dashboardData?.ga4_data?.traffic_overview?.totals?.sessions || 0);
   const activeCrawl = !!project?.latest_crawl_status && ACTIVE_CRAWL_STATUSES.has(project.latest_crawl_status);
+
+  useEffect(() => {
+    if (!project?.domain) return;
+    setActiveOrbProjectContext({
+      project_id: String(project.id),
+      canonical_domain: project.domain,
+      canonical_base_url: canonicalOrbBaseUrl(project.domain),
+      selected_crawl_job_id: project.latest_crawl_id || dashboardData?.latest_crawl?.id || null,
+      active_customer_route: '/',
+    });
+  }, [dashboardData?.latest_crawl?.id, project]);
   const assemblyStatus = dashboardData?.latest_crawl?.assembly_status || null;
   const auditDelta = dashboardData?.audit_delta || null;
 
