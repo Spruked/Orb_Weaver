@@ -118,6 +118,7 @@ from app.orb_dock import (
     public_runtime_policy,
     safe_model_name,
 )
+from app.routers.orb_telemetry import router as orb_telemetry_router, trigger_pointer_lock
 from app.orbs_governor import (
     GovernorRejection,
     active_entitlement,
@@ -152,6 +153,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(orb_telemetry_router)
+
 
 def _resolve_database_url() -> str:
     if settings.DATABASE_URL.strip() == "postgresql://user:pass@localhost/orb_weaver":
@@ -180,6 +183,18 @@ ORB_TTS_INFLIGHT_LOCK = asyncio.Lock()
 ORB_TTS_INFLIGHT: Dict[str, asyncio.Task] = {}
 ORB_TTS_PROVIDER_LOCKS: Dict[str, asyncio.Lock] = {}
 logger = logging.getLogger("orb_weaver")
+ORB_TOOL_AVAILABILITY_STATES = frozenset({
+    "installed",
+    "registered",
+    "disabled",
+    "owner_only",
+    "runtime_allowed",
+    "temporarily_authorized",
+    "blocked",
+})
+ORB_TOOL_ID_ALIASES = {
+    "rdrive_orb_mcp": "desktop_orb_mcp",
+}
 LLM_WARM_STATUS: Dict[str, Any] = {
     "configured": bool(settings.LOCAL_LLM_URL and settings.LOCAL_LLM_MODEL),
     "ready": False,
@@ -2186,104 +2201,198 @@ def _orb_tool_catalog(customer: Customer) -> Dict[str, Any]:
                 desktop_mcp_tools = names
         except Exception:
             desktop_mcp_enabled = False
+
+    def policy_state(installed: bool, registered: bool, enabled: bool, owner_only: bool) -> Tuple[str, str]:
+        if not installed:
+            return "blocked", "tool_not_installed"
+        if not registered:
+            return "installed", "installed_but_not_registered"
+        if not enabled:
+            return "disabled", "deployment_policy_disabled"
+        if owner_only and not bool(customer.is_admin):
+            return "owner_only", "owner_policy_required"
+        return "runtime_allowed", "governed_and_allowed"
+
+    registry = [
+        {
+            "id": "capabilities",
+            "label": "ORB Capability Probe",
+            "description": "Inspect current ORB source, voice, OCR, and MCP availability.",
+            "requires_project": False,
+            "installed": True,
+            "registered": True,
+            "enabled": True,
+            "owner_only": False,
+            "declared_capability": "orb_runtime_capability_probe",
+        },
+        {
+            "id": "project_preflight",
+            "label": "Project Preflight",
+            "description": "Run the deterministic site readiness scanner and refresh the fast ORB voice cache.",
+            "requires_project": True,
+            "installed": True,
+            "registered": True,
+            "enabled": True,
+            "owner_only": False,
+            "declared_capability": "project_preflight",
+        },
+        {
+            "id": "project_tool_cache",
+            "label": "Pre-Flight Tool Cache",
+            "description": "Build page-specific cached voice answers from the latest project preflight report.",
+            "requires_project": True,
+            "installed": True,
+            "registered": True,
+            "enabled": True,
+            "owner_only": False,
+            "declared_capability": "tool_cache_compile",
+        },
+        {
+            "id": "project_browser_review",
+            "label": "Project Browser Review",
+            "description": "Run the configured Chrome DevTools MCP browser review for an owned project.",
+            "requires_project": True,
+            "installed": True,
+            "registered": True,
+            "enabled": chrome_enabled,
+            "owner_only": False,
+            "declared_capability": "project_browser_review",
+        },
+        {
+            "id": "semantic_topology",
+            "label": "Semantic Topology Scan",
+            "description": "Map links, forms, and data-orb targets from a target URL.",
+            "requires_project": False,
+            "installed": True,
+            "registered": True,
+            "enabled": True,
+            "owner_only": False,
+            "declared_capability": "semantic_topology",
+        },
+        {
+            "id": "website_text",
+            "label": "ORB Text Cognition",
+            "description": "Ask the real ORB cognition wrapper to answer a text task.",
+            "requires_project": False,
+            "installed": True,
+            "registered": True,
+            "enabled": True,
+            "owner_only": False,
+            "declared_capability": "website_text_cognition",
+        },
+        {
+            "id": "chrome_devtools_mcp",
+            "label": "Canonical Chrome DevTools MCP Tool",
+            "description": "Installed in the deployment package but governed through owner policy and runtime approval.",
+            "requires_project": False,
+            "installed": True,
+            "registered": True,
+            "enabled": chrome_enabled,
+            "owner_only": True,
+            "declared_capability": "chrome_devtools_mcp",
+            "mcp_tools": [
+                "new_page",
+                "take_snapshot",
+                "list_console_messages",
+                "list_network_requests",
+                "take_screenshot",
+                "lighthouse_audit",
+            ],
+        },
+        {
+            "id": "desktop_orb_mcp",
+            "label": "Canonical Desktop ORB MCP Tool",
+            "description": "Installed with the full deployment tool pack and activated only through governed owner/runtime approval.",
+            "requires_project": False,
+            "installed": True,
+            "registered": True,
+            "enabled": desktop_mcp_enabled,
+            "owner_only": True,
+            "declared_capability": "desktop_orb_mcp",
+            "mcp_tools": desktop_mcp_tools,
+            "legacy_ids": ["rdrive_orb_mcp"],
+        },
+        {
+            "id": "visual_audit",
+            "label": "Canonical Visual OCR Audit",
+            "description": "Installed in the package but dormant until owner policy, runtime authority, and OCR capability all permit use.",
+            "requires_project": False,
+            "installed": True,
+            "registered": True,
+            "enabled": desktop_mcp_enabled,
+            "owner_only": True,
+            "declared_capability": "visual_ocr_audit",
+            "mcp_tools": ["orb_browser_screenshot", "orb_ocr_screen"],
+        },
+    ]
+
+    tools = []
+    for item in registry:
+        availability, blocked_reason = policy_state(
+            bool(item["installed"]),
+            bool(item["registered"]),
+            bool(item["enabled"]),
+            bool(item["owner_only"]),
+        )
+        if availability not in ORB_TOOL_AVAILABILITY_STATES:
+            raise RuntimeError(f"Unsupported ORB tool availability state: {availability}")
+        tools.append(
+            {
+                **item,
+                "available": availability in {"runtime_allowed", "temporarily_authorized"},
+                "availability": availability,
+                "blocked_reason": blocked_reason,
+                "activation_chain": [
+                    "installed",
+                    "registered",
+                    "deployment_policy",
+                    "orb_role",
+                    "workflow_stage",
+                    "safety_governor",
+                ],
+            }
+        )
+
     return {
-        "schema": "orb_weaver.orb_tool_catalog.v1",
+        "schema": "orb_weaver.orb_tool_catalog.v2",
         "orb_id": capabilities["orb_id"],
         "scope": "orb_weaver_showcase_authenticated_owner",
         "product_boundary": capabilities.get("product_boundary"),
         "customer_id": str(customer.id),
-        "tools": [
-            {
-                "id": "capabilities",
-                "label": "ORB Capability Probe",
-                "description": "Inspect current ORB source, voice, OCR, and MCP availability.",
-                "requires_project": False,
-                "available": True,
-            },
-            {
-                "id": "project_preflight",
-                "label": "Project Preflight",
-                "description": "Run the deterministic site readiness scanner and refresh the fast ORB voice cache.",
-                "requires_project": True,
-                "available": True,
-            },
-            {
-                "id": "project_tool_cache",
-                "label": "Pre-Flight Tool Cache",
-                "description": "Build page-specific cached voice answers from the latest project preflight report.",
-                "requires_project": True,
-                "available": True,
-            },
-            {
-                "id": "project_browser_review",
-                "label": "Project Browser Review",
-                "description": "Run the configured Chrome DevTools MCP browser review for an owned project.",
-                "requires_project": True,
-                "available": chrome_enabled,
-            },
-            {
-                "id": "semantic_topology",
-                "label": "Semantic Topology Scan",
-                "description": "Map links, forms, and data-orb targets from a target URL.",
-                "requires_project": False,
-                "available": True,
-            },
-            {
-                "id": "website_text",
-                "label": "ORB Text Cognition",
-                "description": "Ask the real ORB cognition wrapper to answer a text task.",
-                "requires_project": False,
-                "available": True,
-            },
-            {
-                "id": "chrome_devtools_mcp",
-                "label": "Showcase Chrome DevTools MCP Tool",
-                "description": "Run an allow-listed Chrome DevTools MCP command for the Orb Weaver demo/development ORB.",
-                "requires_project": False,
-                "available": chrome_enabled,
-                "mcp_tools": [
-                    "new_page",
-                    "take_snapshot",
-                    "list_console_messages",
-                    "list_network_requests",
-                    "take_screenshot",
-                    "lighthouse_audit",
-                ],
-            },
-            {
-                "id": "rdrive_orb_mcp",
-                "label": "Showcase Desktop ORB MCP Tool",
-                "description": "Run the real Desktop ORB MCP server for Orb Weaver showcase/development use.",
-                "requires_project": False,
-                "available": desktop_mcp_enabled,
-                "mcp_tools": desktop_mcp_tools,
-            },
-            {
-                "id": "visual_audit",
-                "label": "Showcase Visual OCR Audit",
-                "description": "Capture visible browser state through Desktop MCP/OCR for the Orb Weaver demo ORB or explicitly configured advanced adapters.",
-                "requires_project": False,
-                "available": desktop_mcp_enabled,
-                "mcp_tools": ["orb_browser_screenshot", "orb_ocr_screen"],
-            },
-        ],
+        "tools": tools,
         "capabilities": capabilities,
     }
 
 
-ORB_ADMIN_ONLY_TOOLS = frozenset({
-    "chrome_devtools_mcp",
-    "rdrive_orb_mcp",
-    "visual_audit",
-})
+def _normalize_orb_tool_id(tool: str) -> str:
+    return ORB_TOOL_ID_ALIASES.get(tool.strip(), tool.strip())
 
 
-def _require_orb_tool_permission(customer: Customer, tool: str) -> None:
-    if tool in ORB_ADMIN_ONLY_TOOLS and not bool(customer.is_admin):
+def _require_orb_tool_permission(customer: Customer, tool: str) -> str:
+    normalized = _normalize_orb_tool_id(tool)
+    catalog = _orb_tool_catalog(customer)
+    item = next(
+        (
+            candidate
+            for candidate in catalog.get("tools", [])
+            if isinstance(candidate, dict) and candidate.get("id") == normalized
+        ),
+        None,
+    )
+    if not item:
+        raise HTTPException(status_code=400, detail=f"Unknown ORB tool: {normalized}")
+    availability = str(item.get("availability") or "blocked")
+    if availability in {"runtime_allowed", "temporarily_authorized"}:
+        return normalized
+    if availability == "owner_only":
         raise HTTPException(
             status_code=403,
-            detail="This ORB tool is restricted to Orb Weaver administrators",
+            detail="This ORB tool is installed but restricted to owner or administrator policy",
         )
+    raise HTTPException(
+        status_code=403,
+        detail=f"This ORB tool is installed but not callable: {item.get('blocked_reason') or availability}",
+    )
 
 
 def _cache_orb_tool_result(
@@ -2326,11 +2435,11 @@ def _project_target_url(project: Project) -> str:
 
 
 async def _run_orb_tool(payload: OrbToolRunRequest, customer: Customer, db: Session) -> Dict[str, Any]:
-    tool = payload.tool.strip()
-    _require_orb_tool_permission(customer, tool)
+    tool = _require_orb_tool_permission(customer, payload.tool.strip())
     generated_at = datetime.utcnow().isoformat()
     pulse = _orb_cognitive_pulse(f"Run ORB tool: {tool}")
     normalized_input = payload.model_dump()
+    normalized_input["tool"] = tool
     project: Optional[Project] = None
     if payload.project_id:
         project = _owned_project(payload.project_id, customer, db)
@@ -2459,12 +2568,12 @@ async def _run_orb_tool(payload: OrbToolRunRequest, customer: Customer, db: Sess
             "generated_at": generated_at,
             "result": mcp_result,
         }
-    elif tool == "rdrive_orb_mcp":
+    elif tool == "desktop_orb_mcp":
         if not settings.ORB_DESKTOP_MCP_ENABLED:
-            raise HTTPException(status_code=403, detail="R-drive ORB MCP is not enabled")
+            raise HTTPException(status_code=403, detail="Desktop ORB MCP is not enabled")
         mcp_tool = (payload.mcp_tool or "").strip()
         if mcp_tool not in set(DEFAULT_ORB_MCP_TOOLS):
-            raise HTTPException(status_code=400, detail=f"Unsupported R-drive ORB MCP tool: {mcp_tool}")
+            raise HTTPException(status_code=400, detail=f"Unsupported Desktop ORB MCP tool: {mcp_tool}")
         mcp_result = _orb_desktop_mcp_client().call_tool(mcp_tool, dict(payload.params))
         result = {
             "schema": "orb_weaver.orb_tool_result.v1",
@@ -3818,6 +3927,33 @@ def _lookup_pointer_context(
         max_records=max_records,
     )
     return [_pointer_summary(match.record, match.score) for match in matches]
+
+
+def _queue_pointer_lock(pointer_matches: List[Dict[str, Any]], transcript: str) -> None:
+    if not pointer_matches:
+        return
+    target = next((item for item in pointer_matches if item.get('guidance_eligible') and item.get('target_id')), None)
+    if not target:
+        return
+    asyncio.create_task(
+        trigger_pointer_lock(
+            target_id=str(target.get('target_id')),
+            element_data={
+                'absoluteTop': 0,
+                'absoluteLeft': 0,
+                'width': 0,
+                'height': 0,
+                'metadata': {
+                    'semantic_locator': target.get('semantic_locator'),
+                    'page_route': target.get('page_route'),
+                    'structural_context': target.get('structural_context') or {},
+                },
+            },
+            intent=str(target.get('meaning') or transcript or target.get('target_type') or 'pointer guidance'),
+            movement_vector='glide',
+            confidence=target.get('confidence'),
+        )
+    )
 
 
 def _build_page_capsule(target_url: str) -> Dict[str, Any]:
@@ -6120,6 +6256,7 @@ async def website_orb_voice(
     mark("cognitive_pulse", started)
 
     pointer_matches = _lookup_pointer_context(website_context, transcript)
+    _queue_pointer_lock(pointer_matches, transcript)
     domain_cache_hit = _lookup_domain_runtime_tool(website_context, transcript, operating_policy)
     if domain_cache_hit and domain_cache_hit.get("spoken_output"):
         spoken_output = domain_cache_hit["spoken_output"]
@@ -6348,6 +6485,7 @@ async def website_orb_text(
         page_capsule["context_domain"] = page_capsule.get("domain")
         page_capsule["domain"] = _domain_from_url(target_url)
     pointer_matches = _lookup_pointer_context(website_context, transcript)
+    _queue_pointer_lock(pointer_matches, transcript)
     cache_hit = _lookup_project_tool_cache(project, transcript, db) if project else None
     if cache_hit and cache_hit.get("spoken_output"):
         tts_result = {
@@ -6758,17 +6896,7 @@ async def website_orb_page_capsule(
 
 @app.get("/api/orb/tools/catalog")
 async def orb_tool_catalog(customer: Customer = Depends(get_current_customer)):
-    catalog = _orb_tool_catalog(customer)
-
-    if bool(customer.is_admin):
-        return catalog
-
-    catalog["tools"] = [
-        item
-        for item in catalog.get("tools", [])
-        if item.get("id") not in ORB_ADMIN_ONLY_TOOLS
-    ]
-    return catalog
+    return _orb_tool_catalog(customer)
 
 
 @app.post("/api/orb/tools/run")

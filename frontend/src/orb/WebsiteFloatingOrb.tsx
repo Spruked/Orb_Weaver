@@ -1,11 +1,20 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type WebsiteOrbPointerRecord } from '../services/api';
+import { LidarCoordinateCache } from './LidarCoordinateCache';
 import { validateOrbPointerTarget } from './targetValidation';
+import { useOrbTelemetry } from './useOrbTelemetry';
+import type { TelemetryFrame, ViewportCoordinate } from './types';
 import './WebsiteFloatingOrb.css';
 
 type OrbMode = 'idle' | 'avoiding' | 'assisting' | 'learning';
 type OrbPoint = { x: number; y: number };
 type BloomRect = { left: number; top: number; width: number; height: number };
+type MicroOrbState = {
+  left: number;
+  top: number;
+  visible: boolean;
+  dissolving: boolean;
+};
 
 const LATENCY_FILLER_PATHS = [
   '/orb/voice/latency-fillers/ack.wav',
@@ -13,6 +22,9 @@ const LATENCY_FILLER_PATHS = [
   '/orb/voice/latency-fillers/working.wav',
 ];
 const VOICE_UNAVAILABLE_MESSAGE = 'Voice unavailable';
+const lidar = LidarCoordinateCache.getInstance();
+const MORB_TRAVEL_MS = 520;
+const MORB_DISSOLVE_MS = 620;
 
 const normalizeIntentText = (value: string): string =>
   (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -51,6 +63,7 @@ const WebsiteFloatingOrb: React.FC = () => {
   const [mood, setMood] = useState(0.86);
   const [pointingTargetId, setPointingTargetId] = useState<string | null>(null);
   const [bloomRect, setBloomRect] = useState<BloomRect | null>(null);
+  const [microOrb, setMicroOrb] = useState<MicroOrbState | null>(null);
 
   const positionRef = useRef(position);
   const targetRef = useRef(targetPos);
@@ -65,6 +78,9 @@ const WebsiteFloatingOrb: React.FC = () => {
   const speechSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const bubbleTimerRef = useRef<number | null>(null);
   const bloomTimerRef = useRef<number | null>(null);
+  const microOrbTravelRef = useRef<number | null>(null);
+  const microOrbDissolveRef = useRef<number | null>(null);
+  const microOrbCleanupRef = useRef<number | null>(null);
   const lastActivityRef = useRef(Date.now());
 
   useEffect(() => {
@@ -86,10 +102,111 @@ const WebsiteFloatingOrb: React.FC = () => {
     const centerY = rect.top + rect.height / 2;
     const side = centerX < window.innerWidth / 2 ? 1 : -1;
     return {
-      x: Math.max(80, Math.min(window.innerWidth - 80, centerX + side * 112)),
+      x: Math.max(80, Math.min(window.innerWidth - 80, centerX + side * 132)),
       y: Math.max(100, Math.min(window.innerHeight - 100, centerY)),
     };
   }, []);
+
+  const clearMicroOrbSequence = useCallback(() => {
+    if (microOrbTravelRef.current) {
+      window.cancelAnimationFrame(microOrbTravelRef.current);
+      microOrbTravelRef.current = null;
+    }
+    if (microOrbDissolveRef.current) {
+      window.clearTimeout(microOrbDissolveRef.current);
+      microOrbDissolveRef.current = null;
+    }
+    if (microOrbCleanupRef.current) {
+      window.clearTimeout(microOrbCleanupRef.current);
+      microOrbCleanupRef.current = null;
+    }
+    setMicroOrb(null);
+  }, []);
+
+  const deployMicroOrb = useCallback((viewportCoord: ViewportCoordinate) => {
+    clearMicroOrbSequence();
+
+    const originLeft = positionRef.current.x - 11;
+    const originTop = positionRef.current.y - 11;
+    const targetLeft = viewportCoord.left + viewportCoord.width / 2 - 11;
+    const targetTop = viewportCoord.top + viewportCoord.height / 2 - 11;
+
+    setMicroOrb({
+      left: originLeft,
+      top: originTop,
+      visible: false,
+      dissolving: false,
+    });
+
+    microOrbTravelRef.current = window.requestAnimationFrame(() => {
+      setMicroOrb({
+        left: targetLeft,
+        top: targetTop,
+        visible: true,
+        dissolving: false,
+      });
+      microOrbTravelRef.current = null;
+    });
+
+    microOrbDissolveRef.current = window.setTimeout(() => {
+      setMicroOrb((current) => current ? { ...current, dissolving: true } : null);
+      microOrbDissolveRef.current = null;
+    }, MORB_TRAVEL_MS + 120);
+
+    microOrbCleanupRef.current = window.setTimeout(() => {
+      setMicroOrb(null);
+      microOrbCleanupRef.current = null;
+    }, MORB_TRAVEL_MS + MORB_DISSOLVE_MS);
+  }, [clearMicroOrbSequence]);
+
+  const applyTargetLock = useCallback((viewportCoord: ViewportCoordinate, label: string, targetId: string) => {
+    const rect = {
+      left: viewportCoord.left,
+      top: viewportCoord.top,
+      width: viewportCoord.width,
+      height: viewportCoord.height,
+      right: viewportCoord.left + viewportCoord.width,
+      bottom: viewportCoord.top + viewportCoord.height,
+      x: viewportCoord.left,
+      y: viewportCoord.top,
+      toJSON: () => '',
+    } as DOMRect;
+
+    const nextTarget = pointNearRect(rect);
+    setTargetPos(nextTarget);
+    setMode('assisting');
+    setIsMoving(true);
+    setPointingTargetId(targetId);
+    setStatusLine(`Pointing: ${label.slice(0, 54)}`);
+    deployMicroOrb(viewportCoord);
+    setBloomRect({
+      left: Math.max(0, viewportCoord.left - 8),
+      top: Math.max(0, viewportCoord.top - 8),
+      width: viewportCoord.width + 16,
+      height: viewportCoord.height + 16,
+    });
+
+    if (bloomTimerRef.current) {
+      window.clearTimeout(bloomTimerRef.current);
+    }
+    bloomTimerRef.current = window.setTimeout(() => {
+      setBloomRect(null);
+      setPointingTargetId(null);
+    }, 1800);
+  }, [deployMicroOrb, pointNearRect]);
+
+  const telemetryUrl = 'ws://localhost:8000/ws/orb-pointer';
+  const { reportDrift } = useOrbTelemetry({
+    wsUrl: telemetryUrl,
+    onTargetLock: (viewportCoord: ViewportCoordinate, frame: TelemetryFrame) => {
+      applyTargetLock(viewportCoord, frame.semantic_intent || frame.target_id, frame.target_id);
+    },
+    onStatusChange: (status) => {
+      if (status === 'connected') {
+        setStatusLine((current) => current === 'Greeting visitor' ? 'Telemetry linked' : current);
+      }
+    },
+  });
 
   const findPointerRecordForIntent = useCallback((intentText: string): WebsiteOrbPointerRecord | null => {
     const query = normalizeIntentText(intentText);
@@ -127,34 +244,18 @@ const WebsiteFloatingOrb: React.FC = () => {
     const firstPass = validateOrbPointerTarget(record, { logger: console });
     if (!firstPass.ok) return;
 
-    firstPass.element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-    await new Promise((resolve) => window.setTimeout(resolve, 420));
-
-    const validation = validateOrbPointerTarget(record, { logger: console });
-    if (!validation.ok) return;
-
-    const rect = validation.rect;
-    const nextTarget = pointNearRect(rect);
-    setTargetPos(nextTarget);
-    setMode('assisting');
-    setIsMoving(true);
-    setPointingTargetId(record.target_id);
-    setStatusLine(`Pointing: ${(record.meaning || record.target_type || 'target').replace(/^[^:]+:\s*/, '').slice(0, 54)}`);
-    setBloomRect({
-      left: Math.max(0, rect.left - 8),
-      top: Math.max(0, rect.top - 8),
-      width: rect.width + 16,
-      height: rect.height + 16,
-    });
-
-    if (bloomTimerRef.current) {
-      window.clearTimeout(bloomTimerRef.current);
+    const viewportCoord = await lidar.prepareForMovement(record.target_id);
+    if (!viewportCoord) {
+      reportDrift(record.target_id);
+      return;
     }
-    bloomTimerRef.current = window.setTimeout(() => {
-      setBloomRect(null);
-      setPointingTargetId(null);
-    }, 1800);
-  }, [findPointerRecordForIntent, pointNearRect]);
+
+    applyTargetLock(
+      viewportCoord,
+      (record.meaning || record.target_type || 'target').replace(/^[^:]+:\s*/, ''),
+      record.target_id,
+    );
+  }, [applyTargetLock, findPointerRecordForIntent, reportDrift]);
 
   const playLatencyFiller = useCallback(() => {
     const src = LATENCY_FILLER_PATHS[Math.floor(Math.random() * LATENCY_FILLER_PATHS.length)];
@@ -410,7 +511,8 @@ const WebsiteFloatingOrb: React.FC = () => {
       .then((pointerMap) => {
         pointerRecordsRef.current = Array.isArray(pointerMap.records) ? pointerMap.records : [];
         if (pointerRecordsRef.current.length > 0) {
-          setStatusLine('Pointer map ready');
+          lidar.load(pointerRecordsRef.current);
+          setStatusLine('LiDAR grid locked. Telemetry ready.');
         }
       })
       .catch(() => {
@@ -418,6 +520,41 @@ const WebsiteFloatingOrb: React.FC = () => {
       });
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    const notifyRouteChange = () => {
+      lidar.rebuild();
+      setPointingTargetId(null);
+      setBloomRect(null);
+      clearMicroOrbSequence();
+    };
+
+    const originalPushState = window.history.pushState;
+    const originalReplaceState = window.history.replaceState;
+
+    window.history.pushState = function pushState(...args) {
+      const result = originalPushState.apply(this, args);
+      window.dispatchEvent(new Event('orb-routechange'));
+      return result;
+    };
+    window.history.replaceState = function replaceState(...args) {
+      const result = originalReplaceState.apply(this, args);
+      window.dispatchEvent(new Event('orb-routechange'));
+      return result;
+    };
+
+    window.addEventListener('popstate', notifyRouteChange);
+    window.addEventListener('hashchange', notifyRouteChange);
+    window.addEventListener('orb-routechange', notifyRouteChange);
+
+    return () => {
+      window.history.pushState = originalPushState;
+      window.history.replaceState = originalReplaceState;
+      window.removeEventListener('popstate', notifyRouteChange);
+      window.removeEventListener('hashchange', notifyRouteChange);
+      window.removeEventListener('orb-routechange', notifyRouteChange);
+    };
+  }, [clearMicroOrbSequence]);
 
   useEffect(() => {
     let reconnectTimer = 0;
@@ -509,8 +646,9 @@ const WebsiteFloatingOrb: React.FC = () => {
         }
         speechSourceRef.current = null;
       }
+      clearMicroOrbSequence();
     };
-  }, [speakRecovery, stopVoiceInput]);
+  }, [clearMicroOrbSequence, speakRecovery, stopVoiceInput]);
 
   useEffect(() => {
     const greetingTimer = window.setTimeout(() => {
@@ -644,14 +782,26 @@ const WebsiteFloatingOrb: React.FC = () => {
       </div>
     </div>
     {bloomRect && (
+      <>
+        <div
+          className="ow-website-orb-target-bloom"
+          style={{
+            left: `${bloomRect.left}px`,
+            top: `${bloomRect.top}px`,
+            width: `${bloomRect.width}px`,
+            height: `${bloomRect.height}px`,
+          }}
+        />
+      </>
+    )}
+    {microOrb && (
       <div
-        className="ow-website-orb-target-bloom"
+        className={`ow-website-orb-micro-pointer ${microOrb.visible ? 'visible' : ''} ${microOrb.dissolving ? 'dissolving' : ''}`}
         style={{
-          left: `${bloomRect.left}px`,
-          top: `${bloomRect.top}px`,
-          width: `${bloomRect.width}px`,
-          height: `${bloomRect.height}px`,
+          left: `${microOrb.left}px`,
+          top: `${microOrb.top}px`,
         }}
+        aria-hidden="true"
       />
     )}
     </>

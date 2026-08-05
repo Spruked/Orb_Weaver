@@ -62,6 +62,75 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
   - posteriori learning record ID
 - CCO uses compatibility fields such as `crystal_tokens` and `crystal_data` internally for existing API/storage stability, but the architectural name is CCO.
 
+### Bidirectional Pointer Telemetry Pipeline
+
+- Frontend telemetry contracts and state/logic separation live under `frontend/src/orb/`:
+  - `types.ts`
+  - `LidarCoordinateCache.state.ts`
+  - `LidarCoordinateCache.ts`
+  - `OrbTelemetryClient.state.ts`
+  - `OrbTelemetryClient.ts`
+  - `useOrbTelemetry.ts`
+- Backend WebSocket bridge lives at `backend/app/routers/orb_telemetry.py` and is mounted in `backend/main.py`.
+- Runtime endpoint is `/ws/orb-pointer`.
+- Design guarantees:
+  - logic/state separation for telemetry and LiDAR cache state
+  - world-frame coordinate cache (`absoluteTop`/`absoluteLeft`) with viewport conversion on lookup
+  - heartbeat + ack keepalive and reconnect loop
+  - TPC confidence cap enforcement (`<= 0.75`) on outbound/inbound telemetry frames
+  - drift reporting and passive drift audit hooks without replacing the canonical pointer system
+
+Verification checklist (2026-08-05):
+
+```bash
+# Frontend type integrity
+cd frontend
+npm run typecheck
+
+# Frontend test suite (changed-files run via react-scripts)
+npm test
+
+# Backend syntax checks
+cd ../
+/usr/bin/python3 -m py_compile backend/main.py backend/app/routers/orb_telemetry.py
+
+# Backend telemetry endpoint integration checks (run from backend/)
+cd backend
+../.venv/bin/python - <<'PY'
+from fastapi.testclient import TestClient
+from main import app
+from app.routers.orb_telemetry import trigger_pointer_lock
+import asyncio
+
+client = TestClient(app)
+with client.websocket_connect('/ws/orb-pointer') as ws:
+    ws.send_json({
+        'event_type': 'heartbeat',
+        'current_route': '/',
+        'status': 'active',
+        'viewport_width': 1440,
+        'viewport_height': 900,
+        'scroll_y': 0,
+        'scroll_x': 0,
+    })
+    ack = ws.receive_json()
+    assert ack['event_type'] == 'heartbeat_ack'
+
+with client.websocket_connect('/ws/orb-pointer') as ws:
+    asyncio.run(trigger_pointer_lock(
+        target_id='cta_button',
+        element_data={'absoluteTop': 111.0, 'absoluteLeft': 222.0, 'width': 40.0, 'height': 20.0},
+        intent='open pricing',
+        movement_vector='glide',
+        confidence=0.93,
+    ))
+    frame = ws.receive_json()
+    assert frame['event_type'] == 'pointer_target_lock'
+    assert frame['confidence'] == 0.75
+print('TELEMETRY_WS_CHECKS_OK')
+PY
+```
+
 ### Site-Scoped ORB Learning Loop
 
 - Every deployed Website ORB has a site-scoped learning vault under `vault_system/clients/<domain>/website_orb_learning/`.
