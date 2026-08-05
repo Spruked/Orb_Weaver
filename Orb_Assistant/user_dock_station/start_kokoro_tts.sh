@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VAULT_ROOT="${ORB_WEAVER_VAULT_ROOT:-$ROOT/vault_system}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$ROOT/../.." && pwd)"
+VAULT_ROOT="${ORB_WEAVER_VAULT_ROOT:-$REPO_ROOT/vault_system}"
 PID_FILE="$VAULT_ROOT/runtime/state/kokoro_tts.pid"
 LOG_FILE="$VAULT_ROOT/runtime/logs/kokoro_tts.log"
 PYTHON_BIN="${KOKORO_PYTHON:-/home/bryan/py312/bin/python}"
@@ -25,7 +26,7 @@ export KOKORO_DEVICE="${KOKORO_DEVICE:-cuda}"
 export KOKORO_DEFAULT_VOICE="${KOKORO_DEFAULT_VOICE:-am_echo}"
 export KOKORO_DEFAULT_SPEED="${KOKORO_DEFAULT_SPEED:-1.05}"
 
-setsid "$PYTHON_BIN" -m uvicorn tools.kokoro_openai_tts_server:app \
+setsid "$PYTHON_BIN" -m uvicorn kokoro_openai_tts_server:app \
   --host "$HOST" \
   --port "$PORT" \
   > "$LOG_FILE" 2>&1 < /dev/null &

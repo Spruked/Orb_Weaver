@@ -1,15 +1,22 @@
 /**
- * Package B — main pointer runtime orchestration.
+ * Canonical pointer escalation runtime orchestration.
  *
- * Wires together intent matching, resolution, map_recovering, and the
- * point/ping/ploop sequence in the exact order the doctrine specifies.
- * This is the file that encodes "resolve first, speak second" and
- * "never point at a maybe" as actual control flow, not just prose.
+ * This package remains authoritative for escalation from ordinary ORB
+ * operation into either:
+ * 1. pointer escalation (resolution -> recovery -> refusal if unresolved), or
+ * 2. human escalation (handled separately in orbEscalation.ts).
  *
- * TODO(integration): wire the four `Hooks` functions to your real
- * systems — intent matching (likely calls into ORB cognition / MCP),
- * TTS (Kokoro), animation engine, and audio playback. Everything else
- * in this file should not need to change.
+ * Pointer Plot remains the authority for what may be pointed to.
+ * LiDAR/telemetry accelerate live localization after authority and
+ * permissions have already been established.
+ *
+ * The intended successful point path is now:
+ * Pointer Plot authority -> resolution/recovery -> live localization ->
+ * Prime ORB safe standoff -> micro-MORB exact point -> verified completion ->
+ * micro-MORB dissolves.
+ *
+ * TODO(integration): wire these hooks to the real ORB cognition, LiDAR,
+ * telemetry, Kokoro, and animation systems. Keep the control-flow order.
  */
 
 import { cancelInFlightGuidance, type OrbState } from "./orbState";
@@ -24,18 +31,25 @@ export interface Hooks {
   /** Speak a line aloud via Kokoro (or equivalent TTS). */
   speak(line: string): Promise<void>;
 
-  /** Play the directional travel animation toward a resolved element. */
-  playTravelAnimation(element: Element): Promise<void>;
+  /**
+   * Move the Prime ORB toward a safe standoff position near the resolved
+   * target. Nearby targets may no-op here while still preserving clearance.
+   */
+  playPrimeStandoffApproach(element: Element): Promise<void>;
 
-  /** Play the star-light bloom; MUST resolve exactly at the visual
-   *  peak of the bloom so the caller can fire the ploop at that instant. */
-  playBloomToPeak(element: Element): Promise<void>;
+  /**
+   * Deploy the micro-MORB to the exact resolved target location. This is the
+   * precise point, not the Prime ORB body.
+   */
+  deployMicroMorb(element: Element): Promise<void>;
 
-  /** Play the bloom's settle + fade after the peak/ploop. */
-  playBloomSettleAndFade(): Promise<void>;
+  /** Verify the exact point completed successfully before dissolve. */
+  verifyPointCompletion(element: Element): Promise<boolean>;
 
-  /** Play the ploop sound. Must itself respect existing mute state —
-   *  do not build a new audio-preference system here. */
+  /** Dissolve the micro-MORB after verified completion or safe abort. */
+  dissolveMicroMorb(): Promise<void>;
+
+  /** Play the ploop sound at exact target acquisition. Must respect mute state. */
   playPloop(intensity: "full" | "soft"): void;
 
   /** Persist a candidate correction (Package B never writes to the
@@ -136,14 +150,22 @@ export async function handleVisitorQuery(
     return state;
   }
 
-  // Resolved and on-screen — full point/ping/ploop sequence.
+  // Resolved and on-screen — Prime ORB safe standoff, micro-MORB exact point,
+  // completion verification, then dissolve.
   state = { ...state, primary: "speaking", guidance: "pointer_traveling" };
-  await hooks.playTravelAnimation(target.element);
+  await hooks.playPrimeStandoffApproach(target.element);
 
   state = { ...state, guidance: "ping_blooming" };
-  await hooks.playBloomToPeak(target.element); // resolves exactly at peak
+  await hooks.deployMicroMorb(target.element);
   hooks.playPloop("full");
-  await hooks.playBloomSettleAndFade();
+  const completed = await hooks.verifyPointCompletion(target.element);
+  await hooks.dissolveMicroMorb();
+
+  if (!completed) {
+    hooks.logRecoveryFailure(record.target_id);
+    state = { ...state, primary: "speaking", guidance: "none" };
+    return state;
+  }
 
   lastPingAt = Date.now();
   state = { ...state, guidance: "re-ping_available" };
@@ -165,16 +187,20 @@ export async function handleRePingRequest(
   }
 
   state = { ...state, primary: "presence", guidance: "re-ping_available" };
-  await hooks.playTravelAnimation(result.target.element);
-  await hooks.playBloomToPeak(result.target.element);
+  await hooks.playPrimeStandoffApproach(result.target.element);
+  await hooks.deployMicroMorb(result.target.element);
 
   if (!withinCooldown) {
     hooks.playPloop("soft");
     lastPingAt = now;
   }
-  // within cooldown → visual-only, no ploop, per doctrine
+  // within cooldown -> visual-only, no ploop, per doctrine
 
-  await hooks.playBloomSettleAndFade();
+  const completed = await hooks.verifyPointCompletion(result.target.element);
+  await hooks.dissolveMicroMorb();
+  if (!completed) {
+    return { ...state, guidance: "none" };
+  }
   return state;
 }
 

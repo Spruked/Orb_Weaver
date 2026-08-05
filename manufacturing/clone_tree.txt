@@ -1,0 +1,79 @@
+.
+├── clone_tree.txt
+└── templates
+    └── dock_station_master
+        ├── dock-station
+        │   └── app
+        │       ├── README.md
+        │       ├── backend
+        │       │   ├── Dockerfile
+        │       │   ├── app
+        │       │   │   ├── __init__.py
+        │       │   │   ├── core
+        │       │   │   │   ├── __init__.py
+        │       │   │   │   ├── config.py
+        │       │   │   │   └── security.py
+        │       │   │   ├── main.py
+        │       │   │   ├── models.py
+        │       │   │   ├── routers
+        │       │   │   │   ├── __init__.py
+        │       │   │   │   ├── appearance.py
+        │       │   │   │   ├── behavior.py
+        │       │   │   │   ├── conversations.py
+        │       │   │   │   ├── deployment.py
+        │       │   │   │   ├── diagnostics.py
+        │       │   │   │   ├── intelligence.py
+        │       │   │   │   ├── live_test.py
+        │       │   │   │   ├── profiles.py
+        │       │   │   │   ├── speech.py
+        │       │   │   │   ├── statistics.py
+        │       │   │   │   ├── tools.py
+        │       │   │   │   └── try_it_live.py
+        │       │   │   └── services
+        │       │   │       ├── __init__.py
+        │       │   │       ├── health_monitor.py
+        │       │   │       ├── profile_service.py
+        │       │   │       └── stage_governor.py
+        │       │   └── requirements.txt
+        │       ├── desktop
+        │       │   ├── main.js
+        │       │   ├── package.json
+        │       │   └── preload.js
+        │       ├── docker-compose.yml
+        │       ├── frontend
+        │       │   ├── Dockerfile
+        │       │   ├── index.html
+        │       │   ├── nginx.conf
+        │       │   ├── package-lock.json
+        │       │   ├── package.json
+        │       │   ├── public
+        │       │   ├── src
+        │       │   │   ├── App.jsx
+        │       │   │   ├── components
+        │       │   │   │   └── Layout.jsx
+        │       │   │   ├── hooks
+        │       │   │   ├── index.css
+        │       │   │   ├── main.jsx
+        │       │   │   ├── panels
+        │       │   │   │   ├── AppearanceMotion.jsx
+        │       │   │   │   ├── BehaviorPersonality.jsx
+        │       │   │   │   ├── Conversations.jsx
+        │       │   │   │   ├── Diagnostics.jsx
+        │       │   │   │   ├── IntelligenceModels.jsx
+        │       │   │   │   ├── LiveTest.jsx
+        │       │   │   │   ├── Overview.jsx
+        │       │   │   │   ├── SpeechListening.jsx
+        │       │   │   │   ├── Statistics.jsx
+        │       │   │   │   └── ToolsPermissions.jsx
+        │       │   │   └── services
+        │       │   │       └── api.js
+        │       │   └── vite.config.js
+        │       ├── install.sh
+        │       └── orb
+        │           └── template
+        │               ├── assets
+        │               ├── deployment
+        │               └── runtime
+        └── manifest.template.json
+
+23 directories, 54 files

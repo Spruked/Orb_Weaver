@@ -1,72 +1,135 @@
-# ORB Pointer System + Human Escalation — Partial Build
+# Pointer Escalation
 
-This is real, structured code — not pseudocode. The **control flow, ordering,
-guardrails, and rules from the locked doctrine are fully implemented.**
-What's stubbed is only the small set of things that must plug into your
-existing systems (Orb Weaver's crawler, your DOM/animation layer, Kokoro TTS,
-your storage layer, your agent/support vendor).
+This package is the canonical escalation authority for two related paths:
 
-Hand this to Codex with the instruction: **"Fill in every `TODO(integration)`
-marker. Do not change the control flow, state transitions, or guardrail logic
-around them."**
+1. Pointer escalation when ordinary live resolution is insufficient.
+2. Human escalation when a visitor explicitly requests or requires a person.
 
-## File map
+It is not obsolete, and it must not become a second competing runtime.
+Its doctrine and recovery logic should be integrated into Orb Weaver's one
+canonical pointer system alongside the live LiDAR, telemetry, and micro-MORB
+implementation.
 
-| File | Package | What it does | What's real vs stub |
-|---|---|---|---|
-| `python/pointer_plot_schema.py` | Shared | The one data contract (PlotRecord, CandidateCorrection) | Fully real — do not change field names |
-| `python/promotion.py` | A | Priority-rescan flagging, scan-verified promotion, stale-hit escalation logic | Logic fully real; storage calls stubbed |
-| `python/scan_extraction.py` | A | Turns crawled page elements into PlotRecords | Shape/rules real; element-type mapping and classifier hookup stubbed |
-| `typescript/pointerPlotTypes.ts` | Shared | TS mirror of the Python schema | Fully real |
-| `typescript/orbState.ts` | Shared | The three-track state model | Fully real |
-| `typescript/pointerResolution.ts` | B | Four-tier resolution chain, confidence floor | Ordering/floor/control-flow real; 3 of 4 tier implementations stubbed |
-| `typescript/pointerRuntime.ts` | B | Full point → resolve → recover → ping → ploop orchestration | Fully real control flow; hooks (TTS, animation, audio, DOM query) stubbed |
-| `typescript/orbEscalation.ts` | C | Trigger detection, privacy-tiered handoff, suppression rule | Fully real control flow; intent classifier and vendor calls stubbed |
+## Canonical control flow
 
-## Every TODO(integration) point, in one list
+Pointer escalation:
 
-1. `scan_extraction.py` — wire `page_elements` to Orb Weaver's actual
-   crawler/classifier output instead of the placeholder dict shape.
-2. `scan_extraction.py::_summarize_meaning` — optionally call the LLM
-   articulation layer for real summaries (currently naive truncation).
-3. `promotion.py` — wire `load_candidate_corrections` / `save_pointer_plot_map`
-   to your actual ORB context store.
-4. `promotion.py::evaluate_stale_hits` — wire real failure-event timestamps
-   from Package B's `logRecoveryFailure` calls.
-5. `pointerResolution.ts::trySemanticLocator` — confirm/adjust the locator
-   scheme (data attribute vs accessibility path vs stable selector).
-6. `pointerResolution.ts::tryContentFingerprint` — implement real fingerprint
-   matching against live page text.
-7. `pointerResolution.ts::tryAccessibilityRole` — implement ARIA role +
-   accessible-name matching.
-8. `pointerResolution.ts::tryVisualVerification` — wire to Tesseract-style
-   visual fallback, current viewport/section scope only.
-9. `pointerRuntime.ts::Hooks` — wire `matchIntent`, `speak` (Kokoro),
-   animation functions, and `playPloop` (respecting existing mute state)
-   to your real systems.
-10. `pointerRuntime.ts::describeElementForCorrection` — produce a real
-    stable locator string instead of an HTML snippet.
-11. `orbEscalation.ts::classifyEscalationIntent` — wire to a real,
-    extensible intent classifier (explicit request vs frustration-only
-    vs neither). Must not be a hardcoded string match.
-12. `orbEscalation.ts::executeHandoff` — await actual visitor response
-    before attaching sensitive data.
-13. `orbEscalation.ts::EscalationHooks.openAgentBubble` /
-    `sendHandoffPacket` — wire to whichever agent/support vendor you pick
-    (open decision — see doctrine doc Section 9).
-14. `orbEscalation.ts::shouldSuppressForEscalatedIssue` — wire
-    `isQueryAboutIssue` to your existing intent-matching capability.
+Pointer Plot authority
+-> target intent and permissions
+-> resolution and recovery chain
+-> LiDAR coordinate cache
+-> Prime ORB safe standoff
+-> micro-MORB exact pointing
+-> verified completion
+-> micro-MORB dissolves
 
-## What NOT to let Codex change
+Human escalation:
 
-- The **order of operations** in `pointerRuntime.ts::handleVisitorQuery`
-  (confidence check → resolve → recover → point → ping → ploop). This
-  order is doctrine, not style.
-- The **priority-rescan gate** in `promotion.py::flag_for_priority_rescan` —
-  session agreement is evidence only. It must never overwrite the
-  authoritative map without a fresh scan independently verifying the target.
-- The **explicit-only escalation trigger** in `orbEscalation.ts` —
-  frustration language must route through the offer-then-confirm path,
-  never straight to `escalation_confirmed`.
-- The **suppression scoping** in `shouldSuppressForEscalatedIssue` — it
-  must remain scoped to the specific escalated issue, never a global mute.
+visitor requests or requires a person
+-> ORB stops handling that issue
+-> temporary human-escalation chat box appears
+-> visitor communicates with support
+-> escalation ends or is cancelled
+-> chat box disappears
+-> ORB resumes only when policy permits
+
+## Authoritative modules
+
+`pointer_plot_schema.py`
+Shared authoritative pointer-record contract.
+
+`pointerPlotTypes.ts`
+TypeScript mirror of the pointer-record contract.
+
+`scan_extraction.py`
+Produces Pointer Plot candidates during scanning.
+
+`promotion.py`
+Prevents single-session anomalies from overwriting the authoritative pointer map.
+Recovered targets remain candidate corrections until repeated evidence and scan
+verification promote them.
+
+`pointerResolution.ts`
+Owns the resolution hierarchy:
+semantic locator
+-> content fingerprint
+-> accessibility identity
+-> localized Tesseract verification
+
+`pointerRuntime.ts`
+Owns the pointer-runtime choreography and refusal rules.
+
+`orbState.ts`
+Separates primary ORB state, guidance state, and human-escalation case state.
+
+`orbEscalation.ts`
+Owns temporary human-support escalation, suppression of ORB competition on the
+human-owned issue, and the temporary escalation UI lifecycle.
+
+## Integration boundaries
+
+The pointer system controls what may be pointed to.
+LiDAR determines where the permitted target is now.
+The choreography system determines how the Prime ORB approaches.
+The micro-MORB performs the exact point.
+
+This package should feed and constrain those layers. It should not be replaced
+by them.
+
+## Tesseract recovery
+
+Tesseract belongs inside localized recovery, not as an open-ended site scan.
+The intended fallback order remains:
+
+semantic locator
+-> content fingerprint
+-> accessibility identity
+-> localized Tesseract verification
+-> safe refusal if still unresolved
+
+Localized visual verification must stay scoped to the current page, section,
+or viewport evidence chain.
+
+## Persistence and vault ownership
+
+Persistent pointer evidence must remain under the single deployment vault.
+This package must never create an independent parallel store.
+
+Authoritative pointer map:
+stored in the deployment's canonical vault-backed ORB context.
+
+Candidate corrections and recovery evidence:
+stored as non-authoritative promotion inputs until repeated evidence and fresh
+scan verification approve promotion.
+
+Failure and stale-hit evidence:
+stored in the same canonical vault-backed runtime evidence path.
+
+## Dormant or incomplete pieces
+
+These files contain real doctrine and real control-flow, but several integration
+surfaces are intentionally incomplete and must remain governed:
+
+- fingerprint resolution implementation is incomplete
+- accessibility-role resolution implementation is incomplete
+- localized Tesseract verification hook-up is incomplete
+- scan extraction still expects a placeholder crawler shape
+- stable locator generation is incomplete
+- persistence hooks are incomplete
+- human escalation classifier and vendor handoff hooks are incomplete
+
+Installed code is not equivalent to permitted runtime authority.
+
+## Guardrails
+
+- Do not create a second parallel pointer runtime.
+- Do not let visitor-session recovery overwrite the authoritative map directly.
+- Do not let human escalation suppress the ORB globally; suppression remains
+  scoped to the human-owned issue.
+- Do not advertise dormant tools or unresolved recovery paths as fully enabled.
+- Do not let LiDAR or telemetry bypass Pointer Plot authority and permissions.
+
+## Package hygiene
+
+`__pycache__/` and `*.py[cod]` should remain excluded from source control.
+This package should only contain source doctrine, not compiled byproducts.

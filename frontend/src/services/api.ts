@@ -1140,13 +1140,29 @@ export interface OrbToolCatalog {
   orb_id: string;
   scope: string;
   customer_id: string;
+  product_boundary?: string;
   tools: Array<{
     id: string;
     label: string;
     description: string;
     requires_project: boolean;
     available: boolean;
+    availability:
+      | 'installed'
+      | 'registered'
+      | 'disabled'
+      | 'owner_only'
+      | 'runtime_allowed'
+      | 'temporarily_authorized'
+      | 'blocked';
+    installed: boolean;
+    registered: boolean;
+    owner_only: boolean;
+    declared_capability: string;
+    blocked_reason: string;
+    activation_chain: string[];
     mcp_tools?: string[];
+    legacy_ids?: string[];
   }>;
   capabilities: WebsiteOrbCapabilities;
 }

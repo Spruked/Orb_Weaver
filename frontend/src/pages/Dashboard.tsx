@@ -100,10 +100,11 @@ const EmptyDashboard: React.FC<{
   onStart
 }) => (
   <section className="rounded-2xl bg-gradient-to-br from-brand-dark to-brand-blue p-6 text-white shadow-lg md:p-8">
-    <p className="text-sm font-bold uppercase tracking-[0.16em] text-cyan-200">Begin the evidence path</p>
-    <h1 className="mt-2 text-3xl font-bold">Audit a website before choosing Seals</h1>
+    <p className="text-sm font-bold uppercase tracking-[0.16em] text-cyan-200">Website Audit</p>
+    <h1 className="mt-2 text-3xl font-bold">Complete a full website crawl and audit before selecting an ORB package.</h1>
     <p className="mt-2 max-w-2xl text-sm text-slate-200">
-      Crawl the website, compile the audit, review the complete results here, and then continue to Seals.
+      Orb Weaver will analyze the website, compile the available findings, and display the complete results here.
+      Review the audit, website structure, pointer readiness, and ORB integration requirements before continuing.
     </p>
     <div className="mt-7 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
       <label className="relative">
@@ -131,7 +132,7 @@ const EmptyDashboard: React.FC<{
         className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-orange px-6 py-3.5 font-bold text-brand-dark transition hover:bg-brand-accent hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
         {isCrawling ? <Activity className="h-5 w-5 animate-pulse" /> : <Search className="h-5 w-5" />}
-        {isCrawling ? 'Starting…' : 'Start audit'}
+        {isCrawling ? 'Starting…' : 'Start Website Audit'}
       </button>
     </div>
     <label className="mt-4 inline-flex items-start gap-3 rounded-xl border border-white/15 bg-white/10 px-4 py-3 text-sm">
