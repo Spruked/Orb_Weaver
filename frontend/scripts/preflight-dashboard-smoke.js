@@ -90,8 +90,10 @@ async function main() {
   });
 
   await page.goto(APP_URL, { waitUntil: 'networkidle' });
-  const preflightCard = page.locator('.card', {
-    has: page.getByRole('heading', { name: 'Preflight Readiness' }),
+  const preflightHeading = page.getByRole('heading', { name: /Preflight readiness/i });
+  await preflightHeading.waitFor();
+  const preflightCard = page.locator('details.card', {
+    has: preflightHeading,
   });
   await preflightCard.waitFor();
   await preflightCard.getByText('No preflight report has been run for shilohridgekatahdins.com').waitFor();

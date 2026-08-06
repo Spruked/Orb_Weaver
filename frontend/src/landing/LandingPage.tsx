@@ -35,17 +35,17 @@ const LandingPage: React.FC = () => {
 
       <section className="ow-v2-hero">
         <div className="ow-v2-copy">
-          <p className="ow-v2-kicker">WEBSITE ORB INTELLIGENCE ENGINE</p>
+          <p className="ow-v2-kicker">EXECUTIVE WEBSITE PERFORMANCE</p>
 
           <h1>
-            Your website should know
-            <span> how to help.</span>
+            Turn website visits into
+            <span> completed customer journeys.</span>
           </h1>
 
           <p className="ow-v2-sub">
-            Orb Weaver scans and understands your website, finds technical and
-            content problems, maps important controls, and creates an ORB that
-            helps visitors find the right next action.
+            Orb Weaver helps visitors reach the right next step faster: less
+            confusion, fewer abandoned forms and carts, clearer navigation,
+            and stronger conversion outcomes across your website.
           </p>
 
           <div className="ow-v2-actions">
@@ -73,78 +73,59 @@ const LandingPage: React.FC = () => {
               Campaign, Beta & Investor Portal
             </a>
 
-            <a className="ow-v2-secondary" href="#orb-tools">
-              Explore ORB Tools
+            <a className="ow-v2-secondary" href="/features">
+              Explore Business Features
             </a>
           </div>
 
           {error && <p className="ow-v2-cta-error" role="alert">{error}</p>}
 
           <div className="ow-v2-proof">
-            <span>NO REBUILD REQUIRED</span>
-            <span>LOCAL-FIRST INTELLIGENCE</span>
-            <span>YOUR DATA STAYS YOURS</span>
+            <span>REDUCE VISITOR FRICTION</span>
+            <span>INCREASE COMPLETED JOURNEYS</span>
+            <span>KEEP TRUST AND CONTROL</span>
           </div>
         </div>
       </section>
 
-      <section id="desktop-orb-now" className="ow-v2-intelligence" aria-labelledby="desktop-orb-now-heading">
+      <section className="ow-v2-intelligence" aria-labelledby="business-problem-heading">
         <div className="ow-v2-intelligence-copy">
-          <p className="ow-v2-kicker">NOW // DESKTOP ORB ASSISTANT</p>
-          <h2 id="desktop-orb-now-heading">Movement with intent. Diagnostics without entering the personal domain.</h2>
+          <p className="ow-v2-kicker">1. BUSINESS PROBLEM</p>
+          <h2 id="business-problem-heading">Most websites make visitors work too hard.</h2>
           <p>
-            Orb Weaver is preparing the shared movement contract, system-only diagnostic surface,
-            endpoint discovery, and verified desktop pointer logic for the Desktop ORB Assistant.
-            The ORB will observe machine health, interpret evidence, and guide the owner to controls
-            without scanning personal documents, email, browser history, passwords, or financial data.
+            Valuable visitors drop when pages feel unclear, navigation paths are
+            fragmented, and next steps are easy to miss. Teams lose revenue when
+            users abandon forms, leave carts, or never reach the right action.
           </p>
-          <div className="ow-v2-actions ow-v2-actions-inline">
-            <a
-              id="landing-desktop-orb-now"
-              data-orb-target="desktop-orb-now"
-              className="ow-v2-primary"
-              href="/now/desktop-orb"
-            >
-              Open Desktop ORB Now
-            </a>
-            <a className="ow-v2-secondary" href="/diagnostics">
-              Diagnostics Bay
-            </a>
-          </div>
         </div>
       </section>
 
       <section className="ow-v2-intelligence" aria-labelledby="intelligence-heading">
         <div className="ow-v2-intelligence-copy">
-          <p className="ow-v2-kicker">WEBSITE INTELLIGENCE</p>
-          <h2 id="intelligence-heading">Understand your website before adding the ORB.</h2>
+          <p className="ow-v2-kicker">2. ORB WEAVER SOLUTION</p>
+          <h2 id="intelligence-heading">Give your website an active guide that helps visitors finish.</h2>
           <p>
-            Orb Weaver examines site structure, technical SEO, content, links,
-            forms, routes, analytics, and visitor pathways. It compiles that
-            evidence into a Site World that gives Weaver verified knowledge of
-            the website it serves.
+            Orb Weaver understands each page context, responds naturally to
+            visitor intent, and guides people to verified next steps so they can
+            complete high-value journeys with confidence.
           </p>
         </div>
       </section>
 
       <section id="orb-tools" className="ow-v2-tools" aria-labelledby="tools-heading">
         <div className="ow-v2-tools-heading">
-          <p className="ow-v2-kicker">ORB SITE TOOLS</p>
-          <h2 id="tools-heading">Explore the Orb Weaver website intelligence tools.</h2>
-          <p>Use a tool directly, or ask Weaver to guide you.</p>
+          <p className="ow-v2-kicker">3. BUSINESS OUTCOMES</p>
+          <h2 id="tools-heading">Move the metrics leadership teams care about.</h2>
+          <p>Orb Weaver is designed to improve conversion quality, not just add a widget.</p>
         </div>
         <ul className="ow-v2-tool-list">
           {[
-            ['Website Preflight', 'A fast first review of technical, content, and search-visibility concerns.'],
-            ['Site Crawl', 'Maps public pages, links, forms, routes, headings, metadata, and visitor pathways.'],
-            ['Technical SEO Audit', 'Checks titles, descriptions, headings, canonicals, indexability, structured data, and other search signals.'],
-            ['Final Audit', 'Verifies the completed website and produces evidence-based findings before an ORB package is recommended.'],
-            ['Site World', 'Compiles the pages, controls, services, content, and verified facts Weaver needs to understand the website.'],
-            ['Pointer Map', 'Connects Weaver to buttons, forms, links, products, and page sections so it can guide visitors accurately.'],
-            ['Reports', 'Turns crawl and audit evidence into clear findings, priorities, and client-ready recommendations.'],
-            ['ORB Visitor Guidance', 'Adds website-aware conversation, movement, pointing, navigation, and visitor assistance.'],
-            ['Google Analytics', 'Connects GA4 behavior and visitor evidence to site findings and visitor pathways.'],
-            ['Dashboard', 'Manages scans, audits, reports, Site World data, and ORB controls.'],
+            ['Reduce visitor confusion', 'Help people understand where to go and what to do next.'],
+            ['Increase completed journeys', 'Guide users from intent to completion across forms, checkout, and service workflows.'],
+            ['Reduce abandonment', 'Support visitors at hesitation points before they drop out.'],
+            ['Improve engagement quality', 'Create clearer, more useful interactions that keep visitors progressing.'],
+            ['Strengthen trust', 'Use verified guidance and transparent behavior instead of guesswork.'],
+            ['Accelerate decision speed', 'Shorten time from first visit to confident action.'],
           ].map(([title, description]) => (
             <li key={title} className="ow-v2-tool-item">
               <span className="ow-v2-tool-marker" aria-hidden="true" />
@@ -157,8 +138,12 @@ const LandingPage: React.FC = () => {
         </ul>
 
         <div className="ow-v2-ask-weaver">
-          <h2>Not sure where to begin?</h2>
-          <p>Ask Weaver. He can explain each tool and guide you to the right next step.</p>
+          <p className="ow-v2-kicker">4. INTERACTIVE GUIDANCE DEMONSTRATION</p>
+          <h2>Watch Weaver guide visitors in real time.</h2>
+          <p>
+            See how interactive Point and Ping guidance helps visitors locate
+            verified controls, follow clear actions, and complete their path.
+          </p>
           <div className="ow-v2-actions ow-v2-actions-inline">
             <button
               id="landing-ask-weaver"
@@ -173,24 +158,56 @@ const LandingPage: React.FC = () => {
             >
               Ask Weaver
             </button>
+            <a className="ow-v2-secondary" href="/how-it-works">
+              See How It Works
+            </a>
             <button
               id="landing-preflight-close"
               className="ow-v2-primary"
               onClick={() => window.location.assign('/preflight')}
               disabled={Boolean(pendingTarget)}
             >
-              {pendingTarget === '/signup?intent=preflight' ? 'Preparing…' : 'Run a Free Preflight'}
+              {pendingTarget === '/signup?intent=preflight' ? 'Preparing…' : 'Start Demonstration with Preflight'}
             </button>
           </div>
         </div>
       </section>
 
+      <section className="ow-v2-intelligence" aria-labelledby="security-trust-heading">
+        <div className="ow-v2-intelligence-copy">
+          <p className="ow-v2-kicker">5. SECURITY AND TRUST</p>
+          <h2 id="security-trust-heading">Trustworthy guidance, governed actions, accountable behavior.</h2>
+          <p>
+            Orb Weaver is designed to guide with verified state, bounded
+            permissions, and explicit control governance so business guidance
+            remains safe, truthful, and dependable.
+          </p>
+          <div className="ow-v2-actions ow-v2-actions-inline">
+            <a className="ow-v2-secondary" href="/security">
+              See Security Design
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section className="ow-v2-intelligence" aria-labelledby="technology-overview-heading">
+        <div className="ow-v2-intelligence-copy">
+          <p className="ow-v2-kicker">6. TECHNOLOGY OVERVIEW</p>
+          <h2 id="technology-overview-heading">Built on website intelligence, verification, and runtime orchestration.</h2>
+          <p>
+            Under the experience, Orb Weaver compiles website structure, verifies
+            navigation targets, and coordinates guidance using governed runtime
+            capabilities so visitor help remains precise and actionable.
+          </p>
+        </div>
+      </section>
+
       <section className="ow-v2-preflight-close" aria-labelledby="preflight-heading">
-        <p className="ow-v2-kicker">START WITH PREFLIGHT</p>
-        <h2 id="preflight-heading">Begin with a free website Preflight.</h2>
+        <p className="ow-v2-kicker">7. CALL TO ACTION</p>
+        <h2 id="preflight-heading">Make your website easier to complete, not just easier to browse.</h2>
         <p>
-          Every website is different. Preflight identifies the strongest next
-          step before a package is recommended.
+          Start with a free Preflight to see where visitors lose momentum and
+          where Orb Weaver can deliver measurable business impact.
         </p>
         <button
           id="landing-start-preflight"
@@ -198,7 +215,7 @@ const LandingPage: React.FC = () => {
           onClick={() => window.location.assign('/preflight')}
           disabled={Boolean(pendingTarget)}
         >
-          {pendingTarget === '/signup?intent=preflight' ? 'Preparing…' : 'Start With Preflight'}
+          {pendingTarget === '/signup?intent=preflight' ? 'Preparing…' : 'Run Free Preflight'}
         </button>
       </section>
     </main>

@@ -1,0 +1,19 @@
+{
+  "globs": [
+    "**/*.md",
+    "!**/node_modules/**",
+    "!**/.venv/**",
+    "!**/.venv312/**",
+    "!backend/.venv/**",
+    "!**/.pytest_cache/**"
+  ],
+  "config": {
+    "MD013": false,
+    "MD022": false,
+    "MD031": false,
+    "MD032": false,
+    "MD036": false,
+    "MD040": false,
+    "MD060": false
+  }
+}

@@ -26,6 +26,9 @@ import GoogleAnalyticsTracker from './components/GoogleAnalyticsTracker';
 import LandingPage from './landing/LandingPage';
 import PublicPreflight from './pages/PublicPreflight';
 import PublicLeadPage from './pages/PublicLeadPage';
+import PublicHowItWorks from './pages/PublicHowItWorks';
+import PublicFeatures from './pages/PublicFeatures';
+import PublicSecurity from './pages/PublicSecurity';
 import MarketplaceRoutes from './marketplace/MarketplaceRoutes';
 import { api, authStore, Customer } from './services/api';
 import './index.css';
@@ -126,6 +129,15 @@ function App() {
   }
   if (publicPath === '/now/desktop-orb') {
     return renderPublicPage(<DesktopOrbNow />);
+  }
+  if (publicPath === '/features') {
+    return renderPublicPage(<PublicFeatures />);
+  }
+  if (publicPath === '/how-it-works') {
+    return renderPublicPage(<PublicHowItWorks />);
+  }
+  if (publicPath === '/security') {
+    return renderPublicPage(<PublicSecurity />);
   }
   if (!customer && publicPath === '/privacy') {
     return renderPublicPage(<LegalPage type="privacy" />);

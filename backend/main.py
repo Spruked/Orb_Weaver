@@ -365,6 +365,17 @@ class WebsiteOrbTtsResponse(BaseModel):
     tts_error: Optional[str] = None
 
 
+class OrbDebugPointerLockRequest(BaseModel):
+    target_id: str = Field(default="debug_target", min_length=1, max_length=120)
+    absolute_top: float = Field(..., ge=0)
+    absolute_left: float = Field(..., ge=0)
+    width: float = Field(default=140, gt=0)
+    height: float = Field(default=44, gt=0)
+    intent: str = Field(default="debug pointer lock", min_length=1, max_length=300)
+    movement_vector: str = Field(default="glide", pattern="^(snap|glide|pulse|hover)$")
+    confidence: Optional[float] = Field(default=0.75, ge=0.0, le=1.0)
+
+
 class WebsiteOrbPointerMapResponse(BaseModel):
     schema: str
     generated_at: Optional[str] = None
@@ -6913,6 +6924,24 @@ async def website_orb_tts(payload: WebsiteOrbTtsRequest):
     text = payload.text.strip()
     tts_result = await _synthesize_orb_tts(text)
     return {"text": text, **tts_result}
+
+
+@app.post("/api/orb/debug-pointer-lock")
+async def orb_debug_pointer_lock(payload: OrbDebugPointerLockRequest):
+    await trigger_pointer_lock(
+        target_id=payload.target_id,
+        element_data={
+            "absoluteTop": payload.absolute_top,
+            "absoluteLeft": payload.absolute_left,
+            "width": payload.width,
+            "height": payload.height,
+            "metadata": {"source": "debug-pointer-lock"},
+        },
+        intent=payload.intent,
+        movement_vector=payload.movement_vector,
+        confidence=payload.confidence,
+    )
+    return {"ok": True, "target_id": payload.target_id}
 
 
 @app.get("/api/orb/tts/{audio_id}")

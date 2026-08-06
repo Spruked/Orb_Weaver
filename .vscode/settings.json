@@ -5,5 +5,16 @@
     "accessibility.signals.terminalBell": {
         "sound": "off"
     },
-    "terminal.integrated.enableVisualBell": false
+    "terminal.integrated.enableVisualBell": false,
+    "python.analysis.extraPaths": [
+        "./backend",
+        "./Orb_Assistant/src",
+        "./Orb_Assistant/context_correspondence_orchestrator",
+        "./Preflight Scanner"
+    ],
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportMissingImports": "none",
+        "reportMissingModuleSource": "none"
+    },
+    "accessibility.signalOptions.volume": 0
 }

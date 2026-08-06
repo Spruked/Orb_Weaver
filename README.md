@@ -90,8 +90,15 @@ npm run typecheck
 # Frontend test suite (changed-files run via react-scripts)
 npm test
 
-# Backend syntax checks
+# Frontend smoke tests
+npm run smoke:orb-loader
+npm run smoke:preflight
+
+# Markdown lint (repo policy config)
 cd ../
+npx --yes markdownlint-cli2
+
+# Backend syntax checks
 /usr/bin/python3 -m py_compile backend/main.py backend/app/routers/orb_telemetry.py
 
 # Backend telemetry endpoint integration checks (run from backend/)

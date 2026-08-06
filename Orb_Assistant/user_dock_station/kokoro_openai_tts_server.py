@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from kokoro import KPipeline
 
 
-DEFAULT_VOICE = os.environ.get("KOKORO_DEFAULT_VOICE", "am_echo")
+DEFAULT_VOICE = os.environ.get("KOKORO_DEFAULT_VOICE", "am_fenrir")
 DEFAULT_SPEED = float(os.environ.get("KOKORO_DEFAULT_SPEED", "1.05"))
 DEVICE = os.environ.get("KOKORO_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
 SAMPLE_RATE = 24000
