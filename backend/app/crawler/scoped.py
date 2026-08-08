@@ -1,10 +1,14 @@
-"""Deterministic scan-scope support for Orb Weaver crawls.
+"""Deterministic scan-scope and full-weave support for Orb Weaver crawls.
 
 The public CrawlConfig already carries owner-provided seed_urls. This module
 adds an internal marker protocol so the existing crawl endpoint can perform a
 true section or exact-page refresh without widening into a full-site crawl.
 Scoped refreshes merge their newly measured pages into the last authoritative
 crawl snapshot, carrying every untouched page forward.
+
+It also installs the Tesseract Visual Surface Weave and LiDAR Spatial Mapping
+Weave into the canonical page-processing path. Every page receives a measured
+OCR-candidate inventory and an honest LiDAR mapping-readiness inventory.
 """
 
 from __future__ import annotations
@@ -17,6 +21,11 @@ from urllib.parse import urlparse
 import aiohttp
 
 from app.core.storage import client_root
+from app.crawler.tesseract_weave import (
+    build_lidar_candidate_inventory,
+    collect_tesseract_candidates,
+    summarize_weaves,
+)
 
 SCOPE_PREFIX = "orb-scope:"
 VALID_SCOPES = {"full", "section", "exact", "changed"}
@@ -92,11 +101,73 @@ def install_scope_support(crawler_type) -> None:
         return
 
     original_crawl = crawler_type.crawl
+    original_crawl_page = crawler_type._crawl_page
     original_extract_links = crawler_type._extract_links
     original_get_stats = crawler_type.get_crawl_stats
 
+    async def weave_crawl_page(self, session, url, depth=0):
+        page = await original_crawl_page(self, session, url, depth)
+        if page is None or not getattr(page, "semantic_analysis", None):
+            return page
+
+        semantic = dict(page.semantic_analysis or {})
+        pointer_records = semantic.get("pointer_plot_records") or []
+        source_soup = getattr(page, "_orb_source_soup", None)
+
+        # The canonical engine does not persist its BeautifulSoup instance on
+        # PageData. Re-fetching would double network cost, so the engine-facing
+        # wrapper receives the soup through the temporary crawler attribute set
+        # by the patched parser hook below.
+        if source_soup is not None:
+            semantic["tesseract_weave"] = collect_tesseract_candidates(source_soup, page.url)
+        else:
+            semantic.setdefault("tesseract_weave", {
+                "status": "not_measured",
+                "page_url": page.url,
+                "resource_count": 0,
+                "resources": [],
+                "ocr_execution_status": "source_dom_unavailable",
+                "note": "The page DOM was not available to the weave hook; no OCR claim was made.",
+            })
+
+        semantic["lidar_weave"] = build_lidar_candidate_inventory(page.url, pointer_records)
+        page.semantic_analysis = semantic
+        return page
+
+    def weave_extract_links(self, soup, base_url):
+        # Preserve the exact parsed DOM long enough for the page wrapper to
+        # inventory Tesseract candidates after canonical extraction completes.
+        self._orb_latest_soup_by_url = getattr(self, "_orb_latest_soup_by_url", {})
+        self._orb_latest_soup_by_url[self._normalize_url(base_url)] = soup
+        return original_extract_links(self, soup, base_url)
+
+    async def weave_crawl_page_with_soup(self, session, url, depth=0):
+        page = await original_crawl_page(self, session, url, depth)
+        if page is None:
+            return None
+        soup_map = getattr(self, "_orb_latest_soup_by_url", {})
+        source_soup = soup_map.pop(self._normalize_url(page.url), None)
+        semantic = dict(page.semantic_analysis or {})
+        if source_soup is not None:
+            semantic["tesseract_weave"] = collect_tesseract_candidates(source_soup, page.url)
+        else:
+            semantic["tesseract_weave"] = {
+                "status": "not_measured",
+                "page_url": page.url,
+                "resource_count": 0,
+                "resources": [],
+                "ocr_execution_status": "source_dom_unavailable",
+                "note": "The page DOM was not available to the weave hook; no OCR claim was made.",
+            }
+        semantic["lidar_weave"] = build_lidar_candidate_inventory(
+            page.url,
+            semantic.get("pointer_plot_records") or [],
+        )
+        page.semantic_analysis = semantic
+        return page
+
     def scoped_extract_links(self, soup, base_url):
-        internal, external, targets = original_extract_links(self, soup, base_url)
+        internal, external, targets = weave_extract_links(self, soup, base_url)
         prefixes: Set[str] = getattr(self, "_orb_allowed_prefixes", set())
         if not prefixes:
             return internal, external, targets
@@ -184,6 +255,7 @@ def install_scope_support(crawler_type) -> None:
     def scoped_get_stats(self):
         stats = original_get_stats(self)
         scope = getattr(self, "_orb_scan_scope", "full")
+        stats.update(summarize_weaves(list(self.crawled_data)))
         if scope != "full":
             stats.update({
                 "scan_scope": scope,
@@ -195,6 +267,7 @@ def install_scope_support(crawler_type) -> None:
         return stats
 
     crawler_type._extract_links = scoped_extract_links
+    crawler_type._crawl_page = weave_crawl_page_with_soup
     crawler_type.crawl = scoped_crawl
     crawler_type.get_crawl_stats = scoped_get_stats
     crawler_type._orb_scope_support_installed = True
