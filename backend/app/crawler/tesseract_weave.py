@@ -98,10 +98,11 @@ def collect_tesseract_candidates(soup: BeautifulSoup, page_url: str) -> Dict:
     for tag in soup.find_all(["a", "link"], href=True):
         add(tag.get("href"), "href", tag.name, require_extension=True)
 
-    for tag in soup.find_all(["object", "embed"], attrs={"data": True}):
-        add(tag.get("data"), "data", tag.name)
-    for tag in soup.find_all("embed", src=True):
-        add(tag.get("src"), "src", tag.name)
+    for tag in soup.find_all(["object", "embed"]):
+        if tag.get("data"):
+            add(tag.get("data"), "data", tag.name)
+        if tag.get("src"):
+            add(tag.get("src"), "src", tag.name)
     for tag in soup.find_all("iframe", src=True):
         add(tag.get("src"), "iframe_src", tag.name, require_extension=True)
     for tag in soup.find_all("video", poster=True):
@@ -165,6 +166,7 @@ def build_lidar_candidate_inventory(page_url: str, pointer_records: List[Dict]) 
 
 def summarize_weaves(pages: Iterable) -> Dict:
     """Aggregate measured Tesseract and LiDAR outputs into crawl statistics."""
+    page_rows = list(pages)
     tesseract_urls = set()
     pages_with_candidates = 0
     inline_surfaces = 0
@@ -174,7 +176,7 @@ def summarize_weaves(pages: Iterable) -> Dict:
     lidar_dynamic = 0
     lidar_routes = set()
 
-    for page in pages:
+    for page in page_rows:
         semantic = getattr(page, "semantic_analysis", {}) or {}
         tesseract = semantic.get("tesseract_weave") or {}
         resources = tesseract.get("resources") or []
@@ -197,7 +199,7 @@ def summarize_weaves(pages: Iterable) -> Dict:
     return {
         "tesseract_weave": {
             "status": "complete",
-            "pages_scanned": len(list(pages)) if not isinstance(pages, list) else len(pages),
+            "pages_scanned": len(page_rows),
             "pages_with_candidates": pages_with_candidates,
             "unique_resource_count": len(tesseract_urls),
             "visual_surface_count": inline_surfaces,
