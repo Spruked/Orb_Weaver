@@ -24,6 +24,7 @@ export function useOrbTelemetry({ wsUrl, onTargetLock, onStatusChange }: UseOrbT
 
   useEffect(() => {
     const client = new OrbTelemetryClient(wsUrl);
+    const lidar = lidarRef.current;
     clientRef.current = client;
 
     client.onFrameReceived(handleFrame);
@@ -32,11 +33,11 @@ export function useOrbTelemetry({ wsUrl, onTargetLock, onStatusChange }: UseOrbT
     }
 
     client.connect();
-    lidarRef.current.startDriftAudit();
+    lidar.startDriftAudit();
 
     return () => {
       client.disconnect();
-      lidarRef.current.stopDriftAudit();
+      lidar.stopDriftAudit();
     };
   }, [handleFrame, onStatusChange, wsUrl]);
 

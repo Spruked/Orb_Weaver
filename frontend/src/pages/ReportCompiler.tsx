@@ -82,6 +82,9 @@ const ReportCompiler: React.FC = () => {
 
   const latestAuditId = data.latest_audit?.id;
   const latestCrawlId = data.latest_crawl?.id;
+  const latestPreflight = data.latest_preflight;
+  const preflightPagesScanned = latestPreflight?.pages_scanned ?? 0;
+  const preflightWarnings = latestPreflight?.warnings?.length ?? 0;
   const pointerSummary = data.latest_audit?.report.pointer_summary || data.latest_crawl?.pointer_summary;
   const plannedToolCalls = data.latest_audit?.report.planned_tool_calls || data.latest_crawl?.planned_tool_calls || [];
 
@@ -93,7 +96,7 @@ const ReportCompiler: React.FC = () => {
             <h1 className="text-2xl font-bold text-gray-900">{data.project.name}</h1>
             <p className="text-gray-900 font-semibold mt-1">{data.project.domain}</p>
             <p className="text-sm text-gray-600 mt-1">
-              Crawl: {data.latest_crawl?.status || 'none'} · Audit: {latestAuditId ? `#${latestAuditId}` : 'none'}
+              Preflight: {data.evidence_status?.preflight || 'not_run'} · Crawl: {data.latest_crawl?.status || 'none'} · Audit: {latestAuditId ? `#${latestAuditId}` : 'none'}
             </p>
         </div>
         <button onClick={load} className="btn-secondary flex items-center gap-2">
@@ -103,7 +106,12 @@ const ReportCompiler: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="card">
+          <p className="text-sm text-gray-500">Latest Preflight</p>
+          <p className="text-lg font-bold text-gray-900 mt-1">{preflightPagesScanned ? `${preflightPagesScanned} pages` : 'None'}</p>
+          <p className="text-xs text-gray-500 mt-1">{preflightWarnings} warnings · {latestPreflight?.scan_timestamp || latestPreflight?.artifact_path || '-'}</p>
+        </div>
         <div className="card">
           <p className="text-sm text-gray-500">Latest Crawl</p>
           <p className="text-lg font-bold text-gray-900 mt-1">{data.latest_crawl?.status || 'None'}</p>

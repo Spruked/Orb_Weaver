@@ -441,7 +441,7 @@ const OrbDockStationPage: React.FC = () => {
               const selected = skin.skin_id === draft.appearance.skin_id;
               return (
                 <button key={skin.skin_id} onClick={() => updateDraft((current) => ({ ...current, appearance: { skin_id: skin.skin_id } }))} className={`rounded-md border bg-white p-3 text-left ${selected ? 'border-brand-orange ring-2 ring-brand-orange/25' : 'border-slate-200 hover:border-slate-400'}`}>
-                  <div className="aspect-square overflow-hidden rounded bg-slate-100"><img src={skin.asset_path} alt={skin.display_name} className="h-full w-full object-contain" /></div>
+                  <div className="aspect-square overflow-hidden rounded bg-slate-100"><img src={skin.asset_path} alt={`${skin.display_name} - Website ORB appearance skin`} className="h-full w-full object-contain" /></div>
                   <div className="mt-3 flex items-start justify-between gap-2"><span className="text-sm font-bold text-slate-900">{skin.display_name}</span>{selected && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}</div>
                   {skin.factory_default && <p className="mt-1 text-xs text-slate-500">Verified fallback</p>}
                 </button>

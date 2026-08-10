@@ -29,6 +29,7 @@ import PublicLeadPage from './pages/PublicLeadPage';
 import PublicHowItWorks from './pages/PublicHowItWorks';
 import PublicFeatures from './pages/PublicFeatures';
 import PublicSecurity from './pages/PublicSecurity';
+import LidarGuidance from './pages/LidarGuidance';
 import MarketplaceRoutes from './marketplace/MarketplaceRoutes';
 import { api, authStore, Customer } from './services/api';
 import './index.css';
@@ -133,6 +134,9 @@ function App() {
   if (publicPath === '/features') {
     return renderPublicPage(<PublicFeatures />);
   }
+  if (publicPath === '/lidar-guidance') {
+    return renderPublicPage(<LidarGuidance />);
+  }
   if (publicPath === '/how-it-works') {
     return renderPublicPage(<PublicHowItWorks />);
   }
@@ -144,6 +148,9 @@ function App() {
   }
   if (!customer && publicPath === '/terms') {
     return renderPublicPage(<LegalPage type="terms" />);
+  }
+  if (!customer && publicPath === '/weaving') {
+    return renderPublicPage(<LegalPage type="weaving" />);
   }
   if (publicPath === '/preflight') {
     return renderPublicPage(<PublicPreflight />);

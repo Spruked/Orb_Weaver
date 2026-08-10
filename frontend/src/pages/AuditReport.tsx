@@ -267,18 +267,18 @@ const AuditReport: React.FC = () => {
         </div>
 
         <div className="card">
-          <p className="text-sm text-gray-500 mb-3">Planned Tool Calls</p>
+          <p className="text-sm text-gray-500 mb-3">Planned ORB Tool Calls</p>
           {plannedToolCalls.length > 0 ? (
             <div className="space-y-2">
-              {plannedToolCalls.slice(0, 5).map((tool) => (
+              {plannedToolCalls.map((tool) => (
                 <div key={tool.id} className="flex items-start justify-between gap-3 border-b border-gray-100 pb-2 last:border-b-0 last:pb-0">
-                  <div>
+                  <div className="flex-1">
                     <p className="font-semibold text-gray-900">{tool.tool}</p>
                     <p className="text-xs text-gray-500">{tool.section || tool.trigger}</p>
-                    {tool.route && <p className="text-xs text-gray-400 truncate max-w-sm">{tool.route}</p>}
+                    {tool.route && <p className="text-xs text-gray-400 truncate">{tool.route}</p>}
                   </div>
-                  <span className={`text-xs font-semibold ${tool.requires_mcp ? 'text-purple-700' : 'text-green-700'}`}>
-                    {tool.requires_mcp ? 'MCP gated' : tool.status}
+                  <span className={`text-xs font-semibold whitespace-nowrap ${tool.requires_mcp ? 'text-purple-700' : 'text-green-700'}`}>
+                    {tool.requires_mcp ? 'gated' : tool.status}
                   </span>
                 </div>
               ))}
@@ -286,6 +286,58 @@ const AuditReport: React.FC = () => {
           ) : (
             <p className="text-sm text-gray-500">No planned tool calls were generated for this audit.</p>
           )}
+        </div>
+      </div>
+
+      <div className="card">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">ORB Pointer Plot Map Data</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500">Verified Targets</p>
+            <p className="text-2xl font-bold text-gray-900">{pointerSummary?.record_count ?? 0}</p>
+          </div>
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500">Routes</p>
+            <p className="text-2xl font-bold text-gray-900">{pointerSummary?.routes_with_pointers ?? 0}</p>
+          </div>
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500">Duplicate IDs</p>
+            <p className="text-2xl font-bold text-gray-900">{pointerSummary?.duplicate_target_ids ?? 0}</p>
+          </div>
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500">Status</p>
+            <p className="text-lg font-bold text-gray-900 capitalize">{pointerSummary?.status || 'needs_review'}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Performance & Technical Metrics</h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500">Total Pages</p>
+            <p className="text-2xl font-bold text-gray-900">{report.summary.total_pages}</p>
+          </div>
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500">Public Scored</p>
+            <p className="text-2xl font-bold text-gray-900">{report.summary.public_pages ?? report.summary.total_pages}</p>
+          </div>
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500">Admin Excluded</p>
+            <p className="text-2xl font-bold text-gray-900">{report.summary.admin_pages_excluded_from_public_seo_scoring || 0}</p>
+          </div>
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500">Avg Load Time</p>
+            <p className="text-2xl font-bold text-gray-900">{report.summary.avg_load_time.toFixed(2)}s</p>
+          </div>
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500">ORB Entities</p>
+            <p className="text-2xl font-bold text-gray-900">{report.summary.orb_context_entities || 0}</p>
+          </div>
+          <div className="p-4 bg-gray-50 rounded-lg">
+            <p className="text-xs text-gray-500">Route Categories</p>
+            <p className="text-2xl font-bold text-gray-900">{Object.keys(report.summary.route_category_counts || {}).length}</p>
+          </div>
         </div>
       </div>
 
@@ -332,23 +384,29 @@ const AuditReport: React.FC = () => {
 
       <div className="card">
         <h2 className="text-xl font-bold text-gray-900 mb-4">Recommended Action Plan</h2>
+        <p className="text-sm text-gray-600 mb-4">All identified issues sorted by impact score</p>
         <div className="space-y-4">
           {report.top_issues.length > 0 ? (
-            report.top_issues.slice(0, 5).map((issue, idx) => (
-              <div key={`${issue.title}-${idx}`} className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+            report.top_issues.map((issue, idx) => (
+              <div key={`${issue.title}-${idx}`} className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex-shrink-0 w-8 h-8 bg-brand-orange text-white rounded-full flex items-center justify-center font-bold text-sm">
                   {idx + 1}
                 </div>
-                <div>
+                <div className="flex-1">
                   <h3 className="font-bold text-gray-900">{issue.title}</h3>
                   <p className="text-sm text-gray-600 mt-1">{issue.recommendation}</p>
-                  <div className="flex gap-2 mt-3">
+                  <div className="flex flex-wrap gap-2 mt-3">
                     <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold">
                       Impact {issue.impact_score}
                     </span>
                     <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold capitalize">
                       {issue.severity}
                     </span>
+                    {issue.affected_urls && issue.affected_urls.length > 0 && (
+                      <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
+                        {issue.affected_urls.length} pages affected
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

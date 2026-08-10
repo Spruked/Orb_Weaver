@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import PublicHeader from '../components/PublicHeader';
+import PublicFooter from '../components/PublicFooter';
 
 const quickAnswers = [
   {
@@ -164,6 +165,7 @@ const PublicSecurity: React.FC = () => {
           </div>
         </section>
       </div>
+      <PublicFooter />
     </main>
   );
 };

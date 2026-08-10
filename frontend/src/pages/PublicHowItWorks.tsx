@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import PublicHeader from '../components/PublicHeader';
+import PublicFooter from '../components/PublicFooter';
 
 const lifecycleSteps = [
   'Visitor arrives',
@@ -98,6 +99,7 @@ const PublicHowItWorks: React.FC = () => {
           </div>
         </section>
       </div>
+      <PublicFooter />
     </main>
   );
 };

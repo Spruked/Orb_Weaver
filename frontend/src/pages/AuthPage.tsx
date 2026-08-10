@@ -148,7 +148,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
       <main className="onboarding-layout">
         <section className="onboarding-card" aria-labelledby="onboarding-title">
           <div className="onboarding-brand">
-            <img src="/orbweaverlogo1024.png" alt="Orb Weaver" />
+            <img src="/orbweaverlogo1024.png" alt="Orb Weaver logo - intelligent website host" />
             <div>
               <p>GUIDED WORKSPACE SETUP</p>
               <h1 id="onboarding-title">{isSignup ? 'Create your Orb Weaver workspace' : 'Welcome back'}</h1>

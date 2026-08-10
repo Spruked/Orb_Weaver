@@ -196,16 +196,20 @@ const WebsiteFloatingOrb: React.FC = () => {
   }, [deployMicroOrb, pointNearRect]);
 
   const telemetryUrl = 'ws://localhost:8000/ws/orb-pointer';
+  const handleTelemetryTargetLock = useCallback((viewportCoord: ViewportCoordinate, frame: TelemetryFrame) => {
+    applyTargetLock(viewportCoord, frame.semantic_intent || frame.target_id, frame.target_id);
+  }, [applyTargetLock]);
+
+  const handleTelemetryStatusChange = useCallback((status: string) => {
+    if (status === 'connected') {
+      setStatusLine((current) => current === 'Greeting visitor' ? 'Telemetry linked' : current);
+    }
+  }, []);
+
   const { reportDrift } = useOrbTelemetry({
     wsUrl: telemetryUrl,
-    onTargetLock: (viewportCoord: ViewportCoordinate, frame: TelemetryFrame) => {
-      applyTargetLock(viewportCoord, frame.semantic_intent || frame.target_id, frame.target_id);
-    },
-    onStatusChange: (status) => {
-      if (status === 'connected') {
-        setStatusLine((current) => current === 'Greeting visitor' ? 'Telemetry linked' : current);
-      }
-    },
+    onTargetLock: handleTelemetryTargetLock,
+    onStatusChange: handleTelemetryStatusChange,
   });
 
   const findPointerRecordForIntent = useCallback((intentText: string): WebsiteOrbPointerRecord | null => {

@@ -341,7 +341,7 @@ const MarketplaceProduct: React.FC = () => {
               <img
                 className="ow-market-authority-image"
                 src={imageSrc}
-                alt={item.name}
+                alt={`${item.name} - visitor authority ORB for intelligent website guidance`}
                 loading="lazy"
                 onError={() => setImageFailed(true)}
               />
@@ -363,7 +363,7 @@ const MarketplaceProduct: React.FC = () => {
               <img
                 className="ow-market-authority-flow-image"
                 src={BASIC_ORB_INFOGRAPHIC_SRC}
-                alt="Basic ORB visitor guidance flow infographic"
+                alt="Basic ORB visitor guidance flow infographic showing how visitors interact with the Website ORB through discovery, engagement, and completion phases"
                 loading="lazy"
               />
             ) : (
@@ -429,7 +429,7 @@ const MarketplaceProduct: React.FC = () => {
               <img
                 className="ow-market-product-image"
                 src={imageSrc}
-                alt={item.name}
+                alt={`${item.name} - ORB Weaver marketplace product`}
                 loading="lazy"
                 onError={() => setImageFailed(true)}
               />

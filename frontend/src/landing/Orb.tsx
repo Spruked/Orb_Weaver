@@ -23,7 +23,7 @@ export const Orb: React.FC<{
       onClick={onClick}
     >
       <div className="ow-v2-orb-halo" />
-      <img className="ow-v2-orb-skin-image" src={skinSrc} alt="" draggable={false} />
+      <img className="ow-v2-orb-skin-image" src={skinSrc} alt="Website ORB visual representation" draggable={false} />
       <div className="ow-v2-orb-eye-pulse" />
       <div className="ow-v2-orb-specular" />
     </button>

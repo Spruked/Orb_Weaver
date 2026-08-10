@@ -64,7 +64,7 @@ const MarketCard: React.FC<MarketCardProps> = ({ item, onAddToCart }) => {
       </div>
 
       {imageSrc && !imageFailed ? (
-        <img className="ow-market-orb-image" src={imageSrc} alt={item.name} loading="lazy" onError={() => setImageFailed(true)} />
+        <img className="ow-market-orb-image" src={imageSrc} alt={`${item.name} - ORB marketplace product`} loading="lazy" onError={() => setImageFailed(true)} />
       ) : (
         <div className="ow-market-orb-preview" aria-hidden="true" />
       )}

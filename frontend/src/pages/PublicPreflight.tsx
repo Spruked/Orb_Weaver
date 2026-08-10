@@ -25,9 +25,9 @@ const readinessResults = [
 
 const customerReceives = [
   'A plain-language readiness outcome.',
-  'A fit score based on the public sample.',
+  'A fit score based on live public pages read during this scan.',
   'Visible reasons behind the result.',
-  'Basic public signals such as pages sampled, sitemap and robots detection, forms, products, booking, and warnings when available.',
+  'Basic public signals such as pages read, sitemap and robots detection, forms, products, booking, and warnings when available.',
   'Recommended next steps without requiring an account.',
 ];
 
@@ -68,6 +68,7 @@ const PublicPreflight: React.FC = () => {
 
     return 'Your website may need additional public structure, clearer visitor pathways, or a closer review before an ORB can guide visitors reliably.';
   }, [report]);
+  const pagesRead = report?.basic_checks.pages_read ?? report?.basic_checks.sample_pages_read ?? 0;
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -143,7 +144,7 @@ const PublicPreflight: React.FC = () => {
               <div className="absolute inset-10 rounded-full bg-cyan-400/10 blur-xl" />
               <img
                 src="/orb-skins/tuxorb.png"
-                alt="Orb Weaver Website ORB"
+                alt="Orb Weaver Website ORB - intelligent site host ready to guide visitors"
                 className="relative z-10 h-40 w-40 rounded-full object-contain drop-shadow-[0_0_28px_rgba(34,211,238,0.42)]"
               />
             </div>
@@ -197,8 +198,8 @@ const PublicPreflight: React.FC = () => {
                   </div>
 
                   <div className="mt-5">
-                    <p className="text-sm text-slate-400">Pages Sampled</p>
-                    <p className="mt-1 text-xl font-bold text-white">{report.basic_checks.sample_pages_read}</p>
+                    <p className="text-sm text-slate-400">Live pages read</p>
+                    <p className="mt-1 text-xl font-bold text-white">{pagesRead}</p>
                   </div>
                 </div>
               </div>
@@ -445,7 +446,7 @@ const PublicPreflight: React.FC = () => {
                   <p className="text-sm font-bold uppercase tracking-[0.18em] text-amber-200">Safety boundary</p>
                   <h2 className="mt-3 text-2xl font-bold text-white">No website changes are made.</h2>
                   <p className="mt-3 text-sm leading-relaxed text-slate-300">
-                    The scan samples public website information only. Private pages, account areas, checkout actions,
+                    The scan reads public website information only. Private pages, account areas, checkout actions,
                     admin routes, sensitive transactions, and owner-only systems remain outside the public scan boundary.
                   </p>
                 </article>

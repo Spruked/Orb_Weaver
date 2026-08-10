@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
-# Optional imports — compile-safe fallback
+# Optional imports
 # ---------------------------------------------------------------------------
 try:
     from preflight_site_scan import PreflightScanner
@@ -32,13 +32,13 @@ try:
     from ssi_consumers import query_skg, query_morb, query_llm_pack
 except ImportError:
     def query_skg(q: str, output_dir: str) -> Dict[str, Any]:
-        return {"status": "stub", "query": q}
+        raise RuntimeError("SSI SKG query backend is not installed")
 
     def query_morb(q: str, output_dir: str) -> Dict[str, Any]:
-        return {"status": "stub", "query": q}
+        raise RuntimeError("SSI MORB query backend is not installed")
 
     def query_llm_pack(q: str, output_dir: str) -> Dict[str, Any]:
-        return {"status": "stub", "query": q}
+        raise RuntimeError("SSI LLM pack query backend is not installed")
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -129,25 +129,34 @@ async def run_preflight(request: PreflightRunRequest) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Existing SSI query endpoints (stubs / passthrough)
+# Existing SSI query endpoints
 # ---------------------------------------------------------------------------
 
 @router.post("/query/skg")
 async def query_skg_endpoint(request: QueryRequest) -> Dict[str, Any]:
     """Query the Cognitive SKG layer."""
-    return query_skg(request.query, str(require_vault_path(request.output_dir, "SKG query output")))
+    try:
+        return query_skg(request.query, str(require_vault_path(request.output_dir, "SKG query output")))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 @router.post("/query/morb")
 async def query_morb_endpoint(request: QueryRequest) -> Dict[str, Any]:
     """Query the MORB Corpus layer."""
-    return query_morb(request.query, str(require_vault_path(request.output_dir, "MORB query output")))
+    try:
+        return query_morb(request.query, str(require_vault_path(request.output_dir, "MORB query output")))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 @router.post("/query/llm")
 async def query_llm_endpoint(request: QueryRequest) -> Dict[str, Any]:
     """Query the LLM Context Pack layer."""
-    return query_llm_pack(request.query, str(require_vault_path(request.output_dir, "LLM pack output")))
+    try:
+        return query_llm_pack(request.query, str(require_vault_path(request.output_dir, "LLM pack output")))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
 
 @router.get("/health")

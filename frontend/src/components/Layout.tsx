@@ -97,7 +97,7 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
           <div className="flex flex-col items-center gap-3 md:items-start">
             <img
               src={squareLogo}
-              alt="Orb Weaver logo"
+              alt="Orb Weaver - Website ORB Intelligence Engine logo"
               className="h-20 w-full object-contain md:h-24"
             />
             <div>
@@ -164,7 +164,7 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
               </div>
               <img
                 src={bannerLogo}
-                alt="Orb Weaver"
+                alt="Orb Weaver - Website ORB Intelligence Engine"
                 className="hidden h-20 w-56 object-contain lg:block xl:h-24 xl:w-72"
               />
             </div>

@@ -649,6 +649,7 @@ export interface AuditDelta {
 export interface PreflightReport {
   status?: 'not_run' | string;
   site_url?: string;
+  artifact_path?: string;
   scan_timestamp?: string;
   scan_duration?: number;
   detected?: {
@@ -914,6 +915,12 @@ export interface AuditReportResponse {
 
 export interface ReportCompilerPayload {
   project: Project;
+  evidence_status?: {
+    preflight: string;
+    crawl: string;
+    audit: string;
+  };
+  latest_preflight?: PreflightReport | null;
   latest_crawl?: CrawlJob | null;
   latest_audit?: {
     id: string;
@@ -943,11 +950,13 @@ export interface PublicPreflightReport {
   basic_checks: {
     site_loaded: boolean;
     https_checked: boolean;
+    pages_read?: number;
     sample_pages_read: number;
     sitemap_detected: boolean;
     robots_detected: boolean;
     contact_or_conversion_signals: boolean;
     login_or_checkout_detected: boolean;
+    broken_link_count?: number;
     sample_broken_link_count: number;
   };
   limited_findings: {

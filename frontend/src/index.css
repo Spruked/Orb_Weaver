@@ -52,7 +52,7 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 7px;
 }
 
 .ow-public-nav a {
@@ -60,11 +60,12 @@
   text-decoration: none;
   border: 1px solid rgba(103, 232, 249, 0.24);
   border-radius: 999px;
-  padding: 10px 15px;
-  font-size: 13px;
+  padding: 8px 13px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
   background: rgba(8, 47, 73, 0.22);
+  white-space: nowrap;
 }
 
 .ow-public-header-light .ow-public-nav a {

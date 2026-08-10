@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import PublicHeader from '../components/PublicHeader';
+import PublicFooter from '../components/PublicFooter';
 
 type FeatureBlock = {
   title: string;
@@ -84,6 +85,16 @@ const PublicFeatures: React.FC = () => {
           </p>
         </section>
 
+        <section className="py-8 md:py-12">
+          <div className="flex justify-center">
+            <img 
+              src="/orb-weaver-features-infographic.png" 
+              alt="ORB Weaver Features Infographic showing Website Intelligence, Twenty-Eight Weaves, Smart Guidance, Natural Conversation, Journey Completion, Trust & Confidence, Secure by Design, Verified Destinations, Business Insights, and Seamless Integration" 
+              className="w-full max-w-5xl rounded-2xl shadow-2xl shadow-cyan-500/20"
+            />
+          </div>
+        </section>
+
         <section className="grid gap-5">
           {featureBlocks.map((item) => (
             <article key={item.title} className="rounded-2xl border border-cyan-300/20 bg-white/[0.05] p-6 md:p-7">
@@ -109,6 +120,7 @@ const PublicFeatures: React.FC = () => {
           ))}
         </section>
       </div>
+      <PublicFooter />
     </main>
   );
 };
