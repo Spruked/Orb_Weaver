@@ -71,6 +71,19 @@ const LandingPage: React.FC = () => {
         </div>
       </section>
 
+      <section id="weaver-first-encounter" data-beat-id="firstEncounter" className={beatClassName('firstEncounter', 'accent')}>
+        <div className="ow-cut-shell ow-cut-shell-single">
+          <div className="ow-cut-copy ow-cut-first-encounter">
+            <h2>Meet Weaver.</h2>
+            <div className="ow-cut-encounter-steps" aria-label="Weaver communication orientation">
+              <p data-orb-target="speak_naturally"><strong>Just talk.</strong> Use the words you would use with a person who knows the site.</p>
+              <p data-orb-target="pause_when_finished"><strong>Finish the thought, then pause.</strong> Weaver takes the turn when your voice settles.</p>
+              <p data-orb-target="watch_weaver_guide"><strong>Watch the page.</strong> When showing is clearer, Weaver moves and points to the verified target.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* BEAT 2 — Challenge the belief */}
       <section id="beat-2" data-beat-id="beat2" className={beatClassName('beat2')}>
         <div className="ow-cut-shell ow-cut-shell-single">

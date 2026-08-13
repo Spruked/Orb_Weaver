@@ -23,7 +23,7 @@ fi
 
 cd "$ROOT"
 export KOKORO_DEVICE="${KOKORO_DEVICE:-cuda}"
-export KOKORO_DEFAULT_VOICE="${KOKORO_DEFAULT_VOICE:-am_fenrir}"
+export KOKORO_DEFAULT_VOICE="${KOKORO_DEFAULT_VOICE:-am_echo}"
 export KOKORO_DEFAULT_SPEED="${KOKORO_DEFAULT_SPEED:-1.05}"
 
 setsid "$PYTHON_BIN" -m uvicorn kokoro_openai_tts_server:app \

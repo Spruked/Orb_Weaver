@@ -223,10 +223,6 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
       const pointer = element('[data-pointer]');
       delete pointer.dataset.visible;
       window.clearTimeout(pointerTimer);
-      if ('speechSynthesis' in window && 'SpeechSynthesisUtterance' in window) {
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(new SpeechSynthesisUtterance(verificationFailure));
-      }
       log('Pointer verification blocked guidance', { targetId: preferredTarget });
       return;
     }

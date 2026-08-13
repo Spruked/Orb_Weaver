@@ -8,12 +8,21 @@ import './WebsiteFloatingOrb.css';
 
 type OrbMode = 'idle' | 'avoiding' | 'assisting' | 'learning';
 type OrbPoint = { x: number; y: number };
-type BloomRect = { left: number; top: number; width: number; height: number };
+type MorbWorkRole = 'target' | 'path' | 'comparison' | 'sequence' | 'alternative' | 'relationship';
+type MorbPalette = {
+  role: MorbWorkRole;
+  primary: string;
+  glow: string;
+  shadow: string;
+  bloom: string;
+};
+type BloomRect = { left: number; top: number; width: number; height: number; role: MorbWorkRole };
 type MicroOrbState = {
   left: number;
   top: number;
   visible: boolean;
   dissolving: boolean;
+  role: MorbWorkRole;
 };
 
 const LATENCY_FILLER_PATHS = [
@@ -23,8 +32,55 @@ const LATENCY_FILLER_PATHS = [
 ];
 const VOICE_UNAVAILABLE_MESSAGE = 'Voice unavailable';
 const lidar = LidarCoordinateCache.getInstance();
+const MORB_SIZE = 50;
+const MORB_HALF = MORB_SIZE / 2;
 const MORB_TRAVEL_MS = 520;
 const MORB_DISSOLVE_MS = 620;
+
+const MORB_PALETTES: Record<MorbWorkRole, MorbPalette> = {
+  target: {
+    role: 'target',
+    primary: 'rgba(45, 212, 255, 0.96)',
+    glow: 'rgba(45, 212, 255, 0.34)',
+    shadow: 'rgba(45, 212, 255, 0.62)',
+    bloom: 'rgba(45, 212, 255, 0.9)',
+  },
+  path: {
+    role: 'path',
+    primary: 'rgba(56, 189, 248, 0.96)',
+    glow: 'rgba(56, 189, 248, 0.3)',
+    shadow: 'rgba(56, 189, 248, 0.6)',
+    bloom: 'rgba(56, 189, 248, 0.9)',
+  },
+  comparison: {
+    role: 'comparison',
+    primary: 'rgba(250, 204, 21, 0.96)',
+    glow: 'rgba(250, 204, 21, 0.28)',
+    shadow: 'rgba(250, 204, 21, 0.58)',
+    bloom: 'rgba(250, 204, 21, 0.9)',
+  },
+  sequence: {
+    role: 'sequence',
+    primary: 'rgba(168, 85, 247, 0.96)',
+    glow: 'rgba(168, 85, 247, 0.26)',
+    shadow: 'rgba(168, 85, 247, 0.58)',
+    bloom: 'rgba(168, 85, 247, 0.9)',
+  },
+  alternative: {
+    role: 'alternative',
+    primary: 'rgba(244, 114, 182, 0.96)',
+    glow: 'rgba(244, 114, 182, 0.26)',
+    shadow: 'rgba(244, 114, 182, 0.58)',
+    bloom: 'rgba(244, 114, 182, 0.9)',
+  },
+  relationship: {
+    role: 'relationship',
+    primary: 'rgba(74, 222, 128, 0.96)',
+    glow: 'rgba(74, 222, 128, 0.28)',
+    shadow: 'rgba(74, 222, 128, 0.58)',
+    bloom: 'rgba(74, 222, 128, 0.9)',
+  },
+};
 
 const normalizeIntentText = (value: string): string =>
   (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -48,6 +104,33 @@ const recordTextCandidates = (record: WebsiteOrbPointerRecord): string[] => {
   ]
     .map(normalizeIntentText)
     .filter((value) => value.length >= 2);
+};
+
+const inferMorbRole = (input: {
+  targetType?: string | null;
+  intentText?: string | null;
+  targetId?: string | null;
+}): MorbWorkRole => {
+  const targetType = normalizeIntentText(input.targetType || '');
+  const combined = normalizeIntentText(`${input.intentText || ''} ${input.targetId || ''} ${targetType}`);
+
+  if (/\b(compare|comparison|versus|vs|different|difference|pricing|price|plan|package)\b/.test(combined)) return 'comparison';
+  if (/\b(step|sequence|first|second|third|next|then|after|before|timeline|stage)\b/.test(combined)) return 'sequence';
+  if (/\b(alternative|instead|also|option|either|another|otherwise)\b/.test(combined)) return 'alternative';
+  if (/\b(relationship|relate|connect|linked|between|depends|because|maps? to)\b/.test(combined)) return 'relationship';
+  if (['nav', 'link', 'download'].includes(targetType) || /\b(path|route|go|open|visit|navigate|journey)\b/.test(combined)) return 'path';
+  if (['faq_answer', 'policy_line', 'paragraph'].includes(targetType)) return 'relationship';
+  return 'target';
+};
+
+const morbStyleVars = (role: MorbWorkRole): React.CSSProperties => {
+  const palette = MORB_PALETTES[role];
+  return {
+    '--ow-morb-primary': palette.primary,
+    '--ow-morb-glow': palette.glow,
+    '--ow-morb-shadow': palette.shadow,
+    '--ow-morb-bloom': palette.bloom,
+  } as React.CSSProperties;
 };
 
 const WebsiteFloatingOrb: React.FC = () => {
@@ -123,19 +206,20 @@ const WebsiteFloatingOrb: React.FC = () => {
     setMicroOrb(null);
   }, []);
 
-  const deployMicroOrb = useCallback((viewportCoord: ViewportCoordinate) => {
+  const deployMicroOrb = useCallback((viewportCoord: ViewportCoordinate, role: MorbWorkRole) => {
     clearMicroOrbSequence();
 
-    const originLeft = positionRef.current.x - 11;
-    const originTop = positionRef.current.y - 11;
-    const targetLeft = viewportCoord.left + viewportCoord.width / 2 - 11;
-    const targetTop = viewportCoord.top + viewportCoord.height / 2 - 11;
+    const originLeft = positionRef.current.x - MORB_HALF;
+    const originTop = positionRef.current.y - MORB_HALF;
+    const targetLeft = viewportCoord.left + viewportCoord.width / 2 - MORB_HALF;
+    const targetTop = viewportCoord.top + viewportCoord.height / 2 - MORB_HALF;
 
     setMicroOrb({
       left: originLeft,
       top: originTop,
       visible: false,
       dissolving: false,
+      role,
     });
 
     microOrbTravelRef.current = window.requestAnimationFrame(() => {
@@ -144,6 +228,7 @@ const WebsiteFloatingOrb: React.FC = () => {
         top: targetTop,
         visible: true,
         dissolving: false,
+        role,
       });
       microOrbTravelRef.current = null;
     });
@@ -159,7 +244,7 @@ const WebsiteFloatingOrb: React.FC = () => {
     }, MORB_TRAVEL_MS + MORB_DISSOLVE_MS);
   }, [clearMicroOrbSequence]);
 
-  const applyTargetLock = useCallback((viewportCoord: ViewportCoordinate, label: string, targetId: string) => {
+  const applyTargetLock = useCallback((viewportCoord: ViewportCoordinate, label: string, targetId: string, role: MorbWorkRole = 'target') => {
     const rect = {
       left: viewportCoord.left,
       top: viewportCoord.top,
@@ -177,13 +262,14 @@ const WebsiteFloatingOrb: React.FC = () => {
     setMode('assisting');
     setIsMoving(true);
     setPointingTargetId(targetId);
-    setStatusLine(`Pointing: ${label.slice(0, 54)}`);
-    deployMicroOrb(viewportCoord);
+    setStatusLine(`${MORB_PALETTES[role].role}: ${label.slice(0, 54)}`);
+    deployMicroOrb(viewportCoord, role);
     setBloomRect({
       left: Math.max(0, viewportCoord.left - 8),
       top: Math.max(0, viewportCoord.top - 8),
       width: viewportCoord.width + 16,
       height: viewportCoord.height + 16,
+      role,
     });
 
     if (bloomTimerRef.current) {
@@ -197,7 +283,12 @@ const WebsiteFloatingOrb: React.FC = () => {
 
   const telemetryUrl = 'ws://localhost:8000/ws/orb-pointer';
   const handleTelemetryTargetLock = useCallback((viewportCoord: ViewportCoordinate, frame: TelemetryFrame) => {
-    applyTargetLock(viewportCoord, frame.semantic_intent || frame.target_id, frame.target_id);
+    applyTargetLock(
+      viewportCoord,
+      frame.semantic_intent || frame.target_id,
+      frame.target_id,
+      inferMorbRole({ intentText: frame.semantic_intent, targetId: frame.target_id }),
+    );
   }, [applyTargetLock]);
 
   const handleTelemetryStatusChange = useCallback((status: string) => {
@@ -258,6 +349,16 @@ const WebsiteFloatingOrb: React.FC = () => {
       viewportCoord,
       (record.meaning || record.target_type || 'target').replace(/^[^:]+:\s*/, ''),
       record.target_id,
+      inferMorbRole({
+        targetType: record.target_type,
+        intentText: [
+          record.meaning,
+          ...(record.intent_aliases || []),
+          ...(record.direct_aliases || []),
+          ...(record.topic_aliases || []),
+        ].filter(Boolean).join(' '),
+        targetId: record.target_id,
+      }),
     );
   }, [applyTargetLock, findPointerRecordForIntent, reportDrift]);
 
@@ -794,6 +895,7 @@ const WebsiteFloatingOrb: React.FC = () => {
             top: `${bloomRect.top}px`,
             width: `${bloomRect.width}px`,
             height: `${bloomRect.height}px`,
+            ...morbStyleVars(bloomRect.role),
           }}
         />
       </>
@@ -804,6 +906,7 @@ const WebsiteFloatingOrb: React.FC = () => {
         style={{
           left: `${microOrb.left}px`,
           top: `${microOrb.top}px`,
+          ...morbStyleVars(microOrb.role),
         }}
         aria-hidden="true"
       />

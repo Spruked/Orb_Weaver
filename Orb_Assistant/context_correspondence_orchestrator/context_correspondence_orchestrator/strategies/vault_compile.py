@@ -116,7 +116,7 @@ class VaultCompileStrategy(BaseStrategy):
             score = sum(1 for kw in keywords if kw in text)
             scored.append((score, record))
 
-        scored.sort(reverse=True)
+        scored.sort(key=lambda item: item[0], reverse=True)
 
         # Keep top 80% or all if small
         cutoff = max(1, int(len(scored) * 0.8))

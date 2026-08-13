@@ -163,6 +163,25 @@
   animation: ow-cut-strand-in 420ms ease forwards;
 }
 
+.ow-cut-first-encounter {
+  max-width: 840px;
+}
+
+.ow-cut-encounter-steps {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.ow-cut-encounter-steps p {
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid rgba(108, 215, 238, 0.24);
+  border-radius: 8px;
+  background: rgba(6, 18, 32, 0.58);
+  box-shadow: inset 0 0 24px rgba(108, 215, 238, 0.06);
+}
+
 .ow-cut-beat.is-visible .ow-cut-strands p:nth-child(1) { animation-delay: 120ms; }
 .ow-cut-beat.is-visible .ow-cut-strands p:nth-child(2) { animation-delay: 220ms; }
 .ow-cut-beat.is-visible .ow-cut-strands p:nth-child(3) { animation-delay: 320ms; }
@@ -636,6 +655,133 @@
   animation: ow-v2-pointer-ping 2.6s ease-out forwards;
 }
 
+.ow-v2-morb-pointer {
+  position: fixed;
+  z-index: 2147483001;
+  width: 65px;
+  height: 65px;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    var(--ow-morb-skin),
+    radial-gradient(circle at 38% 24%, rgba(255, 255, 255, .96) 0 18%, rgba(232, 246, 255, .92) 29%, rgba(75, 178, 255, .92) 44%, rgba(5, 13, 28, .98) 76%),
+    radial-gradient(circle at center, rgba(2, 8, 18, .98), rgba(2, 8, 18, .98));
+  background-size: cover, cover, cover;
+  background-position: center;
+  box-shadow:
+    0 0 22px var(--ow-morb-shadow, rgba(91, 200, 230, .68)),
+    0 0 48px var(--ow-morb-glow, rgba(91, 200, 230, .32)),
+    inset -9px -12px 17px rgba(0, 0, 0, .62),
+    inset 8px 8px 12px rgba(255, 255, 255, .32);
+  opacity: 0;
+  transform: translate3d(0, 0, 0) scale(.78);
+  transition:
+    left 620ms cubic-bezier(.22, .8, .24, 1),
+    top 620ms cubic-bezier(.22, .8, .24, 1),
+    opacity 180ms ease,
+    transform 220ms ease;
+}
+
+.ow-v2-morb-orbit {
+  position: absolute;
+  inset: -17px;
+  z-index: 0;
+  pointer-events: none;
+  opacity: .86;
+  transition: opacity 220ms ease;
+  animation: ow-v2-morb-orbit-spin 8s linear infinite;
+}
+
+.ow-v2-orb-position.has-deployed-morb .ow-v2-morb-orbit {
+  opacity: 0;
+}
+
+.ow-v2-morb-orbit-dot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(190, 241, 255, .96);
+  box-shadow: 0 0 8px rgba(91, 200, 230, .86), 0 0 16px rgba(91, 200, 230, .34);
+}
+
+.ow-v2-morb-orbit-dot-one {
+  top: 3px;
+  left: calc(50% - 3px);
+}
+
+.ow-v2-morb-orbit-dot-two {
+  right: 4px;
+  bottom: 23px;
+  background: rgba(224, 190, 255, .96);
+  box-shadow: 0 0 8px rgba(190, 80, 255, .82), 0 0 16px rgba(190, 80, 255, .3);
+}
+
+.ow-v2-morb-orbit-dot-three {
+  left: 4px;
+  bottom: 23px;
+  background: rgba(255, 204, 146, .96);
+  box-shadow: 0 0 8px rgba(255, 141, 48, .82), 0 0 16px rgba(255, 141, 48, .3);
+}
+
+.ow-v2-morb-pointer.visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.ow-v2-morb-pointer[data-orb-pointer-phase="LAUNCH"] {
+  transform: translate3d(0, 0, 0) scale(.18);
+  filter: brightness(1.55);
+}
+
+.ow-v2-morb-pointer[data-orb-pointer-phase="TRAVEL"] {
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.ow-v2-morb-pointer[data-orb-pointer-phase="ARRIVAL"] {
+  animation: ow-v2-morb-arrival 420ms ease-out 1;
+}
+
+.ow-v2-morb-pointer[data-orb-pointer-phase="TASK_COMPLETE"] {
+  animation: ow-v2-morb-task-complete 860ms ease-out 1;
+}
+
+.ow-v2-morb-pointer.pinging {
+  animation: ow-v2-morb-ping 760ms ease-out 1;
+}
+
+.ow-v2-morb-pointer.dissolving {
+  opacity: 0;
+  transform: translate3d(0, 0, 0) scale(1.18);
+}
+
+.ow-v2-morb-pointer::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 20px;
+  width: 24px;
+  height: 11px;
+  border-radius: 9px;
+  background: rgba(2, 6, 18, .9);
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, .72), 0 0 10px var(--ow-morb-glow, rgba(91, 200, 230, .32));
+}
+
+.ow-v2-morb-pointer::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  top: 23px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ow-morb-primary, rgba(91, 200, 230, .96));
+  box-shadow:
+    10px 0 0 var(--ow-morb-primary, rgba(91, 200, 230, .96)),
+    0 0 8px var(--ow-morb-primary, rgba(91, 200, 230, .96)),
+    10px 0 8px var(--ow-morb-primary, rgba(91, 200, 230, .96));
+}
+
 .ow-v2-pointer-bloom span {
   position: absolute;
   left: 50%;
@@ -652,6 +798,10 @@
 .ow-v2-orb-position {
   position: absolute;
   z-index: 2147483000;
+}
+
+.ow-v2-orb-position.is-greeting .ow-v2-orb-body {
+  animation: ow-v2-greeting-ping 1.8s ease-in-out infinite;
 }
 
 .ow-v2-orb-position.onboarding-safe-mode {
@@ -1034,6 +1184,29 @@
   100% { opacity: 0; height: 12px; filter: brightness(1); }
 }
 
+@keyframes ow-v2-morb-ping {
+  0% { filter: brightness(1); box-shadow: 0 0 18px var(--ow-morb-shadow, rgba(91, 200, 230, .68)), 0 0 34px var(--ow-morb-glow, rgba(91, 200, 230, .32)); }
+  42% { filter: brightness(1.46); box-shadow: 0 0 30px var(--ow-morb-shadow, rgba(91, 200, 230, .82)), 0 0 74px var(--ow-morb-glow, rgba(91, 200, 230, .5)); }
+  100% { filter: brightness(1); box-shadow: 0 0 22px var(--ow-morb-shadow, rgba(91, 200, 230, .68)), 0 0 48px var(--ow-morb-glow, rgba(91, 200, 230, .32)); }
+}
+
+@keyframes ow-v2-morb-arrival {
+  0% { transform: translate3d(0, 0, 0) scale(.92); }
+  55% { transform: translate3d(0, 0, 0) scale(1.08); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes ow-v2-morb-task-complete {
+  0%, 100% { filter: brightness(1); }
+  35% { filter: brightness(1.6); }
+  60% { filter: brightness(1.15); }
+}
+
+@keyframes ow-v2-morb-orbit-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 @keyframes ow-v2-gold-heartbeat {
   0%, 100% { opacity: .5; transform: scale(.92); box-shadow: 0 0 18px rgba(15, 89, 166, .28); }
   14% { opacity: .92; transform: scale(1.04); box-shadow: 0 0 46px rgba(30, 126, 218, .68); }
@@ -1046,6 +1219,18 @@
   0%, 100% { opacity: .34; transform: scale(.96); }
   45% { opacity: .82; transform: scale(1.08); }
   62% { opacity: .44; transform: scale(1.18); }
+}
+
+@keyframes ow-v2-greeting-ping {
+  0%, 100% { filter: brightness(1); transform: scale(1); }
+  35% { filter: brightness(1.28); transform: scale(1.035); }
+  62% { filter: brightness(1.05); transform: scale(1); }
+}
+
+@keyframes ow-v2-greeting-logo-ping {
+  0%, 100% { opacity: .72; transform: scale(.88); }
+  42% { opacity: 1; transform: scale(1.08); }
+  70% { opacity: .84; transform: scale(.98); }
 }
 
 @keyframes ow-v2-orbit-spin {

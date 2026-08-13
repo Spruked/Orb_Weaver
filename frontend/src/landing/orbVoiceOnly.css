@@ -1,5 +1,4 @@
-/* Website ORB is a voice surface, not a chat/status bubble. */
-.ow-v2-orb-status,
+/* Keep the spoken transcript visible while Weaver is speaking. */
 .ow-v2-orb-rest-cue {
   display: none !important;
 }

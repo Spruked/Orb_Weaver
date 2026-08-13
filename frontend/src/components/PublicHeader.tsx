@@ -22,7 +22,7 @@ const publicNavItems = [
 const PublicHeader: React.FC<PublicHeaderProps> = ({ theme = 'dark' }) => {
   return (
     <header className={`ow-public-header ow-public-header-${theme}`}>
-      <a className="ow-public-brand" href="/" aria-label="Orb Weaver home">
+      <a className="ow-public-brand" href="/" aria-label="Orb Weaver home" data-orb-target="orb-weaver-suite-logo">
         <img className="ow-public-brand-logo" src="/apple-touch-icon.png" alt="" aria-hidden="true" />
         <span>ORB WEAVER</span>
       </a>

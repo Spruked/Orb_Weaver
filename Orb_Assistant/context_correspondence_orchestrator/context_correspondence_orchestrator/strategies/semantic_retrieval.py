@@ -137,7 +137,7 @@ class SemanticRetrievalStrategy(BaseStrategy):
             sim = self._cosine_similarity(query_vec, chunk["vector"])
             scored.append((sim, chunk))
 
-        scored.sort(reverse=True)
+        scored.sort(key=lambda item: item[0], reverse=True)
 
         # Retrieve top-k chunks up to budget
         top_k = min(retrieve_depth * 3, 10)

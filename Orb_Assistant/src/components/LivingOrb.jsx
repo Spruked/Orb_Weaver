@@ -34,16 +34,8 @@ const LivingOrb = ({ bridgeUrl = 'ws://localhost:9876' }) => {
   const [cognitiveMode, setCognitiveMode] = useState('GUARD');
   const [glowIntensity, setGlowIntensity] = useState(0.5);
 
-  // --- speech synthesis helper ---
-  const speak = (text) => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.95;
-    utterance.pitch = 1.05;
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+  const speak = () => {
+    setIsSpeaking(false);
   };
 
   // --- mouse tracking for cognitive processing ---

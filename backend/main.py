@@ -202,6 +202,13 @@ LLM_WARM_STATUS: Dict[str, Any] = {
     "checked_at": None,
     "error": None,
 }
+ORB_TTS_WARM_STATUS: Dict[str, Any] = {
+    "configured": bool(settings.ORB_TTS_KOKORO_URL or settings.ORB_TTS_QWEN_URL),
+    "ready": None,
+    "checked_at": None,
+    "provider": None,
+    "errors": [],
+}
 
 ORB_INSTALL_SITES: Dict[str, Dict[str, Any]] = {
     "orb-weaver-campaign": {
@@ -2184,6 +2191,7 @@ def _orb_capabilities() -> Dict[str, Any]:
             },
         },
         "local_llm": dict(LLM_WARM_STATUS),
+        "local_tts": dict(ORB_TTS_WARM_STATUS),
         "chrome_devtools_mcp": {
             "enabled": settings.CHROME_DEVTOOLS_ENABLED,
             "public_enabled": settings.CHROME_DEVTOOLS_PUBLIC_ENABLED,
@@ -2200,15 +2208,16 @@ def _orb_capabilities() -> Dict[str, Any]:
             "transport": "http_relay" if settings.ORB_DESKTOP_MCP_URL else "direct_stdio",
         },
         "voice": {
-            "browser_speech_recognition": "client_detected",
+            "browser_speech_recognition": False,
+            "recorded_audio_stt": "faster_whisper",
             "browser_speech_synthesis": False,
             "recorded_audio_stt_url": settings.FASTER_WHISPER_STT_URL,
             "text_query_low_latency": True,
-            "tts_primary": "kokoro",
-            "tts_primary_configured": bool(settings.ORB_TTS_KOKORO_URL),
-            "tts_primary_url": settings.ORB_TTS_KOKORO_URL,
-            "tts_fallback": "qwen" if settings.ORB_TTS_QWEN_URL else None,
-            "tts_fallback_url": settings.ORB_TTS_QWEN_URL,
+            "tts_primary": "kokoro" if settings.ORB_TTS_KOKORO_URL else "qwen",
+            "tts_primary_configured": bool(settings.ORB_TTS_KOKORO_URL or settings.ORB_TTS_QWEN_URL),
+            "tts_primary_url": settings.ORB_TTS_KOKORO_URL or settings.ORB_TTS_QWEN_URL,
+            "tts_fallback": "qwen" if settings.ORB_TTS_KOKORO_URL and settings.ORB_TTS_QWEN_URL else None,
+            "tts_fallback_url": settings.ORB_TTS_QWEN_URL if settings.ORB_TTS_KOKORO_URL else None,
         },
         "tools": [
             "public_preflight",
@@ -3144,6 +3153,15 @@ def _tts_cache_probe(text: str) -> Dict[str, Any]:
             settings.ORB_TTS_KOKORO_VOICE,
             settings.ORB_TTS_KOKORO_FORMAT,
         ),
+        (
+            "qwen",
+            settings.ORB_TTS_QWEN_URL,
+            settings.ORB_TTS_QWEN_API_KEY,
+            settings.ORB_TTS_QWEN_PAYLOAD_MODE,
+            settings.ORB_TTS_QWEN_MODEL,
+            settings.ORB_TTS_QWEN_VOICE,
+            settings.ORB_TTS_QWEN_FORMAT,
+        ),
     ]:
         if not url or not clean_text:
             continue
@@ -3222,6 +3240,15 @@ async def _synthesize_orb_tts(text: str) -> Dict[str, Optional[str]]:
             settings.ORB_TTS_KOKORO_VOICE,
             settings.ORB_TTS_KOKORO_FORMAT,
         ),
+        (
+            "qwen",
+            settings.ORB_TTS_QWEN_URL,
+            settings.ORB_TTS_QWEN_API_KEY,
+            settings.ORB_TTS_QWEN_PAYLOAD_MODE,
+            settings.ORB_TTS_QWEN_MODEL,
+            settings.ORB_TTS_QWEN_VOICE,
+            settings.ORB_TTS_QWEN_FORMAT,
+        ),
     ]
 
     errors: List[str] = []
@@ -3233,10 +3260,16 @@ async def _synthesize_orb_tts(text: str) -> Dict[str, Optional[str]]:
         ).hexdigest()[:24]
         cached = _cached_tts_result(digest, provider)
         if cached:
+            ORB_TTS_WARM_STATUS.update({
+                "ready": True,
+                "checked_at": datetime.utcnow().isoformat(),
+                "provider": provider,
+                "errors": [],
+            })
             return cached
 
         try:
-            return await _run_tts_singleflight(
+            result = await _run_tts_singleflight(
                 f"{provider}:{digest}",
                 lambda provider=provider,
                 url=url,
@@ -3257,11 +3290,24 @@ async def _synthesize_orb_tts(text: str) -> Dict[str, Optional[str]]:
                     audio_format=audio_format,
                 ),
             )
+            ORB_TTS_WARM_STATUS.update({
+                "ready": True,
+                "checked_at": datetime.utcnow().isoformat(),
+                "provider": provider,
+                "errors": [],
+            })
+            return result
         except Exception as exc:
             message = str(exc) or exc.__class__.__name__
             logger.warning("ORB TTS provider failed", extra={"provider": provider, "error": message})
             errors.append(f"{provider}: {message}")
 
+    ORB_TTS_WARM_STATUS.update({
+        "ready": False,
+        "checked_at": datetime.utcnow().isoformat(),
+        "provider": None,
+        "errors": errors,
+    })
     return _visitor_safe_tts_unavailable()
 
 

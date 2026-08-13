@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from kokoro import KPipeline
 
 
-DEFAULT_VOICE = os.environ.get("KOKORO_DEFAULT_VOICE", "am_fenrir")
+DEFAULT_VOICE = os.environ.get("KOKORO_DEFAULT_VOICE", "am_echo")
 DEFAULT_SPEED = float(os.environ.get("KOKORO_DEFAULT_SPEED", "1.05"))
 DEVICE = os.environ.get("KOKORO_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
 SAMPLE_RATE = 24000
@@ -86,10 +86,16 @@ def health():
 
 @app.on_event("startup")
 def startup_prewarm():
-    global prewarm_seconds
-    started = time.time()
-    _synthesize("I am ready.", DEFAULT_VOICE, DEFAULT_SPEED)
-    prewarm_seconds = round(time.time() - started, 3)
+    def run_prewarm() -> None:
+        global prewarm_seconds
+        started = time.time()
+        try:
+            _synthesize("I am ready.", DEFAULT_VOICE, DEFAULT_SPEED)
+            prewarm_seconds = round(time.time() - started, 3)
+        except Exception:
+            prewarm_seconds = -1.0
+
+    threading.Thread(target=run_prewarm, name="kokoro-prewarm", daemon=True).start()
 
 
 def _speech_response(payload: SpeechRequest):

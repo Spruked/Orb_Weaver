@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useAnimationControls } from "framer-motion";
 import { Volume2, VolumeX } from "lucide-react";
 import { Orb } from "./Orb";
-import { api, type WebsiteOrbPointerRecord } from "../services/api";
+import { api, type WebsiteOrbPointerRecord, type WebsiteOrbTtsResponse } from "../services/api";
 import {
   ACTIVE_ORB_PROJECT_CONTEXT_EVENT,
   ActiveOrbProjectContext,
@@ -11,24 +11,41 @@ import {
 } from "../orb/activeProjectContext";
 import { OrbRoboticsMovementController } from "../orb/robotics/movementController";
 import type { RobotCommand } from "../orb/robotics/robotMovement.types";
-import { selectOrbStartupGreeting } from "../orb/startupGreetings";
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
-const LATENCY_FILLER_PATHS = [
-  "/orb/voice/latency-fillers/ack.wav",
-  "/orb/voice/latency-fillers/thinking.wav",
-  "/orb/voice/latency-fillers/working.wav",
-];
-
 const VOICE_UNAVAILABLE_MESSAGE = "Voice unavailable";
+const POINTER_PING_AUDIO_PATH = "/orb/voice/pointer-ping.mp3";
+const MORB_TRAVEL_AUDIO_PATH = "/orb/voice/travel-morb.mp3";
 const MIN_RECORDING_MS = 700;
 const END_SILENCE_MS = 850;
 const ABSOLUTE_RECORDING_LIMIT_MS = 14000;
 const SPEECH_LEVEL_THRESHOLD = 0.018;
 
 type PulseKind = "intro" | "ripple" | "flare";
+type FirstEncounterFlag =
+  | "splash_complete"
+  | "voice_ready"
+  | "entrance_complete"
+  | "communication_orientation_complete"
+  | "orientation_pointer_proof_complete"
+  | "visitor_first_turn_complete"
+  | "responsive_guidance_complete"
+  | "controller_handoff_complete";
+type FirstEncounterState = Record<FirstEncounterFlag, boolean>;
+type PointerWaltzPhase = "ACQUIRE" | "LAUNCH" | "TRAVEL" | "APPROACH" | "ARRIVAL" | "TASK_COMPLETE" | "DISSOLVE" | "RECOVERY";
+type MorbWorkRole = "target" | "path" | "comparison" | "sequence" | "alternative" | "relationship";
+type MorbPointerState = {
+  targetId: string;
+  role: MorbWorkRole;
+  left: number;
+  top: number;
+  visible: boolean;
+  pinging: boolean;
+  dissolving: boolean;
+  phase: PointerWaltzPhase;
+};
 
 type PulseState = {
   id: number;
@@ -36,7 +53,11 @@ type PulseState = {
 } | null;
 
 type OrbVoiceState = "idle" | "listening" | "speaking";
-
+type StartupVoicePreparation = {
+  greeting: string;
+  micReady: Promise<boolean>;
+  tts: Promise<WebsiteOrbTtsResponse | null>;
+};
 type Props = {
   size?: number;
   className?: string;
@@ -49,11 +70,123 @@ const IDLE_TRAVEL_MIN_MS = 6500;
 const IDLE_TRAVEL_MAX_MS = 10500;
 const IDLE_PAUSE_MIN_MS = 1800;
 const IDLE_PAUSE_MAX_MS = 4200;
-const REST_AFTER_INACTIVITY_MS = 5 * 60 * 1000;
-const ACTIVE_ORB_OPACITY = 1;
+const REST_AFTER_INACTIVITY_MS = 10 * 60 * 1000;
+const ACTIVE_ORB_OPACITY = 0.94;
 const REST_ORB_OPACITY = 0.55;
+const FIRST_ENCOUNTER_STORAGE_KEY = "orbweaver-first-encounter-state";
+const FIRST_ENCOUNTER_TARGETS = [
+  "speak_naturally",
+  "pause_when_finished",
+  "watch_weaver_guide",
+];
+const SUITE_LOGO_POINTER_RECORD: WebsiteOrbPointerRecord = {
+  target_id: "orb-weaver-suite-logo",
+  page_route: "/",
+  target_type: "logo",
+  meaning: "ORB Weaver suite logo",
+  intent_aliases: ["orb weaver", "orb weaver suite", "suite logo"],
+  direct_aliases: ["logo"],
+  topic_aliases: ["suite"],
+  content_fingerprint: "orb-weaver-suite-logo-v1",
+  semantic_locator: '[data-orb-target="orb-weaver-suite-logo"]',
+  confidence: 1,
+  confidence_class: "VERIFIED",
+  pointer_health: "OWNER_VERIFIED",
+};
+const EMPTY_FIRST_ENCOUNTER_STATE: FirstEncounterState = {
+  splash_complete: false,
+  voice_ready: false,
+  entrance_complete: false,
+  communication_orientation_complete: false,
+  orientation_pointer_proof_complete: false,
+  visitor_first_turn_complete: false,
+  responsive_guidance_complete: false,
+  controller_handoff_complete: false,
+};
+const MORB_SIZE = 65;
+const MORB_HALF = MORB_SIZE / 2;
+const MORB_REUSE_DISTANCE_PX = 250;
+const MORB_ROLE_STYLES: Record<MorbWorkRole, { primary: string; glow: string; shadow: string; skin: string }> = {
+  target: {
+    primary: "rgba(91, 200, 230, .96)",
+    glow: "rgba(91, 200, 230, .34)",
+    shadow: "rgba(91, 200, 230, .68)",
+    skin: "/orb-morbs/purplemorb50px.png",
+  },
+  path: {
+    primary: "rgba(45, 212, 255, .96)",
+    glow: "rgba(45, 212, 255, .32)",
+    shadow: "rgba(45, 212, 255, .68)",
+    skin: "/orb-morbs/morbblackred.ico",
+  },
+  comparison: {
+    primary: "rgba(250, 204, 21, .96)",
+    glow: "rgba(250, 204, 21, .28)",
+    shadow: "rgba(250, 204, 21, .62)",
+    skin: "/orb-morbs/camoorb65px.png",
+  },
+  sequence: {
+    primary: "rgba(168, 85, 247, .96)",
+    glow: "rgba(168, 85, 247, .3)",
+    shadow: "rgba(168, 85, 247, .62)",
+    skin: "/orb-morbs/purplemorb50px.png",
+  },
+  alternative: {
+    primary: "rgba(248, 113, 113, .96)",
+    glow: "rgba(248, 113, 113, .28)",
+    shadow: "rgba(248, 113, 113, .62)",
+    skin: "/orb-morbs/morbblackred.ico",
+  },
+  relationship: {
+    primary: "rgba(74, 222, 128, .96)",
+    glow: "rgba(74, 222, 128, .28)",
+    shadow: "rgba(74, 222, 128, .62)",
+    skin: "/orb-morbs/camoorb65px.png",
+  },
+};
 const normalizeIntentText = (value: string): string =>
   (value || "").replace(/\s+/g, " ").trim().toLowerCase();
+
+const readFirstEncounterState = (): FirstEncounterState => {
+  try {
+    const stored = window.sessionStorage.getItem(FIRST_ENCOUNTER_STORAGE_KEY);
+    if (!stored) return { ...EMPTY_FIRST_ENCOUNTER_STATE };
+    return { ...EMPTY_FIRST_ENCOUNTER_STATE, ...JSON.parse(stored) };
+  } catch {
+    return { ...EMPTY_FIRST_ENCOUNTER_STATE };
+  }
+};
+
+const inferMorbRole = (record: WebsiteOrbPointerRecord, intentText = ""): MorbWorkRole => {
+  const targetType = normalizeIntentText(record.target_type || "");
+  const combined = normalizeIntentText([
+    intentText,
+    record.target_id,
+    record.meaning,
+    targetType,
+    ...(record.intent_aliases || []),
+    ...(record.direct_aliases || []),
+    ...(record.topic_aliases || []),
+  ].filter(Boolean).join(" "));
+
+  if (/\b(compare|comparison|versus|vs|different|difference|pricing|price|plan|package)\b/.test(combined)) return "comparison";
+  if (/\b(step|sequence|first|second|third|next|then|after|before|timeline|stage)\b/.test(combined)) return "sequence";
+  if (/\b(alternative|instead|also|option|either|another|otherwise)\b/.test(combined)) return "alternative";
+  if (/\b(relationship|relate|connect|linked|between|depends|because|maps? to)\b/.test(combined)) return "relationship";
+  if (["nav", "link", "download"].includes(targetType) || /\b(path|route|go|open|visit|navigate|journey)\b/.test(combined)) return "path";
+  if (["faq_answer", "policy_line", "paragraph"].includes(targetType)) return "relationship";
+  return "target";
+};
+
+const morbStyleVars = (role: MorbWorkRole): React.CSSProperties => {
+  const style = MORB_ROLE_STYLES[role];
+  return {
+    "--ow-morb-primary": style.primary,
+    "--ow-morb-glow": style.glow,
+    "--ow-morb-shadow": style.shadow,
+    "--ow-morb-skin": `url("${style.skin}")`,
+  } as React.CSSProperties;
+};
 
 const routeForUrl = (value?: string | null): string => {
   if (!value) return "/";
@@ -65,17 +198,7 @@ const routeForUrl = (value?: string | null): string => {
 };
 
 const startupGreetingText = (): string => {
-  const paragraphs = selectOrbStartupGreeting()
-    .text
-    .split(/\n\s*\n/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
-
-  return [
-    paragraphs[0] || "Welcome to Orb Weaver.",
-    paragraphs[1] || "I’m Weaver, your website ORB.",
-    "What brought you here?",
-  ].join("\n\n");
+  return "Hi, I'm Weaver. Welcome to ORB Weaver. Tell me what you need, and I'll guide you through the site. Speak naturally, then pause when you're finished. What can I help you find?";
 };
 
 export const AutonomousOrb: React.FC<Props> = ({
@@ -91,6 +214,8 @@ export const AutonomousOrb: React.FC<Props> = ({
   const reducedMotionRef = useRef(false);
   const positionRef = useRef({ x: 0, y: 0 });
   const idleHeadingRef = useRef(Math.random() * Math.PI * 2);
+  const lastAutonomousDestinationRef = useRef<{ x: number; y: number } | null>(null);
+  const lastAutonomousHeadingRef = useRef<number | null>(null);
   const movementControllerRef = useRef<OrbRoboticsMovementController | null>(null);
   const worldStateSequenceRef = useRef(1);
   const lastActivityAtRef = useRef(Date.now());
@@ -103,8 +228,11 @@ export const AutonomousOrb: React.FC<Props> = ({
   const recordingCancelledRef = useRef(false);
   const speechAudioRef = useRef<HTMLAudioElement | null>(null);
   const latencyAudioRef = useRef<HTMLAudioElement | null>(null);
+  const pointerPingAudioRef = useRef<HTMLAudioElement | null>(null);
+  const morbTravelAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const speechSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const speechPlaybackRef = useRef(false);
   const audioUnlockedRef = useRef(false);
   const statusTimerRef = useRef<number | null>(null);
   const avoidUntilRef = useRef(0);
@@ -117,13 +245,21 @@ export const AutonomousOrb: React.FC<Props> = ({
   const silenceStartedAtRef = useRef<number | null>(null);
   const speakerBoostRef = useRef(false);
   const startupAutoStartedRef = useRef(false);
+  const startupVoicePreparationRef = useRef<StartupVoicePreparation | null>(null);
+  const prepareStartupVoiceRef = useRef<() => StartupVoicePreparation>(() => {
+    throw new Error("Startup voice is not ready");
+  });
+  const runStartupVoiceSequenceRef = useRef<() => Promise<void>>(async () => undefined);
   const pageCapsuleRef = useRef<unknown>(null);
   const pointerTimerRef = useRef<number | null>(null);
+  const firstEncounterStateRef = useRef<FirstEncounterState>(readFirstEncounterState());
+  const firstEncounterRunningRef = useRef(false);
+  const handsFreeEnabledRef = useRef(false);
   const [pulse, setPulse] = useState<PulseState>(null);
   const [voiceState, setVoiceState] = useState<OrbVoiceState>("idle");
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusTitle, setStatusTitle] = useState("ORB online");
-  const [statusLine, setStatusLine] = useState("Tap the ORB to speak.");
+  const [statusLine, setStatusLine] = useState("Weaver is preparing voice.");
   const [activeOrbContext, setActiveOrbContext] = useState<ActiveOrbProjectContext | null>(() => getActiveOrbProjectContext());
   const [speakerBoost, setSpeakerBoost] = useState(false);
   const [lastGuidedTarget, setLastGuidedTarget] = useState<string | null>(null);
@@ -137,6 +273,20 @@ export const AutonomousOrb: React.FC<Props> = ({
     height: number;
     originAngle: number;
   } | null>(null);
+  const [morbPointer, setMorbPointer] = useState<MorbPointerState | null>(null);
+  const [pointerWaltzPhase, setPointerWaltzPhase] = useState<PointerWaltzPhase | null>(null);
+  const [greetingActive, setGreetingActive] = useState(false);
+
+  const markFirstEncounter = useCallback((flag: FirstEncounterFlag) => {
+    const next = { ...firstEncounterStateRef.current, [flag]: true };
+    firstEncounterStateRef.current = next;
+    window.sessionStorage.setItem(FIRST_ENCOUNTER_STORAGE_KEY, JSON.stringify(next));
+  }, []);
+
+  const firstEncounterComplete = useCallback(() => {
+    const state = firstEncounterStateRef.current;
+    return state.visitor_first_turn_complete && state.controller_handoff_complete;
+  }, []);
 
  const bounds = useCallback(() => {
   const sidebar = document.querySelector<HTMLElement>("aside");
@@ -189,6 +339,58 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
   }, []);
 
+  const playPointerPing = useCallback(() => {
+    if (!audioUnlockedRef.current) return;
+    const audio = pointerPingAudioRef.current || new Audio(POINTER_PING_AUDIO_PATH);
+    audio.pause();
+    audio.currentTime = 0;
+    audio.volume = speakerBoostRef.current ? 1 : 0.86;
+    pointerPingAudioRef.current = audio;
+    void audio.play().catch(() => undefined);
+  }, []);
+
+  const playMorbLaunchSound = useCallback(() => {
+    const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!audioUnlockedRef.current || !AudioContextCtor) return;
+
+    const context: AudioContext = audioContextRef.current || new AudioContextCtor();
+    audioContextRef.current = context;
+    void context.resume?.();
+    const startTime = context.currentTime;
+    const oscillator = context.createOscillator();
+    const filter = context.createBiquadFilter();
+    const gain = context.createGain();
+    oscillator.type = "triangle";
+    oscillator.frequency.setValueAtTime(340, startTime);
+    oscillator.frequency.exponentialRampToValueAtTime(500, startTime + 0.11);
+    filter.type = "highpass";
+    filter.frequency.value = 200;
+    gain.gain.setValueAtTime(0.0001, startTime);
+    gain.gain.linearRampToValueAtTime(speakerBoostRef.current ? 0.3 : 0.22, startTime + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.16);
+    oscillator.connect(filter).connect(gain).connect(context.destination);
+    oscillator.start(startTime);
+    oscillator.stop(startTime + 0.17);
+  }, []);
+
+  const startMorbTravelSound = useCallback(() => {
+    if (!audioUnlockedRef.current) return;
+    const audio = morbTravelAudioRef.current || new Audio(MORB_TRAVEL_AUDIO_PATH);
+    audio.pause();
+    audio.currentTime = 0;
+    audio.loop = true;
+    audio.volume = speakerBoostRef.current ? 0.72 : 0.54;
+    morbTravelAudioRef.current = audio;
+    void audio.play().catch(() => undefined);
+  }, []);
+
+  const stopMorbTravelSound = useCallback(() => {
+    const audio = morbTravelAudioRef.current;
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+  }, []);
+
   const upperRightRestDestination = useCallback(() => {
     const { maxX, minY } = bounds();
     return clampPosition(maxX, minY + Math.max(16, size * 0.08));
@@ -201,7 +403,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const minimumTravel = Math.max(70, size * 0.38);
   const maximumTravel = Math.max(
     minimumTravel + 30,
-    Math.min(180, window.innerWidth * 0.12)
+    Math.min(320, window.innerWidth * 0.24)
   );
 
   const forbiddenWidth = Math.max(220, size * 1.35);
@@ -228,7 +430,16 @@ export const AutonomousOrb: React.FC<Props> = ({
     );
 
     if (!insideBottomRightRestZone && actualTravel >= minimumTravel * 0.7) {
+      const lastDestination = lastAutonomousDestinationRef.current;
+      const lastHeading = lastAutonomousHeadingRef.current;
+      const headingDelta = lastHeading == null
+        ? Math.PI
+        : Math.abs(Math.atan2(Math.sin(heading - lastHeading), Math.cos(heading - lastHeading)));
+      if (lastDestination && Math.hypot(candidate.x - lastDestination.x, candidate.y - lastDestination.y) < Math.max(90, size * 0.65)) continue;
+      if (lastHeading != null && headingDelta < 0.24) continue;
       idleHeadingRef.current = heading;
+      lastAutonomousHeadingRef.current = heading;
+      lastAutonomousDestinationRef.current = candidate;
       return candidate;
     }
   }
@@ -240,10 +451,13 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   idleHeadingRef.current = centerHeading;
 
-  return clampPosition(
-    current.x + Math.cos(centerHeading) * minimumTravel,
-    current.y + Math.sin(centerHeading) * minimumTravel
+  const fallback = clampPosition(
+    current.x + Math.cos(centerHeading + (Math.random() > 0.5 ? 0.72 : -0.72)) * Math.max(minimumTravel, 110),
+    current.y + Math.sin(centerHeading + (Math.random() > 0.5 ? 0.72 : -0.72)) * Math.max(minimumTravel, 110)
   );
+  lastAutonomousDestinationRef.current = fallback;
+  lastAutonomousHeadingRef.current = centerHeading;
+  return fallback;
 }, [bounds, clampPosition, size]);
 
   const findPointerRecordForIntent = useCallback((intentText: string) => {
@@ -275,13 +489,15 @@ export const AutonomousOrb: React.FC<Props> = ({
     return best?.record || null;
   }, []);
 
-  const guideToPointerTarget = useCallback(async (intentText: string) => {
+  const guideToPointerRecord = useCallback(async (
+    record: WebsiteOrbPointerRecord,
+    intentText: string,
+    options: { launchMorbOnly?: boolean } = {},
+  ) => {
     markVisitorActivity();
-    const record = findPointerRecordForIntent(intentText);
-    if (!record) return false;
-
     const movementController = movementControllerRef.current;
     if (!movementController) return false;
+    const role = inferMorbRole(record, intentText);
 
     const command: RobotCommand = {
       commandId: `orb-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
@@ -299,6 +515,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       worldStateSequence: worldStateSequenceRef.current,
     };
 
+    setPointerWaltzPhase("ACQUIRE");
     const movement = movementController.beginMovement({
       command,
       pointerRecord: record,
@@ -310,7 +527,10 @@ export const AutonomousOrb: React.FC<Props> = ({
       },
     });
 
-    if (!movement.ok) return false;
+    if (!movement.ok) {
+      setPointerWaltzPhase("RECOVERY");
+      return false;
+    }
 
     let activeRect = movement.targetRect;
     const targetAlreadyVisible =
@@ -325,6 +545,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       bumpWorldStateSequence();
       const refreshed = movement.refreshTarget();
       if (!refreshed) {
+        setPointerWaltzPhase("RECOVERY");
         movement.cancel("target_lost_after_scroll");
         return false;
       }
@@ -335,30 +556,36 @@ export const AutonomousOrb: React.FC<Props> = ({
     const targetCenterX = latestGoal.normalizedX * window.innerWidth;
     const targetCenterY = latestGoal.normalizedY * window.innerHeight;
     const side = targetCenterX < window.innerWidth / 2 ? 1 : -1;
-    const destination = clampPosition(
+    const guidedDestination = clampPosition(
       targetCenterX + side * Math.max(84, size * 0.62) - size / 2,
       targetCenterY - size / 2,
     );
     const current = positionRef.current;
+    const destination = options.launchMorbOnly ? current : guidedDestination;
     const distance = Math.hypot(destination.x - current.x, destination.y - current.y);
-    avoidUntilRef.current = Date.now() + 16000;
-    move.stop();
-    await move.start({
-      x: destination.x,
-      y: destination.y,
-      transition: {
-        duration: Math.max(5.5, Math.min(12, distance / 75)),
-        ease: [0.37, 0, 0.22, 1],
-      },
-    });
+    avoidUntilRef.current = Date.now() + 900;
+    if (!options.launchMorbOnly) {
+      move.stop();
+      setPointerWaltzPhase("APPROACH");
+      await move.start({
+        x: destination.x,
+        y: destination.y,
+        transition: {
+          duration: Math.max(5.5, Math.min(12, distance / 75)),
+          ease: [0.37, 0, 0.22, 1],
+        },
+      });
+    }
     positionRef.current = destination;
     if (!activeRef.current) {
+      setPointerWaltzPhase("RECOVERY");
       movement.cancel("orb_unmounted");
       return false;
     }
 
     const finalRect = movement.refreshTarget();
     if (!finalRect) {
+      setPointerWaltzPhase("RECOVERY");
       movement.cancel("target_lost_before_arrival");
       return false;
     }
@@ -366,22 +593,117 @@ export const AutonomousOrb: React.FC<Props> = ({
     const finalTargetY = finalRect.top + finalRect.height / 2;
     const orbCenterX = destination.x + size / 2;
     const orbCenterY = destination.y + size / 2;
+
+    const existingMorbCenter = morbPointer
+      ? { x: morbPointer.left + MORB_HALF, y: morbPointer.top + MORB_HALF }
+      : null;
+    const morbDistance = existingMorbCenter
+      ? Math.hypot(finalTargetX - existingMorbCenter.x, finalTargetY - existingMorbCenter.y)
+      : Number.POSITIVE_INFINITY;
+    const reuseMorb = Boolean(existingMorbCenter && !morbPointer?.dissolving && morbDistance < MORB_REUSE_DISTANCE_PX);
+
+    if (!reuseMorb && morbPointer) {
+      setPointerWaltzPhase("DISSOLVE");
+      setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "DISSOLVE", dissolving: true } : null);
+      await wait(420);
+      setMorbPointer(null);
+    }
+
+    if (reuseMorb) {
+      setPointerWaltzPhase("TRAVEL");
+      startMorbTravelSound();
+      setMorbPointer((currentMorb) => currentMorb ? {
+        ...currentMorb,
+        targetId: record.target_id,
+        role,
+        left: finalTargetX - MORB_HALF,
+        top: finalTargetY - MORB_HALF,
+        phase: "TRAVEL",
+        pinging: false,
+        dissolving: false,
+      } : null);
+    } else {
+      setPointerWaltzPhase("LAUNCH");
+      playMorbLaunchSound();
+      setMorbPointer({
+        targetId: record.target_id,
+        role,
+        left: orbCenterX - MORB_HALF,
+        top: orbCenterY - MORB_HALF,
+        visible: false,
+        pinging: false,
+        dissolving: false,
+        phase: "LAUNCH",
+      });
+      await wait(60);
+      setPointerWaltzPhase("TRAVEL");
+      startMorbTravelSound();
+      setMorbPointer((currentMorb) => currentMorb ? {
+        ...currentMorb,
+        left: finalTargetX - MORB_HALF,
+        top: finalTargetY - MORB_HALF,
+        visible: true,
+        phase: "TRAVEL",
+      } : null);
+    }
+
+    await wait(640);
+    stopMorbTravelSound();
+    setPointerWaltzPhase("ARRIVAL");
+    setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "ARRIVAL" } : null);
+    await wait(180);
+
+    const pingRect = movement.refreshTarget();
+    if (!pingRect) {
+      setPointerWaltzPhase("RECOVERY");
+      setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, dissolving: true } : null);
+      movement.cancel("target_lost_before_ping");
+      return false;
+    }
+
+    setPointerWaltzPhase("TASK_COMPLETE");
     movement.complete();
+    playPointerPing();
     setLastGuidedTarget(record.target_id);
 
     setPointerBloom({
       targetId: record.target_id,
       label: (record.meaning || record.target_type || "Guided target").replace(/^[^:]+:\s*/, ""),
-      left: Math.max(4, finalRect.left - 10),
-      top: Math.max(4, finalRect.top - 10),
-      width: finalRect.width + 20,
-      height: finalRect.height + 20,
+      left: Math.max(4, pingRect.left - 10),
+      top: Math.max(4, pingRect.top - 10),
+      width: pingRect.width + 20,
+      height: pingRect.height + 20,
       originAngle: Math.atan2(finalTargetY - orbCenterY, finalTargetX - orbCenterX) * 180 / Math.PI,
     });
+    setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "TASK_COMPLETE", pinging: true } : null);
     if (pointerTimerRef.current) window.clearTimeout(pointerTimerRef.current);
-    pointerTimerRef.current = window.setTimeout(() => setPointerBloom(null), 2600);
+    pointerTimerRef.current = window.setTimeout(() => {
+      setPointerBloom(null);
+      setPointerWaltzPhase("TASK_COMPLETE");
+    }, 2600);
+    await wait(1200);
+    setPointerWaltzPhase("DISSOLVE");
+    setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "DISSOLVE", dissolving: true } : null);
+    await wait(420);
+    setMorbPointer(null);
+    setPointerWaltzPhase("TASK_COMPLETE");
     return true;
-  }, [bumpWorldStateSequence, clampPosition, findPointerRecordForIntent, markVisitorActivity, move, size]);
+  }, [bumpWorldStateSequence, clampPosition, markVisitorActivity, morbPointer, move, playMorbLaunchSound, playPointerPing, size, startMorbTravelSound, stopMorbTravelSound]);
+
+  const guideToPointerTarget = useCallback(async (intentText: string) => {
+    const record = findPointerRecordForIntent(intentText);
+    if (!record) return false;
+    return guideToPointerRecord(record, intentText);
+  }, [findPointerRecordForIntent, guideToPointerRecord]);
+
+  const waitForPointerRecords = useCallback(async () => {
+    const startedAt = Date.now();
+    while (activeRef.current && Date.now() - startedAt < 3200) {
+      if (pointerRecordsRef.current.length > 0) return true;
+      await wait(160);
+    }
+    return pointerRecordsRef.current.length > 0;
+  }, []);
 
   const playPulse = useCallback(async (kind: PulseKind, duration: number) => {
     const visibleDuration = Math.max(duration, kind === "ripple" ? 1150 : kind === "flare" ? 1450 : 2100);
@@ -443,35 +765,6 @@ export const AutonomousOrb: React.FC<Props> = ({
     void audio.play().catch(() => undefined);
   }, []);
 
-  const playLatencyFiller = useCallback(() => {
-    if (!audioUnlockedRef.current) return;
-
-    const src = LATENCY_FILLER_PATHS[Math.floor(Math.random() * LATENCY_FILLER_PATHS.length)];
-    if (latencyAudioRef.current) {
-      latencyAudioRef.current.pause();
-      latencyAudioRef.current = null;
-    }
-
-    const audio = new Audio(src);
-    audio.volume = speakerBoostRef.current ? 1 : 0.72;
-    latencyAudioRef.current = audio;
-    audio.onended = () => {
-      if (latencyAudioRef.current === audio) {
-        latencyAudioRef.current = null;
-      }
-    };
-    audio.onerror = () => {
-      if (latencyAudioRef.current === audio) {
-        latencyAudioRef.current = null;
-      }
-    };
-    void audio.play().catch(() => {
-      if (latencyAudioRef.current === audio) {
-        latencyAudioRef.current = null;
-      }
-    });
-  }, []);
-
   const playDecodedSpeech = useCallback(async (audioUrl: string) => {
     const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextCtor) {
@@ -520,68 +813,6 @@ export const AutonomousOrb: React.FC<Props> = ({
     });
   }, []);
 
-  const playStageScreech = useCallback(() => {
-    const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextCtor) return;
-
-    const context = audioContextRef.current || new AudioContextCtor();
-    audioContextRef.current = context;
-    void context.resume?.();
-
-    const duration = 0.58;
-    const sampleRate = context.sampleRate;
-    const buffer = context.createBuffer(1, Math.floor(sampleRate * duration), sampleRate);
-    const data = buffer.getChannelData(0);
-
-    for (let index = 0; index < data.length; index += 1) {
-      const progress = index / data.length;
-      const scrape = (Math.random() * 2 - 1) * (1 - progress);
-      const squeal = Math.sin(progress * progress * 2300) * 0.34;
-      data[index] = (scrape * 0.42 + squeal) * Math.sin(progress * Math.PI);
-    }
-
-    const source = context.createBufferSource();
-    const filter = context.createBiquadFilter();
-    const gain = context.createGain();
-
-    source.buffer = buffer;
-    filter.type = "bandpass";
-    filter.frequency.setValueAtTime(920, context.currentTime);
-    filter.frequency.exponentialRampToValueAtTime(2400, context.currentTime + duration * 0.54);
-    filter.Q.value = 6.5;
-    gain.gain.setValueAtTime(0.0001, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.09, context.currentTime + 0.04);
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
-
-    source.connect(filter);
-    filter.connect(gain);
-    gain.connect(context.destination);
-    source.start();
-    source.stop(context.currentTime + duration);
-  }, []);
-
-  const playListeningAckTone = useCallback(() => {
-    const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextCtor) return;
-
-    const context = audioContextRef.current || new AudioContextCtor();
-    audioContextRef.current = context;
-    void context.resume?.();
-
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(440, context.currentTime);
-    oscillator.frequency.exponentialRampToValueAtTime(660, context.currentTime + 0.08);
-    gain.gain.setValueAtTime(0.0001, context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.06, context.currentTime + 0.025);
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.18);
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.start();
-    oscillator.stop(context.currentTime + 0.2);
-  }, []);
-
   const logVoice = useCallback((message: string, turnId: number) => {
     if (process.env.NODE_ENV !== "production") {
       console.info(`[ORB voice] ${message} ${turnId}`);
@@ -595,8 +826,9 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
   }, []);
 
-  const freezeOrbInPlace = useCallback((holdMs = 4200) => {
-    avoidUntilRef.current = Date.now() + holdMs;
+  const freezeOrbInPlace = useCallback((_holdMs = 4200) => {
+    // Listening and thinking may continue to drift. Only audible speech holds Weaver still.
+    if (!speechPlaybackRef.current) return;
     move.stop();
     presence.stop();
   }, [move, presence]);
@@ -615,6 +847,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
     setStatusLine(showTranscript ? text : "Speaking.");
     setVoiceState("speaking");
+    speechPlaybackRef.current = true;
     freezeOrbInPlace(4200);
 
     if (speechAudioRef.current) {
@@ -625,18 +858,19 @@ export const AutonomousOrb: React.FC<Props> = ({
       latencyAudioRef.current = null;
     }
 
-    if (!audioUrl) {
-      setStatusTitle("Voice unavailable");
-      setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
-      setVoiceState("idle");
-      showStatus(3600);
-      return;
-    }
-
     try {
       setStatusTitle("Voice response");
+      if (!audioUrl) {
+        speechPlaybackRef.current = false;
+        setStatusTitle("Voice unavailable");
+        setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
+        setVoiceState("idle");
+        showStatus(3600);
+        return;
+      }
       if (speakerBoostRef.current) {
         await playDecodedSpeech(audioUrl);
+        speechPlaybackRef.current = false;
         setVoiceState("idle");
         showStatus(1400);
         return;
@@ -652,6 +886,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           if (speechAudioRef.current === audio) {
             speechAudioRef.current = null;
           }
+          speechPlaybackRef.current = false;
           setVoiceState("idle");
           showStatus(1400);
           resolve();
@@ -669,6 +904,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         audio.play().catch(reject);
       });
     } catch {
+      speechPlaybackRef.current = false;
       setStatusTitle("Voice unavailable");
       setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
       setVoiceState("idle");
@@ -683,15 +919,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     showStatus();
     freezeOrbInPlace(4200);
 
-    if (audioUrl) {
-      await speak(text, audioUrl, provider);
-      return;
-    }
-
-    setStatusTitle("Voice unavailable");
-    setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
-    setVoiceState("idle");
-    showStatus(5200);
+    await speak(text, audioUrl, provider);
   }, [freezeOrbInPlace, showStatus, speak]);
 
   const speakRecovery = useCallback(async (text: string) => {
@@ -700,6 +928,41 @@ export const AutonomousOrb: React.FC<Props> = ({
     setVoiceState("idle");
     showStatus(3600);
   }, [showStatus]);
+
+  const runFirstEncounterChoreography = useCallback(async () => {
+    if (firstEncounterRunningRef.current || firstEncounterComplete() || onboardingSafeMode) return;
+    firstEncounterRunningRef.current = true;
+    try {
+      const encounterSection = document.getElementById("weaver-first-encounter");
+      if (encounterSection) {
+        encounterSection.scrollIntoView({ behavior: "smooth", block: "center" });
+        await wait(900);
+        bumpWorldStateSequence();
+      }
+
+      const hasPointerMap = await waitForPointerRecords();
+      let pointerProofComplete = false;
+      if (hasPointerMap) {
+        for (const targetId of FIRST_ENCOUNTER_TARGETS) {
+          if (!activeRef.current || recorderRef.current) return;
+          const guided = await guideToPointerTarget(targetId.replace(/_/g, " "));
+          pointerProofComplete = pointerProofComplete || guided;
+          await wait(guided ? 360 : 120);
+        }
+      }
+
+      markFirstEncounter("communication_orientation_complete");
+      if (pointerProofComplete) {
+        markFirstEncounter("orientation_pointer_proof_complete");
+      }
+
+      setStatusTitle("Ready to guide");
+      setStatusLine("Tell me what you need and I will take you there.");
+      showStatus(4200);
+    } finally {
+      firstEncounterRunningRef.current = false;
+    }
+  }, [bumpWorldStateSequence, firstEncounterComplete, guideToPointerTarget, markFirstEncounter, onboardingSafeMode, showStatus, waitForPointerRecords]);
 
   const processRecordedOrbAudio = useCallback(async (audio: Blob) => {
     markVisitorActivity();
@@ -724,8 +987,6 @@ export const AutonomousOrb: React.FC<Props> = ({
     setVoiceState("speaking");
     showStatus();
     freezeOrbInPlace(4200);
-    playLatencyFiller();
-
     try {
       logVoice("website-voice", turnId);
       const targetUrl = buildCustomerPageCapsuleUrl(activeOrbContext);
@@ -733,15 +994,28 @@ export const AutonomousOrb: React.FC<Props> = ({
         project_id: activeOrbContext?.project_id,
         target_url: targetUrl,
       });
+      const wantsPreflight = /\bpreflight\b/i.test(result.transcript);
+      const spokenOutput = wantsPreflight
+        ? "I will take you to Preflight now. Watch the verified target."
+        : result.spoken_output;
       setStatusTitle("Voice response");
-      setStatusLine(result.spoken_output);
+      setStatusLine(spokenOutput);
       if (result.tts_error && !result.tts_audio_url) {
         setStatusTitle("Voice unavailable");
         setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
       }
-      void guideToPointerTarget(`${result.transcript} ${result.spoken_output}`);
+      markFirstEncounter("visitor_first_turn_complete");
+      void guideToPointerTarget(wantsPreflight ? "show me preflight run free preflight scan" : `${result.transcript} ${result.spoken_output}`).then((guided) => {
+        if (guided) markFirstEncounter("responsive_guidance_complete");
+      });
       logVoice("playback", turnId);
-      await speakWithGeneratedAudio(result.spoken_output, result.tts_audio_url, result.tts_provider);
+      if (wantsPreflight) {
+        const tts = await api.websiteOrbTts(spokenOutput, controller.signal);
+        await speakWithGeneratedAudio(spokenOutput, tts.tts_audio_url, tts.tts_provider);
+      } else {
+        await speakWithGeneratedAudio(spokenOutput, result.tts_audio_url, result.tts_provider);
+      }
+      markFirstEncounter("controller_handoff_complete");
     } catch (error) {
       if ((error as Error)?.name === "AbortError") return;
       setStatusTitle("ORB route unavailable");
@@ -754,7 +1028,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       setVoiceState("idle");
       logVoice("finalized", turnId);
     }
-  }, [activeOrbContext, freezeOrbInPlace, guideToPointerTarget, logVoice, markVisitorActivity, playLatencyFiller, showStatus, speakRecovery, speakWithGeneratedAudio]);
+  }, [activeOrbContext, freezeOrbInPlace, guideToPointerTarget, logVoice, markFirstEncounter, markVisitorActivity, showStatus, speakRecovery, speakWithGeneratedAudio]);
 
   const stopOrbRecording = useCallback((cancel = false) => {
     if (recordingStopTimerRef.current) {
@@ -873,15 +1147,17 @@ export const AutonomousOrb: React.FC<Props> = ({
       showStatus();
       void playPulse("ripple", 1150);
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      playListeningAckTone();
-
+      const retainedStream = recordingStreamRef.current;
+      const retainedTrack = retainedStream?.getAudioTracks().find((track) => track.readyState === "live");
+      const stream = retainedStream && retainedTrack
+        ? retainedStream
+        : await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
       recordingStreamRef.current = stream;
       audioChunksRef.current = [];
       recordingCancelledRef.current = false;
@@ -936,7 +1212,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       setVoiceState("idle");
       showStatus(3600);
     }
-  }, [freezeOrbInPlace, logVoice, monitorRecordingSilence, playListeningAckTone, playPulse, processRecordedOrbAudio, showStatus, stopOrbRecording, unlockAudio, voiceState]);
+  }, [freezeOrbInPlace, logVoice, monitorRecordingSilence, playPulse, processRecordedOrbAudio, showStatus, stopOrbRecording, unlockAudio, voiceState]);
 
   const interruptOrbSpeech = useCallback(() => {
     activeVoiceAbortControllerRef.current?.abort();
@@ -982,7 +1258,8 @@ export const AutonomousOrb: React.FC<Props> = ({
           autoGainControl: true,
         },
       });
-      stream.getTracks().forEach((track) => track.stop());
+      recordingStreamRef.current = stream;
+      markFirstEncounter("voice_ready");
       return true;
     } catch {
       setStatusTitle("Microphone blocked");
@@ -990,29 +1267,63 @@ export const AutonomousOrb: React.FC<Props> = ({
       showStatus(5200);
       return false;
     }
-  }, [showStatus]);
+  }, [markFirstEncounter, showStatus]);
+
+  const prepareStartupVoice = useCallback((): StartupVoicePreparation => {
+    if (startupVoicePreparationRef.current) return startupVoicePreparationRef.current;
+
+    unlockAudio();
+    markFirstEncounter("splash_complete");
+    setStatusTitle("Opening the ORB Weaver suite");
+    setStatusLine("Preparing voice permission and guidance.");
+    showStatus();
+
+    const greeting = startupGreetingText();
+    const preparation: StartupVoicePreparation = {
+      greeting,
+      micReady: requestStartupMicrophonePermission(),
+      tts: api.websiteOrbTts(greeting).catch(() => null),
+    };
+    startupVoicePreparationRef.current = preparation;
+    return preparation;
+  }, [markFirstEncounter, requestStartupMicrophonePermission, showStatus, unlockAudio]);
 
   const runStartupVoiceSequence = useCallback(async () => {
     if (startupAutoStartedRef.current || onboardingSafeMode) return;
     startupAutoStartedRef.current = true;
-    unlockAudio();
-    const greeting = startupGreetingText();
-    const micReadyPromise = requestStartupMicrophonePermission();
+    const preparation = prepareStartupVoice();
+    const micReady = await preparation.micReady;
+    setGreetingActive(true);
     try {
-      const tts = await api.websiteOrbTts(greeting);
-      await speak(greeting, tts.tts_audio_url, tts.tts_provider);
+      const tts = await preparation.tts;
+      if (!tts?.tts_audio_url) throw new Error("Startup voice synthesis failed");
+      const spokenGreeting = speak(preparation.greeting, tts.tts_audio_url, tts.tts_provider);
+      void guideToPointerRecord(SUITE_LOGO_POINTER_RECORD, "ORB Weaver suite", { launchMorbOnly: true });
+      await spokenGreeting;
+      markFirstEncounter("entrance_complete");
     } catch {
-      speakRecovery(greeting);
+      await speakRecovery(preparation.greeting);
+      markFirstEncounter("entrance_complete");
+    } finally {
+      setGreetingActive(false);
     }
 
-    const micReady = await micReadyPromise;
+    await runFirstEncounterChoreography();
     if (micReady && activeRef.current) {
+      handsFreeEnabledRef.current = true;
       window.setTimeout(() => {
         if (!activeRef.current || voiceRequestInFlightRef.current) return;
         void startOrbRecording();
       }, 420);
     }
-  }, [onboardingSafeMode, requestStartupMicrophonePermission, speak, speakRecovery, startOrbRecording, unlockAudio]);
+  }, [guideToPointerRecord, markFirstEncounter, onboardingSafeMode, prepareStartupVoice, runFirstEncounterChoreography, setGreetingActive, speak, speakRecovery, startOrbRecording]);
+
+  // Keep the autonomous loop mounted. Voice state changes are frequent and must not replay
+  // the entrance sequence or reset Weaver's position.
+  useEffect(() => {
+    prepareStartupVoiceRef.current = prepareStartupVoice;
+    runStartupVoiceSequenceRef.current = runStartupVoiceSequence;
+  }, [prepareStartupVoice, runStartupVoiceSequence]);
 
   const handleOrbClick = useCallback(() => {
     markVisitorActivity();
@@ -1043,6 +1354,12 @@ export const AutonomousOrb: React.FC<Props> = ({
     if (latencyAudioRef.current) {
       latencyAudioRef.current.volume = next ? 1 : 0.72;
     }
+    if (pointerPingAudioRef.current) {
+      pointerPingAudioRef.current.volume = next ? 1 : 0.86;
+    }
+    if (morbTravelAudioRef.current) {
+      morbTravelAudioRef.current.volume = next ? 0.72 : 0.54;
+    }
     unlockAudio();
   }, [markVisitorActivity, showStatus, unlockAudio]);
 
@@ -1053,6 +1370,19 @@ export const AutonomousOrb: React.FC<Props> = ({
       movementControllerRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (!handsFreeEnabledRef.current || voiceState !== "idle" || onboardingSafeMode) return;
+    if (voiceRequestInFlightRef.current || recorderRef.current || firstEncounterRunningRef.current) return;
+    if (!firstEncounterStateRef.current.voice_ready) return;
+
+    const rearmTimer = window.setTimeout(() => {
+      if (!activeRef.current || voiceRequestInFlightRef.current || recorderRef.current) return;
+      void startOrbRecording();
+    }, 720);
+
+    return () => window.clearTimeout(rearmTimer);
+  }, [onboardingSafeMode, startOrbRecording, voiceState]);
 
   useEffect(() => {
     const activityHandler = () => markVisitorActivity();
@@ -1172,39 +1502,33 @@ export const AutonomousOrb: React.FC<Props> = ({
     move.set(start);
 
     const run = async () => {
+      prepareStartupVoiceRef.current();
+
       if (reducedMotionRef.current) {
         surge.set({ scale: 1, opacity: 1 });
+        setPulse({ id: Date.now(), kind: "intro" });
+        void runStartupVoiceSequenceRef.current();
         return;
       }
 
-      const introAlreadyPlayed =
-        window.sessionStorage.getItem("orbweaver-intro-played") === "1";
+      surge.set({ scale: 0.26, opacity: 0, x: window.innerWidth * 0.42, rotate: 10 });
+      setPulse({ id: Date.now(), kind: "intro" });
+      await surge.start({
+        x: [window.innerWidth * 0.42, -28, 10, 0],
+        scale: [0.26, 1.78, 0.88, 1.04, 1],
+        opacity: [0, 1, 1, 1, 1],
+        rotate: [10, -6, 3, 0],
+        transition: {
+          duration: 2.65,
+          ease: [0.15, 0.9, 0.18, 1],
+          times: [0, 0.54, 0.74, 0.9, 1],
+        },
+      });
 
-      if (!introAlreadyPlayed) {
-        surge.set({ scale: 0.26, opacity: 0, x: window.innerWidth * 0.42, rotate: 10 });
-        setPulse({ id: Date.now(), kind: "intro" });
-        playStageScreech();
+      if (!activeRef.current) return;
 
-        await surge.start({
-          x: [window.innerWidth * 0.42, -28, 10, 0],
-          scale: [0.26, 1.78, 0.88, 1.04, 1],
-          opacity: [0, 1, 1, 1, 1],
-          rotate: [10, -6, 3, 0],
-          transition: {
-            duration: 2.65,
-            ease: [0.15, 0.9, 0.18, 1],
-            times: [0, 0.54, 0.74, 0.9, 1],
-          },
-        });
-
-        if (!activeRef.current) return;
-
-        window.sessionStorage.setItem("orbweaver-intro-played", "1");
-        setPulse(null);
-        void runStartupVoiceSequence();
-      } else {
-        surge.set({ scale: 1, opacity: 1, x: 0, rotate: 0 });
-      }
+      setPulse(null);
+      void runStartupVoiceSequenceRef.current();
 
       glow.start({
         opacity: [0.62, 0.96, 0.58, 0.88, 0.62],
@@ -1222,7 +1546,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         const inactiveForMs = Date.now() - lastActivityAtRef.current;
         const shouldEnterRest =
           inactiveForMs >= REST_AFTER_INACTIVITY_MS &&
-          voiceState === "idle" &&
+          !speechPlaybackRef.current &&
           !recorderRef.current;
 
         if (shouldEnterRest) {
@@ -1247,6 +1571,11 @@ export const AutonomousOrb: React.FC<Props> = ({
         if (restModeRef.current) {
           restModeRef.current = false;
           setIsResting(false);
+        }
+
+        if (speechPlaybackRef.current) {
+          await wait(160);
+          continue;
         }
 
         if (Date.now() < avoidUntilRef.current) {
@@ -1305,12 +1634,14 @@ export const AutonomousOrb: React.FC<Props> = ({
       }
       window.removeEventListener("resize", handleResize);
     };
-  }, [clampPosition, glow, move, nextDestination, playLocalPresence, playStageScreech, presence, runStartupVoiceSequence, size, stopRecordingMonitor, surge, upperRightRestDestination, voiceState]);
+  }, [clampPosition, glow, move, nextDestination, playLocalPresence, presence, size, stopRecordingMonitor, surge, upperRightRestDestination]);
 
   // Voice resources are cancelled only when this ORB component unmounts.
   useEffect(() => {
     return () => {
       speechAudioRef.current?.pause();
+      pointerPingAudioRef.current?.pause();
+      stopMorbTravelSound();
 
       if (statusTimerRef.current) {
         window.clearTimeout(statusTimerRef.current);
@@ -1367,6 +1698,21 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   return (
     <>
+    {morbPointer && (
+      <div
+        className={`ow-v2-morb-pointer ${morbPointer.visible ? "visible" : ""} ${morbPointer.pinging ? "pinging" : ""} ${morbPointer.dissolving ? "dissolving" : ""}`}
+        data-orb-morb-target={morbPointer.targetId}
+        data-orb-morb-role={morbPointer.role}
+        data-orb-pointer-state={pointerWaltzPhase || undefined}
+        aria-hidden="true"
+        style={{
+          left: morbPointer.left,
+          top: morbPointer.top,
+          ...morbStyleVars(morbPointer.role),
+        }}
+        data-orb-pointer-phase={morbPointer.phase}
+      />
+    )}
     {pointerBloom && (
       <div
         className="ow-v2-pointer-bloom"
@@ -1384,7 +1730,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     )}
     <motion.div
       animate={move}
-      className={`ow-v2-orb-position ${pointerBloom ? "is-pointing" : ""} ${onboardingSafeMode ? "onboarding-safe-mode" : ""} ${className}`}
+      className={`ow-v2-orb-position ${pointerBloom ? "is-pointing" : ""} ${greetingActive ? "is-greeting" : ""} ${morbPointer ? "has-deployed-morb" : ""} ${onboardingSafeMode ? "onboarding-safe-mode" : ""} ${className}`}
       data-orb-last-guided-target={lastGuidedTarget || undefined}
       style={{
         position: "fixed",
@@ -1398,6 +1744,11 @@ export const AutonomousOrb: React.FC<Props> = ({
         "--ow-pointer-angle": `${pointerBloom?.originAngle || 0}deg`,
       } as React.CSSProperties}
     >
+      <div className="ow-v2-morb-orbit" aria-hidden="true">
+        <span className="ow-v2-morb-orbit-dot ow-v2-morb-orbit-dot-one" />
+        <span className="ow-v2-morb-orbit-dot ow-v2-morb-orbit-dot-two" />
+        <span className="ow-v2-morb-orbit-dot ow-v2-morb-orbit-dot-three" />
+      </div>
       {pulse && (
         <div className="ow-v2-local-pulse" key={pulse.id}>
           <motion.div
