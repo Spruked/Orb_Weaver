@@ -21,9 +21,20 @@ ENV PYTHONUNBUFFERED=1
 ENV ORB_WEAVER_VAULT_ROOT=/app/vault_system
 ENV ORB_WEAVER_SUBSTRATE_ROOT=/app/vault_system
 ENV DATABASE_URL=sqlite:////app/vault_system/databases/orb_weaver.db
-ENV LOCAL_LLM_URL=http://host.docker.internal:11434/api/generate
-ENV LOCAL_LLM_MODEL=qwen2.5:3b
+ENV LOCAL_LLM_URL=http://127.0.0.1:16520/api/generate
+ENV LOCAL_LLM_MODEL=orb-auto
 ENV LOCAL_LLM_TIMEOUT_SECONDS=60
+ENV ORB_INFERENCE_GATEWAY_HOST=127.0.0.1
+ENV ORB_INFERENCE_GATEWAY_PORT=16520
+ENV ORB_INFERENCE_DEFAULT_LANE=universal
+ENV LLAMACPP_BASE_URL=http://host.docker.internal:8080/v1
+ENV LLAMACPP_MODEL=auto
+ENV APHRODITE_BASE_URL=http://host.docker.internal:2242/v1
+ENV APHRODITE_MODEL=auto
+ENV TENSORRT_LLM_BASE_URL=http://host.docker.internal:8000/v1
+ENV TENSORRT_LLM_MODEL=auto
+ENV OLLAMA_BASE_URL=http://host.docker.internal:11434
+ENV OLLAMA_MODEL=qwen2.5:1.5b
 ENV PUBLIC_BASE_URL=http://127.0.0.1:16510
 
 WORKDIR /app
@@ -96,6 +107,7 @@ RUN chmod +x /usr/local/bin/start-orb-weaver \
         /app/vault_system/schemas \
         /app/vault_system/runtime/tts_cache \
         /app/vault_system/runtime/browser_reviews \
+        /app/vault_system/runtime/inference_gateway \
         /app/vault_system/runtime/state \
         /app/vault_system/runtime/logs \
         /run/nginx
