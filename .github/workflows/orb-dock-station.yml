@@ -5,15 +5,19 @@ on:
     paths:
       - 'Orb_Assistant/user_dock_station/**'
       - 'frontend/src/index.tsx'
+      - 'frontend/src/orb-client/**'
       - 'frontend/src/landing/orbArrivalAudioPolicy.ts'
       - 'frontend/src/landing/orbVoiceOnly.css'
+      - 'frontend/scripts/orb-pointer-e2e-proof.js'
       - '.github/workflows/orb-dock-station.yml'
   pull_request:
     paths:
       - 'Orb_Assistant/user_dock_station/**'
       - 'frontend/src/index.tsx'
+      - 'frontend/src/orb-client/**'
       - 'frontend/src/landing/orbArrivalAudioPolicy.ts'
       - 'frontend/src/landing/orbVoiceOnly.css'
+      - 'frontend/scripts/orb-pointer-e2e-proof.js'
       - '.github/workflows/orb-dock-station.yml'
 
 permissions:
@@ -59,3 +63,35 @@ jobs:
       - name: Type-check warm voice-only ORB startup
         working-directory: frontend
         run: npm run typecheck
+
+  website-orb-pointer-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Build current Website ORB loader
+        working-directory: frontend
+        run: npm run build:orb-loader
+      - name: Prove question-to-Point/Ping browser guidance
+        working-directory: frontend
+        run: node scripts/orb-pointer-e2e-proof.js
+      - name: Preserve visual proof
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orb-pointer-e2e-proof
+          path: frontend/test-artifacts/orb-pointer-e2e-proof.png
+          if-no-files-found: error

@@ -93,6 +93,31 @@ def assess_pointer_quality(
     }
 
 
+def pointer_guidance_eligible(record: Dict[str, Any]) -> bool:
+    """Return True only when this exact active target has explicit point authority."""
+    if not isinstance(record, dict):
+        return False
+    if record.get("status") not in (None, "active"):
+        return False
+    if str(record.get("confidence_class") or "") not in {"VERIFIED", "STABLE"}:
+        return False
+    if (record.get("runtime_policy") or {}).get("may_point") is not True:
+        return False
+    if str(record.get("pointer_health") or "") in {"OWNER_REJECTED", "DEPRECATED", "REMOVED"}:
+        return False
+    if record.get("finding_subreason") == "owner_rejected_pointer_identity":
+        return False
+    return True
+
+
+def guidance_eligible_pointer_count(pointer_map: Dict[str, Any]) -> int:
+    return sum(
+        1
+        for record in pointer_map.get("records") or []
+        if pointer_guidance_eligible(record)
+    )
+
+
 def classify_uncertainty(record: Dict[str, Any], peers: Iterable[Dict[str, Any]] = ()) -> List[str]:
     reasons: List[str] = []
     evidence = record.get("confidence_evidence") or {}
@@ -384,17 +409,22 @@ def reject_owner_pointer(
         }
         record["finding_class"] = "BLOCKED"
         record["finding_subreason"] = "owner_rejected_pointer_identity"
+        authority = {
+            "state": "OWNER_REJECTED",
+            "reviewer": reviewer,
+            "signature_hash": signature_hash,
+            "decided_at": timestamp,
+            "notes": notes,
+            "identity_hash": _pointer_identity_hash(record),
+        }
+        record["owner_authority"] = authority
         record["authority_history"] = [
             *(record.get("authority_history") or []),
             {
                 "event": "owner_rejected",
                 "from": prior_health,
                 "to": "OWNER_REJECTED",
-                "reviewer": reviewer,
-                "signature_hash": signature_hash,
-                "decided_at": timestamp,
-                "notes": notes,
-                "identity_hash": _pointer_identity_hash(record),
+                **authority,
             },
         ]
         rejected = True

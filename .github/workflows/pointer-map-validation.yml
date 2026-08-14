@@ -4,11 +4,15 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - "backend/main.py"
+      - "backend/app/core/storage.py"
       - "backend/app/orb/pointer_map_optimizer.py"
       - "backend/app/orb/pointer_recovery_integration.py"
       - "backend/app/orb/__init__.py"
       - "backend/app/orb/pointer_recovery.py"
       - "backend/app/orb/pointer_plot.py"
+      - "backend/tests/test_lifecycle_api.py"
+      - "backend/tests/test_orb_loader_runtime.py"
       - "backend/tests/test_pointer_map_optimizer.py"
       - "backend/tests/test_pointer_recovery.py"
       - "backend/tests/test_pointer_recovery_integration.py"
@@ -37,18 +41,25 @@ jobs:
       - name: Install backend dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r backend/requirements.txt
 
-      - name: Compile changed Python modules
+      - name: Compile pointer and lifecycle modules
         run: |
           python -m py_compile \
+            backend/main.py \
+            backend/app/orb/pointer_recovery.py \
             backend/app/orb/pointer_map_optimizer.py \
             backend/app/orb/pointer_recovery_integration.py \
             scripts/validate_pointer_plot_map.py
 
-      - name: Run pointer-map tests
+      - name: Run pointer authority and map regressions
         env:
           PYTHONPATH: backend
         run: |
           python -m pytest -q \
             backend/tests/test_pointer_map_optimizer.py \
             backend/tests/test_pointer_recovery.py \
-            backend/tests/test_pointer_recovery_integration.py
+            backend/tests/test_pointer_recovery_integration.py \
+            backend/tests/test_lifecycle_api.py::test_owner_pointer_authority_is_signed_and_persisted_in_canonical_vault \
+            backend/tests/test_lifecycle_api.py::test_ordinary_crawl_preserves_owner_approval_and_rejection_everywhere \
+            backend/tests/test_orb_loader_runtime.py::test_bootstrap_blocks_unverified_pointer_context \
+            backend/tests/test_orb_loader_runtime.py::test_bootstrap_exposes_verified_target_guidance_while_deployment_recovery_remains \
+            backend/tests/test_orb_loader_runtime.py::test_scan_assembly_does_not_call_global_recovery_orb_ready

@@ -173,11 +173,19 @@ def test_owner_pointer_authority_is_signed_and_persisted_in_canonical_vault(tmp_
     }), encoding="utf-8")
 
     with main.SessionLocal() as db:
+        crawl = main.CrawlJob(
+            project_id=project_id,
+            status="completed",
+            config={"scan_stage_execution": {}},
+        )
+        db.add(crawl)
+        db.flush()
         job = main.LifecycleJob(
             project_id=project_id,
             job_type="POINTER_RECOVERY",
             status="REVIEW_REQUIRED",
             phase="awaiting_pointer_visual_review",
+            result={"crawl_job_id": str(crawl.id)},
         )
         db.add(job)
         db.flush()
@@ -190,6 +198,7 @@ def test_owner_pointer_authority_is_signed_and_persisted_in_canonical_vault(tmp_
         ))
         db.commit()
         job_id = job.id
+        crawl_id = crawl.id
 
     denied = client.post(
         f"/api/lifecycle-jobs/{job_id}/pointers/book-consult/authority",
@@ -216,6 +225,13 @@ def test_owner_pointer_authority_is_signed_and_persisted_in_canonical_vault(tmp_
     assert canonical["records"][0]["pointer_health"] == "OWNER_VERIFIED"
     assert authority["decisions"][0]["target_id"] == "book-consult"
     assert authority["decisions"][0]["signature_hash"] == payload["signature_hash"]
+
+    with main.SessionLocal() as db:
+        baseline = db.get(main.CrawlJob, crawl_id)
+        execution = (baseline.config or {})["scan_stage_execution"]
+        assert execution["runtime_guidance"]["status"] == "COMPLETE"
+        assert execution["runtime_guidance"]["output_count"] == 1
+        assert (baseline.config or {})["verified_pointer_quality"]["recovery_required"] is True
 
 
 def test_site_scan_requires_an_approved_map(tmp_path, monkeypatch):
@@ -509,7 +525,7 @@ def test_ordinary_crawl_preserves_owner_approval_and_rejection_everywhere(tmp_pa
         signature_hash="signed-rejection",
     )
 
-    root = tmp_path / "client"
+    root = main.client_root("authority.test")
     for directory in (
         "current",
         "history",
