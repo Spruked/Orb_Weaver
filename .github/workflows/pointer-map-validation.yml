@@ -12,6 +12,7 @@ on:
       - "backend/app/orb/pointer_recovery.py"
       - "backend/app/orb/pointer_plot.py"
       - "backend/tests/test_lifecycle_api.py"
+      - "backend/tests/test_orb_loader_runtime.py"
       - "backend/tests/test_pointer_map_optimizer.py"
       - "backend/tests/test_pointer_recovery.py"
       - "backend/tests/test_pointer_recovery_integration.py"
@@ -57,4 +58,8 @@ jobs:
             backend/tests/test_pointer_map_optimizer.py \
             backend/tests/test_pointer_recovery.py \
             backend/tests/test_pointer_recovery_integration.py \
-            backend/tests/test_lifecycle_api.py::test_ordinary_crawl_preserves_owner_approval_and_rejection_everywhere
+            backend/tests/test_lifecycle_api.py::test_owner_pointer_authority_is_signed_and_persisted_in_canonical_vault \
+            backend/tests/test_lifecycle_api.py::test_ordinary_crawl_preserves_owner_approval_and_rejection_everywhere \
+            backend/tests/test_orb_loader_runtime.py::test_bootstrap_blocks_unverified_pointer_context \
+            backend/tests/test_orb_loader_runtime.py::test_bootstrap_exposes_verified_target_guidance_while_deployment_recovery_remains \
+            backend/tests/test_orb_loader_runtime.py::test_scan_assembly_does_not_call_global_recovery_orb_ready
