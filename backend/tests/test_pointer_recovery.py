@@ -155,6 +155,9 @@ def test_owner_rejected_pointer_is_retained_but_excluded_from_runtime_quality():
     )
 
     quality = rejected["quality"]
+    rejected_pointer = next(item for item in rejected["records"] if item["target_id"] == "unsafe")
+    assert rejected_pointer["owner_authority"]["state"] == "OWNER_REJECTED"
+    assert rejected_pointer["owner_authority"]["signature_hash"] == "signed-rejection"
     assert len(rejected["records"]) == 11
     assert quality["total_record_count"] == 11
     assert quality["record_count"] == 10
@@ -211,6 +214,8 @@ def test_rescan_retains_exact_owner_rejection_and_keeps_it_excluded():
     assert pointer["finding_class"] == "BLOCKED"
     assert pointer["finding_subreason"] == "owner_rejected_pointer_identity"
     assert pointer["runtime_policy"]["may_point"] is False
+    assert pointer["owner_authority"]["state"] == "OWNER_REJECTED"
+    assert pointer["owner_authority"]["signature_hash"] == "signed-rejection"
     assert retained["quality"]["excluded_count"] == 1
     assert retained["authority_reconciliation"]["previous_owner_rejected_count"] == 1
     assert retained["authority_reconciliation"]["retained_rejected_count"] == 1

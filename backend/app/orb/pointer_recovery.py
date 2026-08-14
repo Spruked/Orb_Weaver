@@ -384,17 +384,22 @@ def reject_owner_pointer(
         }
         record["finding_class"] = "BLOCKED"
         record["finding_subreason"] = "owner_rejected_pointer_identity"
+        authority = {
+            "state": "OWNER_REJECTED",
+            "reviewer": reviewer,
+            "signature_hash": signature_hash,
+            "decided_at": timestamp,
+            "notes": notes,
+            "identity_hash": _pointer_identity_hash(record),
+        }
+        record["owner_authority"] = authority
         record["authority_history"] = [
             *(record.get("authority_history") or []),
             {
                 "event": "owner_rejected",
                 "from": prior_health,
                 "to": "OWNER_REJECTED",
-                "reviewer": reviewer,
-                "signature_hash": signature_hash,
-                "decided_at": timestamp,
-                "notes": notes,
-                "identity_hash": _pointer_identity_hash(record),
+                **authority,
             },
         ]
         rejected = True

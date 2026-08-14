@@ -4944,8 +4944,6 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
         payload = _client_crawl_pack(project, crawl_job, pages, db)
         latest_path = root / "current" / "latest_crawl.json"
         history_path = root / "history" / f"crawl_{crawl_job.id}.json"
-        _write_json(latest_path, payload)
-        _write_json(history_path, payload)
         pointer_path = root / "website_orb_context" / "pointer_plot_map.json"
         existing_pointer_map = _load_json_if_present(pointer_path) or {}
         new_pointer_map = payload["pointer_plot_map"]
@@ -4957,12 +4955,18 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
         elif int(existing_pointer_map.get("record_count") or 0) == 0:
             _write_json(pointer_path, new_pointer_map)
         else:
+            payload["pointer_plot_map"] = existing_pointer_map
             payload["website_orb_context"]["pointer_plot_map"] = existing_pointer_map
             payload["website_orb_context"]["pointer_map_preservation"] = {
                 "status": "preserved_previous_verified_map",
                 "rejected_crawl_id": str(crawl_job.id),
                 "reason": "new_crawl_produced_zero_pointer_records",
             }
+        # Persist crawl-facing artifacts only after canonical pointer authority has
+        # been reconciled so current/history/context cannot disagree about the
+        # authority state published by this crawl.
+        _write_json(latest_path, payload)
+        _write_json(history_path, payload)
         _write_json(root / "website_orb_context" / "latest_context.json", payload["website_orb_context"])
         for key, filename in (
             ("lexical_index", "lexical_index.json"),
