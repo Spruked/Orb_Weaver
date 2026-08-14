@@ -84,7 +84,9 @@ def test_bootstrap_blocks_unverified_pointer_context(tmp_path, monkeypatch):
     assert payload["pointer_map"]["record_count"] > 0
     assert payload["pointer_map"]["quality"]["status"] == "POINTER_RECOVERY_REQUIRED"
     assert payload["pointer_guidance"]["status"] == "NOT_STARTED"
+    assert payload["pointer_guidance"]["target_guidance_available"] is False
     assert payload["pointer_guidance"]["safe_pointer_count"] == 1
+    assert payload["pointer_guidance"]["map_recovery_required"] is True
     assert payload["deployment_preflight"] == {
         "passed": False,
         "blockers": ["POINTER_RECOVERY_REQUIRED", "RUNTIME_GUIDANCE_NOT_PROVEN"],
@@ -348,3 +350,43 @@ def test_website_orb_text_response_includes_cco_runtime_trace(tmp_path, monkeypa
     assert trace["articulation"]["llm_source"] == "orb-runtime-context"
     assert trace["write_back"]["posteriori_recorded"] is True
     assert trace["write_back"]["learning_record_id"] == payload["learning_record_id"]
+
+
+def test_bootstrap_exposes_verified_target_guidance_while_deployment_recovery_remains(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    context_path = main.client_root("campaign.orbweaver.spruked.com") / "website_orb_context" / "latest_context.json"
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    context["scan_stage_execution"] = {"runtime_guidance": {"status": "COMPLETE", "output_count": 1}}
+    context_path.write_text(json.dumps(context), encoding="utf-8")
+    response = client.post(
+        "/api/orb/bootstrap",
+        headers={"Origin": "https://demo.openai.chatgpt.site"},
+        json={"site_id": "orb-weaver-campaign", "target_url": "https://demo.openai.chatgpt.site/", "loader_version": "1", "page_context": page_context()},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["status"] == "awaiting_scan"
+    assert payload["pointer_guidance"]["status"] == "COMPLETE"
+    assert payload["pointer_guidance"]["target_guidance_available"] is True
+    assert payload["pointer_guidance"]["safe_pointer_count"] == 1
+    assert payload["pointer_guidance"]["map_recovery_required"] is True
+    assert payload["deployment_preflight"] == {"passed": False, "blockers": ["POINTER_RECOVERY_REQUIRED"]}
+
+
+def test_scan_assembly_does_not_call_global_recovery_orb_ready(tmp_path, monkeypatch):
+    main, _client = load_app(tmp_path, monkeypatch)
+    required_stage_ids = {
+        "url_discovery", "crawl_control", "page_fetch", "javascript_rendering", "page_content_scan",
+        "content_structure_extraction", "schema_extraction", "mobile_ux_analysis", "semantic_indexing",
+        "lexical_indexing", "entity_extraction", "relationship_mapping", "pointer_mapping",
+        "route_classification", "knowledge_chunking", "retrieval_index_build", "source_validation",
+        "pointer_verification", "pointer_recovery", "runtime_guidance",
+    }
+    crawl = main.CrawlJob(id=9001, status="completed", config={"scan_stage_execution": {stage: {"status": "COMPLETE"} for stage in required_stage_ids}})
+    page = main.CrawledPage(url="https://campaign.orbweaver.spruked.com/", semantic_analysis={"pointer_plot_records": [{
+        "target_id": "only-safe-target", "page_route": "/", "target_type": "button", "meaning": "button: Start",
+        "semantic_locator": "#start", "content_fingerprint": "start", "allowed_actions": ["point"],
+        "confidence": 0.95, "confidence_class": "STABLE", "runtime_policy": {"may_point": True},
+    }]})
+    result = main._scan_assembly_status(crawl, [page], {})
+    assert result["overall_status"] == "analysis_complete"

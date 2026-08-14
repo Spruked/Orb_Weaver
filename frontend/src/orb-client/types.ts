@@ -51,7 +51,7 @@ export interface OrbPointerRecord {
   structural_context?: { tag?: string; parent_locator?: string; [key: string]: unknown };
   finding_class?: 'CONFIRMED' | 'TRANSIENT' | 'DYNAMIC' | 'CONFLICT' | 'UNVERIFIED' | 'PASSED';
   finding_subreason?: string;
-  pointer_health?: 'NEW' | 'VERIFIED' | 'RECOVERED' | 'OWNER_VERIFIED' | 'DEPRECATED' | 'REMOVED';
+  pointer_health?: 'NEW' | 'VERIFIED' | 'RECOVERED' | 'OWNER_VERIFIED' | 'OWNER_REJECTED' | 'DEPRECATED' | 'REMOVED';
 }
 
 export interface OrbBootstrapResponse {
@@ -61,7 +61,7 @@ export interface OrbBootstrapResponse {
   site_world: Record<string, unknown>;
   page_capsule: Record<string, unknown>;
   pointer_map: { record_count: number; records: OrbPointerRecord[]; by_page: Record<string, string[]>; quality?: Record<string, unknown>; recovery?: Record<string, unknown> };
-  pointer_guidance?: { status: 'ready' | 'recovery_required'; safe_pointer_count: number; blocked_pointer_count: number; automatic_recovery_attempts_maximum: number };
+  pointer_guidance?: { status: string; target_guidance_available: boolean; safe_pointer_count: number; blocked_pointer_count: number; map_recovery_required: boolean; automatic_recovery_attempts_maximum: number };
   deployment_preflight?: { passed: boolean; blockers: string[] };
   orb_identity?: {
     skin_id: string;

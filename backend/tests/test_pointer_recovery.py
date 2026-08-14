@@ -1,7 +1,9 @@
 from app.orb.pointer_recovery import (
     _candidate_matches_record,
     assess_pointer_quality,
+    guidance_eligible_pointer_count,
     merge_canonical_pointer_authority,
+    pointer_guidance_eligible,
     promote_owner_verified_pointer,
     reject_owner_pointer,
     reconcile_pointer_recovery,
@@ -220,3 +222,19 @@ def test_rescan_retains_exact_owner_rejection_and_keeps_it_excluded():
     assert retained["authority_reconciliation"]["previous_owner_rejected_count"] == 1
     assert retained["authority_reconciliation"]["retained_rejected_count"] == 1
     assert retained["authority_reconciliation"]["demoted_count"] == 0
+
+
+def test_guidance_requires_explicit_target_permission_and_safe_state():
+    explicit = record("explicit", "STABLE", "#explicit")
+    assert pointer_guidance_eligible(explicit) is True
+    missing_permission = record("missing", "STABLE", "#missing")
+    missing_permission["runtime_policy"] = {}
+    assert pointer_guidance_eligible(missing_permission) is False
+    uncertain = record("uncertain-guidance", "UNCERTAIN", "#uncertain")
+    uncertain["runtime_policy"] = {"may_point": True}
+    assert pointer_guidance_eligible(uncertain) is False
+    rejected = record("rejected-guidance", "STABLE", "#rejected")
+    rejected["pointer_health"] = "OWNER_REJECTED"
+    rejected["finding_subreason"] = "owner_rejected_pointer_identity"
+    assert pointer_guidance_eligible(rejected) is False
+    assert guidance_eligible_pointer_count({"records": [explicit, missing_permission, uncertain, rejected]}) == 1

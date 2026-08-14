@@ -131,7 +131,8 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
   ].map(normalize).filter((value) => value.length >= 2);
   const mayPoint = (record: OrbPointerRecord) => {
     if (record.confidence_class === 'UNCERTAIN' || record.confidence_class === 'BLOCKED') return false;
-    if (record.runtime_policy?.may_point === false) return false;
+    if (record.runtime_policy?.may_point !== true) return false;
+    if (record.pointer_health === 'OWNER_REJECTED' || record.pointer_health === 'DEPRECATED' || record.pointer_health === 'REMOVED') return false;
     return record.confidence_class === 'VERIFIED' || record.confidence_class === 'STABLE';
   };
   const pointRecord = (record: OrbPointerRecord) => {
@@ -257,14 +258,21 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
         restoreFactory();
       }
       const ready = response.status === 'ready';
-      const recoveringPointers = response.pointer_guidance?.status === 'recovery_required';
-      setStatus(ready ? 'online' : 'pending', ready ? (recoveringPointers ? 'Connected · pointer recovery' : 'Connected') : 'Connected · scan pending');
+      const recoveringPointers = response.pointer_guidance?.map_recovery_required === true;
+      const targetGuidanceAvailable = response.pointer_guidance?.target_guidance_available === true;
+      setStatus(
+        ready ? 'online' : 'pending',
+        ready ? (recoveringPointers ? 'Connected · pointer recovery' : 'Connected')
+          : targetGuidanceAvailable ? 'Connected · verified guidance' : 'Connected · scan pending',
+      );
       const name = String(response.site_world.site_name || response.site_world.brand || response.site.name || 'this site');
       setMessage(ready
         ? recoveringPointers
           ? 'I am connected to ' + name + '. I can answer questions while the pointer map completes recovery; only verified guidance is enabled.'
           : 'I am connected to ' + name + ' and ready to guide you.'
-        : 'The loader is connected. This published site still needs its first Orb Weaver scan.');
+        : targetGuidanceAvailable
+          ? 'I am connected to ' + name + '. Verified target guidance is available while broader pointer coverage remains under review.'
+          : 'The loader is connected. This published site still needs verified Orb Weaver guidance evidence.');
       log('Runtime connected', {
         status: response.status,
         pointerGuidance: response.pointer_guidance?.status,

@@ -59,7 +59,9 @@ from app.orb.pointer_intent import resolve_pointer_intent
 from app.orb.pointer_plot import pointer_plot_map_from_pages, pointer_runtime_policy
 from app.orb.pointer_recovery import (
     assess_pointer_quality,
+    guidance_eligible_pointer_count,
     merge_canonical_pointer_authority,
+    pointer_guidance_eligible,
     publish_recovered_pointer_map,
     promote_owner_verified_pointer,
     reconcile_pointer_recovery,
@@ -4166,10 +4168,7 @@ def _pointer_summary(record: Dict[str, Any], score: float = 0.0) -> Dict[str, An
         "confidence": record.get("confidence"),
         "confidence_class": record.get("confidence_class"),
         "pointer_health": record.get("pointer_health"),
-        "guidance_eligible": (
-            record.get("confidence_class") in {"VERIFIED", "STABLE"}
-            and (record.get("runtime_policy") or {}).get("may_point") is not False
-        ),
+        "guidance_eligible": pointer_guidance_eligible(record),
         "match_score": round(score, 3),
     }
 
@@ -5361,7 +5360,11 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
         "retrieval_index_build", "source_validation", "pointer_verification", "pointer_recovery",
         "runtime_guidance",
     }
-    orb_ready = complete and all(stage_status(stage_id) == "COMPLETE" for stage_id in required_stage_ids)
+    orb_ready = (
+        complete
+        and all(stage_status(stage_id) == "COMPLETE" for stage_id in required_stage_ids)
+        and not recovery_required
+    )
 
     return {
         "schema": "orb_weaver.scan_assembly_status.v1",
@@ -5461,12 +5464,7 @@ def _pointer_summary_from_pages(pages: List[CrawledPage]) -> Dict:
     pointer_map = pointer_plot_map_from_pages(pages)
     quality = assess_pointer_quality(pointer_map)
     recovery_required = bool(quality.get("recovery_required"))
-    guidance_eligible = sum(
-        1
-        for record in records
-        if record.get("confidence_class") in {"VERIFIED", "STABLE"}
-        and (record.get("runtime_policy") or {}).get("may_point") is not False
-    )
+    guidance_eligible = sum(1 for record in records if pointer_guidance_eligible(record))
     return {
         "schema": "orb_weaver.pointer_summary.v1",
         "record_count": len(records),
@@ -6744,12 +6742,7 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
                 completed_at = datetime.utcnow().isoformat()
                 pointer_input_count = int(baseline_pointer_map.get("record_count") or 0)
                 unresolved_count = int(recovery_summary.get("unresolved_count") or 0)
-                guidance_count = sum(
-                    1
-                    for record in recovered_map.get("records") or []
-                    if str(record.get("confidence_class") or "") in {"VERIFIED", "STABLE"}
-                    and (record.get("runtime_policy") or {}).get("may_point") is not False
-                )
+                guidance_count = guidance_eligible_pointer_count(recovered_map)
                 guidance_complete = unresolved_count == 0 and guidance_count > 0 and not promoted_for_owner_review
                 execution.update({
                     "pointer_verification": {
@@ -7760,6 +7753,8 @@ async def website_orb_bootstrap(
     runtime_guidance_status = str((runtime_guidance_evidence or {}).get("status") or "NOT_STARTED").upper()
     pointer_quality = pointer_map.get("quality") or assess_pointer_quality(pointer_map)
     pointer_recovery_required = bool(pointer_quality.get("recovery_required"))
+    target_guidance_count = guidance_eligible_pointer_count(pointer_map)
+    target_guidance_available = runtime_guidance_status == "COMPLETE" and target_guidance_count > 0
     ready = (
         bool(website_context)
         and int(pointer_map.get("record_count") or 0) > 0
@@ -7791,8 +7786,10 @@ async def website_orb_bootstrap(
         },
         "pointer_guidance": {
             "status": runtime_guidance_status,
-            "safe_pointer_count": int(pointer_quality.get("stable_count") or 0),
-            "blocked_pointer_count": int(pointer_quality.get("uncertain_count") or 0),
+            "target_guidance_available": target_guidance_available,
+            "safe_pointer_count": target_guidance_count,
+            "blocked_pointer_count": max(0, int(pointer_map.get("record_count") or 0) - target_guidance_count),
+            "map_recovery_required": pointer_recovery_required,
             "automatic_recovery_attempts_maximum": 1,
         },
         "deployment_preflight": {
@@ -9284,13 +9281,11 @@ async def decide_pointer_authority(
     ).count()
     if open_critical == 0:
         quality = updated_map.get("quality") or assess_pointer_quality(updated_map)
-        guidance_count = sum(
-            1
-            for record in updated_map.get("records") or []
-            if str(record.get("confidence_class") or "") in {"VERIFIED", "STABLE"}
-            and (record.get("runtime_policy") or {}).get("may_point") is not False
-        )
-        guidance_complete = not quality.get("recovery_required") and guidance_count > 0
+        guidance_count = guidance_eligible_pointer_count(updated_map)
+        # Target guidance is local authority. Global map recovery remains a
+        # deployment/coverage signal and must not contaminate an unrelated
+        # owner-verified target.
+        guidance_complete = guidance_count > 0
         crawl_id = int((job.result or {}).get("crawl_job_id") or 0)
         baseline_crawl = db.get(CrawlJob, crawl_id) if crawl_id else None
         if baseline_crawl:
