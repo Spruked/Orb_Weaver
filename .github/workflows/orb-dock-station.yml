@@ -5,6 +5,7 @@ on:
     paths:
       - 'Orb_Assistant/user_dock_station/**'
       - 'frontend/src/index.tsx'
+      - 'frontend/src/orb-client/**'
       - 'frontend/src/landing/orbArrivalAudioPolicy.ts'
       - 'frontend/src/landing/orbVoiceOnly.css'
       - '.github/workflows/orb-dock-station.yml'
@@ -12,6 +13,7 @@ on:
     paths:
       - 'Orb_Assistant/user_dock_station/**'
       - 'frontend/src/index.tsx'
+      - 'frontend/src/orb-client/**'
       - 'frontend/src/landing/orbArrivalAudioPolicy.ts'
       - 'frontend/src/landing/orbVoiceOnly.css'
       - '.github/workflows/orb-dock-station.yml'
