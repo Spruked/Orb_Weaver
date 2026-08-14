@@ -66,7 +66,7 @@ const { chromium } = require('playwright');
   await page.route('https://runtime.test/api/orb/website-text', async (route) => {
     textRequests += 1;
     const request = JSON.parse(route.request().postData() || '{}');
-    assert.equal(request.text, 'start campaign', 'visitor question must reach Website ORB runtime');
+    assert.equal(request.transcript, 'start campaign', 'visitor question must reach Website ORB runtime');
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
