@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Navigate, Routes, Route } from 'react-router-dom';
+import { Navigate, Routes, Route, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -44,6 +44,7 @@ const queryClient = new QueryClient({
 });
 
 function App() {
+  const location = useLocation();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [authenticationOutcome, setAuthenticationOutcome] = useState<AuthenticationOutcome | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -84,39 +85,26 @@ function App() {
       || (outcome?.mergeResult ? `/welcome?project=${encodeURIComponent(outcome.mergeResult.project_id)}` : null)
       || (outcome?.mergeError ? '/welcome?merge=pending' : null)
       || (returnPath === '/diagnostics' ? returnPath : '/dashboard');
-    window.history.replaceState(
-      null,
-      '',
-      nextPath
-    );
+    window.history.replaceState(null, '', nextPath);
+    window.dispatchEvent(new PopStateEvent('popstate'));
   };
 
   if (isCheckingAuth) {
     return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-gray-500">Loading account...</div>;
   }
 
-  const publicPath = window.location.pathname;
+  const publicPath = location.pathname;
 
   const renderPublicPage = (element: React.ReactNode) => (
     <QueryClientProvider client={queryClient}>
-      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <RouteScrollReset />
-        <GoogleAnalyticsTracker />
-        {element}
-      </Router>
+      <RouteScrollReset />
+      <GoogleAnalyticsTracker />
+      {element}
     </QueryClientProvider>
   );
 
   if (!customer && publicPath === '/') {
-    return (
-      <QueryClientProvider client={queryClient}>
-        <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <RouteScrollReset />
-          <GoogleAnalyticsTracker />
-          <LandingPage />
-        </Router>
-      </QueryClientProvider>
-    );
+    return renderPublicPage(<LandingPage />);
   }
 
   if (publicPath === '/demo') {
@@ -174,38 +162,36 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <RouteScrollReset />
-        <GoogleAnalyticsTracker />
-        <Layout customer={customer}>
-          <Routes>
-            <Route path="/" element={<Dashboard customer={customer} />} />
-            <Route path="/dashboard" element={<Dashboard customer={customer} />} />
-            <Route path="/welcome" element={<WelcomeWorkspace customer={customer} initialMergeResult={authenticationOutcome?.mergeResult} initialMergeError={authenticationOutcome?.mergeError} />} />
-            <Route path="/demo" element={<Navigate to="/" replace />} />
-            <Route path="/diagnostics" element={<DiagnosticsPlaceholder customer={customer} />} />
-            <Route path="/now/desktop-orb" element={<DesktopOrbNow />} />
-            <Route path="/web-weave" element={<WebWeave />} />
-            <Route path="/projects" element={<Projects />} />
-            <Route path="/scan-center" element={<ScanCenter />} />
-            <Route path="/crawl" element={<CrawlJobs />} />
-            <Route path="/crawl/:jobId" element={<CrawlJob />} />
-            <Route path="/audit/:auditId" element={<AuditReport />} />
-            <Route path="/orbs/:projectId" element={<OrbsIntegration />} />
-            <Route path="/orbs/:projectId/dock" element={<OrbDockStation />} />
-            <Route path="/ga4" element={<GA4Dashboard />} />
-            <Route path="/ga4/:propertyId" element={<GA4Dashboard />} />
-            <Route path="/reports" element={<ReportCompiler />} />
-            <Route path="/reports/:projectId" element={<ReportCompiler />} />
-            <Route path="/cart" element={<Cart />} />
-            <Route path="/checkout/success" element={<Cart />} />
-            <Route path="/admin/customers" element={<AdminCustomers />} />
-            <Route path="/privacy" element={<LegalPage type="privacy" />} />
-            <Route path="/terms" element={<LegalPage type="terms" />} />
-            <Route path="/account" element={<Account customer={customer} onLogout={handleLogout} />} />
-          </Routes>
-        </Layout>
-      </Router>
+      <RouteScrollReset />
+      <GoogleAnalyticsTracker />
+      <Layout customer={customer}>
+        <Routes>
+          <Route path="/" element={<Dashboard customer={customer} />} />
+          <Route path="/dashboard" element={<Dashboard customer={customer} />} />
+          <Route path="/welcome" element={<WelcomeWorkspace customer={customer} initialMergeResult={authenticationOutcome?.mergeResult} initialMergeError={authenticationOutcome?.mergeError} />} />
+          <Route path="/demo" element={<Navigate to="/" replace />} />
+          <Route path="/diagnostics" element={<DiagnosticsPlaceholder customer={customer} />} />
+          <Route path="/now/desktop-orb" element={<DesktopOrbNow />} />
+          <Route path="/web-weave" element={<WebWeave />} />
+          <Route path="/projects" element={<Projects />} />
+          <Route path="/scan-center" element={<ScanCenter />} />
+          <Route path="/crawl" element={<CrawlJobs />} />
+          <Route path="/crawl/:jobId" element={<CrawlJob />} />
+          <Route path="/audit/:auditId" element={<AuditReport />} />
+          <Route path="/orbs/:projectId" element={<OrbsIntegration />} />
+          <Route path="/orbs/:projectId/dock" element={<OrbDockStation />} />
+          <Route path="/ga4" element={<GA4Dashboard />} />
+          <Route path="/ga4/:propertyId" element={<GA4Dashboard />} />
+          <Route path="/reports" element={<ReportCompiler />} />
+          <Route path="/reports/:projectId" element={<ReportCompiler />} />
+          <Route path="/cart" element={<Cart />} />
+          <Route path="/checkout/success" element={<Cart />} />
+          <Route path="/admin/customers" element={<AdminCustomers />} />
+          <Route path="/privacy" element={<LegalPage type="privacy" />} />
+          <Route path="/terms" element={<LegalPage type="terms" />} />
+          <Route path="/account" element={<Account customer={customer} onLogout={handleLogout} />} />
+        </Routes>
+      </Layout>
     </QueryClientProvider>
   );
 }
