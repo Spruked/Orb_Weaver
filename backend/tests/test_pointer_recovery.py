@@ -181,3 +181,37 @@ def test_rescan_retains_exact_owner_identity_and_demotes_stale_identity():
     assert stale["status"] == "inactive"
     assert stale["runtime_policy"]["may_point"] is False
     assert stale["finding_subreason"] == "owner_verified_identity_not_confirmed_by_rescan"
+
+
+def test_rescan_retains_exact_owner_rejection_and_keeps_it_excluded():
+    original = record(
+        "unsafe",
+        "UNCERTAIN",
+        "#unsafe-action",
+        "button: Unsafe action",
+    )
+    rejected = reject_owner_pointer(
+        {"records": [original]},
+        "unsafe",
+        reviewer="owner@example.com",
+        signature_hash="signed-rejection",
+        notes="Owner rejected this exact pointer identity.",
+        decided_at="2026-08-14T10:00:00+00:00",
+    )
+
+    retained = merge_canonical_pointer_authority(
+        rejected,
+        {"records": [dict(original)]},
+        reconciled_at="2026-08-14T10:05:00+00:00",
+    )
+
+    pointer = retained["records"][0]
+    assert pointer["pointer_health"] == "OWNER_REJECTED"
+    assert pointer["confidence_class"] == "BLOCKED"
+    assert pointer["finding_class"] == "BLOCKED"
+    assert pointer["finding_subreason"] == "owner_rejected_pointer_identity"
+    assert pointer["runtime_policy"]["may_point"] is False
+    assert retained["quality"]["excluded_count"] == 1
+    assert retained["authority_reconciliation"]["previous_owner_rejected_count"] == 1
+    assert retained["authority_reconciliation"]["retained_rejected_count"] == 1
+    assert retained["authority_reconciliation"]["demoted_count"] == 0

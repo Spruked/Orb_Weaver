@@ -419,55 +419,118 @@ def merge_canonical_pointer_authority(
     previous_owner = {
         str(record.get("target_id")): record
         for record in previous_map.get("records") or []
-        if record.get("pointer_health") == "OWNER_VERIFIED"
+        if record.get("pointer_health") in {"OWNER_VERIFIED", "OWNER_REJECTED"}
     }
+    previous_verified_count = sum(
+        1 for record in previous_owner.values()
+        if record.get("pointer_health") == "OWNER_VERIFIED"
+    )
+    previous_rejected_count = sum(
+        1 for record in previous_owner.values()
+        if record.get("pointer_health") == "OWNER_REJECTED"
+    )
+
     records: List[Dict[str, Any]] = []
     retained: set[str] = set()
+    retained_verified: set[str] = set()
+    retained_rejected: set[str] = set()
+
     for original in candidate_map.get("records") or []:
         record = dict(original)
         target_id = str(record.get("target_id") or "")
         prior = previous_owner.get(target_id)
+
         if prior and _pointer_identity_hash(prior) == _pointer_identity_hash(record):
-            record["confidence"] = max(float(record.get("confidence") or 0.0), 0.95)
-            record["confidence_class"] = "VERIFIED"
-            record["pointer_health"] = "OWNER_VERIFIED"
-            record["runtime_policy"] = dict(prior.get("runtime_policy") or {})
-            record["owner_authority"] = dict(prior.get("owner_authority") or {})
-            record["authority_history"] = [
-                *(prior.get("authority_history") or []),
-                {
-                    "event": "owner_authority_retained_after_rescan",
-                    "from": "OWNER_VERIFIED",
-                    "to": "OWNER_VERIFIED",
-                    "decided_at": timestamp,
-                    "identity_hash": _pointer_identity_hash(record),
-                },
-            ]
+            prior_health = str(prior.get("pointer_health") or "")
+
+            if prior_health == "OWNER_VERIFIED":
+                record["confidence"] = max(float(record.get("confidence") or 0.0), 0.95)
+                record["confidence_class"] = "VERIFIED"
+                record["pointer_health"] = "OWNER_VERIFIED"
+                record["runtime_policy"] = dict(prior.get("runtime_policy") or {})
+                record["owner_authority"] = dict(prior.get("owner_authority") or {})
+                record["authority_history"] = [
+                    *(prior.get("authority_history") or []),
+                    {
+                        "event": "owner_authority_retained_after_rescan",
+                        "from": "OWNER_VERIFIED",
+                        "to": "OWNER_VERIFIED",
+                        "decided_at": timestamp,
+                        "identity_hash": _pointer_identity_hash(record),
+                    },
+                ]
+                retained_verified.add(target_id)
+
+            elif prior_health == "OWNER_REJECTED":
+                record["confidence_class"] = "BLOCKED"
+                record["pointer_health"] = "OWNER_REJECTED"
+                record["runtime_policy"] = dict(prior.get("runtime_policy") or {
+                    "behavior": "voice_only_owner_rejected",
+                    "may_point": False,
+                    "must_verify_before_action": True,
+                    "requires_confirmation": True,
+                    "may_click": False,
+                    "may_navigate": False,
+                })
+                if prior.get("owner_authority"):
+                    record["owner_authority"] = dict(prior.get("owner_authority") or {})
+                record["finding_class"] = "BLOCKED"
+                record["finding_subreason"] = "owner_rejected_pointer_identity"
+                record["authority_history"] = [
+                    *(prior.get("authority_history") or []),
+                    {
+                        "event": "owner_rejection_retained_after_rescan",
+                        "from": "OWNER_REJECTED",
+                        "to": "OWNER_REJECTED",
+                        "decided_at": timestamp,
+                        "identity_hash": _pointer_identity_hash(record),
+                    },
+                ]
+                retained_rejected.add(target_id)
+
             retained.add(target_id)
+
         records.append(record)
 
     for target_id, prior in previous_owner.items():
         if target_id in retained:
             continue
+
+        prior_health = str(prior.get("pointer_health") or "")
         stale = dict(prior)
         stale["status"] = "inactive"
         stale["confidence_class"] = "BLOCKED"
         stale["pointer_health"] = "DEPRECATED"
-        stale["runtime_policy"] = {
-            "behavior": "voice_only_stale_owner_identity",
-            "may_point": False,
-            "must_verify_before_action": True,
-            "requires_confirmation": True,
-            "may_click": False,
-            "may_navigate": False,
-        }
         stale["finding_class"] = "UNVERIFIED"
-        stale["finding_subreason"] = "owner_verified_identity_not_confirmed_by_rescan"
+
+        if prior_health == "OWNER_REJECTED":
+            stale["runtime_policy"] = {
+                "behavior": "voice_only_stale_owner_rejected_identity",
+                "may_point": False,
+                "must_verify_before_action": True,
+                "requires_confirmation": True,
+                "may_click": False,
+                "may_navigate": False,
+            }
+            stale["finding_subreason"] = "owner_rejected_identity_not_confirmed_by_rescan"
+            history_event = "owner_rejection_demoted_after_rescan"
+        else:
+            stale["runtime_policy"] = {
+                "behavior": "voice_only_stale_owner_identity",
+                "may_point": False,
+                "must_verify_before_action": True,
+                "requires_confirmation": True,
+                "may_click": False,
+                "may_navigate": False,
+            }
+            stale["finding_subreason"] = "owner_verified_identity_not_confirmed_by_rescan"
+            history_event = "owner_authority_demoted_after_rescan"
+
         stale["authority_history"] = [
             *(prior.get("authority_history") or []),
             {
-                "event": "owner_authority_demoted_after_rescan",
-                "from": "OWNER_VERIFIED",
+                "event": history_event,
+                "from": prior_health,
                 "to": "DEPRECATED",
                 "decided_at": timestamp,
                 "identity_hash": _pointer_identity_hash(prior),
@@ -482,8 +545,12 @@ def merge_canonical_pointer_authority(
     result["authority_reconciliation"] = {
         "schema": "orb_weaver.pointer_authority_reconciliation.v1",
         "reconciled_at": timestamp,
-        "previous_owner_verified_count": len(previous_owner),
+        "previous_owner_verified_count": previous_verified_count,
+        "previous_owner_rejected_count": previous_rejected_count,
+        "previous_owner_authority_count": len(previous_owner),
         "retained_count": len(retained),
+        "retained_verified_count": len(retained_verified),
+        "retained_rejected_count": len(retained_rejected),
         "demoted_count": len(previous_owner) - len(retained),
     }
     result["quality"] = assess_pointer_quality(result)

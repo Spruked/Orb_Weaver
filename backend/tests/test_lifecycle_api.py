@@ -468,3 +468,115 @@ def test_evidence_manifest_detects_tampering_and_snapshots_absolute_sqlite(tmp_p
 
     (root / "baseline/map/map.json").write_text('{"routes": []}\n', encoding="utf-8")
     assert verify_evidence_run(root)["valid"] is False
+
+
+def test_ordinary_crawl_preserves_owner_approval_and_rejection_everywhere(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from app.orb.pointer_recovery import promote_owner_verified_pointer, reject_owner_pointer
+
+    main, _client = load_app(tmp_path, monkeypatch)
+
+    def pointer(target_id, locator, meaning):
+        return {
+            "target_id": target_id,
+            "page_route": "/",
+            "target_type": "button",
+            "meaning": meaning,
+            "semantic_locator": locator,
+            "content_fingerprint": f"{target_id}-fingerprint",
+            "structural_context": {"tag": "button", "parent_locator": "main"},
+            "allowed_actions": ["point"],
+            "status": "active",
+            "confidence": 0.62,
+            "confidence_class": "UNCERTAIN",
+            "runtime_policy": {"may_point": False},
+            "pointer_health": "NEW",
+        }
+
+    approved_candidate = pointer("approved-target", "#approved", "button: Approved target")
+    rejected_candidate = pointer("rejected-target", "#rejected", "button: Rejected target")
+
+    canonical = promote_owner_verified_pointer(
+        {"records": [approved_candidate, rejected_candidate]},
+        "approved-target",
+        reviewer="owner@example.com",
+        signature_hash="signed-approval",
+    )
+    canonical = reject_owner_pointer(
+        canonical,
+        "rejected-target",
+        reviewer="owner@example.com",
+        signature_hash="signed-rejection",
+    )
+
+    root = tmp_path / "client"
+    for directory in (
+        "current",
+        "history",
+        "website_orb_context",
+        "crm_context",
+        "mail_context",
+        "dandy_sponsor_pack",
+    ):
+        (root / directory).mkdir(parents=True, exist_ok=True)
+
+    (root / "website_orb_context" / "pointer_plot_map.json").write_text(
+        json.dumps(canonical),
+        encoding="utf-8",
+    )
+
+    candidate_map = {
+        "schema": "orb_weaver.pointer_plot_map.v1",
+        "record_count": 2,
+        "records": [dict(approved_candidate), dict(rejected_candidate)],
+        "by_page": {"/": ["approved-target", "rejected-target"]},
+    }
+    payload = {
+        "schema": "orb_weaver.client_crawl.v1",
+        "crawl": {"id": "77", "stats": {}},
+        "pointer_plot_map": candidate_map,
+        "website_orb_context": {"pointer_plot_map": candidate_map},
+    }
+
+    monkeypatch.setattr(main, "_ensure_client_pack", lambda _project: root)
+    monkeypatch.setattr(main, "_client_index_path", lambda _project: root / "index.sqlite")
+    monkeypatch.setattr(main, "_init_client_index", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(main, "_index_pack_meta", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(main, "_index_crawl_pack", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(main, "_append_jsonl", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(main, "_global_intelligence_root", lambda: root)
+    monkeypatch.setattr(main, "_global_crawl_pattern", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(main, "_client_crawl_pack", lambda *_args, **_kwargs: payload)
+
+    project = SimpleNamespace(
+        id=1,
+        domain="authority.test",
+        name="Authority Test",
+        customer_id=None,
+        ga4_property_id=None,
+    )
+    crawl_job = SimpleNamespace(id=77, config={})
+    db = SimpleNamespace(commit=lambda: None)
+
+    main.preserve_client_crawl_intelligence(project, crawl_job, [], db)
+
+    for artifact_path in (
+        root / "website_orb_context" / "pointer_plot_map.json",
+        root / "website_orb_context" / "latest_context.json",
+        root / "current" / "latest_crawl.json",
+        root / "history" / "crawl_77.json",
+    ):
+        artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+        pointer_map = (
+            artifact
+            if artifact_path.name == "pointer_plot_map.json"
+            else artifact.get("pointer_plot_map")
+            or artifact["website_orb_context"]["pointer_plot_map"]
+        )
+        records = {item["target_id"]: item for item in pointer_map["records"]}
+
+        assert records["approved-target"]["pointer_health"] == "OWNER_VERIFIED"
+        assert records["approved-target"]["runtime_policy"]["may_point"] is True
+        assert records["rejected-target"]["pointer_health"] == "OWNER_REJECTED"
+        assert records["rejected-target"]["runtime_policy"]["may_point"] is False
+        assert records["rejected-target"]["finding_subreason"] == "owner_rejected_pointer_identity"
