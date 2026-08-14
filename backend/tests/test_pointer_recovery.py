@@ -3,6 +3,7 @@ from app.orb.pointer_recovery import (
     assess_pointer_quality,
     merge_canonical_pointer_authority,
     promote_owner_verified_pointer,
+    reject_owner_pointer,
     reconcile_pointer_recovery,
 )
 
@@ -140,6 +141,25 @@ def test_owner_verification_grants_pointing_but_never_click_or_navigation():
     assert pointer["runtime_policy"]["may_click"] is False
     assert pointer["runtime_policy"]["may_navigate"] is False
     assert pointer["owner_authority"]["signature_hash"] == "signed-decision"
+
+
+def test_owner_rejected_pointer_is_retained_but_excluded_from_runtime_quality():
+    stable = [record(f"stable-{index}", "STABLE", f"#stable-{index}") for index in range(10)]
+    rejected_candidate = record("unsafe", "UNCERTAIN", "main button:nth-of-type(8)")
+    rejected = reject_owner_pointer(
+        {"records": [*stable, rejected_candidate]},
+        "unsafe",
+        reviewer="owner@example.com",
+        signature_hash="signed-rejection",
+        notes="The target identity could not be verified.",
+    )
+
+    quality = rejected["quality"]
+    assert len(rejected["records"]) == 11
+    assert quality["total_record_count"] == 11
+    assert quality["record_count"] == 10
+    assert quality["excluded_count"] == 1
+    assert quality["status"] == "POINTER_READY"
 
 
 def test_rescan_retains_exact_owner_identity_and_demotes_stale_identity():

@@ -29,7 +29,7 @@ def extract_pointer_plot_records(
     *,
     semantic_analysis: Optional[Dict[str, Any]] = None,
     entity_analysis: Optional[Dict[str, Any]] = None,
-    max_records: int = 80,
+    max_records: int = 500,
 ) -> List[Dict[str, Any]]:
     records: List[Dict[str, Any]] = []
     seen: set[str] = set()

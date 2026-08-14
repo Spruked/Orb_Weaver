@@ -3,6 +3,11 @@ function defaultApiBaseUrl() {
 
   const { hostname, port, protocol } = window.location;
   const apiHostname = hostname === '0.0.0.0' ? '127.0.0.1' : hostname;
+  const pairedApiPorts: Record<string, string> = {
+    '16510': '16500',
+    '16610': '16600',
+    '16777': '16776',
+  };
   const isLocalOrPrivateHost =
     port === '16510' ||
     hostname === 'localhost' ||
@@ -13,7 +18,7 @@ function defaultApiBaseUrl() {
     hostname.startsWith('10.') ||
     /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
 
-  return isLocalOrPrivateHost ? `${protocol}//${apiHostname}:16500` : '';
+  return isLocalOrPrivateHost ? `${protocol}//${apiHostname}:${pairedApiPorts[port] || '16500'}` : '';
 }
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || defaultApiBaseUrl();
@@ -762,6 +767,7 @@ export interface CrawlJob {
   created_at?: string;
   start_time?: string;
   end_time?: string;
+  heartbeat_at?: string;
   pages_crawled?: number;
   pages_found?: number;
   errors_count?: number;
@@ -821,6 +827,12 @@ export interface CrawlJob {
   error?: string;
 }
 
+export interface AccountWorkspaceSummary {
+  project: Pick<Project, 'id' | 'name' | 'domain' | 'created_at'> | null;
+  latest_crawl: CrawlJob | null;
+  latest_audit: { id: string; score?: number | null; created_at?: string | null } | null;
+}
+
 export interface PagesResponse {
   total: number;
   pages: CrawledPage[];
@@ -835,6 +847,7 @@ export interface PointerSummary {
   extraction_status?: string;
   runtime_guidance_status?: string;
   pointer_recovery_status?: string;
+  recovery_required?: boolean;
   guidance_eligible_count?: number;
   quality?: {
     status?: string;
@@ -1043,6 +1056,23 @@ export interface WebsiteOrbVoiceResponse {
   tts_error?: string | null;
 }
 
+export type WebsiteOrbExperiencePhase =
+  | 'orientation'
+  | 'understanding'
+  | 'agency'
+  | 'make_it_personal'
+  | 'relevant_continuation';
+
+export interface WebsiteOrbExperienceContext {
+  phase: WebsiteOrbExperiencePhase;
+  objective: string;
+  visitor_turn?: number;
+  verified_target_id?: string | null;
+  verified_target_label?: string | null;
+  verification_state?: 'pending' | 'verified' | 'blocked' | 'not_applicable';
+  demonstrated_capabilities?: string[];
+}
+
 export interface WebsiteOrbPointerRecord {
   target_id: string;
   page_route: string;
@@ -1059,6 +1089,12 @@ export interface WebsiteOrbPointerRecord {
   finding_class?: 'CONFIRMED' | 'TRANSIENT' | 'DYNAMIC' | 'CONFLICT' | 'UNVERIFIED' | 'PASSED';
   finding_subreason?: string;
   pointer_health?: 'NEW' | 'VERIFIED' | 'RECOVERED' | 'OWNER_VERIFIED' | 'DEPRECATED' | 'REMOVED';
+  runtime_policy?: {
+    may_point?: boolean;
+    requires_live_verification?: boolean;
+    requires_user_confirmation?: boolean;
+    reason?: string;
+  } & Record<string, unknown>;
   uncertainty_reasons?: string[];
 }
 
@@ -1257,7 +1293,7 @@ export const api = {
   websiteOrbVoice: (
     audio: Blob,
     signal?: AbortSignal,
-    context?: { project_id?: string | null; target_url?: string | null }
+    context?: { project_id?: string | null; target_url?: string | null; experience?: WebsiteOrbExperienceContext | null }
   ) => {
     const formData = new FormData();
     formData.append('audio', audio, 'website-orb.webm');
@@ -1267,13 +1303,24 @@ export const api = {
     if (context?.target_url) {
       formData.append('target_url', context.target_url);
     }
+    if (context?.experience) {
+      formData.append('experience_phase', context.experience.phase);
+      formData.append('experience_objective', context.experience.objective);
+      formData.append('experience_turn', String(context.experience.visitor_turn || 0));
+      formData.append('experience_verification_state', context.experience.verification_state || 'not_applicable');
+      if (context.experience.verified_target_id) formData.append('experience_verified_target_id', context.experience.verified_target_id);
+      if (context.experience.verified_target_label) formData.append('experience_verified_target_label', context.experience.verified_target_label);
+      if (context.experience.demonstrated_capabilities?.length) {
+        formData.append('experience_demonstrated_capabilities', context.experience.demonstrated_capabilities.join(','));
+      }
+    }
     return uploadForm<WebsiteOrbVoiceResponse>('/api/orb/website-voice', formData, { signal });
   },
   websiteOrbText: (
     transcript: string,
     synthesizeTts = true,
     signal?: AbortSignal,
-    context?: { project_id?: string | null; target_url?: string | null }
+    context?: { project_id?: string | null; target_url?: string | null; experience?: WebsiteOrbExperienceContext | null }
   ) =>
     request<WebsiteOrbVoiceResponse>('/api/orb/website-text', {
       method: 'POST',
@@ -1443,6 +1490,7 @@ export const api = {
       body: JSON.stringify(payload)
     }),
   listProjects: () => request<Project[]>('/api/projects'),
+  getAccountWorkspaceSummary: () => request<AccountWorkspaceSummary>('/api/account/workspace-summary'),
   createProject: (project: { name?: string | null; domain: string; ga4_property_id?: string | null; ga4_measurement_id?: string | null }) =>
     request<Project>('/api/projects', {
       method: 'POST',
@@ -1517,7 +1565,7 @@ export const api = {
   cancelCrawlJob: (jobId: string) =>
     request<CrawlJob>(`/api/crawl-jobs/${jobId}/cancel`, { method: 'POST' }),
   listCrawlJobs: () => request<CrawlJob[]>('/api/crawl-jobs'),
-  getCrawlPages: (jobId: string) => request<PagesResponse>(`/api/crawl-jobs/${jobId}/pages?limit=200`),
+  getCrawlPages: (jobId: string) => request<PagesResponse>(`/api/crawl-jobs/${jobId}/pages?limit=5000`),
   runAudit: (jobId: string) =>
     request<{ audit_id: string; status: string; message: string }>(`/api/crawl-jobs/${jobId}/audit`, {
       method: 'POST'

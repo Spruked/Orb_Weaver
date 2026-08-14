@@ -47,6 +47,47 @@ def auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def test_orphaned_crawl_is_reconciled_and_history_uses_lightweight_rows(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    token = signup(client, "crawl-lease@example.com")
+    project_response = client.post(
+        "/api/projects",
+        headers=auth(token),
+        json={"name": "Lease Test", "domain": "lease.example.test"},
+    )
+    project_id = int(project_response.json()["id"])
+
+    with main.SessionLocal() as db:
+        crawl = main.CrawlJob(
+            project_id=project_id,
+            status="running",
+            start_time=main.datetime.utcnow() - main.timedelta(hours=2),
+            heartbeat_at=main.datetime.utcnow() - main.timedelta(hours=2),
+            worker_id="dead-worker",
+            config={"max_pages": 500},
+        )
+        db.add(crawl)
+        db.flush()
+        for index in range(25):
+            db.add(main.CrawledPage(crawl_job_id=crawl.id, url=f"https://lease.example.test/{index}"))
+        db.commit()
+
+    assert main._reconcile_orphaned_crawl_jobs() == 1
+
+    response = client.get("/api/crawl-jobs", headers=auth(token))
+    assert response.status_code == 200
+    row = response.json()[0]
+    assert row["status"] == "failed"
+    assert row["error"] == "Crawl worker was interrupted by a backend restart."
+    assert "pages" not in row
+    assert "assembly_status" not in row
+    assert "pointer_summary" not in row
+
+    workspace = client.get("/api/account/workspace-summary", headers=auth(token))
+    assert workspace.status_code == 200
+    assert workspace.json()["latest_crawl"]["id"] == row["id"]
+
+
 def test_lifecycle_jobs_and_review_decisions_are_owner_scoped(tmp_path, monkeypatch):
     main, client = load_app(tmp_path, monkeypatch)
     owner_token = signup(client, "lifecycle-owner@example.com")
@@ -248,6 +289,53 @@ def test_pending_lifecycle_cancel_is_immediate(tmp_path, monkeypatch):
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "CANCELLED"
     assert response.json()["phase"] == "cancelled_by_user"
+
+
+def test_site_scan_preserves_completed_phase_and_progress(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    token = signup(client, "site-scan-evidence@example.com")
+    project_id = int(client.post(
+        "/api/projects",
+        headers=auth(token),
+        json={"name": "Site Scan Evidence", "domain": "site-scan-evidence.test"},
+    ).json()["id"])
+
+    with main.SessionLocal() as db:
+        crawl = main.CrawlJob(project_id=project_id, status="completed", pages_crawled=2, pages_found=2)
+        db.add(crawl)
+        db.flush()
+        db.add_all([
+            main.CrawledPage(crawl_job_id=crawl.id, url="https://site-scan-evidence.test/"),
+            main.CrawledPage(crawl_job_id=crawl.id, url="https://site-scan-evidence.test/about"),
+        ])
+        map_job = main.LifecycleJob(
+            project_id=project_id,
+            job_type="MAP_CRAWL",
+            status="APPROVED",
+            phase="approved",
+            result={"crawl_job_id": str(crawl.id)},
+        )
+        db.add(map_job)
+        db.flush()
+        site_job = main.LifecycleJob(
+            project_id=project_id,
+            job_type="SITE_SCAN",
+            status="PENDING",
+            phase="queued",
+            config={"source_job_id": map_job.id},
+        )
+        db.add(site_job)
+        db.commit()
+        site_job_id = site_job.id
+
+    asyncio.run(main.run_lifecycle_job(site_job_id))
+
+    with main.SessionLocal() as db:
+        completed = db.get(main.LifecycleJob, site_job_id)
+        assert completed.status == "COMPLETED"
+        assert completed.phase == "site_scan_complete"
+        assert completed.progress_current == 2
+        assert completed.progress_total == 2
 
 
 def test_orb_scan_automatically_queues_exactly_one_pointer_recovery_pass(tmp_path, monkeypatch):

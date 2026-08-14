@@ -63,7 +63,7 @@ def page_context(url="https://demo.openai.chatgpt.site/"):
     }
 
 
-def test_bootstrap_accepts_registered_chatgpt_site_and_reports_page(tmp_path, monkeypatch):
+def test_bootstrap_blocks_unverified_pointer_context(tmp_path, monkeypatch):
     _main, client = load_app(tmp_path, monkeypatch)
     response = client.post(
         "/api/orb/bootstrap",
@@ -78,14 +78,17 @@ def test_bootstrap_accepts_registered_chatgpt_site_and_reports_page(tmp_path, mo
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["schema"] == "orb_weaver.loader_bootstrap.v1"
-    assert payload["status"] == "ready"
+    assert payload["status"] == "awaiting_scan"
     assert payload["site"]["domain"] == "demo.openai.chatgpt.site"
     assert payload["site"]["context_domain"] == "campaign.orbweaver.spruked.com"
     assert payload["pointer_map"]["record_count"] > 0
     assert payload["pointer_map"]["quality"]["status"] == "POINTER_RECOVERY_REQUIRED"
-    assert payload["pointer_guidance"]["status"] == "recovery_required"
+    assert payload["pointer_guidance"]["status"] == "NOT_STARTED"
     assert payload["pointer_guidance"]["safe_pointer_count"] == 1
-    assert payload["deployment_preflight"] == {"passed": False, "blockers": ["POINTER_RECOVERY_REQUIRED"]}
+    assert payload["deployment_preflight"] == {
+        "passed": False,
+        "blockers": ["POINTER_RECOVERY_REQUIRED", "RUNTIME_GUIDANCE_NOT_PROVEN"],
+    }
     assert payload["orb_identity"]["skin_id"] == "orb_factory_default_v1"
     assert payload["orb_identity"]["asset_path"] == "/orb-skins/tuxorb.png"
     assert payload["orb_identity"]["asset_sha256"] == "f447043b007e9aba07c0c67e3b5749751f8db327b21b09f1a763eca359e73ca5"
@@ -136,13 +139,44 @@ def test_uncertain_pointer_summary_blocks_runtime_guidance(tmp_path, monkeypatch
             ]
         }
 
-    summary = main._pointer_summary_from_pages([Page()])
-    assert summary["extraction_status"] == "complete"
-    assert summary["status"] == "recovery_required"
-    assert summary["runtime_guidance_status"] == "blocked"
-    assert summary["pointer_recovery_status"] == "required"
+    summary = main._pointer_summary_with_execution(
+        main._pointer_summary_from_pages([Page()]),
+        {"scan_stage_execution": {
+            "pointer_mapping": {"status": "COMPLETE"},
+            "pointer_verification": {"status": "COMPLETE"},
+            "pointer_recovery": {"status": "BLOCKED"},
+            "runtime_guidance": {"status": "BLOCKED", "output_count": 0},
+        }},
+    )
+    assert summary["extraction_status"] == "COMPLETE"
+    assert summary["status"] == "BLOCKED"
+    assert summary["runtime_guidance_status"] == "BLOCKED"
+    assert summary["pointer_recovery_status"] == "BLOCKED"
     assert summary["guidance_eligible_count"] == 0
     assert summary["quality"]["status"] == "POINTER_RECOVERY_REQUIRED"
+
+
+def test_pointer_summary_uses_verified_quality_after_owner_review(tmp_path, monkeypatch):
+    main, _client = load_app(tmp_path, monkeypatch)
+    summary = main._pointer_summary_with_execution(
+        {"record_count": 87, "quality": {"recovery_required": True}},
+        {
+            "verified_pointer_quality": {
+                "status": "POINTER_READY",
+                "recovery_required": False,
+                "record_count": 10,
+                "excluded_count": 77,
+            },
+            "scan_stage_execution": {
+                "runtime_guidance": {"status": "COMPLETE", "output_count": 10},
+            },
+        },
+    )
+
+    assert summary["runtime_guidance_status"] == "COMPLETE"
+    assert summary["guidance_eligible_count"] == 10
+    assert summary["recovery_required"] is False
+    assert summary["quality"]["status"] == "POINTER_READY"
 
 
 def test_bootstrap_rejects_unapproved_origin(tmp_path, monkeypatch):
@@ -168,6 +202,25 @@ def test_site_id_maps_runtime_questions_to_the_canonical_scan(tmp_path, monkeypa
         "https://demo.openai.chatgpt.site",
     )
     assert mapped == "https://campaign.orbweaver.spruked.com/pricing?plan=pro"
+
+
+def test_site_world_route_hint_resolves_without_model_invention(tmp_path, monkeypatch):
+    main, _client = load_app(tmp_path, monkeypatch)
+    context = {
+        "site_name": "Vite",
+        "domain": "vite.dev",
+        "route_hints": {
+            "Getting Started | Vite": "/guide",
+            "Configuring Vite | Vite": "/config",
+        },
+    }
+
+    result = main._lookup_site_route_hint(context, "Where does the Vite guide explain project configuration?")
+
+    assert result["spoken_output"] == "You'll find Configuring Vite at /config."
+    assert result["suggested_route"] == "/config"
+    assert result["navigation"]["status"] == "verified"
+    assert main._clean_spoken_output("Read [the guide](https://vite.dev/guide) **here**.") == "Read the guide here."
 
 
 def test_orb_websocket_is_origin_checked_and_route_aware(tmp_path, monkeypatch):

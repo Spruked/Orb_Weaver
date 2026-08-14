@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 from urllib.parse import urljoin, urlparse, urldefrag
+from urllib.robotparser import RobotFileParser
 from bs4 import BeautifulSoup
 from typing import Set, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
@@ -123,6 +124,12 @@ class OrbWeaverCrawler:
         self.domain: Optional[str] = None
         self.domain_key: Optional[str] = None
         self.robots_rules: Optional[str] = None
+        self.robots_parser: Optional[RobotFileParser] = None
+        self.robots_check_status = "NOT_STARTED"
+        self.robots_error: Optional[str] = None
+        self.robots_blocked_urls: Set[str] = set()
+        self.render_attempts = 0
+        self.render_successes = 0
         self.has_sitemap_file = False
         self.sitemap_urls: Set[str] = set()
         self.sitemap_indexes: Set[str] = set()
@@ -174,9 +181,33 @@ class OrbWeaverCrawler:
         path = urlparse(url).path.lower().rstrip("/") or "/"
         return path == "/admin" or path.startswith("/admin/")
 
+    def _route_classification(self, url: str) -> str:
+        path = urlparse(url).path.lower().rstrip("/") or "/"
+        if path.endswith("/sitemap.xml") or path.endswith("/robots.txt"):
+            return "system"
+        if path == "/admin" or path.startswith("/admin/"):
+            return "admin"
+        if path == "/cart" or path.startswith("/cart/") or path == "/checkout" or path.startswith("/checkout/"):
+            return "transactional"
+        if path in {"/dashboard", "/account"} or path.startswith("/dashboard/") or path.startswith("/account/"):
+            return "private"
+        if path in {"/login", "/signup", "/artifacts"} or path.startswith("/login/") or path.startswith("/signup/"):
+            return "utility"
+        return "public_content"
+
     def _looks_like_spa_shell(self, html: str) -> bool:
-        compact = re.sub(r"\s+", "", html.lower())
-        return '<divid="root"></div>' in compact and "/static/js/" in compact
+        soup = BeautifulSoup(html, "lxml")
+        body = soup.body or soup
+        visible_text = body.get_text(" ", strip=True)
+        scripts = " ".join(str(script.get("src") or "") for script in soup.find_all("script")).lower()
+        module_script = any(str(script.get("type") or "").lower() == "module" for script in soup.find_all("script"))
+        framework_marker = any(marker in scripts or marker in html.lower() for marker in (
+            "/static/js/", "/assets/", "/_next/", "webpack", "__next_data__", "__nuxt__", "data-reactroot", "vite",
+        ))
+        mount = soup.find(id=re.compile(r"^(root|app|__next|__nuxt)$", re.I))
+        sparse_mount = bool(mount is not None and len(mount.get_text(" ", strip=True)) < 40)
+        custom_elements = bool(soup.find(lambda tag: bool(tag.name and "-" in tag.name)))
+        return bool((sparse_mount and (framework_marker or module_script)) or (len(visible_text) < 120 and (framework_marker or custom_elements)))
 
     def _chrome_executable(self) -> Optional[str]:
         for candidate in (
@@ -196,6 +227,7 @@ class OrbWeaverCrawler:
         return None
 
     def _render_page_dom_sync(self, url: str) -> Optional[str]:
+        self.render_attempts += 1
         chrome = self._chrome_executable()
         if not chrome:
             return None
@@ -228,6 +260,7 @@ class OrbWeaverCrawler:
         rendered = result.stdout.strip()
         if result.returncode != 0 or "<html" not in rendered.lower():
             return None
+        self.render_successes += 1
         return rendered
 
     async def _render_page_dom(self, url: str) -> Optional[str]:
@@ -498,7 +531,8 @@ class OrbWeaverCrawler:
             'heading_term_overlap': topical_overlap[:10],
             'question_count': text.count('?'),
             'semantic_depth': 'strong' if len(filtered) >= 900 and unique_ratio >= 35 else 'moderate' if len(filtered) >= 300 else 'thin',
-            'orb_semantic_score': orb_score
+            'orb_semantic_score': orb_score,
+            'content_excerpt': re.sub(r'\s+', ' ', text).strip()[:4000],
         }
 
     def _orb_semantic_score(
@@ -744,6 +778,11 @@ class OrbWeaverCrawler:
         if normalized_url in self.visited_urls:
             return None
 
+        if self.respect_robots and self.robots_parser and not self.robots_parser.can_fetch(self.user_agent, normalized_url):
+            self.robots_blocked_urls.add(normalized_url)
+            self.discovered_urls.add(normalized_url)
+            return None
+
         self.visited_urls.add(normalized_url)
         self.total_pages_scraped += 1
 
@@ -832,6 +871,7 @@ class OrbWeaverCrawler:
                 "admin_scan_enabled": self.include_admin_sections,
                 "requires_owner_authority": self._is_admin_section_url(normalized_url),
             },
+            "route_classification": self._route_classification(normalized_url),
         }
         if self._is_admin_section_url(normalized_url):
             self.admin_section_urls.add(normalized_url)
@@ -973,8 +1013,16 @@ class OrbWeaverCrawler:
                 async with session.get(robots_url, ssl=False) as resp:
                     if resp.status == 200:
                         self.robots_rules = await resp.text()
-            except:
-                pass
+                        parser = RobotFileParser()
+                        parser.set_url(robots_url)
+                        parser.parse(self.robots_rules.splitlines())
+                        self.robots_parser = parser
+                        self.robots_check_status = "COMPLETE"
+                    else:
+                        self.robots_check_status = "COMPLETE"
+            except Exception as exc:
+                self.robots_check_status = "FAILED"
+                self.robots_error = str(exc)
 
             # Check sitemap.xml
             sitemap_url = f"{parsed.scheme}://{parsed.netloc}/sitemap.xml"
@@ -1030,6 +1078,12 @@ class OrbWeaverCrawler:
             'sitemap_indexes_found': len(self.sitemap_indexes),
             'has_sitemap': self.has_sitemap_file,
             'has_robots_txt': self.robots_rules is not None,
+            'robots_check_status': self.robots_check_status,
+            'robots_policy_enforced': bool(self.respect_robots),
+            'robots_blocked_urls': sorted(self.robots_blocked_urls),
+            'robots_error': self.robots_error,
+            'javascript_render_attempts': self.render_attempts,
+            'javascript_render_successes': self.render_successes,
             'queue_exhausted': not self.max_page_limit_hit and self.depth_limit_hits == 0 and skipped_estimate == 0,
             'max_page_limit_hit': self.max_page_limit_hit,
             'depth_limit_hit': self.depth_limit_hits > 0,
@@ -1037,7 +1091,7 @@ class OrbWeaverCrawler:
             'max_pages_configured': self.max_pages,
             'max_depth_configured': self.max_depth,
             'current_depth': dict(list(self.current_depth.items())[:5000]),
-            'rejected_external_urls': sorted(self.rejected_external_urls)[:200],
+            'rejected_external_urls': sorted(self.rejected_external_urls),
             'crawl_provenance': self.discovery_provenance,
             'admin_scan_enabled': self.include_admin_sections,
             'admin_seed_urls': sorted(self.admin_seed_urls),

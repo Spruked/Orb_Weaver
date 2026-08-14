@@ -3,20 +3,20 @@ import { Activity, AlertTriangle, CheckCircle2, CircleDashed, Clock3 } from 'luc
 import { ScanAssemblyStatus, ScanAssemblyStage } from '../services/api';
 
 const statusTone = (status: string) => {
-  if (status === 'complete') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  if (status === 'running') return 'border-blue-200 bg-blue-50 text-blue-700';
-  if (status === 'waiting') return 'border-slate-200 bg-slate-50 text-slate-600';
-  if (status === 'needs_review' || status === 'required') return 'border-amber-200 bg-amber-50 text-amber-700';
-  if (status === 'blocked') return 'border-red-200 bg-red-50 text-red-700';
-  if (status === 'failed') return 'border-red-200 bg-red-50 text-red-700';
+  const normalized = status.toUpperCase();
+  if (normalized === 'COMPLETE') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (normalized === 'RUNNING') return 'border-blue-200 bg-blue-50 text-blue-700';
+  if (normalized === 'BLOCKED') return 'border-amber-200 bg-amber-50 text-amber-700';
+  if (normalized === 'FAILED') return 'border-red-200 bg-red-50 text-red-700';
   return 'border-slate-200 bg-white text-slate-500';
 };
 
 const StatusIcon: React.FC<{ status: string }> = ({ status }) => {
-  if (status === 'complete') return <CheckCircle2 className="h-4 w-4" />;
-  if (status === 'running') return <Activity className="h-4 w-4 animate-pulse" />;
-  if (status === 'failed' || status === 'blocked' || status === 'required' || status === 'needs_review') return <AlertTriangle className="h-4 w-4" />;
-  if (status === 'waiting') return <Clock3 className="h-4 w-4" />;
+  const normalized = status.toUpperCase();
+  if (normalized === 'COMPLETE') return <CheckCircle2 className="h-4 w-4" />;
+  if (normalized === 'RUNNING') return <Activity className="h-4 w-4 animate-pulse" />;
+  if (normalized === 'FAILED' || normalized === 'BLOCKED') return <AlertTriangle className="h-4 w-4" />;
+  if (normalized === 'NOT_STARTED') return <Clock3 className="h-4 w-4" />;
   return <CircleDashed className="h-4 w-4" />;
 };
 
@@ -36,7 +36,11 @@ const OrbAssemblyStatus: React.FC<{ assembly?: ScanAssemblyStatus | null; compac
         <div>
           <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-brand-accent">ORB assembly status</p>
           <h2 className="mt-1 text-lg font-bold text-slate-950">
-            {assembly.overall_status === 'orb_ready' ? 'ORB knowledge base ready' : 'Website analysis running'}
+            {assembly.overall_status === 'orb_ready'
+              ? 'ORB knowledge base ready'
+              : assembly.overall_status === 'analysis_complete'
+                ? 'Website analysis complete; ORB stages remain'
+                : 'Website analysis running'}
           </h2>
         </div>
         <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-bold text-slate-600">

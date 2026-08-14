@@ -538,7 +538,7 @@ const Projects: React.FC = () => {
           <p className="text-xs font-bold uppercase tracking-[0.1em] text-slate-500">Recent activity and evidence</p>
           {selectedProjectLifecycleJobs.length > 0 ? (
             <div className="mt-4 divide-y divide-slate-200">
-              {selectedProjectLifecycleJobs.slice(0, 5).map((job) => (
+              {selectedProjectLifecycleJobs.map((job) => (
                 <div key={job.id} className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-bold text-slate-900">{LIFECYCLE_STAGES.find((stage) => stage.type === job.job_type)?.label || job.job_type.replace(/_/g, ' ')}</p>
@@ -695,7 +695,7 @@ const Projects: React.FC = () => {
           <section className="rounded-xl border border-amber-200 bg-white p-5 shadow-sm">
             <div className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-amber-600" /><h3 className="font-bold text-slate-950">Owner pointer review</h3></div>
             <div className="mt-4 divide-y divide-slate-200">
-              {unresolvedPointers.slice(0, 8).map((pointer) => {
+              {unresolvedPointers.map((pointer) => {
                 const targetId = String(pointer.target_id || '');
                 const rawRoute = String(pointer.page_route || '/');
                 const reviewUrl = /^https?:\/\//.test(rawRoute) ? rawRoute : `https://${selectedProject.domain}${rawRoute.startsWith('/') ? rawRoute : `/${rawRoute}`}`;

@@ -1,8 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api, AuditDelta, CrawlJob, Customer, Project } from '../services/api';
-import CrawlChangeSummary from '../components/CrawlChangeSummary';
-import OrbAssemblyStatus from '../components/OrbAssemblyStatus';
-import AuditChangeSummary from '../components/AuditChangeSummary';
+import { api, AccountWorkspaceSummary, Customer } from '../services/api';
 
 interface AccountProps {
   customer: Customer;
@@ -10,27 +7,15 @@ interface AccountProps {
 }
 
 const Account: React.FC<AccountProps> = ({ customer, onLogout }) => {
-  const [latestProject, setLatestProject] = useState<Project | null>(null);
-  const [latestCrawl, setLatestCrawl] = useState<CrawlJob | null>(null);
-  const [auditDelta, setAuditDelta] = useState<AuditDelta | null>(null);
+  const [workspace, setWorkspace] = useState<AccountWorkspaceSummary | null>(null);
   const [workspaceError, setWorkspaceError] = useState('');
 
   useEffect(() => {
     let stopped = false;
     const loadWorkspace = async () => {
       try {
-        const projects = await api.listProjects();
-        const latest = [...projects].sort((left, right) =>
-          String(right.created_at || '').localeCompare(String(left.created_at || ''))
-        )[0] || null;
-        if (stopped) return;
-        setLatestProject(latest);
-        if (!latest) return;
-        const dashboard = await api.getCombinedDashboard(latest.id);
-        if (!stopped) {
-          setLatestCrawl(dashboard.latest_crawl || null);
-          setAuditDelta(dashboard.audit_delta || null);
-        }
+        const summary = await api.getAccountWorkspaceSummary();
+        if (!stopped) setWorkspace(summary);
       } catch (err) {
         if (!stopped) setWorkspaceError(err instanceof Error ? err.message : 'Unable to load workspace scan status');
       }
@@ -46,10 +31,22 @@ const Account: React.FC<AccountProps> = ({ customer, onLogout }) => {
         <p className="text-gray-500 mt-1">Customer record, workspace status, and latest scan differences</p>
       </div>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <OrbAssemblyStatus assembly={latestCrawl?.assembly_status} compact />
-        <CrawlChangeSummary crawl={latestCrawl} title={latestProject ? `What changed for ${latestProject.name}` : 'What changed in the latest workspace crawl'} />
-        <AuditChangeSummary delta={auditDelta} />
+      <section className="grid gap-4 md:grid-cols-3">
+        <div className="card">
+          <p className="text-sm text-gray-500">Latest workspace</p>
+          <p className="mt-1 font-bold text-gray-900">{workspace?.project?.name || 'No workspace yet'}</p>
+          <p className="mt-1 text-sm text-gray-600">{workspace?.project?.domain || '-'}</p>
+        </div>
+        <div className="card">
+          <p className="text-sm text-gray-500">Latest crawl</p>
+          <p className="mt-1 font-bold capitalize text-gray-900">{workspace?.latest_crawl?.status || 'Not started'}</p>
+          <p className="mt-1 text-sm text-gray-600">{workspace?.latest_crawl ? `${workspace.latest_crawl.pages_crawled || 0} pages processed` : '-'}</p>
+        </div>
+        <div className="card">
+          <p className="text-sm text-gray-500">Latest audit</p>
+          <p className="mt-1 font-bold text-gray-900">{workspace?.latest_audit?.score != null ? `${workspace.latest_audit.score}/100` : 'Not run'}</p>
+          <p className="mt-1 text-sm text-gray-600">{workspace?.latest_audit?.created_at ? new Date(workspace.latest_audit.created_at).toLocaleString() : '-'}</p>
+        </div>
       </section>
       {workspaceError && <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">{workspaceError}</div>}
 

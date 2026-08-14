@@ -2,7 +2,12 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useAnimationControls } from "framer-motion";
 import { Volume2, VolumeX } from "lucide-react";
 import { Orb } from "./Orb";
-import { api, type WebsiteOrbPointerRecord, type WebsiteOrbTtsResponse } from "../services/api";
+import {
+  api,
+  type WebsiteOrbExperienceContext,
+  type WebsiteOrbPointerRecord,
+  type WebsiteOrbTtsResponse,
+} from "../services/api";
 import {
   ACTIVE_ORB_PROJECT_CONTEXT_EVENT,
   ActiveOrbProjectContext,
@@ -29,12 +34,16 @@ type FirstEncounterFlag =
   | "voice_ready"
   | "entrance_complete"
   | "communication_orientation_complete"
+  | "understanding_complete"
   | "orientation_pointer_proof_complete"
+  | "agency_complete"
   | "visitor_first_turn_complete"
+  | "personal_relevance_complete"
   | "responsive_guidance_complete"
+  | "relevant_continuation_complete"
   | "controller_handoff_complete";
 type FirstEncounterState = Record<FirstEncounterFlag, boolean>;
-type PointerWaltzPhase = "ACQUIRE" | "LAUNCH" | "TRAVEL" | "APPROACH" | "ARRIVAL" | "TASK_COMPLETE" | "DISSOLVE" | "RECOVERY";
+type PointerWaltzPhase = "ACQUIRE" | "LAUNCH" | "TRAVEL" | "APPROACH" | "STANCE" | "POINT" | "PING" | "COMPLETE" | "DISSOLVE" | "RECOVERY";
 type MorbWorkRole = "target" | "path" | "comparison" | "sequence" | "alternative" | "relationship";
 type MorbPointerState = {
   targetId: string;
@@ -74,11 +83,6 @@ const REST_AFTER_INACTIVITY_MS = 10 * 60 * 1000;
 const ACTIVE_ORB_OPACITY = 0.94;
 const REST_ORB_OPACITY = 0.55;
 const FIRST_ENCOUNTER_STORAGE_KEY = "orbweaver-first-encounter-state";
-const FIRST_ENCOUNTER_TARGETS = [
-  "speak_naturally",
-  "pause_when_finished",
-  "watch_weaver_guide",
-];
 const SUITE_LOGO_POINTER_RECORD: WebsiteOrbPointerRecord = {
   target_id: "orb-weaver-suite-logo",
   page_route: "/",
@@ -92,15 +96,20 @@ const SUITE_LOGO_POINTER_RECORD: WebsiteOrbPointerRecord = {
   confidence: 1,
   confidence_class: "VERIFIED",
   pointer_health: "OWNER_VERIFIED",
+  runtime_policy: { may_point: true, requires_live_verification: true },
 };
 const EMPTY_FIRST_ENCOUNTER_STATE: FirstEncounterState = {
   splash_complete: false,
   voice_ready: false,
   entrance_complete: false,
   communication_orientation_complete: false,
+  understanding_complete: false,
   orientation_pointer_proof_complete: false,
+  agency_complete: false,
   visitor_first_turn_complete: false,
+  personal_relevance_complete: false,
   responsive_guidance_complete: false,
+  relevant_continuation_complete: false,
   controller_handoff_complete: false,
 };
 const MORB_SIZE = 65;
@@ -198,7 +207,7 @@ const routeForUrl = (value?: string | null): string => {
 };
 
 const startupGreetingText = (): string => {
-  return "Hi, I'm Weaver. Welcome to ORB Weaver. Tell me what you need, and I'll guide you through the site. Speak naturally, then pause when you're finished. What can I help you find?";
+  return "Hi, I'm Weaver. Welcome to ORB Weaver. I'm going to show you how I listen, understand this site, and guide with verified targets.";
 };
 
 export const AutonomousOrb: React.FC<Props> = ({
@@ -253,6 +262,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const pageCapsuleRef = useRef<unknown>(null);
   const pointerTimerRef = useRef<number | null>(null);
   const firstEncounterStateRef = useRef<FirstEncounterState>(readFirstEncounterState());
+  const firstEncounterVisitorTurnRef = useRef(0);
   const firstEncounterRunningRef = useRef(false);
   const handsFreeEnabledRef = useRef(false);
   const [pulse, setPulse] = useState<PulseState>(null);
@@ -285,7 +295,20 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const firstEncounterComplete = useCallback(() => {
     const state = firstEncounterStateRef.current;
-    return state.visitor_first_turn_complete && state.controller_handoff_complete;
+    return (
+      state.splash_complete &&
+      state.voice_ready &&
+      state.entrance_complete &&
+      state.communication_orientation_complete &&
+      state.understanding_complete &&
+      state.orientation_pointer_proof_complete &&
+      state.agency_complete &&
+      state.visitor_first_turn_complete &&
+      state.personal_relevance_complete &&
+      state.responsive_guidance_complete &&
+      state.relevant_continuation_complete &&
+      state.controller_handoff_complete
+    );
   }, []);
 
  const bounds = useCallback(() => {
@@ -649,8 +672,8 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     await wait(640);
     stopMorbTravelSound();
-    setPointerWaltzPhase("ARRIVAL");
-    setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "ARRIVAL" } : null);
+    setPointerWaltzPhase("STANCE");
+    setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "STANCE" } : null);
     await wait(180);
 
     const pingRect = movement.refreshTarget();
@@ -661,8 +684,10 @@ export const AutonomousOrb: React.FC<Props> = ({
       return false;
     }
 
-    setPointerWaltzPhase("TASK_COMPLETE");
+    setPointerWaltzPhase("POINT");
+    setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "POINT" } : null);
     movement.complete();
+    setPointerWaltzPhase("PING");
     playPointerPing();
     setLastGuidedTarget(record.target_id);
 
@@ -675,18 +700,18 @@ export const AutonomousOrb: React.FC<Props> = ({
       height: pingRect.height + 20,
       originAngle: Math.atan2(finalTargetY - orbCenterY, finalTargetX - orbCenterX) * 180 / Math.PI,
     });
-    setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "TASK_COMPLETE", pinging: true } : null);
+    setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "PING", pinging: true } : null);
     if (pointerTimerRef.current) window.clearTimeout(pointerTimerRef.current);
     pointerTimerRef.current = window.setTimeout(() => {
       setPointerBloom(null);
-      setPointerWaltzPhase("TASK_COMPLETE");
+      setPointerWaltzPhase("COMPLETE");
     }, 2600);
     await wait(1200);
     setPointerWaltzPhase("DISSOLVE");
     setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "DISSOLVE", dissolving: true } : null);
     await wait(420);
     setMorbPointer(null);
-    setPointerWaltzPhase("TASK_COMPLETE");
+    setPointerWaltzPhase("COMPLETE");
     return true;
   }, [bumpWorldStateSequence, clampPosition, markVisitorActivity, morbPointer, move, playMorbLaunchSound, playPointerPing, size, startMorbTravelSound, stopMorbTravelSound]);
 
@@ -695,6 +720,13 @@ export const AutonomousOrb: React.FC<Props> = ({
     if (!record) return false;
     return guideToPointerRecord(record, intentText);
   }, [findPointerRecordForIntent, guideToPointerRecord]);
+
+  const findPointerRecordById = useCallback((targetId: string) => {
+    const currentRoute = routeForUrl(window.location.href);
+    return pointerRecordsRef.current.find((record) => (
+      record.target_id === targetId && routeForUrl(record.page_route) === currentRoute
+    )) || null;
+  }, []);
 
   const waitForPointerRecords = useCallback(async () => {
     const startedAt = Date.now();
@@ -929,6 +961,28 @@ export const AutonomousOrb: React.FC<Props> = ({
     showStatus(3600);
   }, [showStatus]);
 
+  const contextTargetUrl = useCallback(() => {
+    if (activeOrbContext) return buildCustomerPageCapsuleUrl(activeOrbContext);
+    if (["127.0.0.1", "localhost"].includes(window.location.hostname)) {
+      return new URL(`${window.location.pathname}${window.location.search}`, "https://orbweaver.spruked.com").toString();
+    }
+    return window.location.href;
+  }, [activeOrbContext]);
+
+  const runGeneratedAct = useCallback(async (
+    transcript: string,
+    experience: WebsiteOrbExperienceContext,
+    controller?: AbortController,
+  ) => {
+    const result = await api.websiteOrbText(transcript, true, controller?.signal, {
+      project_id: activeOrbContext?.project_id,
+      target_url: contextTargetUrl(),
+      experience,
+    });
+    await speakWithGeneratedAudio(result.spoken_output, result.tts_audio_url, result.tts_provider);
+    return result;
+  }, [activeOrbContext?.project_id, contextTargetUrl, speakWithGeneratedAudio]);
+
   const runFirstEncounterChoreography = useCallback(async () => {
     if (firstEncounterRunningRef.current || firstEncounterComplete() || onboardingSafeMode) return;
     firstEncounterRunningRef.current = true;
@@ -940,29 +994,58 @@ export const AutonomousOrb: React.FC<Props> = ({
         bumpWorldStateSequence();
       }
 
-      const hasPointerMap = await waitForPointerRecords();
-      let pointerProofComplete = false;
-      if (hasPointerMap) {
-        for (const targetId of FIRST_ENCOUNTER_TARGETS) {
-          if (!activeRef.current || recorderRef.current) return;
-          const guided = await guideToPointerTarget(targetId.replace(/_/g, " "));
-          pointerProofComplete = pointerProofComplete || guided;
-          await wait(guided ? 360 : 120);
-        }
-      }
-
+      await runGeneratedAct(
+        "A first-time visitor has arrived and has not spoken yet.",
+        {
+          phase: "orientation",
+          objective: "Orient the visitor to natural voice turn-taking: they can speak normally, finish the thought, and pause so Weaver can respond.",
+          verification_state: "not_applicable",
+          demonstrated_capabilities: ["Kokoro neural voice is playing", "Faster Whisper microphone path is ready"],
+        },
+      );
       markFirstEncounter("communication_orientation_complete");
-      if (pointerProofComplete) {
-        markFirstEncounter("orientation_pointer_proof_complete");
-      }
+      await runGeneratedAct(
+        "The visitor is viewing the Orb Weaver home page before their first voice turn.",
+        {
+          phase: "understanding",
+          objective: "Demonstrate that Weaver understands this specific page and its useful visitor paths using live Site World and page context.",
+          verification_state: "not_applicable",
+          demonstrated_capabilities: ["current page context loaded", "Site World available"],
+        },
+      );
+      markFirstEncounter("understanding_complete");
 
-      setStatusTitle("Ready to guide");
-      setStatusLine("Tell me what you need and I will take you there.");
-      showStatus(4200);
+      const hasPointerMap = await waitForPointerRecords();
+      const proofTarget = hasPointerMap ? findPointerRecordById("watch_weaver_guide") : null;
+      if (!proofTarget) throw new Error("Owner-approved orientation target is unavailable");
+      const guided = await guideToPointerRecord(proofTarget, "Demonstrate verified visual guidance");
+      if (!guided) throw new Error("Live target verification did not complete");
+      markFirstEncounter("orientation_pointer_proof_complete");
+
+      await runGeneratedAct(
+        "The verified visual-guidance target was acquired, approached, pointed to, and pinged successfully.",
+        {
+          phase: "agency",
+          objective: "Establish agency by connecting the completed visual proof to useful next actions and invite an open, meaningful first request without asking a generic help question.",
+          verified_target_id: proofTarget.target_id,
+          verified_target_label: proofTarget.meaning,
+          verification_state: "verified",
+          demonstrated_capabilities: ["live DOM target verification", "movement", "point", "ping", "neural voice"],
+        },
+      );
+      markFirstEncounter("agency_complete");
+      setStatusTitle("Listening");
+      setStatusLine("Speak naturally, then pause.");
+      showStatus();
+    } catch (error) {
+      setStatusTitle("First encounter paused");
+      setStatusLine(error instanceof Error ? error.message : "A required live proof is unavailable.");
+      showStatus(5200);
+      throw error;
     } finally {
       firstEncounterRunningRef.current = false;
     }
-  }, [bumpWorldStateSequence, firstEncounterComplete, guideToPointerTarget, markFirstEncounter, onboardingSafeMode, showStatus, waitForPointerRecords]);
+  }, [bumpWorldStateSequence, findPointerRecordById, firstEncounterComplete, guideToPointerRecord, markFirstEncounter, onboardingSafeMode, runGeneratedAct, showStatus, waitForPointerRecords]);
 
   const processRecordedOrbAudio = useCallback(async (audio: Blob) => {
     markVisitorActivity();
@@ -989,33 +1072,53 @@ export const AutonomousOrb: React.FC<Props> = ({
     freezeOrbInPlace(4200);
     try {
       logVoice("website-voice", turnId);
-      const targetUrl = buildCustomerPageCapsuleUrl(activeOrbContext);
+      const targetUrl = contextTargetUrl();
+      const visitorTurn = firstEncounterVisitorTurnRef.current + 1;
+      firstEncounterVisitorTurnRef.current = visitorTurn;
+      const inFirstEncounter = !firstEncounterComplete();
+      const experience: WebsiteOrbExperienceContext | null = inFirstEncounter
+        ? visitorTurn === 1
+          ? {
+              phase: "make_it_personal",
+              objective: "Respond to the visitor's actual first request, show that it was understood in context, and guide to a verified relevant target when one exists.",
+              visitor_turn: visitorTurn,
+              verification_state: "pending",
+              demonstrated_capabilities: ["Faster Whisper transcription", "Site World reasoning", "Kokoro neural voice"],
+            }
+          : {
+              phase: "relevant_continuation",
+              objective: "Continue from the visitor's words and prior demonstrated capability with a relevant next step, preserving their progress and transitioning into normal consultation.",
+              visitor_turn: visitorTurn,
+              verification_state: "pending",
+              demonstrated_capabilities: ["voice turn-taking", "contextual reasoning", "verified visual guidance"],
+            }
+        : null;
       const result = await api.websiteOrbVoice(audio, controller.signal, {
         project_id: activeOrbContext?.project_id,
         target_url: targetUrl,
+        experience,
       });
-      const wantsPreflight = /\bpreflight\b/i.test(result.transcript);
-      const spokenOutput = wantsPreflight
-        ? "I will take you to Preflight now. Watch the verified target."
-        : result.spoken_output;
+      const spokenOutput = result.spoken_output;
       setStatusTitle("Voice response");
       setStatusLine(spokenOutput);
       if (result.tts_error && !result.tts_audio_url) {
         setStatusTitle("Voice unavailable");
         setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
       }
-      markFirstEncounter("visitor_first_turn_complete");
-      void guideToPointerTarget(wantsPreflight ? "show me preflight run free preflight scan" : `${result.transcript} ${result.spoken_output}`).then((guided) => {
-        if (guided) markFirstEncounter("responsive_guidance_complete");
-      });
+      const guidance = guideToPointerTarget(`${result.transcript} ${result.spoken_output}`);
       logVoice("playback", turnId);
-      if (wantsPreflight) {
-        const tts = await api.websiteOrbTts(spokenOutput, controller.signal);
-        await speakWithGeneratedAudio(spokenOutput, tts.tts_audio_url, tts.tts_provider);
-      } else {
-        await speakWithGeneratedAudio(spokenOutput, result.tts_audio_url, result.tts_provider);
+      await speakWithGeneratedAudio(spokenOutput, result.tts_audio_url, result.tts_provider);
+      const guided = await guidance;
+      if (guided) markFirstEncounter("responsive_guidance_complete");
+      if (experience?.phase === "make_it_personal") {
+        markFirstEncounter("visitor_first_turn_complete");
+        markFirstEncounter("personal_relevance_complete");
+      } else if (experience?.phase === "relevant_continuation") {
+        markFirstEncounter("relevant_continuation_complete");
+        if (guided || firstEncounterStateRef.current.responsive_guidance_complete) {
+          markFirstEncounter("controller_handoff_complete");
+        }
       }
-      markFirstEncounter("controller_handoff_complete");
     } catch (error) {
       if ((error as Error)?.name === "AbortError") return;
       setStatusTitle("ORB route unavailable");
@@ -1028,7 +1131,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       setVoiceState("idle");
       logVoice("finalized", turnId);
     }
-  }, [activeOrbContext, freezeOrbInPlace, guideToPointerTarget, logVoice, markFirstEncounter, markVisitorActivity, showStatus, speakRecovery, speakWithGeneratedAudio]);
+  }, [activeOrbContext?.project_id, contextTargetUrl, firstEncounterComplete, freezeOrbInPlace, guideToPointerTarget, logVoice, markFirstEncounter, markVisitorActivity, showStatus, speakRecovery, speakWithGeneratedAudio]);
 
   const stopOrbRecording = useCallback((cancel = false) => {
     if (recordingStopTimerRef.current) {
@@ -1436,7 +1539,8 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   useEffect(() => {
     const controller = new AbortController();
-    const pointerDomain = activeOrbContext?.canonical_domain || window.location.hostname;
+    const pointerDomain = activeOrbContext?.canonical_domain
+      || (["127.0.0.1", "localhost"].includes(window.location.hostname) ? "orbweaver.spruked.com" : window.location.hostname);
     api.websiteOrbPointerMap(pointerDomain, controller.signal)
       .then((pointerMap) => {
         pointerRecordsRef.current = Array.isArray(pointerMap.records) ? pointerMap.records : [];
@@ -1460,7 +1564,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     let lastUrl = "";
 
     const preloadCapsule = () => {
-      const currentUrl = buildCustomerPageCapsuleUrl(activeOrbContext);
+      const currentUrl = contextTargetUrl();
       if (currentUrl === lastUrl) return;
       lastUrl = currentUrl;
       api.websiteOrbPageCapsule(currentUrl)
@@ -1485,7 +1589,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       window.removeEventListener("popstate", preloadCapsule);
       window.removeEventListener("hashchange", preloadCapsule);
     };
-  }, [activeOrbContext]);
+  }, [contextTargetUrl]);
 
   useEffect(() => {
     activeRef.current = true;

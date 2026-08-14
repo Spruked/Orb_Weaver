@@ -23,7 +23,7 @@ class SEOIssue:
             'category': self.category,
             'title': self.title,
             'description': self.description,
-            'affected_urls': self.affected_urls[:10],  # Limit for display
+            'affected_urls': self.affected_urls,
             'recommendation': self.recommendation,
             'impact_score': self.impact_score
         }
@@ -138,7 +138,7 @@ class SEOAuditor:
                 category='on-page',
                 title='Title Tag Issues',
                 description=f'{len(affected)} pages have missing, too long, or too short title tags',
-                affected_urls=affected[:10],
+                affected_urls=affected,
                 recommendation='Ensure every page has a unique title tag between 10-60 characters',
                 impact_score=85 if any(not p.title for p in pages) else 60
             ))
@@ -167,7 +167,7 @@ class SEOAuditor:
                 category='on-page',
                 title='Meta Description Issues',
                 description=f'{len(affected)} pages have missing or poorly optimized meta descriptions',
-                affected_urls=affected[:10],
+                affected_urls=affected,
                 recommendation='Write compelling meta descriptions between 50-160 characters',
                 impact_score=55
             ))
@@ -196,7 +196,7 @@ class SEOAuditor:
                 category='on-page',
                 title='Missing H1 Tags',
                 description=f'{len(missing_h1)} pages are missing H1 headings',
-                affected_urls=missing_h1[:10],
+                affected_urls=missing_h1,
                 recommendation='Every page should have exactly one H1 tag that describes the main topic',
                 impact_score=80
             ))
@@ -207,7 +207,7 @@ class SEOAuditor:
                 category='on-page',
                 title='Multiple H1 Tags',
                 description=f'{len(multiple_h1)} pages have more than one H1 tag',
-                affected_urls=multiple_h1[:10],
+                affected_urls=multiple_h1,
                 recommendation='Use only one H1 per page. Use H2-H6 for subsections',
                 impact_score=50
             ))
@@ -245,7 +245,7 @@ class SEOAuditor:
                 category='content',
                 title='Thin Content',
                 description=f'{len(thin_content)} pages have less than {settings.MIN_CONTENT_WORDS} words',
-                affected_urls=thin_content[:10],
+                affected_urls=thin_content,
                 recommendation='Expand thin pages with comprehensive, valuable content',
                 impact_score=65
             ))
@@ -256,7 +256,7 @@ class SEOAuditor:
                 category='content',
                 title='Duplicate Content',
                 description=f'{len(duplicate_content)} pages may have duplicate content',
-                affected_urls=duplicate_content[:10],
+                affected_urls=duplicate_content,
                 recommendation='Use canonical tags or rewrite content to be unique',
                 impact_score=90
             ))
@@ -267,7 +267,7 @@ class SEOAuditor:
                 category='content',
                 title='Weak Semantic Coverage',
                 description=f'{len(weak_semantics)} pages have shallow topical depth or low semantic coverage',
-                affected_urls=weak_semantics[:10],
+                affected_urls=weak_semantics,
                 recommendation='Expand pages around the primary topic, related entities, questions, and supporting subtopics',
                 impact_score=62
             ))
@@ -278,7 +278,7 @@ class SEOAuditor:
                 category='content',
                 title='Low ORB Semantic Space Score',
                 description=f'{len(low_orb_scores)} pages cover less than 65% of their expected semantic space',
-                affected_urls=low_orb_scores[:10],
+                affected_urls=low_orb_scores,
                 recommendation='Add missing entities, questions, supporting subtopics, and schema-aligned language',
                 impact_score=74
             ))
@@ -305,7 +305,7 @@ class SEOAuditor:
                 category='performance',
                 title='Slow Page Load Times',
                 description=f'{len(slow_pages)} pages load slower than 3 seconds. Average: {avg_load:.0f}ms',
-                affected_urls=slow_pages[:10],
+                affected_urls=slow_pages,
                 recommendation='Optimize images, enable compression, use CDN, minimize JavaScript',
                 impact_score=85 if avg_load > 3000 else 70
             ))
@@ -328,7 +328,7 @@ class SEOAuditor:
                 category='security',
                 title='Missing SSL/HTTPS',
                 description=f'{len(non_ssl)} pages are not served over HTTPS',
-                affected_urls=non_ssl[:10],
+                affected_urls=non_ssl,
                 recommendation='Install SSL certificate and redirect HTTP to HTTPS',
                 impact_score=95
             ))
@@ -351,7 +351,7 @@ class SEOAuditor:
                 category='accessibility',
                 title='Images Missing Alt Text',
                 description=f'{len(missing_alt)} pages have images without alt text',
-                affected_urls=missing_alt[:10],
+                affected_urls=missing_alt,
                 recommendation='Add descriptive alt text to all images for accessibility and SEO',
                 impact_score=45
             ))
@@ -378,7 +378,7 @@ class SEOAuditor:
                 category='technical',
                 title='Missing Mobile Viewport',
                 description=f'{len(no_viewport)} pages lack mobile viewport meta tag',
-                affected_urls=no_viewport[:10],
+                affected_urls=no_viewport,
                 recommendation='Add <meta name="viewport" content="width=device-width, initial-scale=1">',
                 impact_score=85
             ))
@@ -389,7 +389,7 @@ class SEOAuditor:
                 category='technical',
                 title='Mobile UX Simulation Risks',
                 description=f'{len(weak_mobile_ux)} pages show mobile tap target, viewport, font, or CLS risk',
-                affected_urls=weak_mobile_ux[:10],
+                affected_urls=weak_mobile_ux,
                 recommendation='Increase tap target size, define image dimensions, use responsive viewport, and keep mobile font sizes legible',
                 impact_score=78
             ))
@@ -432,7 +432,7 @@ class SEOAuditor:
                 category='technical',
                 title='Missing Canonical Tags',
                 description=f'{len(missing_canonical)} pages lack canonical tags',
-                affected_urls=missing_canonical[:10],
+                affected_urls=missing_canonical,
                 recommendation='Add canonical tags to prevent duplicate content issues',
                 impact_score=55
             ))
@@ -445,13 +445,13 @@ class SEOAuditor:
         repeated_templates = [urls for urls in template_counts.values() if len(urls) >= 3]
 
         if repeated_templates:
-            affected = [url for urls in repeated_templates for url in urls[:3]]
+            affected = [url for urls in repeated_templates for url in urls]
             issues.append(SEOIssue(
                 severity='warning',
                 category='content',
                 title='Repeated Template or Boilerplate Pattern',
                 description=f'{len(repeated_templates)} repeated page template clusters were detected',
-                affected_urls=affected[:10],
+                affected_urls=affected,
                 recommendation='Differentiate page body copy, titles, meta descriptions, and section structure for pages sharing a template',
                 impact_score=72
             ))
@@ -485,7 +485,7 @@ class SEOAuditor:
                 category='schema',
                 title='Invalid Schema Markup',
                 description=f'{len(invalid_schema)} pages contain invalid structured data blocks',
-                affected_urls=invalid_schema[:10],
+                affected_urls=invalid_schema,
                 recommendation='Validate JSON-LD and microdata, then fix parsing errors before publishing',
                 impact_score=68
             ))
@@ -522,7 +522,7 @@ class SEOAuditor:
                 category='technical',
                 title='Weak Internal Link Distribution',
                 description=f'{len(low_outlinks)} pages have fewer than two internal outgoing links',
-                affected_urls=low_outlinks[:10],
+                affected_urls=low_outlinks,
                 recommendation='Add contextual internal links to relevant service, category, and supporting content pages',
                 impact_score=52
             ))
@@ -533,7 +533,7 @@ class SEOAuditor:
                 category='technical',
                 title='Potential Orphan Pages',
                 description=f'{len(orphan_candidates)} crawled pages have no incoming links from other crawled pages',
-                affected_urls=orphan_candidates[:10],
+                affected_urls=orphan_candidates,
                 recommendation='Link these pages from navigation, hub pages, or related body content',
                 impact_score=66
             ))
@@ -551,7 +551,7 @@ class SEOAuditor:
                 category='technical',
                 title='Non-Indexable Pages',
                 description=f'{len(non_indexable)} pages have noindex directives',
-                affected_urls=non_indexable[:10],
+                affected_urls=non_indexable,
                 recommendation='Review noindex tags. Ensure important pages are indexable',
                 impact_score=70
             ))
@@ -683,7 +683,7 @@ class SEOAuditor:
             "immutable": True,
             "page_nodes": page_nodes,
             "entity_nodes": list(entity_nodes.values()),
-            "edges": edges[:5000],
+            "edges": edges,
             "summary": {
                 "pages": len(page_nodes),
                 "entities": len(entity_nodes),
@@ -701,7 +701,7 @@ class SEOAuditor:
             page for page in html_pages if self._route_category(page) != "public_content"
         ]
         excluded_by_category = {
-            category: [page.url for page in excluded_public_scoring_pages if self._route_category(page) == category][:25]
+            category: [page.url for page in excluded_public_scoring_pages if self._route_category(page) == category]
             for category in ("admin", "transactional", "utility", "private")
         }
 

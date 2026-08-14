@@ -41,7 +41,14 @@ def assess_pointer_quality(
     thresholds: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     policy = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
-    records = [item for item in pointer_map.get("records") or [] if isinstance(item, dict)]
+    all_records = [item for item in pointer_map.get("records") or [] if isinstance(item, dict)]
+    records = [
+        item
+        for item in all_records
+        if item.get("status") in (None, "active")
+        and item.get("finding_subreason") != "owner_rejected_pointer_identity"
+    ]
+    excluded = len(all_records) - len(records)
     total = len(records)
     classes = Counter(str(item.get("confidence_class") or "UNCERTAIN") for item in records)
     stable = classes["VERIFIED"] + classes["STABLE"]
@@ -73,6 +80,8 @@ def assess_pointer_quality(
         "status": "POINTER_RECOVERY_REQUIRED" if required else "POINTER_READY",
         "recovery_required": required,
         "record_count": total,
+        "total_record_count": len(all_records),
+        "excluded_count": excluded,
         "stable_count": stable,
         "uncertain_count": uncertain,
         "stable_ratio": round(stable_ratio, 4),
@@ -362,7 +371,9 @@ def reject_owner_pointer(
         if str(record.get("target_id") or "") != target_id:
             records.append(record)
             continue
+        prior_health = str(record.get("pointer_health") or "NEW")
         record["confidence_class"] = "BLOCKED"
+        record["pointer_health"] = "OWNER_REJECTED"
         record["runtime_policy"] = {
             "behavior": "voice_only_owner_rejected",
             "may_point": False,
@@ -377,8 +388,8 @@ def reject_owner_pointer(
             *(record.get("authority_history") or []),
             {
                 "event": "owner_rejected",
-                "from": str(record.get("pointer_health") or "NEW"),
-                "to": "BLOCKED",
+                "from": prior_health,
+                "to": "OWNER_REJECTED",
                 "reviewer": reviewer,
                 "signature_hash": signature_hash,
                 "decided_at": timestamp,

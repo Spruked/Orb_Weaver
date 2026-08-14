@@ -174,11 +174,11 @@ const CrawlJob: React.FC = () => {
   const adminUrlsFound = Number(stats.admin_section_urls_found || adminPagesScanned || 0);
   const pointerSummary = crawlData?.pointer_summary;
   const pointerQuality = pointerSummary?.quality || {};
-  const pointerRecoveryRequired = Boolean(pointerQuality.recovery_required || pointerSummary?.status === 'recovery_required');
-  const pointerExtractionStatus = pointerSummary?.extraction_status || (pointerSummary?.record_count ? 'complete' : 'needs_review');
-  const pointerGuidanceStatus = pointerSummary?.runtime_guidance_status || (pointerRecoveryRequired ? 'blocked' : pointerSummary?.status === 'passed' ? 'ready' : 'needs_review');
-  const pointerCardTone = pointerRecoveryRequired ? 'border-red-200 bg-red-50' : pointerGuidanceStatus === 'ready' ? 'border-green-200 bg-green-50' : 'border-yellow-200 bg-yellow-50';
-  const pointerBadgeTone = pointerRecoveryRequired ? 'bg-red-100 text-red-700' : pointerGuidanceStatus === 'ready' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700';
+  const pointerRecoveryRequired = Boolean(pointerSummary?.recovery_required || pointerQuality.recovery_required);
+  const pointerExtractionStatus = String(pointerSummary?.extraction_status || 'NOT_STARTED').toUpperCase();
+  const pointerGuidanceStatus = String(pointerSummary?.runtime_guidance_status || 'NOT_STARTED').toUpperCase();
+  const pointerCardTone = pointerGuidanceStatus === 'FAILED' || pointerGuidanceStatus === 'BLOCKED' ? 'border-red-200 bg-red-50' : pointerGuidanceStatus === 'COMPLETE' ? 'border-green-200 bg-green-50' : 'border-yellow-200 bg-yellow-50';
+  const pointerBadgeTone = pointerGuidanceStatus === 'FAILED' || pointerGuidanceStatus === 'BLOCKED' ? 'bg-red-100 text-red-700' : pointerGuidanceStatus === 'COMPLETE' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700';
   const plannedToolCalls = crawlData?.planned_tool_calls || [];
 
   useEffect(() => {
@@ -371,7 +371,7 @@ const CrawlJob: React.FC = () => {
               </p>
             </div>
             <span className={`px-3 py-1 rounded-full text-sm font-semibold ${pointerBadgeTone}`}>
-              {pointerRecoveryRequired ? 'recovery required' : pointerGuidanceStatus}
+              {pointerRecoveryRequired && pointerGuidanceStatus !== 'COMPLETE' ? 'recovery required' : pointerGuidanceStatus}
             </span>
           </div>
         </div>
@@ -380,7 +380,7 @@ const CrawlJob: React.FC = () => {
           <p className="text-sm text-gray-500 mb-3">Planned ORB Tool Calls</p>
           {plannedToolCalls.length > 0 ? (
             <div className="space-y-2">
-              {plannedToolCalls.slice(0, 4).map((tool) => (
+              {plannedToolCalls.map((tool) => (
                 <div key={tool.id} className="flex items-start justify-between gap-3 border-b border-gray-100 pb-2 last:border-b-0 last:pb-0">
                   <div>
                     <p className="font-semibold text-gray-900">{tool.tool}</p>
@@ -547,7 +547,7 @@ const CrawlJob: React.FC = () => {
 
       {activeTab === 'semantic' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {pages.slice(0, 20).map((page) => (
+          {pages.map((page) => (
             <div key={page.url} className="card">
               <h3 className="font-bold text-gray-900 truncate">{page.title || page.url}</h3>
               <p className="text-xs text-gray-500 truncate mb-4">{page.url}</p>
@@ -582,7 +582,7 @@ const CrawlJob: React.FC = () => {
 
       {activeTab === 'entities' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {pages.slice(0, 20).map((page) => (
+          {pages.map((page) => (
             <div key={page.url} className="card">
               <h3 className="font-bold text-gray-900 truncate">{page.title || page.url}</h3>
               <p className="text-xs text-gray-500 truncate mb-4">{page.url}</p>
@@ -715,7 +715,7 @@ const CrawlJob: React.FC = () => {
           <div className="card">
             <h3 className="font-bold text-gray-900 mb-4">Potential Orphan Pages</h3>
             <div className="space-y-2">
-              {(crawlData.internal_link_graph?.orphan_candidates || []).slice(0, 15).map((node) => (
+              {(crawlData.internal_link_graph?.orphan_candidates || []).map((node) => (
                 <p key={node.url} className="text-sm text-gray-700 truncate">{node.url}</p>
               ))}
               {(crawlData.internal_link_graph?.orphan_candidates || []).length === 0 && <p className="text-gray-500">No orphan candidates detected.</p>}
@@ -740,7 +740,7 @@ const CrawlJob: React.FC = () => {
           <div className="card">
             <h3 className="font-bold text-gray-900 mb-4">Top Authority Pages</h3>
             <div className="space-y-2">
-              {(crawlData.authority_flow?.pages || []).slice(0, 15).map((page) => (
+              {(crawlData.authority_flow?.pages || []).map((page) => (
                 <div key={String(page.url)} className="flex justify-between gap-4 py-2 border-b border-gray-100">
                   <span className="truncate">{String(page.url)}</span>
                   <span className="font-semibold">{String(page.authority)}</span>
@@ -794,7 +794,7 @@ const CrawlJob: React.FC = () => {
                 <h3 className="font-bold text-gray-900">{group.page_count} pages · {group.duplicate_text_probability}% duplicate probability</h3>
                 <p className="text-sm text-gray-600 mt-1">{group.orb_statement}</p>
                 <div className="mt-3 space-y-1">
-                  {group.pages.slice(0, 8).map((url) => <p key={url} className="text-xs text-gray-500 truncate">{url}</p>)}
+                  {group.pages.map((url) => <p key={url} className="text-xs text-gray-500 truncate">{url}</p>)}
                 </div>
               </div>
             ))
@@ -803,7 +803,7 @@ const CrawlJob: React.FC = () => {
       )}
       {activeTab === 'mobile' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {pages.slice(0, 20).map((page) => (
+          {pages.map((page) => (
             <div key={page.url} className="card">
               <h3 className="font-bold text-gray-900 truncate">{page.title || page.url}</h3>
               <p className="text-xs text-gray-500 truncate mb-4">{page.url}</p>

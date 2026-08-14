@@ -185,6 +185,8 @@ class CrawlJob(Base):
     errors_count = Column(Integer, default=0)
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime, nullable=True)
+    heartbeat_at = Column(DateTime, nullable=True, index=True)
+    worker_id = Column(String(120), nullable=True, index=True)
     config = Column(JSON, default=dict)
 
     project = relationship("Project", back_populates="crawls")
@@ -575,6 +577,7 @@ def init_db(engine):
     _ensure_project_ga4_measurement_column(engine)
     _ensure_customer_profile_columns(engine)
     _ensure_checkout_governor_columns(engine)
+    _ensure_crawl_lease_columns(engine)
     _ensure_default_admin_customer(engine)
     _ensure_marketplace_number_sequence(engine)
 
@@ -688,6 +691,23 @@ def _ensure_checkout_governor_columns(engine):
     with engine.begin() as connection:
         for name, type_name in missing:
             connection.execute(text(f"ALTER TABLE checkout_orders ADD COLUMN {name} {type_name}"))
+
+
+def _ensure_crawl_lease_columns(engine):
+    inspector = inspect(engine)
+    if "crawl_jobs" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("crawl_jobs")}
+    columns = {
+        "heartbeat_at": "DATETIME",
+        "worker_id": "VARCHAR(120)",
+    }
+    missing = [(name, type_name) for name, type_name in columns.items() if name not in existing]
+    if not missing:
+        return
+    with engine.begin() as connection:
+        for name, type_name in missing:
+            connection.execute(text(f"ALTER TABLE crawl_jobs ADD COLUMN {name} {type_name}"))
 
 
 def _ensure_default_admin_customer(engine):

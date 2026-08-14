@@ -209,6 +209,7 @@ ORB_TTS_WARM_STATUS: Dict[str, Any] = {
     "provider": None,
     "errors": [],
 }
+CRAWL_WORKER_INSTANCE_ID = f"{os.getpid()}-{secrets.token_hex(6)}"
 
 ORB_INSTALL_SITES: Dict[str, Dict[str, Any]] = {
     "orb-weaver-campaign": {
@@ -257,8 +258,50 @@ async def _warm_local_llm() -> None:
         logger.warning("Local LLM warmup failed: %s", exc)
 
 
+def _reconcile_orphaned_crawl_jobs() -> int:
+    db = SessionLocal()
+    reconciled = 0
+    now = datetime.utcnow()
+    try:
+        jobs = db.query(CrawlJob).filter(CrawlJob.status.in_({"pending", "running", "cancel_requested"})).all()
+        for job in jobs:
+            previous_status = str(job.status)
+            job.status = "cancelled" if previous_status == "cancel_requested" else "failed"
+            job.end_time = now
+            job.heartbeat_at = now
+            config = dict(job.config or {})
+            config.update({
+                "error": "Crawl worker was interrupted by a backend restart.",
+                "orphan_reconciled_at": now.isoformat(),
+                "orphan_previous_status": previous_status,
+                "orphan_worker_id": job.worker_id,
+            })
+            job.config = config
+            reconciled += 1
+        lifecycle_jobs = db.query(LifecycleJob).filter(LifecycleJob.status.in_({"PENDING", "RUNNING", "CANCEL_REQUESTED"})).all()
+        for lifecycle_job in lifecycle_jobs:
+            previous_status = str(lifecycle_job.status)
+            lifecycle_job.status = "CANCELLED" if previous_status == "CANCEL_REQUESTED" else "FAILED"
+            lifecycle_job.phase = "interrupted_by_backend_restart"
+            lifecycle_job.end_time = now
+            lifecycle_job.result = {
+                **(lifecycle_job.result or {}),
+                "error": "Lifecycle worker was interrupted by a backend restart.",
+                "orphan_reconciled_at": now.isoformat(),
+                "orphan_previous_status": previous_status,
+            }
+            reconciled += 1
+        if reconciled:
+            db.commit()
+            logger.warning("Reconciled %s orphaned background job(s) at startup", reconciled)
+        return reconciled
+    finally:
+        db.close()
+
+
 @app.on_event("startup")
-async def warm_local_llm_on_startup() -> None:
+async def initialize_runtime_on_startup() -> None:
+    await asyncio.to_thread(_reconcile_orphaned_crawl_jobs)
     asyncio.create_task(_warm_local_llm())
 
 SUBSTRATE_ROOT = VAULT_ROOT
@@ -353,12 +396,23 @@ class WebsiteOrbVoiceResponse(BaseModel):
     tts_error: Optional[str] = None
 
 
+class WebsiteOrbExperienceContext(BaseModel):
+    phase: str = Field(..., pattern="^(orientation|understanding|agency|make_it_personal|relevant_continuation)$")
+    objective: str = Field(..., min_length=8, max_length=600)
+    visitor_turn: int = Field(default=0, ge=0, le=20)
+    verified_target_id: Optional[str] = Field(default=None, max_length=160)
+    verified_target_label: Optional[str] = Field(default=None, max_length=240)
+    verification_state: str = Field(default="not_applicable", pattern="^(pending|verified|blocked|not_applicable)$")
+    demonstrated_capabilities: List[str] = Field(default_factory=list, max_length=12)
+
+
 class WebsiteOrbTextRequest(BaseModel):
     transcript: str = Field(..., min_length=1, max_length=1000)
     synthesize_tts: bool = True
     project_id: Optional[str] = None
     target_url: Optional[str] = Field(default=None, max_length=500)
     site_id: Optional[str] = Field(default=None, min_length=2, max_length=120)
+    experience: Optional[WebsiteOrbExperienceContext] = None
 
 
 class WebsiteOrbTtsRequest(BaseModel):
@@ -2842,6 +2896,7 @@ def _build_website_weaver_envelope(
             "key_facts": (context.get("key_facts") or [])[:8],
             "route_hints": context.get("route_hints") or {},
             "pointer_matches": _lookup_pointer_context(context, transcript),
+            "retrieved_knowledge": _lookup_knowledge_context(context, transcript),
         },
         "memory_architecture": {
             "site_world_skg": {
@@ -2890,8 +2945,9 @@ async def _llm_orb_spoken_output(
     website_context: Optional[Dict[str, Any]] = None,
     page_capsule: Optional[Dict[str, Any]] = None,
     operating_policy: Optional[Dict[str, Any]] = None,
+    experience_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, str]:
-    if _is_orb_identity_question(transcript):
+    if not experience_context and _is_orb_identity_question(transcript):
         return {"spoken_output": ORB_PUBLIC_IDENTITY_ANSWER, "llm_source": "deterministic-identity"}
 
     fallback = _fallback_orb_spoken_output(transcript, pulse, memory_context, website_context)
@@ -2934,20 +2990,55 @@ async def _llm_orb_spoken_output(
         "business_objectives": (operating_policy or {}).get("business_objectives") or [],
         **owner_policy,
     }
-    prompt = (
-        "You are Weaver. Obey the Website Weaver envelope as the authoritative operating contract.\n"
-        f"Website Weaver envelope: {json.dumps(weaver_envelope, ensure_ascii=False)}\n"
-        f"Safe account memory, only if relevant: {json.dumps(memory_brief, ensure_ascii=False)}\n"
-        f"Advisory cognitive pulse: {json.dumps(pulse_brief, ensure_ascii=False)}\n"
-        f"Owner job description: {owner_behavior.get('job_description') or 'Serve as the visitor-facing Website ORB.'}\n"
-        f"Owner must-follow rules: {json.dumps(owner_behavior.get('must_follow_rules') or [], ensure_ascii=False)}\n"
-        f"Owner must-not rules: {json.dumps(owner_behavior.get('must_not_rules') or [], ensure_ascii=False)}\n"
-        f"Visitor question: {transcript}\n"
-        "Answer the visitor as Weaver in exactly one short spoken sentence. "
-        "Follow the owner behavior settings for tone and response style. "
-        "Sound warm and patient, never angry, annoyed, sarcastic, or rushed. "
-        "Follow tool availability and confirmation rules, never claim an action ran, and use no markdown or chat-UI language."
-    )
+    if experience_context:
+        weaver_envelope["active_first_visitor_act"] = {
+            **experience_context,
+            "control_rule": "The act and proof gate are choreographed. The words are not scripted; compose them from the live context in this envelope.",
+        }
+    if experience_context:
+        compact_live_context = {
+            "site_name": (website_context or {}).get("site_name") or (website_context or {}).get("brand"),
+            "site_summary": (website_context or {}).get("site_summary"),
+            "page_route": (page_capsule or {}).get("route"),
+            "page_summary": (page_capsule or {}).get("page_summary"),
+            "likely_visitor_tasks": ((page_capsule or {}).get("likely_visitor_tasks") or [])[:5],
+            "verified_page_targets": [
+                {"target_id": target.get("target_id"), "meaning": target.get("meaning")}
+                for target in ((page_capsule or {}).get("top_pointer_targets") or [])[:5]
+            ],
+        }
+        phase = str(experience_context.get("phase") or "")
+        phase_rule = {
+            "orientation": "Explicitly tell the visitor to speak or talk naturally, finish the thought, and pause. Make no offer, recommendation, or question.",
+            "understanding": "Name one or two useful things on this specific page from live context. Do not greet or ask a question.",
+            "agency": "Connect the verified pointing proof to concrete request types the visitor can say. Invite an open request without generic help wording or a yes/no question.",
+            "make_it_personal": "Respond directly to the visitor's actual words and make the next step personally relevant.",
+            "relevant_continuation": "Continue the visitor's current thread with one useful next step and preserve their progress.",
+        }.get(phase, "Fulfill the objective directly.")
+        prompt = (
+            "You are Weaver, the embodied website host for Orb Weaver. Generate the words for one live choreographed act; the words themselves are not scripted.\n"
+            f"ACTIVE ACT: {json.dumps(experience_context, ensure_ascii=False)}\n"
+            f"LIVE CONTEXT: {json.dumps(compact_live_context, ensure_ascii=False)}\n"
+            f"VISITOR WORDS OR SITUATION: {transcript}\n"
+            f"MANDATORY PHASE RULE: {phase_rule}\n"
+            "Write one or two short natural spoken sentences only. No greeting, markdown, labels, stage directions, quoted script, or generic assistant language. "
+            "Never say 'How can I help', 'What can I help', 'What can I assist', or 'Would you like'. "
+            "Never claim an action succeeded unless verification_state is verified. Return only the speech."
+        )
+    else:
+        prompt = (
+            "You are Weaver. Obey the Website Weaver envelope as the authoritative operating contract.\n"
+            f"Website Weaver envelope: {json.dumps(weaver_envelope, ensure_ascii=False)}\n"
+            f"Safe account memory, only if relevant: {json.dumps(memory_brief, ensure_ascii=False)}\n"
+            f"Advisory cognitive pulse: {json.dumps(pulse_brief, ensure_ascii=False)}\n"
+            f"Owner job description: {owner_behavior.get('job_description') or 'Serve as the visitor-facing Website ORB.'}\n"
+            f"Owner must-follow rules: {json.dumps(owner_behavior.get('must_follow_rules') or [], ensure_ascii=False)}\n"
+            f"Owner must-not rules: {json.dumps(owner_behavior.get('must_not_rules') or [], ensure_ascii=False)}\n"
+            f"Visitor question: {transcript}\n"
+            "Answer the visitor as Weaver in concise speech. Follow the owner behavior settings for tone and response style. "
+            "Sound warm and patient, never angry, annoyed, sarcastic, or rushed. Follow tool availability and confirmation rules, "
+            "never claim an action ran, and use no markdown or chat-UI language."
+        )
     try:
         timeout_seconds = min(120.0, max(5.0, float(settings.LOCAL_LLM_TIMEOUT_SECONDS or 60.0)))
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
@@ -2967,11 +3058,83 @@ async def _llm_orb_spoken_output(
             )
             response.raise_for_status()
             payload = response.json()
-        spoken = str(payload.get("response") or payload.get("text") or "").strip()
+        spoken = _clean_spoken_output(str(payload.get("response") or payload.get("text") or ""))
         source = "ollama-owner-model" if provider == "ollama_local" else "local-llm"
         return {"spoken_output": spoken or fallback, "llm_source": source}
     except Exception:
         return {"spoken_output": fallback, "llm_source": "local-fallback"}
+
+
+async def _first_visitor_act_response(
+    *,
+    transcript: str,
+    experience_context: Dict[str, Any],
+    cognitive_pulse: Optional[Dict[str, Any]],
+    memory_context: Optional[Dict[str, Any]],
+    website_context: Optional[Dict[str, Any]],
+    page_capsule: Optional[Dict[str, Any]],
+    operating_policy: Optional[Dict[str, Any]],
+    synthesize_tts: bool = True,
+) -> Dict[str, Any]:
+    def output_is_valid(spoken_output: str) -> bool:
+        normalized = re.sub(r"\s+", " ", spoken_output.lower()).strip()
+        if not normalized or any(phrase in normalized for phrase in (
+            "how can i help", "what can i help", "what can i assist", "how may i assist",
+        )):
+            return False
+        phase = str(experience_context.get("phase") or "")
+        if phase == "orientation":
+            return any(term in normalized for term in ("speak", "talk", "voice")) and any(term in normalized for term in ("pause", "finish", "thought"))
+        if phase == "agency" and experience_context.get("verification_state") == "verified":
+            return any(term in normalized for term in ("point", "target", "show", "guide", "page"))
+        return True
+
+    llm_result: Dict[str, str] = {}
+    generation_context = dict(experience_context)
+    for attempt in range(2):
+        llm_result = await _llm_orb_spoken_output(
+            transcript,
+            cognitive_pulse,
+            memory_context,
+            website_context,
+            page_capsule,
+            operating_policy,
+            generation_context,
+        )
+        if llm_result.get("llm_source") != "local-fallback" and output_is_valid(str(llm_result.get("spoken_output") or "")):
+            break
+        generation_context = {
+            **experience_context,
+            "generation_correction": (
+                "The previous generated wording failed the act objective or used a generic help question. "
+                "Generate new situational wording that explicitly fulfills the objective and contains no generic help question."
+            ),
+        }
+    if llm_result.get("llm_source") == "local-fallback" or not str(llm_result.get("spoken_output") or "").strip():
+        raise HTTPException(status_code=503, detail="First-visitor cognition is unavailable; the act was not advanced")
+    if not output_is_valid(llm_result["spoken_output"]):
+        raise HTTPException(status_code=503, detail="Generated speech did not satisfy the active choreography; the act was not advanced")
+    tts_result = (
+        await _synthesize_orb_tts(llm_result["spoken_output"])
+        if synthesize_tts
+        else {"tts_audio_url": None, "tts_provider": None, "tts_error": None}
+    )
+    if synthesize_tts and not tts_result.get("tts_audio_url"):
+        raise HTTPException(status_code=503, detail="First-visitor voice is unavailable; the act was not advanced")
+    return {
+        "transcript": transcript,
+        "spoken_output": llm_result["spoken_output"],
+        "cognitive_pulse": {
+            **(cognitive_pulse or {}),
+            "cognitive_mode": "FIRST_VISITOR_CHOREOGRAPHY",
+            "first_encounter_phase": experience_context.get("phase"),
+            "verification_state": experience_context.get("verification_state"),
+            "verified_target_id": experience_context.get("verified_target_id"),
+        },
+        "llm_source": llm_result["llm_source"],
+        "memory_context": memory_context,
+        **tts_result,
+    }
 
 
 def _content_type_for_audio_format(audio_format: str) -> str:
@@ -3866,6 +4029,57 @@ def _score_keyword_match(transcript: str, keywords: List[str]) -> float:
     return best
 
 
+def _lookup_site_route_hint(website_context: Optional[Dict[str, Any]], transcript: str) -> Optional[Dict[str, Any]]:
+    if not website_context or not website_context.get("route_hints"):
+        return None
+    query_tokens = _tokenize_intent(transcript)
+    if not query_tokens:
+        return None
+    site_tokens = _tokenize_intent(
+        f"{website_context.get('site_name') or ''} {website_context.get('domain') or ''}"
+    )
+
+    def related(left: str, right: str) -> bool:
+        return left == right or (len(left) >= 5 and len(right) >= 5 and left[:5] == right[:5])
+
+    candidates: List[Tuple[float, str, str]] = []
+    for label, route_value in (website_context.get("route_hints") or {}).items():
+        route = _route_from_url(str(route_value))
+        route_tokens = _tokenize_intent(f"{label} {route.replace('/', ' ')}") - site_tokens
+        route_tokens -= {"page", "home", "website"}
+        if not route_tokens:
+            continue
+        matches = {
+            route_token
+            for route_token in route_tokens
+            if any(related(route_token, query_token) for query_token in query_tokens)
+        }
+        if not matches:
+            continue
+        score = len(matches) / max(1, len(route_tokens))
+        candidates.append((score, str(label), route))
+    if not candidates:
+        return None
+    score, label, route = sorted(candidates, key=lambda item: item[0], reverse=True)[0]
+    if score < 0.2:
+        return None
+    clean_label = re.sub(r"\s*\|\s*[^|]+$", "", label).strip() or "that page"
+    return {
+        "spoken_output": f"You'll find {clean_label} at {route}.",
+        "llm_source": "site-world-route",
+        "cache_entry_id": f"route_hint:{label}",
+        "cache_score": round(score, 3),
+        "suggested_route": route,
+        "navigation": _navigation_decision(website_context, route),
+    }
+
+
+def _clean_spoken_output(value: str) -> str:
+    spoken = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", str(value or ""))
+    spoken = re.sub(r"[`*_#]+", "", spoken)
+    return re.sub(r"\s+", " ", spoken).strip()
+
+
 def _lookup_domain_runtime_tool(
     website_context: Optional[Dict[str, Any]],
     transcript: str,
@@ -3981,12 +4195,87 @@ def _pointer_review_payload(record: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+ORB_WEAVER_SHOWCASE_DOMAINS = {"orbweaver.spruked.com", "127.0.0.1", "localhost"}
+ORB_WEAVER_SHOWCASE_POINTERS: List[Dict[str, Any]] = [
+    {
+        "target_id": "orb-weaver-suite-logo", "page_route": "/", "target_type": "logo",
+        "meaning": "ORB WEAVER", "intent_aliases": ["orb weaver", "suite logo"], "direct_aliases": ["ORB WEAVER"],
+        "topic_aliases": ["suite"], "content_fingerprint": "owner-orb-weaver-suite-logo-v1",
+        "semantic_locator": '[data-orb-target="orb-weaver-suite-logo"]', "structural_context": {"tag": "a"},
+    },
+    {
+        "target_id": "speak_naturally", "page_route": "/", "target_type": "paragraph",
+        "meaning": "Just talk. Use the words you would use with a person who knows the site.",
+        "intent_aliases": ["speak naturally", "just talk"], "direct_aliases": ["Just talk"],
+        "topic_aliases": ["voice orientation"], "content_fingerprint": "owner-speak-naturally-v1",
+        "semantic_locator": '[data-orb-target="speak_naturally"]', "structural_context": {"tag": "p"},
+    },
+    {
+        "target_id": "pause_when_finished", "page_route": "/", "target_type": "paragraph",
+        "meaning": "Finish the thought, then pause. Weaver takes the turn when your voice settles.",
+        "intent_aliases": ["pause when finished", "finish your thought"], "direct_aliases": ["Finish the thought, then pause"],
+        "topic_aliases": ["voice turn taking"], "content_fingerprint": "owner-pause-when-finished-v1",
+        "semantic_locator": '[data-orb-target="pause_when_finished"]', "structural_context": {"tag": "p"},
+    },
+    {
+        "target_id": "watch_weaver_guide", "page_route": "/", "target_type": "paragraph",
+        "meaning": "Watch the page. When showing is clearer, Weaver moves and points to the verified target.",
+        "intent_aliases": ["watch weaver guide", "verified target"], "direct_aliases": ["Watch the page"],
+        "topic_aliases": ["visual guidance"], "content_fingerprint": "owner-watch-weaver-guide-v1",
+        "semantic_locator": '[data-orb-target="watch_weaver_guide"]', "structural_context": {"tag": "p"},
+    },
+    {
+        "target_id": "run-free-preflight", "page_route": "/", "target_type": "button",
+        "meaning": "Run Free Preflight", "intent_aliases": ["preflight", "scan my website", "run free preflight"],
+        "direct_aliases": ["Run Free Preflight"], "topic_aliases": ["website scan"],
+        "content_fingerprint": "owner-run-free-preflight-v1", "semantic_locator": '[data-orb-target="run-free-preflight"]',
+        "structural_context": {"tag": "button"},
+    },
+    {
+        "target_id": "launch-dashboard", "page_route": "/", "target_type": "button",
+        "meaning": "Launch Dashboard", "intent_aliases": ["dashboard", "login", "launch dashboard"],
+        "direct_aliases": ["Launch Dashboard"], "topic_aliases": ["customer workspace"],
+        "content_fingerprint": "owner-launch-dashboard-v1", "semantic_locator": '[data-orb-target="launch-dashboard"]',
+        "structural_context": {"tag": "button"},
+    },
+]
+
+
+def _owner_showcase_pointer_records(domain: str) -> List[Dict[str, Any]]:
+    if domain.lower().split(":")[0] not in ORB_WEAVER_SHOWCASE_DOMAINS:
+        return []
+    return [
+        {
+            **record,
+            "status": "active",
+            "allowed_actions": ["point"],
+            "confidence": 1.0,
+            "confidence_class": "VERIFIED",
+            "finding_class": "CONFIRMED",
+            "finding_subreason": "owner_approved_showcase_target",
+            "pointer_health": "OWNER_VERIFIED",
+            "runtime_policy": {
+                "may_point": True,
+                "requires_live_verification": True,
+                "requires_user_confirmation": False,
+                "reason": "owner_approved_showcase_target",
+            },
+        }
+        for record in ORB_WEAVER_SHOWCASE_POINTERS
+    ]
+
+
+def _merge_owner_showcase_pointers(domain: str, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    overrides = _owner_showcase_pointer_records(domain)
+    override_ids = {str(record["target_id"]) for record in overrides}
+    return [record for record in records if str(record.get("target_id") or "") not in override_ids] + overrides
+
+
 def _load_pointer_records_for_domain(domain: str) -> List[Dict[str, Any]]:
     root = _website_context_root(domain)
-    if not root:
-        return []
-    pointer_map = _load_json_if_present(root / "pointer_plot_map.json") or {}
-    return [record for record in (pointer_map.get("records") or []) if isinstance(record, dict)]
+    pointer_map = _load_json_if_present(root / "pointer_plot_map.json") if root else {}
+    records = [record for record in ((pointer_map or {}).get("records") or []) if isinstance(record, dict)]
+    return _merge_owner_showcase_pointers(domain, records)
 
 
 def _lookup_pointer_context(
@@ -4007,6 +4296,46 @@ def _lookup_pointer_context(
         max_records=max_records,
     )
     return [_pointer_summary(match.record, match.score) for match in matches]
+
+
+def _lookup_knowledge_context(
+    website_context: Optional[Dict[str, Any]],
+    transcript: str,
+    max_chunks: int = 5,
+) -> List[Dict[str, Any]]:
+    if not website_context:
+        return []
+    query_tokens = _tokenize_intent(transcript)
+    if not query_tokens:
+        return []
+    ranked = []
+    for chunk in ((website_context.get("knowledge_chunks") or {}).get("chunks") or []):
+        if not isinstance(chunk, dict):
+            continue
+        searchable = " ".join([
+            str(chunk.get("title") or ""),
+            str(chunk.get("heading") or ""),
+            " ".join(str(item) for item in (chunk.get("section_headings") or [])),
+            str(chunk.get("text") or ""),
+        ])
+        chunk_tokens = _tokenize_intent(searchable)
+        overlap = query_tokens & chunk_tokens
+        if not overlap:
+            continue
+        score = len(overlap) / max(1, len(query_tokens))
+        ranked.append((score, chunk))
+    return [
+        {
+            "chunk_id": chunk.get("chunk_id"),
+            "source_url": chunk.get("source_url"),
+            "route": chunk.get("route"),
+            "title": chunk.get("title"),
+            "text": str(chunk.get("text") or "")[:900],
+            "content_hash": chunk.get("content_hash"),
+            "match_score": round(score, 3),
+        }
+        for score, chunk in sorted(ranked, key=lambda item: item[0], reverse=True)[:max_chunks]
+    ]
 
 
 def _queue_pointer_lock(pointer_matches: List[Dict[str, Any]], transcript: str) -> None:
@@ -4068,6 +4397,13 @@ def _build_page_capsule(target_url: str) -> Dict[str, Any]:
         item for item in visitor_tools
         if _score_keyword_match(route_text, item.get("keywords") or [item.get("id") or ""]) >= 0.2
     ][:5]
+    page_record = next(
+        (
+            item for item in (website_context.get("page_knowledge") or [])
+            if _route_from_url(item.get("url") or item.get("route")) == route
+        ),
+        None,
+    )
     return {
         "schema": "orb_weaver.current_page_capsule.v1",
         "site_name": website_context.get("site_name"),
@@ -4075,7 +4411,7 @@ def _build_page_capsule(target_url: str) -> Dict[str, Any]:
         "current_url": target_url,
         "route": route,
         "page_purpose": "Help visitors understand and use this Orb Weaver page.",
-        "page_summary": website_context.get("site_summary"),
+        "page_summary": (page_record or {}).get("summary") or (page_record or {}).get("content_excerpt") or website_context.get("site_summary"),
         "likely_visitor_tasks": [
             item.get("id", "").replace("_", " ")
             for item in likely_tools
@@ -4215,8 +4551,13 @@ def _runtime_pointer_map(domain: str, db: Session) -> Dict[str, Any]:
         record.setdefault("finding_subreason", "runtime_confidence_policy" if safe_class else "initial_extraction_not_independently_verified")
         record.setdefault("pointer_health", "VERIFIED" if safe_class else "NEW")
         normalized_records.append(record)
-    pointer_map["records"] = normalized_records
-    pointer_map["record_count"] = len(normalized_records)
+    pointer_map["records"] = _merge_owner_showcase_pointers(domain, normalized_records)
+    pointer_map["record_count"] = len(pointer_map["records"])
+    pointer_map.setdefault("domain", domain)
+    pointer_map.setdefault("schema", "orb_weaver.pointer_plot_map.v1")
+    pointer_map["by_page"] = {}
+    for record in pointer_map["records"]:
+        pointer_map["by_page"].setdefault(str(record.get("page_route") or "/"), []).append(record.get("target_id"))
     pointer_map["quality"] = assess_pointer_quality(pointer_map)
     return pointer_map
 
@@ -4365,6 +4706,26 @@ def _index_crawl_pack(project: Project, crawl_job: CrawlJob, payload: Dict, json
             "INSERT OR REPLACE INTO context_documents(key, kind, json_path, updated_at) VALUES (?, ?, ?, ?)",
             ("pointer_plot_map", "website_orb_pointer_plot_map", str(_client_intelligence_root(project) / "website_orb_context" / "pointer_plot_map.json"), payload.get("saved_at")),
         )
+        connection.executemany(
+            "INSERT OR REPLACE INTO context_documents(key, kind, json_path, updated_at) VALUES (?, ?, ?, ?)",
+            [
+                (
+                    key,
+                    f"website_orb_{key}",
+                    str(_client_intelligence_root(project) / "website_orb_context" / filename),
+                    payload.get("saved_at"),
+                )
+                for key, filename in (
+                    ("lexical_index", "lexical_index.json"),
+                    ("knowledge_chunks", "knowledge_chunks.json"),
+                    ("retrieval_index", "retrieval_index.json"),
+                    ("route_classification", "route_classification.json"),
+                    ("source_validation", "source_validation.json"),
+                    ("scan_stage_execution", "scan_stage_execution.json"),
+                )
+                if (payload.get("website_orb_context") or {}).get(key) is not None
+            ],
+        )
 
 
 def _index_audit_pack(project: Project, audit: AuditReport, payload: Dict, json_path: Path, recommendations_path: Path) -> None:
@@ -4432,6 +4793,30 @@ def _client_crawl_pack(project: Project, crawl_job: CrawlJob, pages: List[Crawle
         "domain": project.domain,
     })
     pointer_plot_map["quality"] = assess_pointer_quality(pointer_plot_map)
+    config = crawl_job.config or {}
+    page_knowledge = [
+        {
+            "url": page.url,
+            "route": _route_from_url(page.url),
+            "title": page.title,
+            "summary": page.meta_description or page.h1 or page.title,
+            "content_excerpt": (page.semantic_analysis or {}).get("content_excerpt"),
+            "route_classification": (page.semantic_analysis or {}).get("route_classification"),
+            "entities": (page.entity_analysis or {}).get("named_entities") or [],
+            "content_hash": page.content_hash,
+        }
+        for page in pages
+    ]
+    route_hints = {
+        str(page.title or page.h1 or _route_from_url(page.url)): _route_from_url(page.url)
+        for page in pages
+    }
+    site_summary = next((page.meta_description for page in pages if _route_from_url(page.url) == "/" and page.meta_description), None)
+    primary_tasks = [
+        str(record.get("meaning") or record.get("target_id"))
+        for record in pointer_plot_map.get("records") or []
+        if record.get("target_type") in {"button", "nav", "form_field", "download"}
+    ]
     return {
         "schema": "orb_weaver.client_crawl.v1",
         "saved_at": datetime.utcnow().isoformat(),
@@ -4450,9 +4835,24 @@ def _client_crawl_pack(project: Project, crawl_job: CrawlJob, pages: List[Crawle
         "crawl": crawl_payload,
         "pointer_plot_map": pointer_plot_map,
         "website_orb_context": {
+            "schema": "orb_weaver.website_orb_context.v1",
+            "source": "completed_crawl_artifacts",
+            "site_name": project.name,
+            "domain": project.domain,
+            "site_summary": site_summary or f"Website knowledge compiled for {project.name}.",
+            "primary_user_tasks": list(dict.fromkeys(primary_tasks)),
+            "key_facts": [str(page.get("summary")) for page in page_knowledge if page.get("summary")],
+            "route_hints": route_hints,
+            "page_knowledge": page_knowledge,
             "orb_ready_score": crawl_payload.get("stats", {}).get("avg_orb_semantic_score", 0),
             "authority_flow": crawl_payload.get("authority_flow"),
             "knowledge_graph": crawl_payload.get("knowledge_graph"),
+            "lexical_index": config.get("lexical_index"),
+            "knowledge_chunks": config.get("knowledge_chunks"),
+            "retrieval_index": config.get("retrieval_index"),
+            "route_classification": config.get("route_classification"),
+            "source_validation": config.get("source_validation"),
+            "scan_stage_execution": config.get("scan_stage_execution"),
             "competitor_gap": crawl_payload.get("competitor_gap"),
             "template_detection": crawl_payload.get("template_detection"),
             "pointer_plot_map": pointer_plot_map,
@@ -4549,7 +4949,12 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
         pointer_path = root / "website_orb_context" / "pointer_plot_map.json"
         existing_pointer_map = _load_json_if_present(pointer_path) or {}
         new_pointer_map = payload["pointer_plot_map"]
-        if int(new_pointer_map.get("record_count") or 0) > 0 or int(existing_pointer_map.get("record_count") or 0) == 0:
+        if int(new_pointer_map.get("record_count") or 0) > 0:
+            new_pointer_map = merge_canonical_pointer_authority(existing_pointer_map, new_pointer_map)
+            payload["pointer_plot_map"] = new_pointer_map
+            payload["website_orb_context"]["pointer_plot_map"] = new_pointer_map
+            _write_json(pointer_path, new_pointer_map)
+        elif int(existing_pointer_map.get("record_count") or 0) == 0:
             _write_json(pointer_path, new_pointer_map)
         else:
             payload["website_orb_context"]["pointer_plot_map"] = existing_pointer_map
@@ -4559,6 +4964,17 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
                 "reason": "new_crawl_produced_zero_pointer_records",
             }
         _write_json(root / "website_orb_context" / "latest_context.json", payload["website_orb_context"])
+        for key, filename in (
+            ("lexical_index", "lexical_index.json"),
+            ("knowledge_chunks", "knowledge_chunks.json"),
+            ("retrieval_index", "retrieval_index.json"),
+            ("route_classification", "route_classification.json"),
+            ("source_validation", "source_validation.json"),
+            ("scan_stage_execution", "scan_stage_execution.json"),
+        ):
+            artifact = payload["website_orb_context"].get(key)
+            if artifact is not None:
+                _write_json(root / "website_orb_context" / filename, artifact)
         _write_json(root / "crm_context" / "latest_context.json", {"schema": "orb_weaver.crm_context.v0.1", "status": "not_connected"})
         _write_json(root / "mail_context" / "latest_context.json", {"schema": "orb_weaver.mail_context.v0.1", "status": "not_connected"})
         _write_json(root / "dandy_sponsor_pack" / "latest_pack.json", {"schema": "orb_weaver.dandy_sponsor_pack.v0.1", "status": "not_configured"})
@@ -4571,6 +4987,33 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
         config = crawl_job.config or {}
         config["substrate_preservation_error"] = str(exc)
         crawl_job.config = config
+        db.commit()
+        raise
+
+
+def _sync_website_orb_execution_context(project: Project, crawl_job: CrawlJob, pointer_map: Dict[str, Any]) -> None:
+    root = client_root(project.domain)
+    context_root = root / "website_orb_context"
+    execution = (crawl_job.config or {}).get("scan_stage_execution") or {}
+    latest_context_path = context_root / "latest_context.json"
+    latest_context = _load_json_if_present(latest_context_path) or {}
+    latest_context.update({
+        "pointer_plot_map": pointer_map,
+        "scan_stage_execution": execution,
+        "source_crawl_job_id": str(crawl_job.id),
+        "updated_at": datetime.utcnow().isoformat(),
+    })
+    _write_json(latest_context_path, latest_context)
+    _write_json(context_root / "scan_stage_execution.json", execution)
+
+    latest_crawl_path = root / "current" / "latest_crawl.json"
+    latest_crawl = _load_json_if_present(latest_crawl_path)
+    if latest_crawl and str((latest_crawl.get("crawl") or {}).get("id") or "") == str(crawl_job.id):
+        latest_crawl["pointer_plot_map"] = pointer_map
+        website_context = latest_crawl.get("website_orb_context") or {}
+        website_context.update({"pointer_plot_map": pointer_map, "scan_stage_execution": execution})
+        latest_crawl["website_orb_context"] = website_context
+        _write_json(latest_crawl_path, latest_crawl)
 
 
 def preserve_client_preflight_intelligence(project: Project, report: Dict) -> None:
@@ -4738,6 +5181,116 @@ def _count_entities(pages: List[CrawledPage]) -> int:
     return len(entities)
 
 
+def _build_lexical_index(pages: List[CrawledPage]) -> Dict[str, Any]:
+    term_counts: Counter = Counter()
+    alias_map: Dict[str, Set[str]] = {}
+    for page in pages:
+        semantic = page.semantic_analysis or {}
+        for item in semantic.get("top_terms") or []:
+            if isinstance(item, dict) and item.get("term"):
+                term_counts[str(item["term"]).strip().lower()] += int(item.get("count") or 1)
+        for record in semantic.get("pointer_plot_records") or []:
+            if not isinstance(record, dict):
+                continue
+            canonical = str(record.get("meaning") or record.get("target_id") or "").strip()
+            if not canonical:
+                continue
+            aliases = {
+                str(alias).strip().lower()
+                for key in ("direct_aliases", "intent_aliases", "topic_aliases")
+                for alias in (record.get(key) or [])
+                if str(alias).strip()
+            }
+            if aliases:
+                alias_map.setdefault(canonical, set()).update(aliases)
+    return {
+        "schema": "orb_weaver.lexical_index.v1",
+        "canonical_terms": [
+            {"term": term, "count": count}
+            for term, count in sorted(term_counts.items(), key=lambda item: (-item[1], item[0]))
+        ],
+        "aliases": {canonical: sorted(aliases) for canonical, aliases in sorted(alias_map.items())},
+        "source_page_count": len(pages),
+    }
+
+
+def _build_knowledge_chunks(pages: List[CrawledPage]) -> Dict[str, Any]:
+    chunks = []
+    for page in pages:
+        semantic = page.semantic_analysis or {}
+        excerpt = str(semantic.get("content_excerpt") or "").strip()
+        chunk_id = hashlib.sha256(f"{page.url}|{page.content_hash or ''}".encode("utf-8")).hexdigest()[:20]
+        chunks.append({
+            "chunk_id": chunk_id,
+            "source_url": page.url,
+            "route": _route_from_url(page.url),
+            "title": page.title,
+            "heading": page.h1,
+            "section_headings": page.h2_tags or [],
+            "text": excerpt,
+            "content_hash": page.content_hash,
+            "route_classification": semantic.get("route_classification"),
+            "provenance": semantic.get("discovery_provenance") or [],
+        })
+    return {"schema": "orb_weaver.knowledge_chunks.v1", "chunk_count": len(chunks), "chunks": chunks}
+
+
+def _build_retrieval_index(chunks_artifact: Dict[str, Any]) -> Dict[str, Any]:
+    postings: Dict[str, List[str]] = {}
+    for chunk in chunks_artifact.get("chunks") or []:
+        chunk_id = str(chunk.get("chunk_id") or "")
+        terms = set(_tokenize_intent(" ".join([
+            str(chunk.get("title") or ""),
+            str(chunk.get("heading") or ""),
+            " ".join(str(item) for item in (chunk.get("section_headings") or [])),
+            str(chunk.get("text") or ""),
+        ])))
+        for term in sorted(terms):
+            postings.setdefault(term, []).append(chunk_id)
+    return {
+        "schema": "orb_weaver.retrieval_index.v1",
+        "chunk_count": int(chunks_artifact.get("chunk_count") or 0),
+        "term_count": len(postings),
+        "postings": postings,
+    }
+
+
+def _build_route_classification(pages: List[CrawledPage]) -> Dict[str, Any]:
+    routes = [
+        {
+            "url": page.url,
+            "route": _route_from_url(page.url),
+            "category": (page.semantic_analysis or {}).get("route_classification") or "unclassified",
+        }
+        for page in pages
+    ]
+    counts = Counter(str(route["category"]) for route in routes)
+    return {"schema": "orb_weaver.route_classification.v1", "route_count": len(routes), "category_counts": dict(counts), "routes": routes}
+
+
+def _build_source_validation(pages: List[CrawledPage], chunks_artifact: Dict[str, Any]) -> Dict[str, Any]:
+    pages_by_url = {page.url: page for page in pages}
+    checks = []
+    for chunk in chunks_artifact.get("chunks") or []:
+        page = pages_by_url.get(str(chunk.get("source_url") or ""))
+        valid = bool(page and chunk.get("content_hash") and chunk.get("content_hash") == page.content_hash)
+        checks.append({
+            "chunk_id": chunk.get("chunk_id"),
+            "source_url": chunk.get("source_url"),
+            "status": "VALID" if valid else "INVALID",
+            "content_hash": chunk.get("content_hash"),
+        })
+    invalid_count = sum(1 for check in checks if check["status"] != "VALID")
+    return {
+        "schema": "orb_weaver.source_validation.v1",
+        "status": "COMPLETE" if checks and invalid_count == 0 else "FAILED",
+        "input_count": len(checks),
+        "validated_count": len(checks) - invalid_count,
+        "invalid_count": invalid_count,
+        "checks": checks,
+    }
+
+
 def _scan_stage(
     stage_id: str,
     label: str,
@@ -4759,7 +5312,17 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
     running = status in {"pending", "running", "cancel_requested"}
     complete = status == "completed"
     failed = status in {"failed", "cancelled"}
-    stage_status = "complete" if complete else "running" if running else "failed" if failed else "not_started"
+    execution = (crawl_job.config or {}).get("scan_stage_execution") or {}
+
+    def stage_status(stage_id: str, *, while_running: str = "running") -> str:
+        if running:
+            return while_running.upper()
+        if failed:
+            return "FAILED"
+        if not complete:
+            return "NOT_STARTED"
+        evidence = execution.get(stage_id) if isinstance(execution, dict) else None
+        return str((evidence or {}).get("status") or "BLOCKED").upper()
     pages_crawled = int(crawl_job.pages_crawled or len(pages) or stats.get("total_pages") or 0)
     pages_found = int(crawl_job.pages_found or stats.get("discovered_urls") or stats.get("visited_urls") or pages_crawled)
     total_sections = sum(
@@ -4767,6 +5330,8 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
         for page in pages
     )
     lexical_terms = _count_lexical_terms(pages)
+    lexical_index = (crawl_job.config or {}).get("lexical_index") or {}
+    alias_count = sum(len(values) for values in (lexical_index.get("aliases") or {}).values())
     entity_count = _count_entities(pages)
     relationship_count = len((crawl_job.config or {}).get("knowledge_graph", {}).get("edges", []) or [])
     pointer_summary = _pointer_summary_from_pages(pages)
@@ -4781,64 +5346,92 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
     route_categories = (stats.get("route_category_counts") or (crawl_job.config or {}).get("route_category_counts") or {})
     route_count = sum(int(value or 0) for value in route_categories.values()) if isinstance(route_categories, dict) else 0
 
-    derived_note = "Derived from live crawl semantic fields."
-    chunk_count = sum(
-        (1 if page.title else 0) + (1 if page.h1 else 0) + len(page.h2_tags or [])
-        for page in pages
-    )
-    retrieval_sources = pages_crawled if lexical_terms or chunk_count else 0
-    future_status = "not_started" if complete else "waiting" if running else stage_status
+    execution_note = "Status requires persisted stage execution evidence."
+    chunk_count = int(((crawl_job.config or {}).get("knowledge_chunks") or {}).get("chunk_count") or 0)
+    retrieval_sources = int(((crawl_job.config or {}).get("retrieval_index") or {}).get("chunk_count") or 0)
+    required_stage_ids = {
+        "url_discovery", "crawl_control", "page_fetch", "javascript_rendering",
+        "page_content_scan", "content_structure_extraction", "schema_extraction", "mobile_ux_analysis",
+        "semantic_indexing", "lexical_indexing", "entity_extraction",
+        "relationship_mapping", "pointer_mapping", "route_classification", "knowledge_chunking",
+        "retrieval_index_build", "source_validation", "pointer_verification", "pointer_recovery",
+        "runtime_guidance",
+    }
+    orb_ready = complete and all(stage_status(stage_id) == "COMPLETE" for stage_id in required_stage_ids)
 
     return {
         "schema": "orb_weaver.scan_assembly_status.v1",
         "crawl_job_id": str(crawl_job.id),
-        "overall_status": "orb_ready" if complete else status,
+        "overall_status": "orb_ready" if orb_ready else "analysis_complete" if complete else status,
         "crawl_delay_seconds": float((crawl_job.config or {}).get("delay") or 0),
         "stages": [
-            _scan_stage("page_content_scan", "Page Content Scan", stage_status, [
+            _scan_stage("url_discovery", "URL Discovery", stage_status("url_discovery"), [
+                {"label": "URLs discovered", "value": int(stats.get("discovered_urls") or 0)},
+            ], execution_note),
+            _scan_stage("crawl_control", "Robots / Crawl Control", stage_status("crawl_control"), [
+                {"label": "URLs blocked by policy", "value": len(stats.get("robots_blocked_urls") or [])},
+            ], execution_note),
+            _scan_stage("page_fetch", "Page Fetching", stage_status("page_fetch"), [
+                {"label": "pages fetched", "value": pages_crawled, "total": pages_found or None},
+            ], execution_note),
+            _scan_stage("javascript_rendering", "JavaScript Rendering", stage_status("javascript_rendering"), [
+                {"label": "required renders", "value": int(stats.get("javascript_render_attempts") or 0)},
+                {"label": "successful renders", "value": int(stats.get("javascript_render_successes") or 0)},
+            ], execution_note),
+            _scan_stage("page_content_scan", "Page Content Scan", stage_status("page_content_scan"), [
                 {"label": "pages processed", "value": pages_crawled, "total": pages_found or None},
-            ]),
-            _scan_stage("semantic_indexing", "Semantic Indexing", stage_status, [
+            ], execution_note),
+            _scan_stage("content_structure_extraction", "Content Structure Extraction", stage_status("content_structure_extraction"), [
+                {"label": "structured pages", "value": sum(1 for page in pages if page.title or page.h1 or page.h2_tags)},
+            ], execution_note),
+            _scan_stage("schema_extraction", "Schema Extraction", stage_status("schema_extraction"), [
+                {"label": "schema pages", "value": int(stats.get("schema_pages") or 0)},
+                {"label": "schema errors", "value": int(stats.get("schema_errors") or 0)},
+            ], execution_note),
+            _scan_stage("mobile_ux_analysis", "Mobile / UX Analysis", stage_status("mobile_ux_analysis"), [
+                {"label": "pages analyzed", "value": sum(1 for page in pages if page.mobile_ux_analysis)},
+            ], execution_note),
+            _scan_stage("semantic_indexing", "Semantic Indexing", stage_status("semantic_indexing"), [
                 {"label": "content sections analyzed", "value": total_sections},
                 {"label": "thin pages", "value": int(stats.get("semantic_thin_pages") or 0)},
             ]),
-            _scan_stage("lexical_indexing", "Lexical Indexing", stage_status, [
+            _scan_stage("lexical_indexing", "Lexical Indexing", stage_status("lexical_indexing"), [
                 {"label": "canonical terms discovered", "value": lexical_terms},
-                {"label": "aliases resolved", "value": 0},
-            ], derived_note),
-            _scan_stage("entity_extraction", "Entity Extraction", stage_status, [
+                {"label": "aliases resolved", "value": alias_count},
+            ], execution_note),
+            _scan_stage("entity_extraction", "Entity Extraction", stage_status("entity_extraction"), [
                 {"label": "unique entities extracted", "value": entity_count},
             ]),
-            _scan_stage("relationship_mapping", "Relationship Mapping", "complete" if complete and relationship_count else future_status, [
+            _scan_stage("relationship_mapping", "Relationship Mapping", stage_status("relationship_mapping"), [
                 {"label": "relationships mapped", "value": relationship_count},
             ]),
-            _scan_stage("pointer_mapping", "Pointer Mapping", stage_status, [
+            _scan_stage("pointer_mapping", "Pointer Mapping", stage_status("pointer_mapping"), [
                 {"label": "targets extracted", "value": pointer_count},
                 {"label": "dynamic controls detected", "value": dynamic_controls},
             ]),
-            _scan_stage("pointer_verification", "Pointer Verification", "waiting" if running else "needs_review" if recovery_required else stage_status, [
+            _scan_stage("pointer_verification", "Pointer Verification", stage_status("pointer_verification", while_running="NOT_STARTED"), [
                 {"label": "stable targets", "value": stable_count},
                 {"label": "targets requiring verification", "value": uncertain_count},
             ]),
-            _scan_stage("runtime_guidance", "Runtime Guidance", "waiting" if running else "blocked" if recovery_required else stage_status, [
+            _scan_stage("runtime_guidance", "Runtime Guidance", stage_status("runtime_guidance", while_running="BLOCKED"), [
                 {"label": "guidance-eligible targets", "value": guidance_eligible_count},
             ]),
-            _scan_stage("pointer_recovery", "Pointer Recovery", "waiting" if running else "required" if recovery_required else "not_required", [
+            _scan_stage("pointer_recovery", "Pointer Recovery", stage_status("pointer_recovery", while_running="NOT_STARTED"), [
                 {"label": "route+locator conflicts", "value": duplicate_conflicts},
             ]),
-            _scan_stage("route_classification", "Route Classification", "complete" if complete and route_count else future_status, [
+            _scan_stage("route_classification", "Route Classification", stage_status("route_classification"), [
                 {"label": "routes classified", "value": route_count},
             ]),
-            _scan_stage("knowledge_chunking", "Knowledge Chunking", stage_status, [
+            _scan_stage("knowledge_chunking", "Knowledge Chunking", stage_status("knowledge_chunking"), [
                 {"label": "live page chunks prepared", "value": chunk_count},
-            ], derived_note),
-            _scan_stage("retrieval_index_build", "Retrieval Index Build", stage_status, [
+            ], execution_note),
+            _scan_stage("retrieval_index_build", "Retrieval Index Build", stage_status("retrieval_index_build"), [
                 {"label": "crawl pages available to retrieval", "value": retrieval_sources, "total": pages_crawled or None},
                 {"label": "canonical terms indexed", "value": lexical_terms},
-            ], derived_note),
-            _scan_stage("source_validation", "Source Validation", stage_status, [
-                {"label": "source links validated", "value": int(stats.get("indexable_pages") or 0), "total": pages_crawled or None},
-            ]),
+            ], execution_note),
+            _scan_stage("source_validation", "Source Validation", stage_status("source_validation"), [
+                {"label": "source links validated", "value": int(((crawl_job.config or {}).get("source_validation") or {}).get("validated_count") or 0), "total": chunk_count or None},
+            ], execution_note),
         ],
     }
 
@@ -4876,20 +5469,43 @@ def _pointer_summary_from_pages(pages: List[CrawledPage]) -> Dict:
         "routes_with_pointers": len(route_ids),
         "duplicate_target_ids": duplicate_count,
         "target_type_counts": type_counts,
-        "extraction_status": "complete" if records else "needs_review",
-        "runtime_guidance_status": "blocked" if recovery_required else "ready",
-        "pointer_recovery_status": "required" if recovery_required else "not_required",
         "guidance_eligible_count": guidance_eligible,
         "quality": quality,
-        "status": "recovery_required" if recovery_required else "passed" if records else "needs_review",
+        "recovery_required": recovery_required,
     }
+
+
+def _pointer_summary_with_execution(pointer_summary: Dict[str, Any], config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    config = config or {}
+    execution = config.get("scan_stage_execution") or {}
+
+    def execution_status(stage_id: str) -> str:
+        stage = execution.get(stage_id) if isinstance(execution, dict) else None
+        return str((stage or {}).get("status") or "NOT_STARTED").upper()
+
+    result = dict(pointer_summary)
+    result.update({
+        "extraction_status": execution_status("pointer_mapping"),
+        "verification_status": execution_status("pointer_verification"),
+        "pointer_recovery_status": execution_status("pointer_recovery"),
+        "runtime_guidance_status": execution_status("runtime_guidance"),
+    })
+    runtime_evidence = execution.get("runtime_guidance") if isinstance(execution, dict) else None
+    if isinstance(runtime_evidence, dict):
+        result["guidance_eligible_count"] = int(runtime_evidence.get("output_count") or 0)
+    verified_quality = config.get("verified_pointer_quality")
+    if isinstance(verified_quality, dict):
+        result["quality"] = verified_quality
+        result["recovery_required"] = bool(verified_quality.get("recovery_required"))
+    result["status"] = result["runtime_guidance_status"]
+    return result
 
 
 def _planned_tool_calls(pointer_summary: Dict, stats: Optional[Dict] = None, pages: Optional[List[CrawledPage]] = None) -> List[Dict[str, Any]]:
     stats = stats or {}
     record_count = int(pointer_summary.get("record_count") or 0)
     duplicate_count = int(pointer_summary.get("duplicate_target_ids") or 0)
-    runtime_ready = pointer_summary.get("runtime_guidance_status") == "ready"
+    runtime_ready = str(pointer_summary.get("runtime_guidance_status") or "").upper() == "COMPLETE"
     depth_limit_hit = bool(stats.get("depth_limit_hit"))
     max_page_limit_hit = bool(stats.get("max_page_limit_hit"))
 
@@ -5089,7 +5705,7 @@ def _build_internal_link_graph(pages: List[CrawledPage]) -> Dict:
 
     return {
         "nodes": nodes,
-        "edges": edges[:1000],
+        "edges": edges,
         "orphan_candidates": [node for node in nodes if node["inbound"] == 0 and node["status_code"] == 200],
     }
 
@@ -5187,7 +5803,7 @@ def _knowledge_graph(pages: List[CrawledPage]) -> Dict:
             ("product_names", "product"),
             ("schema_org_entities", "schema.org"),
         ):
-            for entity in entity_data.get(bucket, [])[:25]:
+            for entity in entity_data.get(bucket, []):
                 entity_id = f"{node_type}:{entity}"
                 nodes.setdefault(entity_id, {"id": entity_id, "label": entity, "type": node_type})
                 edges.append({"source": page_id, "target": entity_id, "relationship": "mentions"})
@@ -5202,11 +5818,11 @@ def _knowledge_graph(pages: List[CrawledPage]) -> Dict:
         {"entity": hub["label"], "reason": "Entity appears across multiple pages but no exact-title pillar page was found"}
         for hub in hubs
         if not any((page.title or "").lower() == hub["label"].lower() for page in pages)
-    ][:10]
+    ]
     topic_clusters = _topic_clusters(pages)
     return {
-        "nodes": list(nodes.values())[:1000],
-        "edges": edges[:2000],
+        "nodes": list(nodes.values()),
+        "edges": edges,
         "hubs": hubs,
         "topic_clusters": topic_clusters,
         "missing_pillar_pages": missing_pillars,
@@ -5220,7 +5836,7 @@ def _topic_clusters(pages: List[CrawledPage]) -> List[Dict]:
         terms = (page.semantic_analysis or {}).get("top_terms", [])
         cluster = terms[0]["term"] if terms else "uncategorized"
         clusters.setdefault(cluster, []).append(page.url)
-    return [{"topic": topic, "pages": urls[:20], "page_count": len(urls)} for topic, urls in clusters.items()]
+    return [{"topic": topic, "pages": urls, "page_count": len(urls)} for topic, urls in clusters.items()]
 
 
 def _knowledge_link_suggestions(pages: List[CrawledPage], hubs: List[Dict]) -> List[Dict]:
@@ -5327,7 +5943,7 @@ def _template_detection(pages: List[CrawledPage]) -> Dict:
             "signature": signature,
             "page_count": len(group),
             "duplicate_text_probability": round(duplicate_ratio * 100, 1),
-            "pages": [page.url for page in group[:20]],
+            "pages": [page.url for page in group],
             "orb_statement": f"{_url_segment(group[0].url).capitalize()} pages share {round(duplicate_ratio * 100, 1)}% identical content signatures."
         })
 
@@ -5437,7 +6053,7 @@ def _serialize_crawl_job(crawl_job: CrawlJob, db: Session, include_pages: bool =
     project = db.query(Project).filter(Project.id == crawl_job.project_id).first()
     config = crawl_job.config or {}
     stats = {**_compute_stats(pages), **(config.get("stats") or {})}
-    pointer_summary = _pointer_summary_from_pages(pages)
+    pointer_summary = _pointer_summary_with_execution(_pointer_summary_from_pages(pages), config)
 
     payload = {
         "id": str(crawl_job.id),
@@ -5449,6 +6065,8 @@ def _serialize_crawl_job(crawl_job: CrawlJob, db: Session, include_pages: bool =
         "created_at": crawl_job.start_time.isoformat() if crawl_job.start_time else None,
         "start_time": crawl_job.start_time.isoformat() if crawl_job.start_time else None,
         "end_time": crawl_job.end_time.isoformat() if crawl_job.end_time else None,
+        "heartbeat_at": crawl_job.heartbeat_at.isoformat() if crawl_job.heartbeat_at else None,
+        "worker_id": crawl_job.worker_id,
         "pages_crawled": crawl_job.pages_crawled,
         "pages_found": crawl_job.pages_found,
         "errors_count": crawl_job.errors_count,
@@ -5469,6 +6087,30 @@ def _serialize_crawl_job(crawl_job: CrawlJob, db: Session, include_pages: bool =
     if include_pages:
         payload["pages"] = [_page_to_dict(p) for p in pages]
     return payload
+
+
+def _serialize_crawl_job_summary(crawl_job: CrawlJob, project: Optional[Project] = None) -> Dict[str, Any]:
+    config = crawl_job.config or {}
+    return {
+        "id": str(crawl_job.id),
+        "project_id": str(crawl_job.project_id),
+        "project_name": project.name if project else None,
+        "project_domain": project.domain if project else None,
+        "status": crawl_job.status,
+        "config": {
+            key: config.get(key)
+            for key in ("max_pages", "max_depth", "delay", "competitor_domains", "seed_urls", "include_admin_sections")
+            if key in config
+        },
+        "created_at": crawl_job.start_time.isoformat() if crawl_job.start_time else None,
+        "start_time": crawl_job.start_time.isoformat() if crawl_job.start_time else None,
+        "end_time": crawl_job.end_time.isoformat() if crawl_job.end_time else None,
+        "heartbeat_at": crawl_job.heartbeat_at.isoformat() if crawl_job.heartbeat_at else None,
+        "pages_crawled": int(crawl_job.pages_crawled or 0),
+        "pages_found": int(crawl_job.pages_found or 0),
+        "errors_count": int(crawl_job.errors_count or 0),
+        "error": config.get("error"),
+    }
 
 
 def _serialize_audit_report(report: AuditReport) -> Dict:
@@ -5577,6 +6219,43 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
         config = CrawlConfig(**config_data)
         crawl_job.status = "running"
         crawl_job.start_time = datetime.utcnow()
+        crawl_job.heartbeat_at = crawl_job.start_time
+        crawl_job.worker_id = CRAWL_WORKER_INSTANCE_ID
+        stage_started_at = crawl_job.start_time.isoformat()
+        crawl_job.config = {
+            **(crawl_job.config or {}),
+            "scan_stage_execution": {
+                stage_id: {
+                    "status": "RUNNING",
+                    "started_at": stage_started_at,
+                    "completed_at": None,
+                    "input_count": 0,
+                    "output_count": 0,
+                    "artifact": None,
+                    "error": None,
+                    "version": "1",
+                }
+                for stage_id in (
+                    "url_discovery", "crawl_control", "page_fetch", "javascript_rendering", "admin_route_scanning",
+                    "page_content_scan", "content_structure_extraction", "schema_extraction", "mobile_ux_analysis",
+                    "semantic_indexing", "lexical_indexing", "entity_extraction", "relationship_mapping",
+                    "internal_link_graph", "authority_analysis", "route_classification", "template_detection",
+                    "pointer_mapping", "knowledge_chunking", "retrieval_index_build", "source_validation",
+                )
+            } | {
+                stage_id: {
+                    "status": "NOT_STARTED",
+                    "started_at": None,
+                    "completed_at": None,
+                    "input_count": 0,
+                    "output_count": 0,
+                    "artifact": None,
+                    "error": None,
+                    "version": "1",
+                }
+                for stage_id in ("pointer_verification", "pointer_recovery", "runtime_guidance")
+            },
+        }
         lifecycle_job = db.get(LifecycleJob, lifecycle_job_id) if lifecycle_job_id else None
         if lifecycle_job:
             lifecycle_job.status = "RUNNING"
@@ -5591,6 +6270,7 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             active_stats = active_crawler.get_crawl_stats()
             crawl_job.pages_crawled = len(active_crawler.crawled_data)
             crawl_job.pages_found = int(active_stats.get("discovered_urls") or active_stats.get("visited_urls") or 0)
+            crawl_job.heartbeat_at = datetime.utcnow()
             crawl_job.config = {
                 **(crawl_job.config or {}),
                 "stats": {
@@ -5667,9 +6347,76 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
         competitor_results = await _crawl_competitors(config.competitor_domains, config) if config.competitor_domains else []
         competitor_gap = _competitor_gap(stored_pages, competitor_results, authority_flow)
         template_detection = _template_detection(stored_pages)
+        pointer_summary = _pointer_summary_from_pages(stored_pages)
+        pointer_quality = pointer_summary.get("quality") if isinstance(pointer_summary.get("quality"), dict) else {}
+        lexical_index = _build_lexical_index(stored_pages)
+        knowledge_chunks = _build_knowledge_chunks(stored_pages)
+        retrieval_index = _build_retrieval_index(knowledge_chunks)
+        route_classification = _build_route_classification(stored_pages)
+        source_validation = _build_source_validation(stored_pages, knowledge_chunks)
+        if source_validation["status"] != "COMPLETE":
+            raise RuntimeError("Source validation failed for generated knowledge chunks")
+        stats["route_category_counts"] = route_classification["category_counts"]
+        completed_at = datetime.utcnow().isoformat()
+        started_at = crawl_job.start_time.isoformat() if crawl_job.start_time else completed_at
+        def evidence(status: str, input_count: int, output_count: int, artifact: Optional[str], error: Optional[str] = None) -> Dict[str, Any]:
+            return {
+                "status": status,
+                "started_at": started_at if status == "COMPLETE" else None,
+                "completed_at": completed_at if status in {"COMPLETE", "FAILED"} else None,
+                "input_count": input_count,
+                "output_count": output_count,
+                "artifact": artifact,
+                "error": error,
+                "version": "1",
+            }
+        scan_stage_execution = {
+            "url_discovery": evidence("COMPLETE", len(config.seed_urls) + 1, int(crawl_stats.get("discovered_urls") or 0), "crawl.config.stats.crawl_provenance"),
+            "crawl_control": evidence(
+                str(crawl_stats.get("robots_check_status") or "FAILED"),
+                1,
+                len(crawl_stats.get("robots_blocked_urls") or []),
+                "crawl.config.stats.robots_blocked_urls",
+                crawl_stats.get("robots_error"),
+            ),
+            "page_fetch": evidence("COMPLETE", int(crawl_stats.get("visited_urls") or 0), len(stored_pages), "db:crawled_pages"),
+            "javascript_rendering": evidence(
+                "COMPLETE" if int(crawl_stats.get("javascript_render_attempts") or 0) == int(crawl_stats.get("javascript_render_successes") or 0) else "FAILED",
+                int(crawl_stats.get("javascript_render_attempts") or 0),
+                int(crawl_stats.get("javascript_render_successes") or 0),
+                "crawl.config.stats.javascript_render_successes",
+                None if int(crawl_stats.get("javascript_render_attempts") or 0) == int(crawl_stats.get("javascript_render_successes") or 0) else "One or more required browser renders failed.",
+            ),
+            "admin_route_scanning": evidence(
+                "COMPLETE" if config.include_admin_sections else "NOT_STARTED",
+                len(crawl_stats.get("admin_seed_urls") or []),
+                int(crawl_stats.get("admin_section_pages_scanned") or 0),
+                "crawl.config.stats.admin_section_urls_found" if config.include_admin_sections else None,
+            ),
+            "page_content_scan": evidence("COMPLETE", len(pages), len(stored_pages), "db:crawled_pages"),
+            "content_structure_extraction": evidence("COMPLETE", len(stored_pages), sum(1 for page in stored_pages if page.title or page.h1 or page.h2_tags), "db:crawled_pages.title,h1,h2_tags"),
+            "schema_extraction": evidence("COMPLETE", len(stored_pages), int(stats.get("schema_pages") or 0), "db:crawled_pages.schema_markup"),
+            "mobile_ux_analysis": evidence("COMPLETE", len(stored_pages), sum(1 for page in stored_pages if page.mobile_ux_analysis), "db:crawled_pages.mobile_ux_analysis"),
+            "semantic_indexing": evidence("COMPLETE", len(stored_pages), sum(1 for page in stored_pages if page.semantic_analysis), "db:crawled_pages.semantic_analysis"),
+            "lexical_indexing": evidence("COMPLETE", len(stored_pages), len(lexical_index["canonical_terms"]), "crawl.config.lexical_index"),
+            "entity_extraction": evidence("COMPLETE", len(stored_pages), _count_entities(stored_pages), "db:crawled_pages.entity_analysis"),
+            "relationship_mapping": evidence("COMPLETE", len(stored_pages), len(knowledge_graph.get("edges") or []), "crawl.config.knowledge_graph"),
+            "internal_link_graph": evidence("COMPLETE", len(stored_pages), len(link_graph.get("edges") or []), "crawl.config.internal_link_graph"),
+            "authority_analysis": evidence("COMPLETE", len(stored_pages), len(authority_flow.get("pages") or []), "crawl.config.authority_flow"),
+            "route_classification": evidence("COMPLETE", len(stored_pages), route_classification["route_count"], "crawl.config.route_classification"),
+            "template_detection": evidence("COMPLETE", len(stored_pages), len(template_detection.get("repeated_layouts") or []), "crawl.config.template_detection"),
+            "pointer_mapping": evidence("COMPLETE", len(stored_pages), int(pointer_summary.get("record_count") or 0), "website_orb_context/pointer_plot_map.json"),
+            "knowledge_chunking": evidence("COMPLETE", len(stored_pages), knowledge_chunks["chunk_count"], "crawl.config.knowledge_chunks"),
+            "retrieval_index_build": evidence("COMPLETE", knowledge_chunks["chunk_count"], retrieval_index["term_count"], "crawl.config.retrieval_index"),
+            "source_validation": evidence("COMPLETE", source_validation["input_count"], source_validation["validated_count"], "crawl.config.source_validation"),
+            "pointer_verification": evidence("NOT_STARTED", int(pointer_summary.get("record_count") or 0), 0, None),
+            "pointer_recovery": evidence("BLOCKED" if pointer_quality.get("recovery_required") else "NOT_STARTED", int(pointer_summary.get("record_count") or 0), 0, None),
+            "runtime_guidance": evidence("BLOCKED", int(pointer_summary.get("record_count") or 0), int(pointer_summary.get("guidance_eligible_count") or 0), None, "Independent pointer verification has not run."),
+        }
 
         crawl_job.status = "completed"
         crawl_job.end_time = datetime.utcnow()
+        crawl_job.heartbeat_at = crawl_job.end_time
         crawl_job.pages_crawled = len(pages)
         crawl_job.pages_found = int(stats.get("discovered_urls") or stats.get("visited_urls") or len(pages))
         crawl_job.errors_count = 0
@@ -5684,6 +6431,12 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             "competitors": competitor_results,
             "competitor_gap": competitor_gap,
             "template_detection": template_detection,
+            "lexical_index": lexical_index,
+            "knowledge_chunks": knowledge_chunks,
+            "retrieval_index": retrieval_index,
+            "route_classification": route_classification,
+            "source_validation": source_validation,
+            "scan_stage_execution": scan_stage_execution,
         }
         if lifecycle_job:
             lifecycle_job.phase = "preserving_map_evidence"
@@ -5705,8 +6458,14 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
         if crawl_job:
             crawl_job.status = "cancelled"
             crawl_job.end_time = datetime.utcnow()
+            crawl_job.heartbeat_at = crawl_job.end_time
             config = crawl_job.config or {}
             config["cancelled_reason"] = str(exc)
+            execution = dict(config.get("scan_stage_execution") or {})
+            for record in execution.values():
+                if record.get("status") == "RUNNING":
+                    record.update({"status": "BLOCKED", "completed_at": crawl_job.end_time.isoformat(), "error": str(exc)})
+            config["scan_stage_execution"] = execution
             crawl_job.config = config
         if lifecycle_job_id:
             lifecycle_job = db.get(LifecycleJob, lifecycle_job_id)
@@ -5721,8 +6480,14 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
         if crawl_job:
             crawl_job.status = "failed"
             crawl_job.end_time = datetime.utcnow()
+            crawl_job.heartbeat_at = crawl_job.end_time
             config = crawl_job.config or {}
             config["error"] = str(exc)
+            execution = dict(config.get("scan_stage_execution") or {})
+            for record in execution.values():
+                if record.get("status") == "RUNNING":
+                    record.update({"status": "FAILED", "completed_at": crawl_job.end_time.isoformat(), "error": str(exc)})
+            config["scan_stage_execution"] = execution
             crawl_job.config = config
             db.commit()
     finally:
@@ -5763,8 +6528,14 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
         db.commit()
 
         def ensure_lifecycle_not_cancelled() -> None:
-            db.refresh(job)
-            if job.status in {"CANCEL_REQUESTED", "CANCELLED"}:
+            cancellation_db = SessionLocal()
+            try:
+                committed_status = cancellation_db.query(LifecycleJob.status).filter(
+                    LifecycleJob.id == job.id
+                ).scalar()
+            finally:
+                cancellation_db.close()
+            if committed_status in {"CANCEL_REQUESTED", "CANCELLED"}:
                 raise LifecycleCancellationRequested(f"{job.job_type} job {job.id} was stopped by the user")
 
         config = job.config or {}
@@ -5861,9 +6632,9 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
                 "crawl_job_id": str(crawl_id),
                 "pointer_count": pointer_map["record_count"],
                 "pointer_quality": quality,
-                "pointer_guidance_status": "recovery_required" if quality["recovery_required"] else "ready",
+                "pointer_guidance_status": "verification_required",
             }
-            if quality["recovery_required"]:
+            if pointer_map["record_count"] > 0:
                 configured_routes = ["/", "/investor"] if _safe_pack_name(project.domain) == "campaign.orbweaver.spruked.com" else None
                 routes = recovery_routes(pointer_map, configured_routes)
                 recovery_job = LifecycleJob(
@@ -5889,7 +6660,15 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
                 final_status = "POINTER_RECOVERY_REQUIRED"
                 job.phase = "pointer_recovery_queued"
             else:
-                job.phase = "orb_scan_complete"
+                db.add(ReviewItem(
+                    lifecycle_job_id=job.id,
+                    severity="critical",
+                    category="pointer_map_empty",
+                    title="ORB Scan produced no pointer targets",
+                    details={"crawl_job_id": str(crawl_id), "record_count": 0},
+                ))
+                final_status = "REVIEW_REQUIRED"
+                job.phase = "awaiting_pointer_map_repair"
         elif job.job_type == "POINTER_RECOVERY":
             source = _lifecycle_source_job(db, job, "ORB_SCAN", {"POINTER_RECOVERY_REQUIRED"})
             crawl_id = int((source.result or {}).get("crawl_job_id"))
@@ -5933,6 +6712,11 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
             )
             finding_class_counts = Counter(str(record.get("finding_class") or "UNVERIFIED") for record in recovered_map.get("records") or [])
             pointer_health_counts = Counter(str(record.get("pointer_health") or "NEW") for record in recovered_map.get("records") or [])
+            promoted_for_owner_review = [
+                _pointer_review_payload(record)
+                for record in recovered_map.get("records") or []
+                if record.get("recovery_status") == "promoted"
+            ]
             result = {
                 "source_orb_job_id": str(source.id),
                 "crawl_job_id": str(crawl_id),
@@ -5949,15 +6733,65 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
                 "pointer_quality": quality,
                 "published_pointer_map": str((context_root / "pointer_plot_map.json").resolve()),
             }
-            promoted_for_owner_review = [
-                _pointer_review_payload(record)
-                for record in recovered_map.get("records") or []
-                if record.get("recovery_status") == "promoted"
-            ]
+            baseline_crawl = db.get(CrawlJob, crawl_id)
+            if baseline_crawl:
+                crawl_config = dict(baseline_crawl.config or {})
+                execution = dict(crawl_config.get("scan_stage_execution") or {})
+                completed_at = datetime.utcnow().isoformat()
+                pointer_input_count = int(baseline_pointer_map.get("record_count") or 0)
+                unresolved_count = int(recovery_summary.get("unresolved_count") or 0)
+                guidance_count = sum(
+                    1
+                    for record in recovered_map.get("records") or []
+                    if str(record.get("confidence_class") or "") in {"VERIFIED", "STABLE"}
+                    and (record.get("runtime_policy") or {}).get("may_point") is not False
+                )
+                guidance_complete = unresolved_count == 0 and guidance_count > 0 and not promoted_for_owner_review
+                execution.update({
+                    "pointer_verification": {
+                        "status": "COMPLETE",
+                        "started_at": job.start_time.isoformat() if job.start_time else completed_at,
+                        "completed_at": completed_at,
+                        "input_count": pointer_input_count,
+                        "output_count": int(recovery_summary.get("render_count") or 0),
+                        "artifact": str((root / "verification/orb/pointer_map.json").resolve()),
+                        "error": None,
+                        "version": "1",
+                    },
+                    "pointer_recovery": {
+                        "status": "COMPLETE",
+                        "started_at": job.start_time.isoformat() if job.start_time else completed_at,
+                        "completed_at": completed_at,
+                        "input_count": pointer_input_count,
+                        "output_count": int(recovery_summary.get("promoted_count") or 0),
+                        "artifact": str((root / "reconciliation/pointer_recovery.json").resolve()),
+                        "error": None,
+                        "version": "1",
+                    },
+                    "runtime_guidance": {
+                        "status": "COMPLETE" if guidance_complete else "BLOCKED",
+                        "started_at": completed_at if guidance_complete else None,
+                        "completed_at": completed_at if guidance_complete else None,
+                        "input_count": pointer_input_count,
+                        "output_count": guidance_count,
+                        "artifact": str((context_root / "pointer_plot_map.json").resolve()),
+                        "error": None if guidance_complete else (
+                            f"{unresolved_count} pointer targets remain unresolved."
+                            if unresolved_count else "Owner pointer authority verification is required."
+                        ),
+                        "version": "1",
+                    },
+                })
+                crawl_config["scan_stage_execution"] = execution
+                crawl_config["verified_pointer_quality"] = quality
+                crawl_config["pointer_recovery"] = recovery_summary
+                baseline_crawl.config = crawl_config
+                db.commit()
+                _sync_website_orb_execution_context(project, baseline_crawl, recovered_map)
             if promoted_for_owner_review:
                 db.add(ReviewItem(
                     lifecycle_job_id=job.id,
-                    severity="warning",
+                    severity="critical",
                     category="pointer_owner_verification",
                     title="Owner-verify recovered pointer identities before production guidance",
                     details={
@@ -6305,6 +7139,13 @@ async def website_orb_voice(
     audio: UploadFile = File(...),
     target_url: Optional[str] = Form(default=None),
     site_id: Optional[str] = Form(default=None),
+    experience_phase: Optional[str] = Form(default=None),
+    experience_objective: Optional[str] = Form(default=None),
+    experience_turn: int = Form(default=0),
+    experience_verification_state: str = Form(default="not_applicable"),
+    experience_verified_target_id: Optional[str] = Form(default=None),
+    experience_verified_target_label: Optional[str] = Form(default=None),
+    experience_demonstrated_capabilities: Optional[str] = Form(default=None),
     authorization: Optional[str] = Header(default=None),
     origin: Optional[str] = Header(default=None),
     db: Session = Depends(get_db),
@@ -6343,6 +7184,28 @@ async def website_orb_voice(
     started = time.perf_counter()
     cognitive_pulse = _orb_cognitive_pulse(transcript)
     mark("cognitive_pulse", started)
+
+    if experience_phase and experience_objective:
+        experience_context = WebsiteOrbExperienceContext(
+            phase=experience_phase,
+            objective=experience_objective,
+            visitor_turn=experience_turn,
+            verification_state=experience_verification_state,
+            verified_target_id=experience_verified_target_id,
+            verified_target_label=experience_verified_target_label,
+            demonstrated_capabilities=[
+                item.strip() for item in (experience_demonstrated_capabilities or "").split(",") if item.strip()
+            ],
+        ).dict()
+        return await _first_visitor_act_response(
+            transcript=transcript,
+            experience_context=experience_context,
+            cognitive_pulse=cognitive_pulse,
+            memory_context=memory_context,
+            website_context=website_context,
+            page_capsule=page_capsule,
+            operating_policy=operating_policy,
+        )
 
     pointer_matches = _lookup_pointer_context(website_context, transcript)
     _queue_pointer_lock(pointer_matches, transcript)
@@ -6573,8 +7436,68 @@ async def website_orb_text(
         page_capsule["route"] = _route_from_url(target_url)
         page_capsule["context_domain"] = page_capsule.get("domain")
         page_capsule["domain"] = _domain_from_url(target_url)
+    if payload.experience:
+        return await _first_visitor_act_response(
+            transcript=transcript,
+            experience_context=payload.experience.dict(),
+            cognitive_pulse=_orb_cognitive_pulse(transcript),
+            memory_context=memory_context,
+            website_context=website_context,
+            page_capsule=page_capsule,
+            operating_policy=operating_policy,
+            synthesize_tts=payload.synthesize_tts,
+        )
     pointer_matches = _lookup_pointer_context(website_context, transcript)
     _queue_pointer_lock(pointer_matches, transcript)
+    route_hint = _lookup_site_route_hint(website_context, transcript)
+    if route_hint:
+        tts_result = (
+            await _synthesize_orb_tts(route_hint["spoken_output"])
+            if payload.synthesize_tts
+            else {"tts_audio_url": None, "tts_provider": None, "tts_error": None}
+        )
+        _update_orb_recent_context(customer, transcript, route_hint["spoken_output"], db)
+        learning_meta = _record_site_learning_interaction(
+            transcript=transcript,
+            spoken_output=route_hint["spoken_output"],
+            llm_source=route_hint["llm_source"],
+            target_url=target_url,
+            context_target_url=context_target_url,
+            answer_state="known",
+            evidence_refs=[route_hint["cache_entry_id"]],
+            operating_policy=operating_policy,
+        )
+        cco_trace = _cco_trace_for_answer(
+            site_id=payload.site_id,
+            transcript=transcript,
+            spoken_output=route_hint["spoken_output"],
+            llm_source=route_hint["llm_source"],
+            target_url=target_url,
+            context_target_url=context_target_url,
+            website_context=website_context,
+            page_capsule=page_capsule,
+            operating_policy=operating_policy,
+            learning_meta=learning_meta,
+            retrieved_ids=[route_hint["cache_entry_id"]],
+        )
+        return {
+            "transcript": transcript,
+            "spoken_output": route_hint["spoken_output"],
+            "cognitive_pulse": {
+                "cognitive_mode": "SITE_WORLD_ROUTE",
+                "cache_entry_id": route_hint["cache_entry_id"],
+                "cache_score": route_hint["cache_score"],
+                "suggested_route": route_hint["suggested_route"],
+                "navigation": route_hint["navigation"],
+                "pointer_matches": pointer_matches,
+                "glow_intensity": 0.78,
+            },
+            "llm_source": route_hint["llm_source"],
+            **learning_meta,
+            "cco_trace": cco_trace,
+            "memory_context": memory_context,
+            **tts_result,
+        }
     cache_hit = _lookup_project_tool_cache(project, transcript, db) if project else None
     if cache_hit and cache_hit.get("spoken_output"):
         tts_result = {
@@ -6828,9 +7751,17 @@ async def website_orb_bootstrap(
     }
     site_world.setdefault("site_name", site.get("name"))
     site_world.setdefault("domain", domain)
-    ready = bool(website_context) and int(pointer_map.get("record_count") or 0) > 0
+    scan_execution = website_context.get("scan_stage_execution") or {}
+    runtime_guidance_evidence = scan_execution.get("runtime_guidance") if isinstance(scan_execution, dict) else None
+    runtime_guidance_status = str((runtime_guidance_evidence or {}).get("status") or "NOT_STARTED").upper()
     pointer_quality = pointer_map.get("quality") or assess_pointer_quality(pointer_map)
     pointer_recovery_required = bool(pointer_quality.get("recovery_required"))
+    ready = (
+        bool(website_context)
+        and int(pointer_map.get("record_count") or 0) > 0
+        and runtime_guidance_status == "COMPLETE"
+        and not pointer_recovery_required
+    )
     compiled_policy = _published_dock_policy_for_target(context_target_url or target_url, db)
     return {
         "schema": "orb_weaver.loader_bootstrap.v1",
@@ -6855,14 +7786,17 @@ async def website_orb_bootstrap(
             "recovery": pointer_map.get("recovery") if isinstance(pointer_map.get("recovery"), dict) else {},
         },
         "pointer_guidance": {
-            "status": "recovery_required" if pointer_recovery_required else "ready",
+            "status": runtime_guidance_status,
             "safe_pointer_count": int(pointer_quality.get("stable_count") or 0),
             "blocked_pointer_count": int(pointer_quality.get("uncertain_count") or 0),
             "automatic_recovery_attempts_maximum": 1,
         },
         "deployment_preflight": {
             "passed": ready and not pointer_recovery_required,
-            "blockers": ["POINTER_RECOVERY_REQUIRED"] if pointer_recovery_required else [],
+            "blockers": [
+                *(["POINTER_RECOVERY_REQUIRED"] if pointer_recovery_required else []),
+                *(["RUNTIME_GUIDANCE_NOT_PROVEN"] if runtime_guidance_status != "COMPLETE" else []),
+            ],
         },
         "orb_identity": _dock_orb_identity(compiled_policy),
         "operating_policy": public_runtime_policy(compiled_policy),
@@ -7960,6 +8894,47 @@ async def get_project(project_id: str, db: Session = Depends(get_db), customer: 
     return _serialize_project(project, db)
 
 
+@app.get("/api/account/workspace-summary")
+async def account_workspace_summary(
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = (
+        db.query(Project)
+        .filter(Project.customer_id == customer.id)
+        .order_by(Project.created_at.desc(), Project.id.desc())
+        .first()
+    )
+    if not project:
+        return {"project": None, "latest_crawl": None, "latest_audit": None}
+    latest_crawl = (
+        db.query(CrawlJob)
+        .filter(CrawlJob.project_id == project.id)
+        .order_by(CrawlJob.id.desc())
+        .first()
+    )
+    latest_audit = (
+        db.query(AuditReport)
+        .filter(AuditReport.project_id == project.id)
+        .order_by(AuditReport.id.desc())
+        .first()
+    )
+    return {
+        "project": {
+            "id": str(project.id),
+            "name": project.name,
+            "domain": project.domain,
+            "created_at": project.created_at.isoformat() if project.created_at else None,
+        },
+        "latest_crawl": _serialize_crawl_job_summary(latest_crawl, project) if latest_crawl else None,
+        "latest_audit": {
+            "id": str(latest_audit.id),
+            "score": latest_audit.overall_score,
+            "created_at": latest_audit.created_at.isoformat() if latest_audit.created_at else None,
+        } if latest_audit else None,
+    }
+
+
 @app.get("/api/projects/{project_id}/lifecycle-jobs")
 async def list_project_lifecycle_jobs(
     project_id: str,
@@ -8131,6 +9106,10 @@ async def decide_lifecycle_review_item(
         raise HTTPException(status_code=404, detail="Review item not found")
     if item.status != "open":
         raise HTTPException(status_code=409, detail="Review item has already been decided")
+    if item.category in {"pointer_recovery_visual_review", "pointer_owner_verification"}:
+        raise HTTPException(status_code=409, detail="Pointer review requires a signed pointer authority decision")
+    if item.category in {"pointer_recovery_visual_review", "pointer_owner_verification"}:
+        raise HTTPException(status_code=409, detail="Pointer review requires a signed pointer authority decision")
 
     decided_at = datetime.utcnow()
     reviewer = customer.email
@@ -8300,9 +9279,41 @@ async def decide_pointer_authority(
         ReviewItem.status == "open",
     ).count()
     if open_critical == 0:
-        job.status = "APPROVED"
-        job.phase = "pointer_authority_review_complete"
+        quality = updated_map.get("quality") or assess_pointer_quality(updated_map)
+        guidance_count = sum(
+            1
+            for record in updated_map.get("records") or []
+            if str(record.get("confidence_class") or "") in {"VERIFIED", "STABLE"}
+            and (record.get("runtime_policy") or {}).get("may_point") is not False
+        )
+        guidance_complete = not quality.get("recovery_required") and guidance_count > 0
+        crawl_id = int((job.result or {}).get("crawl_job_id") or 0)
+        baseline_crawl = db.get(CrawlJob, crawl_id) if crawl_id else None
+        if baseline_crawl:
+            crawl_config = dict(baseline_crawl.config or {})
+            execution = dict(crawl_config.get("scan_stage_execution") or {})
+            completed_at = datetime.utcnow().isoformat()
+            runtime_evidence = dict(execution.get("runtime_guidance") or {})
+            runtime_evidence.update({
+                "status": "COMPLETE" if guidance_complete else "BLOCKED",
+                "started_at": runtime_evidence.get("started_at") or (completed_at if guidance_complete else None),
+                "completed_at": completed_at if guidance_complete else None,
+                "input_count": int(updated_map.get("record_count") or 0),
+                "output_count": guidance_count,
+                "artifact": str(pointer_path.resolve()),
+                "error": None if guidance_complete else "Owner decisions did not produce a pointer map that passes runtime guidance thresholds.",
+                "version": "1",
+            })
+            execution["runtime_guidance"] = runtime_evidence
+            crawl_config["scan_stage_execution"] = execution
+            crawl_config["verified_pointer_quality"] = quality
+            baseline_crawl.config = crawl_config
+        job.status = "APPROVED" if guidance_complete else "BLOCKED"
+        job.phase = "pointer_authority_review_complete" if guidance_complete else "pointer_authority_threshold_blocked"
     db.commit()
+
+    if open_critical == 0 and baseline_crawl:
+        _sync_website_orb_execution_context(project, baseline_crawl, updated_map)
 
     if job.evidence_root:
         evidence_root = Path(job.evidence_root)
@@ -8587,21 +9598,21 @@ async def cancel_crawl_job(job_id: str, db: Session = Depends(get_db), customer:
 
 @app.get("/api/crawl-jobs")
 async def list_crawl_jobs(db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
-    jobs = (
-        db.query(CrawlJob)
+    rows = (
+        db.query(CrawlJob, Project)
         .join(Project, CrawlJob.project_id == Project.id)
         .filter(Project.customer_id == customer.id)
         .order_by(CrawlJob.id.desc())
         .all()
     )
-    return [_serialize_crawl_job(job, db) for job in jobs]
+    return [_serialize_crawl_job_summary(job, project) for job, project in rows]
 
 
 @app.get("/api/crawl-jobs/{job_id}/pages")
 async def get_crawl_pages(
     job_id: str,
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=5000),
     db: Session = Depends(get_db),
     customer: Customer = Depends(get_current_customer),
 ):
