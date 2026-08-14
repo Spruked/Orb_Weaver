@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "backend/main.py"
+      - "backend/app/core/storage.py"
       - "backend/app/orb/pointer_map_optimizer.py"
       - "backend/app/orb/pointer_recovery_integration.py"
       - "backend/app/orb/__init__.py"
