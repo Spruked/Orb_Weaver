@@ -509,7 +509,7 @@ def test_ordinary_crawl_preserves_owner_approval_and_rejection_everywhere(tmp_pa
         signature_hash="signed-rejection",
     )
 
-    root = tmp_path / "client"
+    root = main.client_root("authority.test")
     for directory in (
         "current",
         "history",
