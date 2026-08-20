@@ -21,6 +21,8 @@ services:
       - LOCAL_LLM_NUM_CTX=${LOCAL_LLM_NUM_CTX:-512}
       - LOCAL_LLM_NUM_PREDICT=${LOCAL_LLM_NUM_PREDICT:-32}
       - LOCAL_LLM_TEMPERATURE=${LOCAL_LLM_TEMPERATURE:-0.35}
+      # Development-only frontier ORB observer. Replace this placeholder with the direct Google AI Studio key before rebuilding locally.
+      - GEMINI_API_KEY=REPLACE_WITH_YOUR_GEMINI_API_KEY
       - ORB_WEAVER_VAULT_ROOT=/app/vault_system
       - ORB_WEAVER_SUBSTRATE_ROOT=/app/vault_system
       - PUBLIC_BASE_URL=http://127.0.0.1:16510
