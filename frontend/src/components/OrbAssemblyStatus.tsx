@@ -6,8 +6,10 @@ const statusTone = (status: string) => {
   const normalized = status.toUpperCase();
   if (normalized === 'COMPLETE') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (normalized === 'RUNNING') return 'border-blue-200 bg-blue-50 text-blue-700';
-  if (normalized === 'BLOCKED') return 'border-amber-200 bg-amber-50 text-amber-700';
   if (normalized === 'FAILED') return 'border-red-200 bg-red-50 text-red-700';
+  if (['BLOCKED', 'NEEDS_REVIEW', 'REVIEW_REQUIRED', 'REQUIRED'].includes(normalized)) {
+    return 'border-amber-200 bg-amber-50 text-amber-700';
+  }
   return 'border-slate-200 bg-white text-slate-500';
 };
 
@@ -15,8 +17,10 @@ const StatusIcon: React.FC<{ status: string }> = ({ status }) => {
   const normalized = status.toUpperCase();
   if (normalized === 'COMPLETE') return <CheckCircle2 className="h-4 w-4" />;
   if (normalized === 'RUNNING') return <Activity className="h-4 w-4 animate-pulse" />;
-  if (normalized === 'FAILED' || normalized === 'BLOCKED') return <AlertTriangle className="h-4 w-4" />;
-  if (normalized === 'NOT_STARTED') return <Clock3 className="h-4 w-4" />;
+  if (normalized === 'FAILED' || ['BLOCKED', 'NEEDS_REVIEW', 'REVIEW_REQUIRED', 'REQUIRED'].includes(normalized)) {
+    return <AlertTriangle className="h-4 w-4" />;
+  }
+  if (normalized === 'NOT_STARTED' || normalized === 'WAITING') return <Clock3 className="h-4 w-4" />;
   return <CircleDashed className="h-4 w-4" />;
 };
 
@@ -27,8 +31,26 @@ const formatMetric = (stage: ScanAssemblyStage) => {
     .join(' · ');
 };
 
+const measuredNumber = (stage: ScanAssemblyStage | undefined, labelFragment: string) => {
+  const metric = stage?.metrics.find((candidate) => candidate.label.toLowerCase().includes(labelFragment.toLowerCase()));
+  const value = Number(metric?.value);
+  return Number.isFinite(value) ? value : 0;
+};
+
 const OrbAssemblyStatus: React.FC<{ assembly?: ScanAssemblyStatus | null; compact?: boolean }> = ({ assembly, compact = false }) => {
   if (!assembly) return null;
+
+  const pointerMapping = assembly.stages.find((stage) => stage.label === 'Pointer Mapping');
+  const runtimeGuidance = assembly.stages.find((stage) => stage.label === 'Runtime Guidance');
+  const pointerTargets = measuredNumber(pointerMapping, 'targets extracted');
+  const guidanceTargets = measuredNumber(runtimeGuidance, 'guidance-eligible targets');
+  const declaredReady = assembly.overall_status === 'orb_ready';
+  const runtimeReady = declaredReady
+    && pointerMapping?.status.toUpperCase() === 'COMPLETE'
+    && pointerTargets > 0
+    && runtimeGuidance?.status.toUpperCase() !== 'BLOCKED'
+    && guidanceTargets > 0;
+  const completedButNeedsReview = declaredReady && !runtimeReady;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -36,12 +58,19 @@ const OrbAssemblyStatus: React.FC<{ assembly?: ScanAssemblyStatus | null; compac
         <div>
           <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-brand-accent">ORB assembly status</p>
           <h2 className="mt-1 text-lg font-bold text-slate-950">
-            {assembly.overall_status === 'orb_ready'
-              ? 'ORB knowledge base ready'
-              : assembly.overall_status === 'analysis_complete'
-                ? 'Website analysis complete; ORB stages remain'
-                : 'Website analysis running'}
+            {runtimeReady
+              ? 'ORB knowledge base and guidance ready'
+              : completedButNeedsReview
+                ? 'Website scan completed — ORB assembly needs review'
+                : assembly.overall_status === 'analysis_complete'
+                  ? 'Website analysis complete; ORB stages remain'
+                  : 'Website analysis running'}
           </h2>
+          {completedButNeedsReview && (
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-amber-700">
+              Crawl completion alone does not make the ORB ready. Pointable targets and guidance-eligible destinations must be measured before runtime guidance is enabled.
+            </p>
+          )}
         </div>
         <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-bold text-slate-600">
           {assembly.crawl_delay_seconds ? `${assembly.crawl_delay_seconds}s scan pause` : 'scan pause unset'}
