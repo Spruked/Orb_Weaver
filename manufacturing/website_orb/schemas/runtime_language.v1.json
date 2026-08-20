@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema", "generated_at", "phrases"],
+  "properties": {
+    "schema": {"const": "orb_weaver.website_orb_runtime_language.v1"},
+    "generated_at": {"type": "string", "minLength": 1},
+    "phrases": {"type": "array"}
+  }
+}

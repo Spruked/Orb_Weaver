@@ -313,7 +313,7 @@ export interface DockConfiguration {
   schema: 'orb_weaver.orb_dock_configuration.v1';
   appearance: { skin_id: string };
   llm: {
-    provider: 'runtime_default' | 'ollama_local' | 'openai_api' | 'anthropic_api' | 'openai_compatible';
+    provider: 'runtime_default' | 'ollama_local' | 'openai_api' | 'anthropic_api' | 'google_api' | 'openai_compatible';
     model?: string | null;
     base_url?: string | null;
     api_key_env?: string | null;
@@ -1054,6 +1054,28 @@ export interface WebsiteOrbVoiceResponse {
   tts_audio_url?: string | null;
   tts_provider?: string | null;
   tts_error?: string | null;
+  answer_state?: 'known' | 'resolved' | 'clarification_required' | 'unknown' | null;
+  source_lane?: 'control' | 'catalog' | 'apriori' | 'posteriori' | 'site_world' | 'local_model' | 'external_provider' | 'unknown' | null;
+  evidence_ids?: string[];
+  confidence?: number | null;
+  route_context?: Record<string, unknown> | null;
+  guidance?: Record<string, unknown> | null;
+  escalation_used?: string | null;
+  learning_eligible?: boolean | null;
+  resolution_trace?: Record<string, unknown> | null;
+}
+
+export interface WebsiteOrbManufacturingStatus {
+  schema: 'orb_weaver.website_orb_manufacturing_status.v1';
+  project_id: string;
+  domain: string;
+  status: 'not_started' | 'preparing' | 'compiling' | 'awaiting_verification' | 'assembling' | 'validating' | 'ready' | 'failed' | string;
+  updated_at: string;
+  crawl_id?: string | null;
+  build_id?: string | null;
+  delivery_ready: boolean;
+  failure_reasons?: string[];
+  result?: Record<string, unknown>;
 }
 
 export type WebsiteOrbExperiencePhase =
@@ -1572,6 +1594,20 @@ export const api = {
     }),
   getAuditReport: (auditId: string) => request<AuditReportResponse>(`/api/audit-reports/${auditId}`),
   getReportCompiler: (projectId: string) => request<ReportCompilerPayload>(`/api/projects/${projectId}/report-compiler`),
+  manufactureWebsiteOrb: (projectId: string, payload: {
+    crawl_id?: string | null;
+    approved_artifacts?: string[];
+    approve_all_artifacts?: boolean;
+    tier?: 'website-orb' | 'basic' | 'enhanced' | 'premium';
+    site_config?: Record<string, unknown>;
+  }) => request<WebsiteOrbManufacturingStatus>(`/api/projects/${projectId}/website-orb/manufacture`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  websiteOrbManufacturingStatus: (projectId: string) =>
+    request<WebsiteOrbManufacturingStatus>(`/api/projects/${projectId}/website-orb/manufacturing-status`),
+  manufacturedWebsiteOrbUrl: (projectId: string, buildId: string) =>
+    `${API_BASE_URL}/api/projects/${projectId}/website-orb/download/${encodeURIComponent(buildId)}`,
   createTPCPack: (projectId: string, tier: 'basic' | 'enhanced' | 'premium') =>
     request<{ status: string; project: Project; pack: Record<string, any>; download_url: string }>(
       `/api/projects/${projectId}/tpc-pack`,

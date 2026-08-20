@@ -48,6 +48,7 @@ const providerDefaults: Record<DockConfiguration['llm']['provider'], Partial<Doc
   ollama_local: { model: null, base_url: null, api_key_env: null },
   openai_api: { model: 'gpt-4.1-mini', base_url: null, api_key_env: 'OPENAI_API_KEY' },
   anthropic_api: { model: 'claude-3-5-sonnet-latest', base_url: null, api_key_env: 'ANTHROPIC_API_KEY' },
+  google_api: { model: 'gemini-2.5-flash', base_url: null, api_key_env: 'GEMINI_API_KEY' },
   openai_compatible: { model: '', base_url: 'http://127.0.0.1:11434/v1', api_key_env: null },
 };
 

@@ -21,6 +21,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from collections import Counter
 from urllib.parse import urlparse
 
+REPO_IMPORT_ROOT = str(Path(__file__).resolve().parents[1])
+if REPO_IMPORT_ROOT not in sys.path:
+    sys.path.insert(0, REPO_IMPORT_ROOT)
+
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -71,7 +75,9 @@ from app.orb.pointer_recovery import (
 )
 from app.orb.site_learning import classify_answer_state, lookup_verified_case, record_interaction
 from app.orb.cco_runtime import build_runtime_trace
+from app.orb.turn_resolver import CanonicalTurnResolver
 from app.pack_generator import generate_pack_file
+from manufacturing.website_orb import manufacture_website_orb
 from app.services.chrome_devtools import ChromeDevToolsReviewRunner
 from app.services.orb_desktop_mcp import DEFAULT_ORB_MCP_TOOLS, ORBDesktopMCPClient
 from app.models.database import (
@@ -396,6 +402,14 @@ class WebsiteOrbVoiceResponse(BaseModel):
     tts_audio_url: Optional[str] = None
     tts_provider: Optional[str] = None
     tts_error: Optional[str] = None
+    source_lane: Optional[str] = None
+    evidence_ids: List[str] = Field(default_factory=list)
+    confidence: Optional[float] = None
+    route_context: Optional[Dict[str, Any]] = None
+    guidance: Optional[Dict[str, Any]] = None
+    escalation_used: Optional[str] = None
+    learning_eligible: Optional[bool] = None
+    resolution_trace: Optional[Dict[str, Any]] = None
 
 
 class WebsiteOrbExperienceContext(BaseModel):
@@ -551,6 +565,14 @@ class OrbToolRunRequest(BaseModel):
 
 class TPCPackRequest(BaseModel):
     tier: str = Field(default="basic", pattern="^(basic|enhanced|premium)$")
+
+
+class WebsiteOrbManufacturingRequest(BaseModel):
+    crawl_id: Optional[str] = None
+    approved_artifacts: List[str] = Field(default_factory=list, max_length=40)
+    approve_all_artifacts: bool = False
+    tier: str = Field(default="website-orb", pattern="^(website-orb|basic|enhanced|premium)$")
+    site_config: Dict[str, Any] = Field(default_factory=dict)
 
 
 class OrbsStageActionRequest(BaseModel):
@@ -1745,6 +1767,7 @@ def _serialize_dock(project: Project, record: OrbDockPolicy, compile_result: Opt
             {"id": "ollama_local", "label": "Local Ollama", "description": "Use an installed Ollama model reachable by this local Orb Weaver backend."},
             {"id": "openai_api", "label": "OpenAI API", "description": "Use a server-side OpenAI API key reference such as OPENAI_API_KEY."},
             {"id": "anthropic_api", "label": "Claude API", "description": "Use a server-side Anthropic API key reference such as ANTHROPIC_API_KEY."},
+            {"id": "google_api", "label": "Google Gemini API", "description": "Use a server-side Google API key reference such as GEMINI_API_KEY."},
             {"id": "openai_compatible", "label": "OpenAI-compatible API", "description": "Use a local or hosted endpoint that follows the OpenAI chat/completions shape."},
         ],
     }
@@ -7131,11 +7154,185 @@ async def public_preflight(payload: PublicPreflightRequest):
         raise HTTPException(status_code=500, detail=f"Preflight scan failed: {exc}")
 
 
+def _manufactured_vault_root(domain: str) -> Optional[Path]:
+    manufacturing_root = client_root(domain) / "manufacturing" / "builds"
+    if not manufacturing_root.is_dir():
+        return None
+    candidates = sorted(
+        manufacturing_root.glob("*/manufacturing-result.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for result_path in candidates:
+        result = _load_json_if_present(result_path) or {}
+        if not result.get("delivery_ready"):
+            continue
+        vault_path = Path((result.get("package_paths") or {}).get("vault_root") or "").resolve()
+        try:
+            require_vault_path(vault_path, "Manufactured Website ORB runtime Vault")
+        except ValueError:
+            continue
+        if (vault_path / "payload" / "payload_manifest.json").is_file():
+            return vault_path
+    return None
+
+
+def _canonical_runtime_artifacts(domain: str, website_context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    vault_root = _manufactured_vault_root(domain)
+    catalog_path: Optional[Path] = None
+    apriori: Dict[str, Any] = {"qa": {"entries": []}, "policies": {"rules": []}, "ontology": {"nodes": [], "edges": []}}
+    site_world = dict(website_context or {})
+    if vault_root:
+        payload_root = vault_root / "payload"
+        catalog_path = payload_root / "catalog.db"
+        apriori = {
+            "qa": _load_json_if_present(payload_root / "apriori" / "qa.json") or apriori["qa"],
+            "policies": _load_json_if_present(payload_root / "apriori" / "policies.json") or apriori["policies"],
+            "ontology": _load_json_if_present(payload_root / "apriori" / "ontology.json") or apriori["ontology"],
+        }
+        site_world = _load_json_if_present(payload_root / "site_world.json") or site_world
+        manufactured_cache = _load_json_if_present(payload_root / "tool_cache.json") or {}
+    else:
+        legacy_root = client_root(domain) / "manufacturing" / "current"
+        catalog_candidate = legacy_root / "payload" / "catalog.db"
+        catalog_path = catalog_candidate if catalog_candidate.is_file() else None
+        apriori_root = legacy_root / "A_Priori_Vault"
+        apriori = {
+            "qa": _load_json_if_present(apriori_root / "qa.json") or apriori["qa"],
+            "policies": _load_json_if_present(apriori_root / "policies.json") or apriori["policies"],
+            "ontology": _load_json_if_present(apriori_root / "ontology.json") or apriori["ontology"],
+        }
+        manufactured_cache = {}
+
+    context_cache = _load_json_if_present(client_root(domain) / "website_orb_context" / "tool_cache.json") or {}
+    cache_entries = [*(manufactured_cache.get("entries") or []), *(context_cache.get("entries") or [])]
+    for entry in cache_entries:
+        spoken = entry.get("spoken_output")
+        if not spoken:
+            continue
+        apriori["qa"]["entries"].append({
+            "qa_id": str(entry.get("id") or "tool-cache"),
+            "question": str((entry.get("intents") or entry.get("keywords") or [entry.get("id") or ""])[0]),
+            "aliases": [str(value) for value in (entry.get("intents") or entry.get("keywords") or [])],
+            "answer": str(spoken),
+            "source_evidence_ids": [str(entry.get("id") or "tool-cache")],
+        })
+    return {"vault_root": vault_root, "catalog_path": catalog_path, "apriori": apriori, "site_world": site_world}
+
+
+async def _canonical_website_orb_turn(
+    *,
+    transcript: str,
+    site_id: Optional[str],
+    target_url: Optional[str],
+    context_target_url: Optional[str],
+    memory_context: Dict[str, Any],
+    website_context: Optional[Dict[str, Any]],
+    page_capsule: Optional[Dict[str, Any]],
+    operating_policy: Optional[Dict[str, Any]],
+    customer: Optional[Customer],
+    db: Session,
+    experience_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    domain = _domain_from_url(context_target_url or target_url)
+    route = _route_from_url(target_url or context_target_url)
+    artifacts = _canonical_runtime_artifacts(domain, website_context)
+    pointer_matches = _lookup_pointer_context(website_context, transcript)
+    _queue_pointer_lock(pointer_matches, transcript)
+    cognitive_pulse = _orb_cognitive_pulse(transcript)
+
+    async def local_model(query: str, _context: Dict[str, Any]) -> Dict[str, Any]:
+        local_policy = dict(operating_policy or {})
+        llm_policy = dict(local_policy.get("llm") or {})
+        if llm_policy.get("provider") in {"openai_api", "anthropic_api", "google_api", "openai_compatible"}:
+            llm_policy["provider"] = "runtime_default"
+            local_policy["llm"] = llm_policy
+        result = await _llm_orb_spoken_output(
+            query,
+            cognitive_pulse,
+            memory_context,
+            artifacts["site_world"],
+            page_capsule,
+            local_policy,
+            experience_context,
+        )
+        source = str(result.get("llm_source") or "")
+        return {
+            "text": result.get("spoken_output"),
+            "source": source,
+            "failed": source in {"local-fallback", "openai_api-pending-adapter", "anthropic_api-pending-adapter", "openai_compatible-pending-adapter"},
+            "error": source if source.endswith(("fallback", "adapter")) else None,
+        }
+
+    resolver = CanonicalTurnResolver(local_model=local_model, posteriori_lookup=lookup_verified_case)
+    resolved = await resolver.resolve(
+        transcript,
+        domain=domain,
+        route=route,
+        catalog_path=artifacts["catalog_path"],
+        apriori=artifacts["apriori"],
+        site_world=artifacts["site_world"],
+        page_capsule=page_capsule,
+        pointer_matches=pointer_matches,
+        provider_configuration=(operating_policy or {}).get("llm") or {},
+        articulation_profile={"voice_profile": ((operating_policy or {}).get("behavior") or {}).get("tone")},
+        model_context={"memory_context": memory_context, "experience_context": experience_context},
+    )
+    if experience_context and resolved["source_lane"] == "unknown":
+        raise HTTPException(status_code=503, detail="First-visitor cognition is unavailable; the act was not advanced")
+
+    spoken_output = resolved["spoken_output"]
+    llm_source = resolved["source_lane"]
+    learning_meta = _record_site_learning_interaction(
+        transcript=transcript,
+        spoken_output=spoken_output,
+        llm_source=llm_source,
+        target_url=target_url,
+        context_target_url=context_target_url,
+        answer_state=resolved["answer_state"],
+        evidence_refs=resolved["evidence_ids"],
+        retrieval_failure="canonical_resolver_exhausted" if resolved["source_lane"] == "unknown" else None,
+        operating_policy=operating_policy,
+    )
+    _update_orb_recent_context(customer, transcript, spoken_output, db)
+    cco_trace = _cco_trace_for_answer(
+        site_id=site_id,
+        transcript=transcript,
+        spoken_output=spoken_output,
+        llm_source=llm_source,
+        target_url=target_url,
+        context_target_url=context_target_url,
+        website_context=artifacts["site_world"],
+        page_capsule=page_capsule,
+        operating_policy=operating_policy,
+        learning_meta=learning_meta,
+        retrieved_ids=resolved["evidence_ids"],
+    )
+    return {
+        "transcript": transcript,
+        "spoken_output": spoken_output,
+        "cognitive_pulse": {**(cognitive_pulse or {}), "pointer_matches": pointer_matches, "cognitive_mode": f"CANONICAL_{resolved['source_lane'].upper()}"},
+        "llm_source": llm_source,
+        **learning_meta,
+        "cco_trace": cco_trace,
+        "memory_context": memory_context,
+        "source_lane": resolved["source_lane"],
+        "evidence_ids": resolved["evidence_ids"],
+        "confidence": resolved["confidence"],
+        "route_context": resolved["route_context"],
+        "guidance": resolved["guidance"],
+        "escalation_used": resolved["escalation_used"],
+        "learning_eligible": resolved["learning_eligible"],
+        "resolution_trace": resolved["trace"],
+    }
+
+
 @app.post("/api/orb/website-voice", response_model=WebsiteOrbVoiceResponse)
 async def website_orb_voice(
     audio: UploadFile = File(...),
     target_url: Optional[str] = Form(default=None),
     site_id: Optional[str] = Form(default=None),
+    project_id: Optional[str] = Form(default=None),
     experience_phase: Optional[str] = Form(default=None),
     experience_objective: Optional[str] = Form(default=None),
     experience_turn: int = Form(default=0),
@@ -7157,6 +7354,10 @@ async def website_orb_voice(
     started = time.perf_counter()
     customer = get_optional_customer(authorization=authorization, db=db)
     mark("auth", started)
+
+    if customer and project_id:
+        voice_project = _owned_project(project_id, customer, db)
+        target_url = target_url or _project_target_url(voice_project)
 
     started = time.perf_counter()
     transcript = await _transcribe_with_faster_whisper(audio)
@@ -7181,6 +7382,51 @@ async def website_orb_voice(
     started = time.perf_counter()
     cognitive_pulse = _orb_cognitive_pulse(transcript)
     mark("cognitive_pulse", started)
+
+    experience_context = None
+    if experience_phase and experience_objective:
+        experience_context = WebsiteOrbExperienceContext(
+            phase=experience_phase,
+            objective=experience_objective,
+            visitor_turn=experience_turn,
+            verification_state=experience_verification_state,
+            verified_target_id=experience_verified_target_id,
+            verified_target_label=experience_verified_target_label,
+            demonstrated_capabilities=[
+                item.strip() for item in (experience_demonstrated_capabilities or "").split(",") if item.strip()
+            ],
+        ).model_dump()
+    started = time.perf_counter()
+    semantic_result = await _canonical_website_orb_turn(
+        transcript=transcript,
+        site_id=site_id,
+        target_url=target_url,
+        context_target_url=context_target_url,
+        memory_context=memory_context,
+        website_context=website_context,
+        page_capsule=page_capsule,
+        operating_policy=operating_policy,
+        customer=customer,
+        db=db,
+        experience_context=experience_context,
+    )
+    mark("answer_selection", started)
+    tts_cache_before = _tts_cache_probe(semantic_result["spoken_output"])
+    started = time.perf_counter()
+    tts_result = await _synthesize_orb_tts(semantic_result["spoken_output"])
+    mark("tts", started)
+    timings["total"] = round((time.perf_counter() - route_started) * 1000, 1)
+    logger.warning("ORB voice timing %s", json.dumps({
+        "request_id": request_id,
+        "transcript": transcript,
+        "target_url": target_url,
+        "source_lane": semantic_result["source_lane"],
+        "tts_cache_before": tts_cache_before,
+        "tts_cache_after": _tts_cache_probe(semantic_result["spoken_output"]),
+        "tts_provider": tts_result.get("tts_provider"),
+        "timings_ms": timings,
+    }, sort_keys=True))
+    return {**semantic_result, **tts_result}
 
     if experience_phase and experience_objective:
         experience_context = WebsiteOrbExperienceContext(
@@ -7433,6 +7679,25 @@ async def website_orb_text(
         page_capsule["route"] = _route_from_url(target_url)
         page_capsule["context_domain"] = page_capsule.get("domain")
         page_capsule["domain"] = _domain_from_url(target_url)
+    semantic_result = await _canonical_website_orb_turn(
+        transcript=transcript,
+        site_id=payload.site_id,
+        target_url=target_url,
+        context_target_url=context_target_url,
+        memory_context=memory_context,
+        website_context=website_context,
+        page_capsule=page_capsule,
+        operating_policy=operating_policy,
+        customer=customer,
+        db=db,
+        experience_context=payload.experience.model_dump() if payload.experience else None,
+    )
+    tts_result = (
+        await _synthesize_orb_tts(semantic_result["spoken_output"])
+        if payload.synthesize_tts
+        else {"tts_audio_url": None, "tts_provider": None, "tts_error": None}
+    )
+    return {**semantic_result, **tts_result}
     if payload.experience:
         return await _first_visitor_act_response(
             transcript=transcript,
@@ -10266,6 +10531,160 @@ async def open_report_file(
         media_type="application/json" if file_path.suffix.lower() == ".json" else "application/octet-stream",
         headers=_content_disposition(file_path.name, disposition),
     )
+
+
+def _manufacturing_status_path(project: Project) -> Path:
+    return require_vault_path(client_root(project.domain) / "manufacturing" / "status.json", "Website ORB manufacturing status")
+
+
+def _write_manufacturing_status(project: Project, status: str, **values: Any) -> Dict[str, Any]:
+    payload = {
+        "schema": "orb_weaver.website_orb_manufacturing_status.v1",
+        "project_id": str(project.id),
+        "domain": _domain_from_url(project.domain),
+        "status": status,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        **values,
+    }
+    _write_json(_manufacturing_status_path(project), payload)
+    return payload
+
+
+def _normalized_manufacturing_evidence(project: Project, crawl: CrawlJob, db: Session) -> Dict[str, Any]:
+    evidence_path = client_root(project.domain) / "manufacturing" / "evidence" / "full_scan_evidence.json"
+    existing = _load_json_if_present(evidence_path)
+    if existing:
+        if str(existing.get("site_id")) != str(project.id):
+            raise HTTPException(status_code=409, detail="Manufacturing evidence belongs to a different project")
+        return existing
+    pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl.id).order_by(CrawledPage.id.asc()).all()
+    captured_at = (crawl.end_time or crawl.start_time or datetime.utcnow()).replace(tzinfo=timezone.utc).isoformat()
+    normalized_pages = []
+    for page in pages:
+        route = _route_from_url(page.url)
+        normalized_pages.append({
+            "page_id": str(page.id),
+            "url": page.url,
+            "route": route,
+            "title": page.title,
+            "content_hash": page.content_hash or hashlib.sha256(f"{page.url}:{page.title or ''}".encode("utf-8")).hexdigest(),
+            "route_category": "public_content",
+        })
+    document = {
+        "schema": "orb_weaver.full_scan_evidence.v1",
+        "site_id": str(project.id),
+        "domain": _domain_from_url(project.domain),
+        "scan_id": str(crawl.id),
+        "captured_at": captured_at,
+        "scanner_version": "orb-weaver-crawl-normalizer/1.0.0",
+        "pages": normalized_pages,
+        "evidence": [],
+    }
+    _write_json(evidence_path, document)
+    return document
+
+
+def _manufacturing_source_context(project: Project) -> Dict[str, Any]:
+    context_root = client_root(project.domain) / "website_orb_context"
+    return {
+        "latest_context": _load_json_if_present(context_root / "orb_runtime_context.json") or _load_json_if_present(context_root / "latest_context.json") or {},
+        "pointer_plot_map": _load_json_if_present(context_root / "pointer_plot_map.json") or {},
+        "tool_cache": _load_json_if_present(context_root / "tool_cache.json") or {},
+    }
+
+
+@app.post("/api/projects/{project_id}/website-orb/manufacture")
+async def manufacture_project_website_orb(
+    project_id: str,
+    payload: WebsiteOrbManufacturingRequest,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    crawl = _owned_crawl_job(payload.crawl_id, customer, db) if payload.crawl_id else (
+        db.query(CrawlJob).filter(CrawlJob.project_id == project.id).order_by(CrawlJob.id.desc()).first()
+    )
+    if not crawl or crawl.project_id != project.id:
+        raise HTTPException(status_code=409, detail="A completed project crawl is required before manufacturing")
+    if str(crawl.status).lower() not in {"completed", "complete"}:
+        raise HTTPException(status_code=409, detail="The selected crawl is not complete")
+
+    _write_manufacturing_status(project, "preparing", crawl_id=str(crawl.id), delivery_ready=False)
+    try:
+        evidence = _normalized_manufacturing_evidence(project, crawl, db)
+        _write_manufacturing_status(project, "compiling", crawl_id=str(crawl.id), delivery_ready=False)
+        policy = _published_dock_policy_for_target(_project_target_url(project), db) or {}
+        config = dict(payload.site_config)
+        if policy.get("llm"):
+            config.setdefault("providers", policy["llm"])
+        if policy.get("behavior"):
+            config.setdefault("behavior", policy["behavior"])
+        approved_artifacts = ["*"] if payload.approve_all_artifacts else payload.approved_artifacts
+        def manufacturing_progress(status: str, details: Dict[str, Any]) -> None:
+            status_details = dict(details)
+            delivery_ready = bool(status_details.pop("delivery_ready", False))
+            _write_manufacturing_status(
+                project,
+                status,
+                crawl_id=str(crawl.id),
+                delivery_ready=delivery_ready,
+                **status_details,
+            )
+        result = await asyncio.to_thread(
+            manufacture_website_orb,
+            evidence=evidence,
+            output_root=client_root(project.domain) / "manufacturing" / "builds",
+            owner_verification={"owner": str(customer.id), "approved_artifacts": approved_artifacts},
+            site_config=config,
+            source_context=_manufacturing_source_context(project),
+            tier=payload.tier,
+            status_callback=manufacturing_progress,
+        )
+        status = "ready" if result.get("delivery_ready") else result.get("status") or "failed"
+        return _write_manufacturing_status(
+            project,
+            status,
+            crawl_id=str(crawl.id),
+            build_id=result.get("build_id"),
+            delivery_ready=bool(result.get("delivery_ready")),
+            failure_reasons=result.get("failure_reasons") or [],
+            result_path=str(Path(result.get("package_paths", {}).get("build_root") or "") / "manufacturing-result.json"),
+            result=result,
+        )
+    except Exception as exc:
+        logger.exception("Website ORB manufacturing failed for project %s", project.id)
+        status = _write_manufacturing_status(project, "failed", crawl_id=str(crawl.id), delivery_ready=False, failure_reasons=[str(exc)])
+        return JSONResponse(status_code=500, content=status)
+
+
+@app.get("/api/projects/{project_id}/website-orb/manufacturing-status")
+async def website_orb_manufacturing_status(
+    project_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    status = _load_json_if_present(_manufacturing_status_path(project))
+    return status or _write_manufacturing_status(project, "not_started", delivery_ready=False)
+
+
+@app.get("/api/projects/{project_id}/website-orb/download/{build_id}")
+async def download_manufactured_website_orb(
+    project_id: str,
+    build_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    safe_build_id = re.sub(r"[^a-z0-9._-]+", "", build_id.lower())
+    build_root = require_vault_path(client_root(project.domain) / "manufacturing" / "builds" / safe_build_id, "Website ORB build download")
+    result = _load_json_if_present(build_root / "manufacturing-result.json") or {}
+    if not result.get("delivery_ready"):
+        raise HTTPException(status_code=409, detail="Website ORB delivery is not ready")
+    pack_path = Path((result.get("package_paths") or {}).get("orbpack") or "").resolve()
+    if build_root not in pack_path.parents or not pack_path.is_file():
+        raise HTTPException(status_code=404, detail="Manufactured Website ORB package not found")
+    return FileResponse(pack_path, media_type="application/zip", headers=_content_disposition(pack_path.name, "attachment"))
 
 
 @app.post("/api/projects/{project_id}/tpc-pack")

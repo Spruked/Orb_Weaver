@@ -37,6 +37,8 @@ def customer_manifest(
     customer_id: str,
     deployment_id: str,
     template_tree_hash: str,
+    payload_tree_hash: str | None = None,
+    manufacturing_metadata: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     generated_at = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
     manifest: Dict[str, Any] = {
@@ -47,7 +49,8 @@ def customer_manifest(
         "delivery_unit": "customer_dock_station_with_installed_orb",
         "manufacturing_pass": {
             "manufacturing_structure": True,
-            "blank_template": True,
+            "blank_template": payload_tree_hash is None,
+            **({"payload_injected": True} if payload_tree_hash else {}),
             "delivery_ready": False,
         },
         "template": {
@@ -62,7 +65,18 @@ def customer_manifest(
             "orb_template": "app/orb/template",
             "deployment_manifest": "deployment/manifest.json",
             "verification_report": "reports/verification-report.json",
+            **({"website_orb_vault": "app/orb/template/runtime/vault_system"} if payload_tree_hash else {}),
         },
+        **(
+            {
+                "website_orb_payload": {
+                    "tree_hash": payload_tree_hash,
+                    **(manufacturing_metadata or {}),
+                }
+            }
+            if payload_tree_hash
+            else {}
+        ),
     }
     manifest["manifest_hash"] = stable_manifest_hash(manifest)
     return manifest

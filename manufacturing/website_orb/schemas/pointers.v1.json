@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema", "site_id", "domain", "records"],
+  "properties": {
+    "schema": {"const": "orb_weaver.pointer_plot_map.v1"},
+    "site_id": {"type": "string", "minLength": 1},
+    "domain": {"type": "string", "minLength": 1},
+    "records": {"type": "array"}
+  }
+}

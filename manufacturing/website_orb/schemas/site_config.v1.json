@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema", "site_id", "domain", "base_url", "orb_name", "voice", "providers", "runtime_lanes", "storage", "behavior"],
+  "properties": {
+    "schema": {"const": "orb_weaver.website_orb_site_config.v1"},
+    "site_id": {"type": "string", "minLength": 1},
+    "domain": {"type": "string", "minLength": 1},
+    "base_url": {"type": "string", "minLength": 1},
+    "orb_name": {"type": "string", "minLength": 1},
+    "voice": {"type": "object"},
+    "providers": {"type": "object"},
+    "runtime_lanes": {"type": "array", "minItems": 8},
+    "storage": {"type": "object"},
+    "behavior": {"type": "object"}
+  }
+}

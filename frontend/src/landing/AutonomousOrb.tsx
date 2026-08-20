@@ -16,6 +16,12 @@ import {
 } from "../orb/activeProjectContext";
 import { OrbRoboticsMovementController } from "../orb/robotics/movementController";
 import type { RobotCommand } from "../orb/robotics/robotMovement.types";
+import {
+  createPlaybackSettlement,
+  type PlaybackSettlement,
+  runBackendRecovery,
+  shouldRearmVoice,
+} from "../orb/voiceLifecycle";
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, ms));
@@ -78,7 +84,7 @@ const IDLE_TRAVEL_MIN_MS = 6500;
 const IDLE_TRAVEL_MAX_MS = 10500;
 const IDLE_PAUSE_MIN_MS = 1800;
 const IDLE_PAUSE_MAX_MS = 4200;
-const REST_AFTER_INACTIVITY_MS = 10 * 60 * 1000;
+const REST_AFTER_INACTIVITY_MS = 5 * 60 * 1000;
 const ACTIVE_ORB_OPACITY = 0.94;
 const REST_ORB_OPACITY = 0.55;
 const FIRST_ENCOUNTER_STORAGE_KEY = "orbweaver-first-encounter-state";
@@ -243,6 +249,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const morbTravelAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const speechSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const speechPlaybackSettlementRef = useRef<PlaybackSettlement | null>(null);
   const speechPlaybackRef = useRef(false);
   const audioUnlockedRef = useRef(false);
   const statusTimerRef = useRef<number | null>(null);
@@ -269,6 +276,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const handsFreeEnabledRef = useRef(false);
   const [pulse, setPulse] = useState<PulseState>(null);
   const [voiceState, setVoiceState] = useState<OrbVoiceState>("idle");
+  const [voiceRearmSequence, setVoiceRearmSequence] = useState(0);
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusTitle, setStatusTitle] = useState("ORB online");
   const [statusLine, setStatusLine] = useState("Weaver is preparing voice.");
@@ -831,19 +839,22 @@ export const AutonomousOrb: React.FC<Props> = ({
     gain.connect(context.destination);
     speechSourceRef.current = source;
 
-    await new Promise<void>((resolve, reject) => {
-      source.onended = () => {
-        if (speechSourceRef.current === source) {
-          speechSourceRef.current = null;
-        }
-        resolve();
-      };
-      try {
-        source.start();
-      } catch (error) {
-        reject(error);
-      }
-    });
+    const settlement = createPlaybackSettlement();
+    speechPlaybackSettlementRef.current = settlement;
+    source.onended = () => {
+      if (speechSourceRef.current === source) speechSourceRef.current = null;
+      settlement.resolve();
+    };
+    try {
+      source.start();
+    } catch (error) {
+      settlement.reject(error as Error);
+    }
+    try {
+      await settlement.promise;
+    } finally {
+      if (speechPlaybackSettlementRef.current === settlement) speechPlaybackSettlementRef.current = null;
+    }
   }, []);
 
   const logVoice = useCallback((message: string, turnId: number) => {
@@ -866,31 +877,12 @@ export const AutonomousOrb: React.FC<Props> = ({
     presence.stop();
   }, [move, presence]);
 
-  const speakBrowserFallback = useCallback(async (text: string) => {
-    if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
-      throw new Error("Browser speech synthesis unavailable");
-    }
-
-    const synth = window.speechSynthesis;
-    synth.cancel();
-
-    await new Promise<void>((resolve, reject) => {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      utterance.volume = speakerBoostRef.current ? 1 : 0.92;
-      utterance.onend = () => resolve();
-      utterance.onerror = () => reject(new Error("Browser speech synthesis failed"));
-      synth.speak(utterance);
-    });
-  }, []);
-
   const speak = useCallback(async (
     text: string,
     audioUrl?: string | null,
     provider?: string | null,
     options: { showTranscript?: boolean } = {},
-  ) => {
+  ): Promise<boolean> => {
     const showTranscript = options.showTranscript !== false;
     if (showTranscript) {
       showStatus();
@@ -913,18 +905,19 @@ export const AutonomousOrb: React.FC<Props> = ({
     try {
       setStatusTitle("Voice response");
       if (!audioUrl) {
-        await speakBrowserFallback(text);
         speechPlaybackRef.current = false;
+        setStatusTitle("Voice unavailable");
+        setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
         setVoiceState("idle");
-        showStatus(1400);
-        return;
+        showStatus(3600);
+        return false;
       }
       if (speakerBoostRef.current) {
         await playDecodedSpeech(audioUrl);
         speechPlaybackRef.current = false;
         setVoiceState("idle");
         showStatus(1400);
-        return;
+        return true;
       }
       const audio = speechAudioRef.current || new Audio();
       audio.pause();
@@ -932,40 +925,40 @@ export const AutonomousOrb: React.FC<Props> = ({
       audio.volume = speakerBoostRef.current ? 1 : 0.86;
       audio.src = api.orbMediaUrl(audioUrl);
       speechAudioRef.current = audio;
-      await new Promise<void>((resolve, reject) => {
-        audio.onended = () => {
-          if (speechAudioRef.current === audio) {
-            speechAudioRef.current = null;
-          }
-          speechPlaybackRef.current = false;
-          setVoiceState("idle");
-          showStatus(1400);
-          resolve();
-        };
-        audio.onerror = () => {
-          if (speechAudioRef.current === audio) {
-            speechAudioRef.current = null;
-          }
-          reject(new Error("Audio playback failed"));
-        };
-        audio.play().catch(reject);
-      });
-    } catch {
-      try {
-        setStatusTitle("Voice response");
-        await speakBrowserFallback(text);
+      const settlement = createPlaybackSettlement();
+      speechPlaybackSettlementRef.current = settlement;
+      audio.onended = () => {
+        if (speechAudioRef.current === audio) speechAudioRef.current = null;
         speechPlaybackRef.current = false;
         setVoiceState("idle");
         showStatus(1400);
-      } catch {
-        speechPlaybackRef.current = false;
-        setStatusTitle("Voice unavailable");
-        setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
-        setVoiceState("idle");
-        showStatus(3600);
+        settlement.resolve();
+      };
+      audio.onerror = () => {
+        if (speechAudioRef.current === audio) speechAudioRef.current = null;
+        settlement.reject(new Error("Audio playback failed"));
+      };
+      try {
+        try {
+          await audio.play();
+        } catch (error) {
+          settlement.reject(error as Error);
+        }
+        await settlement.promise;
+      } finally {
+        if (speechPlaybackSettlementRef.current === settlement) speechPlaybackSettlementRef.current = null;
       }
+      return true;
+    } catch (error) {
+      speechPlaybackRef.current = false;
+      if ((error as Error)?.name === "AbortError") throw error;
+      setStatusTitle("Voice unavailable");
+      setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
+      setVoiceState("idle");
+      showStatus(3600);
+      return false;
     }
-  }, [freezeOrbInPlace, playDecodedSpeech, showStatus, speakBrowserFallback]);
+  }, [freezeOrbInPlace, playDecodedSpeech, showStatus]);
 
   const speakWithGeneratedAudio = useCallback(async (text: string, audioUrl?: string | null, provider?: string | null) => {
     setStatusTitle("Preparing voice");
@@ -974,30 +967,28 @@ export const AutonomousOrb: React.FC<Props> = ({
     showStatus();
     freezeOrbInPlace(4200);
 
-    await speak(text, audioUrl, provider);
+    return speak(text, audioUrl, provider);
   }, [freezeOrbInPlace, showStatus, speak]);
 
-  const speakRecovery = useCallback(async (text: string) => {
+  const speakRecovery = useCallback(async (text: string, signal?: AbortSignal) => {
     setStatusLine(text);
-    setStatusTitle("Voice response");
+    setStatusTitle("Recovering voice");
     setVoiceState("speaking");
-    speechPlaybackRef.current = true;
     showStatus();
-    freezeOrbInPlace(4200);
 
-    try {
-      await speakBrowserFallback(text);
-      setStatusTitle("Voice response");
-      showStatus(1400);
-    } catch {
+    const outcome = await runBackendRecovery<WebsiteOrbTtsResponse>(
+      (recoverySignal) => api.websiteOrbTts(text, recoverySignal),
+      (tts) => speak(text, tts.tts_audio_url, tts.tts_provider),
+      signal,
+    );
+    if (outcome === "unavailable") {
       setStatusTitle("Voice unavailable");
       setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
-      showStatus(3600);
-    } finally {
-      speechPlaybackRef.current = false;
       setVoiceState("idle");
+      showStatus(3600);
     }
-  }, [freezeOrbInPlace, showStatus, speakBrowserFallback]);
+    return outcome;
+  }, [showStatus, speak]);
 
   const contextTargetUrl = useCallback(() => {
     if (activeOrbContext) return buildCustomerPageCapsuleUrl(activeOrbContext);
@@ -1153,7 +1144,9 @@ export const AutonomousOrb: React.FC<Props> = ({
       const guidance = guideToPointerTarget(`${result.transcript} ${result.spoken_output}`);
       logVoice("playback", turnId);
       await speakWithGeneratedAudio(spokenOutput, result.tts_audio_url, result.tts_provider);
+      if (controller.signal.aborted) return;
       const guided = await guidance;
+      if (controller.signal.aborted) return;
       if (guided) markFirstEncounter("responsive_guidance_complete");
       if (experience?.phase === "make_it_personal") {
         markFirstEncounter("visitor_first_turn_complete");
@@ -1167,13 +1160,14 @@ export const AutonomousOrb: React.FC<Props> = ({
     } catch (error) {
       if ((error as Error)?.name === "AbortError") return;
       setStatusTitle("ORB route unavailable");
-      speakRecovery("I am reconnecting to my response service. Please try again in a moment.");
+      await speakRecovery("I am reconnecting to my response service. Please try again in a moment.", controller.signal);
     } finally {
       if (activeVoiceAbortControllerRef.current === controller) {
         activeVoiceAbortControllerRef.current = null;
+        voiceRequestInFlightRef.current = false;
+        setVoiceState("idle");
+        setVoiceRearmSequence((value) => value + 1);
       }
-      voiceRequestInFlightRef.current = false;
-      setVoiceState("idle");
       logVoice("finalized", turnId);
     }
   }, [activeOrbContext?.project_id, contextTargetUrl, firstEncounterComplete, freezeOrbInPlace, guideToPointerTarget, logVoice, markFirstEncounter, markVisitorActivity, showStatus, speakRecovery, speakWithGeneratedAudio]);
@@ -1366,6 +1360,8 @@ export const AutonomousOrb: React.FC<Props> = ({
     activeVoiceAbortControllerRef.current?.abort();
     activeVoiceAbortControllerRef.current = null;
     voiceRequestInFlightRef.current = false;
+    speechPlaybackSettlementRef.current?.cancel();
+    speechPlaybackSettlementRef.current = null;
     if (speechAudioRef.current) {
       speechAudioRef.current.pause();
       speechAudioRef.current.currentTime = 0;
@@ -1551,9 +1547,15 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, [onboardingSafeMode]);
 
   useEffect(() => {
-    if (!handsFreeEnabledRef.current || voiceState !== "idle" || onboardingSafeMode) return;
-    if (voiceRequestInFlightRef.current || recorderRef.current || firstEncounterRunningRef.current) return;
-    if (!firstEncounterStateRef.current.voice_ready) return;
+    if (!shouldRearmVoice({
+      handsFree: handsFreeEnabledRef.current,
+      voiceState,
+      onboardingSafeMode,
+      requestInFlight: voiceRequestInFlightRef.current,
+      recording: Boolean(recorderRef.current),
+      firstEncounterRunning: firstEncounterRunningRef.current,
+      voiceReady: firstEncounterStateRef.current.voice_ready,
+    })) return;
 
     const rearmTimer = window.setTimeout(() => {
       if (!activeRef.current || voiceRequestInFlightRef.current || recorderRef.current) return;
@@ -1561,7 +1563,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     }, 720);
 
     return () => window.clearTimeout(rearmTimer);
-  }, [onboardingSafeMode, startOrbRecording, voiceState]);
+  }, [onboardingSafeMode, startOrbRecording, voiceRearmSequence, voiceState]);
 
   useEffect(() => {
     const activityHandler = () => markVisitorActivity();
@@ -1820,6 +1822,8 @@ export const AutonomousOrb: React.FC<Props> = ({
       activeVoiceAbortControllerRef.current?.abort();
       activeVoiceAbortControllerRef.current = null;
       voiceRequestInFlightRef.current = false;
+      speechPlaybackSettlementRef.current?.cancel();
+      speechPlaybackSettlementRef.current = null;
 
       if (recorderRef.current && recorderRef.current.state !== "inactive") {
         recordingCancelledRef.current = true;

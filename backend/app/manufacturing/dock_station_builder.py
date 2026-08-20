@@ -89,6 +89,8 @@ def build_customer_dock_station(
     deployment_id: str,
     template_root: Optional[Path] = None,
     builds_root: Optional[Path] = None,
+    payload_root: Optional[Path] = None,
+    manufacturing_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     resolved_template = (template_root or DEFAULT_TEMPLATE_ROOT).resolve()
     resolved_builds = (builds_root or DEFAULT_BUILDS_ROOT).resolve()
@@ -114,6 +116,11 @@ def build_customer_dock_station(
             },
         }
 
+    resolved_payload = payload_root.resolve() if payload_root else None
+    payload_tree = hash_package_tree(resolved_payload) if resolved_payload else None
+    if resolved_payload and (not resolved_payload.is_dir() or payload_tree["symlinks"]):
+        raise ValueError("Website ORB payload must be an existing symlink-free directory")
+
     build_root = resolved_builds / ids["customer_id"] / ids["deployment_id"]
     if build_root.exists():
         raise FileExistsError(f"Build destination already exists: {build_root}")
@@ -125,16 +132,25 @@ def build_customer_dock_station(
 
     try:
         _copy_template(resolved_template, staging_root)
+        if resolved_payload:
+            payload_destination = staging_dock_station / "app" / "orb" / "template" / "runtime" / "vault_system"
+            if payload_destination.exists():
+                shutil.rmtree(payload_destination)
+            shutil.copytree(resolved_payload, payload_destination, symlinks=True)
         manifest = customer_manifest(
             template_manifest=template_manifest,
             customer_id=ids["customer_id"],
             deployment_id=ids["deployment_id"],
             template_tree_hash=template_tree["tree_hash"],
+            payload_tree_hash=payload_tree["tree_hash"] if payload_tree else None,
+            manufacturing_metadata=manufacturing_metadata,
         )
         write_json(staging_dock_station / "deployment" / "manifest.json", manifest)
         (staging_dock_station / "reports").mkdir(parents=True, exist_ok=True)
 
         build_required_paths = _build_required_paths(required_paths)
+        if resolved_payload:
+            build_required_paths.append({"path": "app/orb/template/runtime/vault_system/payload/payload_manifest.json", "type": "file"})
         build_validation = validate_required_paths(staging_dock_station, build_required_paths)
         package_tree = hash_package_tree(staging_dock_station)
         report_path = staging_dock_station / "reports" / "verification-report.json"
@@ -192,5 +208,6 @@ def build_customer_dock_station(
         "manifest_hash": manifest["manifest_hash"],
         "template_tree_hash": template_tree["tree_hash"],
         "package_tree_hash": package_tree["tree_hash"],
+        "payload_tree_hash": payload_tree["tree_hash"] if payload_tree else None,
         "passed": report["passed"],
     }

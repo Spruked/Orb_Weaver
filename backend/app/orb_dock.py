@@ -56,7 +56,7 @@ class AppearanceConfiguration(LockedModel):
 
 
 class LlmConfiguration(LockedModel):
-    provider: Literal["runtime_default", "ollama_local", "openai_api", "anthropic_api", "openai_compatible"] = "runtime_default"
+    provider: Literal["runtime_default", "ollama_local", "openai_api", "anthropic_api", "google_api", "openai_compatible"] = "runtime_default"
     model: Optional[str] = Field(default=None, max_length=160)
     base_url: Optional[str] = Field(default=None, max_length=500)
     api_key_env: Optional[str] = Field(default=None, max_length=80)
@@ -253,7 +253,7 @@ def compile_configuration(
         skin = SKIN_BY_ID["orb_factory_default_v1"]
     if configuration.llm.provider == "ollama_local" and not configuration.llm.model:
         blockers.append({"path": "llm.model", "code": "model_required", "message": "Select or download an Ollama model before publication."})
-    if configuration.llm.provider in {"openai_api", "anthropic_api"}:
+    if configuration.llm.provider in {"openai_api", "anthropic_api", "google_api"}:
         if not configuration.llm.model:
             blockers.append({"path": "llm.model", "code": "model_required", "message": "Select the API model before publication."})
         if not configuration.llm.api_key_env:
