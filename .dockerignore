@@ -24,6 +24,8 @@ vault_system/indexes
 vault_system/manifests
 vault_system/runtime
 vault_system/backups
+vault_system/secrets
+vault_system/integrations/**/imports/pending
 
 # Legacy storage roots must never enter an image.
 backend/data
