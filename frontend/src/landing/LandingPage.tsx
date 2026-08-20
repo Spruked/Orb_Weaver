@@ -1,15 +1,31 @@
 import React, { useEffect, useState } from "react";
 import PublicHeader from "../components/PublicHeader";
 import PublicFooter from "../components/PublicFooter";
+import OrbBurst from "./OrbBurst";
 import { authStore } from "../services/api";
 import { trackOnboardingEvent } from "../services/analytics";
 import { createIntentGuestSession, LandingIntent } from "../onboarding/guestOnboarding";
 import "./Landing.css";
 
+const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
+
 const LandingPage: React.FC = () => {
   const [pendingTarget, setPendingTarget] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [visibleBeats, setVisibleBeats] = useState<Record<string, boolean>>({ beat1: true });
+  const [splashTrigger, setSplashTrigger] = useState(0);
+
+  useEffect(() => {
+    if (window.sessionStorage.getItem(LANDING_SPLASH_SESSION_KEY) === "1") return;
+    window.sessionStorage.setItem(LANDING_SPLASH_SESSION_KEY, "1");
+    setSplashTrigger(Date.now());
+  }, []);
+
+  useEffect(() => {
+    if (!splashTrigger) return;
+    const timer = window.setTimeout(() => setSplashTrigger(0), 2800);
+    return () => window.clearTimeout(timer);
+  }, [splashTrigger]);
 
   useEffect(() => {
     const observed = Array.from(document.querySelectorAll<HTMLElement>('[data-beat-id]'));
@@ -56,6 +72,23 @@ const LandingPage: React.FC = () => {
 
   return (
     <main className="ow-cut-page">
+      {splashTrigger > 0 && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            left: "66vw",
+            top: "37vh",
+            width: 1,
+            height: 1,
+            zIndex: 2147482999,
+            pointerEvents: "none",
+          }}
+        >
+          <OrbBurst trigger={splashTrigger} size={200} color="blue" direction="out" />
+        </div>
+      )}
+
       <div className="ow-cut-grid" />
       <div className="ow-cut-noise" />
 
