@@ -1,0 +1,487 @@
+{
+  "schema": "orb_weaver.tool_cache.v1",
+  "mode": "basic",
+  "domain": "orbweaver.spruked.com",
+  "generated_at": "2026-07-06T21:11:16.913090+00:00",
+  "expires_at": "2026-07-20T21:11:16.913090+00:00",
+  "runtime_rule": "intent_keyword -> play WAV; cache miss -> filler WAV -> async MCP call",
+  "visual_targets": {
+    "path": "substrate/clients/orbweaver.spruked.com/website_orb_context/pointer_plot_map.json",
+    "available": true,
+    "schema": "orb_weaver.pointer_plot_map.v1",
+    "record_count": 858
+  },
+  "product_boundary": {
+    "basic_customer_cache_has_mcp_dependency": false,
+    "mcp_allowed_for_this_build": false,
+    "mcp_data_included": false,
+    "mcp_requires_explicit_build_flag": true,
+    "statement": "Basic customer Website ORB caches are static, website-native, and do not probe MCP. Enhanced MCP data is only included for the Orb Weaver showcase or deliberately configured advanced adapters."
+  },
+  "mcp": {
+    "relay_url": null,
+    "tool_count": 0,
+    "tools": []
+  },
+  "entries": [
+    {
+      "id": "hero_overview",
+      "rank": 1,
+      "keywords": [
+        "what is this site",
+        "what do you do",
+        "tell me about this",
+        "hero"
+      ],
+      "resolution": "text",
+      "spoken_output": "This page explains the main offer and where to go next.",
+      "wav_filename": "01_hero_overview.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "pricing_overview",
+      "rank": 2,
+      "keywords": [
+        "pricing",
+        "how much does it cost",
+        "plans",
+        "tiers"
+      ],
+      "resolution": "text",
+      "spoken_output": "I can help compare pricing and point you to the right plan.",
+      "wav_filename": "02_pricing_overview.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "basic_plan",
+      "rank": 3,
+      "keywords": [
+        "basic plan",
+        "starter plan",
+        "basic orb",
+        "entry tier"
+      ],
+      "resolution": "text",
+      "spoken_output": "I have the main answer. Let me verify one detail.",
+      "wav_filename": "03_basic_plan.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "premium_plan",
+      "rank": 4,
+      "keywords": [
+        "premium plan",
+        "premium orb",
+        "advanced tier",
+        "browser verification"
+      ],
+      "resolution": "text",
+      "spoken_output": "I can help with that. I am narrowing it down.",
+      "wav_filename": "04_premium_plan.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "enterprise_plan",
+      "rank": 5,
+      "keywords": [
+        "enterprise",
+        "custom plan",
+        "large business",
+        "full tools"
+      ],
+      "resolution": "text",
+      "spoken_output": "I could not load that detail yet, but I can still help you find the right page.",
+      "wav_filename": "05_enterprise_plan.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "cart_status",
+      "rank": 6,
+      "keywords": [
+        "cart",
+        "what is in my cart",
+        "checkout cart",
+        "cart total"
+      ],
+      "resolution": "text",
+      "spoken_output": "I can check the cart state when owner tools are enabled.",
+      "wav_filename": "06_cart_status.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "checkout_help",
+      "rank": 7,
+      "keywords": [
+        "checkout",
+        "buy now",
+        "complete purchase",
+        "payment"
+      ],
+      "resolution": "text",
+      "spoken_output": "I am having trouble opening that information directly. Try this section first.",
+      "wav_filename": "07_checkout_help.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "contact_options",
+      "rank": 8,
+      "keywords": [
+        "contact",
+        "call you",
+        "email",
+        "support"
+      ],
+      "resolution": "text",
+      "spoken_output": "I can guide you to the contact path or help prepare a support request.",
+      "wav_filename": "08_contact_options.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "booking_help",
+      "rank": 9,
+      "keywords": [
+        "book",
+        "schedule",
+        "appointment",
+        "calendar"
+      ],
+      "resolution": "text",
+      "spoken_output": "I am still here. Let me try a simpler path.",
+      "wav_filename": "09_booking_help.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "faq_overview",
+      "rank": 10,
+      "keywords": [
+        "faq",
+        "questions",
+        "help center",
+        "common questions"
+      ],
+      "resolution": "text",
+      "spoken_output": "I can answer common questions from the site's cached guide.",
+      "wav_filename": "10_faq_overview.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "shipping",
+      "rank": 11,
+      "keywords": [
+        "shipping",
+        "delivery",
+        "ship date",
+        "where is my order"
+      ],
+      "resolution": "text",
+      "spoken_output": "I can still help you here in text.",
+      "wav_filename": "11_shipping.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "returns",
+      "rank": 12,
+      "keywords": [
+        "return",
+        "refund",
+        "exchange",
+        "cancel order"
+      ],
+      "resolution": "text",
+      "spoken_output": "My voice is unavailable for the moment, but I can continue on screen.",
+      "wav_filename": "12_returns.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "login_help",
+      "rank": 13,
+      "keywords": [
+        "login",
+        "sign in",
+        "account",
+        "password"
+      ],
+      "resolution": "text",
+      "spoken_output": "I found part of that, but I am still checking the rest.",
+      "wav_filename": "13_login_help.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "product_search",
+      "rank": 14,
+      "keywords": [
+        "find product",
+        "search product",
+        "show me",
+        "catalog"
+      ],
+      "resolution": "text",
+      "spoken_output": "Here is what I can confirm so far.",
+      "wav_filename": "14_product_search.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "services",
+      "rank": 15,
+      "keywords": [
+        "services",
+        "what services",
+        "work with you",
+        "offerings"
+      ],
+      "resolution": "text",
+      "spoken_output": "I have the main answer. Let me verify one detail.",
+      "wav_filename": "15_services.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "portfolio",
+      "rank": 16,
+      "keywords": [
+        "portfolio",
+        "examples",
+        "case studies",
+        "past work"
+      ],
+      "resolution": "text",
+      "spoken_output": "I can help with that. I am narrowing it down.",
+      "wav_filename": "16_portfolio.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "reviews",
+      "rank": 17,
+      "keywords": [
+        "reviews",
+        "testimonials",
+        "ratings",
+        "proof"
+      ],
+      "resolution": "text",
+      "spoken_output": "I could not load that detail yet, but I can still help you find the right page.",
+      "wav_filename": "17_reviews.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "location",
+      "rank": 18,
+      "keywords": [
+        "where are you",
+        "location",
+        "address",
+        "near me"
+      ],
+      "resolution": "text",
+      "spoken_output": "Let me guide you to the closest match.",
+      "wav_filename": "18_location.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "hours",
+      "rank": 19,
+      "keywords": [
+        "hours",
+        "open",
+        "closed",
+        "when are you available"
+      ],
+      "resolution": "text",
+      "spoken_output": "I am having trouble opening that information directly. Try this section first.",
+      "wav_filename": "19_hours.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "team",
+      "rank": 20,
+      "keywords": [
+        "team",
+        "who works here",
+        "about you",
+        "founder"
+      ],
+      "resolution": "text",
+      "spoken_output": "I am taking longer than expected on that.",
+      "wav_filename": "20_team.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "privacy",
+      "rank": 21,
+      "keywords": [
+        "privacy",
+        "data",
+        "cookies",
+        "terms"
+      ],
+      "resolution": "text",
+      "spoken_output": "I am still here. Let me try a simpler path.",
+      "wav_filename": "21_privacy.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "accessibility",
+      "rank": 22,
+      "keywords": [
+        "accessibility",
+        "screen reader",
+        "accessible",
+        "ada"
+      ],
+      "resolution": "text",
+      "spoken_output": "That took longer than it should have. I am checking another way.",
+      "wav_filename": "22_accessibility.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "preflight_status",
+      "rank": 23,
+      "keywords": [
+        "scan result",
+        "preflight",
+        "is the site ready",
+        "readiness"
+      ],
+      "resolution": "text",
+      "spoken_output": "I can answer from the latest preflight cache instantly.",
+      "wav_filename": "23_preflight_status.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "tool_status",
+      "rank": 24,
+      "keywords": [
+        "tools",
+        "mcp",
+        "tesseract",
+        "can you use tools"
+      ],
+      "resolution": "text",
+      "spoken_output": "I can use cached answers first, then MCP or OCR when a live check is needed.",
+      "wav_filename": "24_tool_status.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "visual_audit",
+      "rank": 25,
+      "keywords": [
+        "read the screen",
+        "ocr",
+        "visible text",
+        "visual check"
+      ],
+      "resolution": "text",
+      "spoken_output": "I can compare visible OCR text with structured tool data.",
+      "wav_filename": "25_visual_audit.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "escalate_human",
+      "rank": 26,
+      "keywords": [
+        "human",
+        "representative",
+        "agent",
+        "talk to someone"
+      ],
+      "resolution": "text",
+      "spoken_output": "Here is what I can confirm so far.",
+      "wav_filename": "26_escalate_human.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    },
+    {
+      "id": "fallback_checking",
+      "rank": 27,
+      "keywords": [
+        "check that",
+        "look that up",
+        "one moment",
+        "verify"
+      ],
+      "resolution": "text",
+      "spoken_output": "One moment, let me check that for you.",
+      "wav_filename": "27_fallback_checking.wav",
+      "tts_audio_url": null,
+      "tts_provider": null,
+      "mcp_tool": null,
+      "mcp_prefetch": null
+    }
+  ]
+}

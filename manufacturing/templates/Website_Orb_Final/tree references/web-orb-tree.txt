@@ -1,0 +1,163 @@
+C:\USERS\BRYAN\DESKTOP\WEBSITE_ORB_FINAL
+|   tree.txt
+|   
++---config
+|   |   telemetry.yaml
+|   |   vault_config.yaml
+|   |   
+|   \---environments
+|           dev.yaml
+|           prod.yaml
+|           test.yaml
+|           
++---docs
+|       architecture.md
+|       glyph_guide.md
+|       memory_matrix.md
+|       migration_guide.md
+|       telemetry_best_practices.md
+|       vault_types.md
+|       
++---engine
+|   |   evaluator.py
+|   |   resolver.js
+|   |   signal_map.json
+|   |   
+|   \---integration_hooks
+|           on_vault_apply.py
+|           post_resolution.yaml
+|           
++---examples
+|       catalog.json
+|       input_career_change.json
+|       input_game_quest.json
+|       input_medical_triage.json
+|       ontology.json
+|       policies.json
+|       qa.json
+|       
++---glyphs
+|   |   glyph_map.json
+|   |   trace_engine.js
+|   |   
+|   \---_template
+|           custom_glyph.json
+|           
++---interfaces
+|   +---api
+|   |       openapi.yaml
+|   |       
+|   \---cli
+|           commands.md
+|           
++---memory
+|   |   consolidation.py
+|   |   matrix_store.yaml
+|   |   
+|   +---domains
+|   |       long_term.json
+|   |       sensory.json
+|   |       short_term.json
+|   |       
+|   \---_template
+|           custom_matrix.json
+|           
++---Orb_Vault
+|   |   __init__.py
+|   |   
+|   +---a_posteriori
+|   |       contradiction_cognitive.py
+|   |       contradiction_logic.py
+|   |       experience_cognitive.py
+|   |       experience_logic.py
+|   |       ledger.py
+|   |       merger_cognitive.py
+|   |       merger_logic.py
+|   |       posteriori_logic.py
+|   |       promotion_cognitive.py
+|   |       promotion_logic.py
+|   |       pruning_cognitive.py
+|   |       pruning_logic.py
+|   |       reinforcement_cognitive.py
+|   |       reinforcement_logic.py
+|   |       verification_cognitive.py
+|   |       verification_logic.py
+|   |       __init__.py
+|   |       
+|   +---a_priori
+|   |       catalog_cognitive.py
+|   |       catalog_logic.py
+|   |       loader.py
+|   |       ontology_cognitive.py
+|   |       ontology_logic.py
+|   |       priori_logic.py
+|   |       qa_cognitive.py
+|   |       qa_logic.py
+|   |       __init__.py
+|   |       
+|   +---orb_assistant
+|   |       query_router.py
+|   |       vault_coordinator.py
+|   |       __init__.py
+|   |       
+|   \---shared
+|           confidence.py
+|           constants.py
+|           types.py
+|           __init__.py
+|           
++---scripts
+|       consolidate_memory.py
+|       export_telemetry.js
+|       export_to_json.lua
+|       generate_glyph_report.py
+|       validate_vaults.sh
+|       
++---telemetry
+|   |   alerts.yaml
+|   |   collector.py
+|   |   telemetry.yaml
+|   |   
+|   +---dashboard
+|   |       anomaly_detector.js
+|   |       metrics_dashboard.md
+|   |       
+|   \---traces
+|           agent_decisions.json
+|           latency_buckets.json
+|           
++---tests
+|   +---integration
+|   |       test_ethical_dilemma.json
+|   |       test_glyph_drift.json
+|   |       test_memory_consolidation.json
+|   |       test_pricing_edge_case.json
+|   |       
+|   \---unit
+|           test_telemetry_alerts.json
+|           vault_template_test.json
+|           
+\---vaults
+    \---_template
+        |   logic.md
+        |   vault.json
+        |   
+        \---rules
+                condition.js
+                
+PS C:\Users\bryan\Desktop\website_orb_final> 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

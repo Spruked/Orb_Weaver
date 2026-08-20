@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useAnimationControls } from "framer-motion";
 import { Volume2, VolumeX } from "lucide-react";
+import { useLocation } from "react-router-dom";
 import { Orb } from "./Orb";
 import {
   api,
@@ -16,6 +17,7 @@ import {
 } from "../orb/activeProjectContext";
 import { OrbRoboticsMovementController } from "../orb/robotics/movementController";
 import type { RobotCommand } from "../orb/robotics/robotMovement.types";
+import { buildLidarGuidanceMap, Lidar2DMappingCoordinateCache } from "../orb/lidar_2d_mapping";
 import {
   createPlaybackSettlement,
   type PlaybackSettlement,
@@ -33,6 +35,13 @@ const MIN_RECORDING_MS = 700;
 const END_SILENCE_MS = 850;
 const ABSOLUTE_RECORDING_LIMIT_MS = 14000;
 const SPEECH_LEVEL_THRESHOLD = 0.018;
+const LIDAR_DRIFT_THRESHOLD_PX = 12;
+
+const emitOrbRuntimeEvent = (phase: string, detail: Record<string, unknown> = {}) => {
+  window.dispatchEvent(new CustomEvent("orbweaver:mounted-runtime", {
+    detail: { phase, at: Date.now(), ...detail },
+  }));
+};
 
 type PulseKind = "ripple" | "flare";
 type FirstEncounterFlag =
@@ -223,20 +232,32 @@ export const AutonomousOrb: React.FC<Props> = ({
   size = 190,
   className = "",
 }) => {
-  const onboardingSafeMode = ['/signup', '/login'].includes(window.location.pathname);
+  const location = useLocation();
+  const onboardingSafeMode = ['/signup', '/login'].includes(location.pathname);
   const move = useAnimationControls();
   const glow = useAnimationControls();
   const presence = useAnimationControls();
   const activeRef = useRef(true);
   const reducedMotionRef = useRef(false);
   const positionRef = useRef({ x: 0, y: 0 });
+  const orbElementRef = useRef<HTMLDivElement | null>(null);
+  const motionInterruptionSequenceRef = useRef(0);
   const idleHeadingRef = useRef(Math.random() * Math.PI * 2);
   const lastAutonomousDestinationRef = useRef<{ x: number; y: number } | null>(null);
   const lastAutonomousHeadingRef = useRef<number | null>(null);
   const movementControllerRef = useRef<OrbRoboticsMovementController | null>(null);
+  const lidarCacheRef = useRef(Lidar2DMappingCoordinateCache.getInstance());
+  const guidanceActiveRef = useRef(false);
+  const controlMotionActiveRef = useRef(false);
+  const autonomousResumeActiveRef = useRef(false);
+  const manualHoldRef = useRef(false);
+  const previousCommandPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const guidanceSequenceRef = useRef(0);
   const worldStateSequenceRef = useRef(1);
   const lastActivityAtRef = useRef(Date.now());
   const restModeRef = useRef(false);
+  const restTransitionActiveRef = useRef(false);
+  const resumeAutonomousPresenceRef = useRef<() => Promise<void>>(async () => undefined);
   const pointerRecordsRef = useRef<WebsiteOrbPointerRecord[]>([]);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
@@ -283,6 +304,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const [activeOrbContext, setActiveOrbContext] = useState<ActiveOrbProjectContext | null>(() => getActiveOrbProjectContext());
   const [speakerBoost, setSpeakerBoost] = useState(false);
   const [lastGuidedTarget, setLastGuidedTarget] = useState<string | null>(null);
+  const [guidanceGeometrySource, setGuidanceGeometrySource] = useState<"lidar_cache" | "live_dom" | null>(null);
   const [isResting, setIsResting] = useState(false);
   const [pointerBloom, setPointerBloom] = useState<{
     targetId: string;
@@ -368,6 +390,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       restModeRef.current = false;
       setIsResting(false);
       avoidUntilRef.current = Date.now() + 900;
+      window.setTimeout(() => void resumeAutonomousPresenceRef.current(), 120);
     }
   }, []);
 
@@ -492,6 +515,124 @@ export const AutonomousOrb: React.FC<Props> = ({
   return fallback;
 }, [bounds, clampPosition, size]);
 
+  const resumeAutonomousPresence = useCallback(async () => {
+    const blockers = {
+      inactive: !activeRef.current,
+      speech: speechPlaybackRef.current,
+      guidance: guidanceActiveRef.current,
+      control: controlMotionActiveRef.current,
+      hold: manualHoldRef.current,
+      rest: restModeRef.current,
+      alreadyResuming: autonomousResumeActiveRef.current,
+    };
+    if (Object.values(blockers).some(Boolean)) {
+      emitOrbRuntimeEvent("autonomous_resume_blocked", blockers);
+      return;
+    }
+    autonomousResumeActiveRef.current = true;
+    const sequence = motionInterruptionSequenceRef.current + 1;
+    motionInterruptionSequenceRef.current = sequence;
+    const destination = nextDestination();
+    emitOrbRuntimeEvent("autonomous_resume_started", { destination });
+    try {
+      await move.start({
+        x: destination.x,
+        y: destination.y,
+        transition: { duration: 5.2, ease: [0.37, 0, 0.22, 1] },
+      });
+      if (sequence === motionInterruptionSequenceRef.current) positionRef.current = destination;
+    } finally {
+      if (sequence === motionInterruptionSequenceRef.current) {
+        autonomousResumeActiveRef.current = false;
+        emitOrbRuntimeEvent("autonomous_resume_complete", { destination });
+      }
+    }
+  }, [move, nextDestination]);
+  resumeAutonomousPresenceRef.current = resumeAutonomousPresence;
+
+  const localMoveOutDestination = useCallback(() => {
+    const currentRect = orbElementRef.current?.getBoundingClientRect();
+    const current = currentRect ? { x: currentRect.left, y: currentRect.top } : positionRef.current;
+    const center = { x: current.x + size / 2, y: current.y + size / 2 };
+    const nearby = document.elementsFromPoint(center.x, center.y).find((element) => (
+      !orbElementRef.current?.contains(element) &&
+      !element.closest('.ow-v2-orb-position') &&
+      element !== document.body && element !== document.documentElement
+    ));
+    const guidanceMap = buildLidarGuidanceMap({ orbPosition: center });
+    let heading = idleHeadingRef.current + (Math.random() > 0.5 ? 0.7 : -0.7);
+    if (nearby) {
+      const rect = nearby.getBoundingClientRect();
+      heading = Math.atan2(center.y - (rect.top + rect.height / 2), center.x - (rect.left + rect.width / 2));
+      heading += (Math.random() - 0.5) * 0.5;
+    }
+    const displacement = Math.max(88, Math.min(148, size * (0.62 + Math.random() * 0.18)));
+    const destination = clampPosition(
+      current.x + Math.cos(heading) * displacement,
+      current.y + Math.sin(heading) * displacement,
+    );
+    emitOrbRuntimeEvent("control_spatial_sample", {
+      nearbyTag: nearby?.tagName.toLowerCase() || null,
+      lidarFeatures: guidanceMap.features.length,
+      displacement: Math.hypot(destination.x - current.x, destination.y - current.y),
+    });
+    return destination;
+  }, [clampPosition, size]);
+
+  const executeOrbControlAction = useCallback(async (action?: { type: string; command: string } | null) => {
+    if (!action || action.type !== "orb_motion") return false;
+    const command = action.command;
+    manualHoldRef.current = command === "hold_position";
+    if (command === "listen") {
+      manualHoldRef.current = false;
+      emitOrbRuntimeEvent("control_motion_complete", { command, moved: false });
+      return true;
+    }
+    if (command === "wake") {
+      manualHoldRef.current = false;
+      markVisitorActivity();
+      emitOrbRuntimeEvent("control_motion_complete", { command, moved: false });
+      return true;
+    }
+    const rect = orbElementRef.current?.getBoundingClientRect();
+    const current = rect ? { x: rect.left, y: rect.top } : positionRef.current;
+    const previousCommandPosition = previousCommandPositionRef.current;
+    motionInterruptionSequenceRef.current += 1;
+    autonomousResumeActiveRef.current = false;
+    move.stop();
+    if (command === "hold_position") {
+      positionRef.current = current;
+      emitOrbRuntimeEvent("control_motion_complete", { command, moved: false });
+      return true;
+    }
+    const step = Math.max(92, size * 0.68);
+    let destination = current;
+    if (command === "move_out_of_way" || command === "move_to_side") destination = localMoveOutDestination();
+    if (command === "move_up") destination = clampPosition(current.x, current.y - step);
+    if (command === "move_down") destination = clampPosition(current.x, current.y + step);
+    if (command === "move_left") destination = clampPosition(current.x - step, current.y);
+    if (command === "move_right") destination = clampPosition(current.x + step, current.y);
+    if (command === "come_here") destination = clampPosition(window.innerWidth / 2 - size / 2, window.innerHeight / 2 - size / 2);
+    if (command === "come_back" && previousCommandPosition) destination = clampPosition(previousCommandPosition.x, previousCommandPosition.y);
+    previousCommandPositionRef.current = current;
+    const distanceToMove = Math.hypot(destination.x - current.x, destination.y - current.y);
+    controlMotionActiveRef.current = true;
+    emitOrbRuntimeEvent("control_motion_started", { command, current, destination, distance: distanceToMove });
+    try {
+      await move.start({
+        x: destination.x,
+        y: destination.y,
+        transition: { duration: Math.max(1.15, Math.min(2.2, distanceToMove / 78)), ease: [0.37, 0, 0.22, 1] },
+      });
+      positionRef.current = destination;
+      emitOrbRuntimeEvent("control_motion_complete", { command, moved: distanceToMove > 1, destination });
+    } finally {
+      controlMotionActiveRef.current = false;
+    }
+    window.setTimeout(() => void resumeAutonomousPresence(), 180);
+    return true;
+  }, [clampPosition, localMoveOutDestination, markVisitorActivity, move, resumeAutonomousPresence, size]);
+
   const findPointerRecordForIntent = useCallback((intentText: string) => {
     const query = normalizeIntentText(intentText);
     const queryTokens = new Set(query.split(" ").filter((token) => token.length > 2));
@@ -529,6 +670,22 @@ export const AutonomousOrb: React.FC<Props> = ({
     markVisitorActivity();
     const movementController = movementControllerRef.current;
     if (!movementController) return false;
+    if (record.runtime_policy?.may_point !== true) {
+      emitOrbRuntimeEvent("guidance_blocked", { targetId: record.target_id, reason: "may_point_false" });
+      return false;
+    }
+    const guidanceSequence = guidanceSequenceRef.current + 1;
+    guidanceSequenceRef.current = guidanceSequence;
+    guidanceActiveRef.current = true;
+    const finishGuidance = (result: boolean, reason?: string) => {
+      if (guidanceSequenceRef.current === guidanceSequence) guidanceActiveRef.current = false;
+      emitOrbRuntimeEvent(result ? "guidance_complete" : "guidance_recovery", {
+        targetId: record.target_id,
+        reason,
+      });
+      if (result) window.setTimeout(() => void resumeAutonomousPresence(), 120);
+      return result;
+    };
     const role = inferMorbRole(record, intentText);
 
     const command: RobotCommand = {
@@ -548,6 +705,11 @@ export const AutonomousOrb: React.FC<Props> = ({
     };
 
     setPointerWaltzPhase("ACQUIRE");
+    emitOrbRuntimeEvent("guidance_acquire", {
+      targetId: record.target_id,
+      mayPoint: record.runtime_policy?.may_point === true,
+      mayClick: record.runtime_policy?.may_click === true,
+    });
     const movement = movementController.beginMovement({
       command,
       pointerRecord: record,
@@ -561,10 +723,28 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     if (!movement.ok) {
       setPointerWaltzPhase("RECOVERY");
-      return false;
+      return finishGuidance(false, movement.reason);
     }
 
     let activeRect = movement.targetRect;
+    const cachedCoordinate = lidarCacheRef.current.get(record.target_id);
+    if (cachedCoordinate) {
+      const drift = Math.hypot(
+        cachedCoordinate.left - activeRect.left,
+        cachedCoordinate.top - activeRect.top,
+      );
+      if (drift <= LIDAR_DRIFT_THRESHOLD_PX) {
+        setGuidanceGeometrySource("lidar_cache");
+        emitOrbRuntimeEvent("lidar_cache_hit", { targetId: record.target_id, drift });
+      } else {
+        lidarCacheRef.current.load(pointerRecordsRef.current);
+        setGuidanceGeometrySource("live_dom");
+        emitOrbRuntimeEvent("lidar_drift_relocalized", { targetId: record.target_id, drift });
+      }
+    } else {
+      setGuidanceGeometrySource("live_dom");
+      emitOrbRuntimeEvent("lidar_cache_miss", { targetId: record.target_id });
+    }
     const targetAlreadyVisible =
       activeRect.top >= 0 &&
       activeRect.left >= 0 &&
@@ -579,7 +759,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       if (!refreshed) {
         setPointerWaltzPhase("RECOVERY");
         movement.cancel("target_lost_after_scroll");
-        return false;
+        return finishGuidance(false, "target_lost_after_scroll");
       }
       activeRect = refreshed;
     }
@@ -597,6 +777,10 @@ export const AutonomousOrb: React.FC<Props> = ({
     const distance = Math.hypot(destination.x - current.x, destination.y - current.y);
     avoidUntilRef.current = Date.now() + 900;
     if (!options.launchMorbOnly) {
+      const rect = orbElementRef.current?.getBoundingClientRect();
+      if (rect) positionRef.current = { x: rect.left, y: rect.top };
+      motionInterruptionSequenceRef.current += 1;
+      autonomousResumeActiveRef.current = false;
       move.stop();
       setPointerWaltzPhase("APPROACH");
       await move.start({
@@ -612,14 +796,14 @@ export const AutonomousOrb: React.FC<Props> = ({
     if (!activeRef.current) {
       setPointerWaltzPhase("RECOVERY");
       movement.cancel("orb_unmounted");
-      return false;
+      return finishGuidance(false, "orb_unmounted");
     }
 
     const finalRect = movement.refreshTarget();
     if (!finalRect) {
       setPointerWaltzPhase("RECOVERY");
       movement.cancel("target_lost_before_arrival");
-      return false;
+      return finishGuidance(false, "target_lost_before_arrival");
     }
     const finalTargetX = finalRect.left + finalRect.width / 2;
     const finalTargetY = finalRect.top + finalRect.height / 2;
@@ -690,7 +874,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       setPointerWaltzPhase("RECOVERY");
       setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, dissolving: true } : null);
       movement.cancel("target_lost_before_ping");
-      return false;
+      return finishGuidance(false, "target_lost_before_ping");
     }
 
     setPointerWaltzPhase("POINT");
@@ -721,8 +905,8 @@ export const AutonomousOrb: React.FC<Props> = ({
     await wait(420);
     setMorbPointer(null);
     setPointerWaltzPhase("COMPLETE");
-    return true;
-  }, [bumpWorldStateSequence, clampPosition, markVisitorActivity, morbPointer, move, playMorbLaunchSound, playPointerPing, size, startMorbTravelSound, stopMorbTravelSound]);
+    return finishGuidance(true);
+  }, [bumpWorldStateSequence, clampPosition, markVisitorActivity, morbPointer, move, playMorbLaunchSound, playPointerPing, resumeAutonomousPresence, size, startMorbTravelSound, stopMorbTravelSound]);
 
   const guideToPointerTarget = useCallback(async (intentText: string) => {
     const record = findPointerRecordForIntent(intentText);
@@ -736,6 +920,27 @@ export const AutonomousOrb: React.FC<Props> = ({
       record.target_id === targetId && routeForUrl(record.page_route) === currentRoute
     )) || null;
   }, []);
+
+  const guideFromRuntimeResult = useCallback(async (
+    result: { transcript: string; spoken_output: string; guidance?: Record<string, unknown> | null; cognitive_pulse?: Record<string, unknown> | null },
+  ) => {
+    const directTargetId = typeof result.guidance?.target_id === "string" ? result.guidance.target_id : null;
+    const pulsePointerMatches = result.cognitive_pulse?.pointer_matches;
+    const pulseMatches = Array.isArray(pulsePointerMatches)
+      ? pulsePointerMatches as Array<Record<string, unknown>>
+      : [];
+    const pulseTargetId = typeof pulseMatches[0]?.target_id === "string" ? pulseMatches[0].target_id as string : null;
+    const targetId = directTargetId || pulseTargetId;
+    if (targetId) {
+      const record = findPointerRecordById(targetId);
+      if (!record) {
+        emitOrbRuntimeEvent("guidance_recovery", { targetId, reason: "runtime_target_not_live_on_route" });
+        return false;
+      }
+      return guideToPointerRecord(record, result.transcript);
+    }
+    return guideToPointerTarget(`${result.transcript} ${result.spoken_output}`);
+  }, [findPointerRecordById, guideToPointerRecord, guideToPointerTarget]);
 
   const waitForPointerRecords = useCallback(async () => {
     const startedAt = Date.now();
@@ -873,6 +1078,10 @@ export const AutonomousOrb: React.FC<Props> = ({
   const freezeOrbInPlace = useCallback((_holdMs = 4200) => {
     // Listening and thinking may continue to drift. Only audible speech holds Weaver still.
     if (!speechPlaybackRef.current) return;
+    const rect = orbElementRef.current?.getBoundingClientRect();
+    if (rect) positionRef.current = { x: rect.left, y: rect.top };
+    motionInterruptionSequenceRef.current += 1;
+    autonomousResumeActiveRef.current = false;
     move.stop();
     presence.stop();
   }, [move, presence]);
@@ -893,6 +1102,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     setVoiceState("speaking");
     speechPlaybackRef.current = true;
     freezeOrbInPlace(4200);
+    emitOrbRuntimeEvent("playback_started", { provider: provider || null });
 
     if (speechAudioRef.current) {
       speechAudioRef.current.pause();
@@ -932,6 +1142,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         speechPlaybackRef.current = false;
         setVoiceState("idle");
         showStatus(1400);
+        emitOrbRuntimeEvent("playback_ended", { provider: provider || null });
         settlement.resolve();
       };
       audio.onerror = () => {
@@ -1141,11 +1352,18 @@ export const AutonomousOrb: React.FC<Props> = ({
         setStatusTitle("Voice unavailable");
         setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
       }
-      const guidance = guideToPointerTarget(`${result.transcript} ${result.spoken_output}`);
+      emitOrbRuntimeEvent("canonical_response", {
+        turnId,
+        transcript: result.transcript,
+        sourceLane: result.source_lane || result.llm_source,
+        ttsProvider: result.tts_provider || null,
+        controlCommand: result.control_action?.command || null,
+      });
       logVoice("playback", turnId);
       await speakWithGeneratedAudio(spokenOutput, result.tts_audio_url, result.tts_provider);
       if (controller.signal.aborted) return;
-      const guided = await guidance;
+      const controlHandled = await executeOrbControlAction(result.control_action);
+      const guided = controlHandled ? false : await guideFromRuntimeResult(result);
       if (controller.signal.aborted) return;
       if (guided) markFirstEncounter("responsive_guidance_complete");
       if (experience?.phase === "make_it_personal") {
@@ -1170,7 +1388,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       }
       logVoice("finalized", turnId);
     }
-  }, [activeOrbContext?.project_id, contextTargetUrl, firstEncounterComplete, freezeOrbInPlace, guideToPointerTarget, logVoice, markFirstEncounter, markVisitorActivity, showStatus, speakRecovery, speakWithGeneratedAudio]);
+  }, [activeOrbContext?.project_id, contextTargetUrl, executeOrbControlAction, firstEncounterComplete, freezeOrbInPlace, guideFromRuntimeResult, logVoice, markFirstEncounter, markVisitorActivity, showStatus, speakRecovery, speakWithGeneratedAudio]);
 
   const stopOrbRecording = useCallback((cancel = false) => {
     if (recordingStopTimerRef.current) {
@@ -1312,6 +1530,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           : undefined;
       const recorder = new MediaRecorder(stream, recorderOptions);
       recorderRef.current = recorder;
+      emitOrbRuntimeEvent("recording_started", { turnId, mimeType: recorder.mimeType });
 
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -1332,12 +1551,14 @@ export const AutonomousOrb: React.FC<Props> = ({
           recordingStreamRef.current = null;
         }
         if (cancelled) {
+          emitOrbRuntimeEvent("recording_cancelled", { turnId });
           setStatusTitle("Listening cancelled");
           setStatusLine("Tap the ORB when you want to speak.");
           setVoiceState("idle");
           showStatus(1800);
           return;
         }
+        emitOrbRuntimeEvent("recording_stopped", { turnId, bytes: audio.size });
         void processRecordedOrbAudio(audio);
       };
 
@@ -1384,7 +1605,9 @@ export const AutonomousOrb: React.FC<Props> = ({
     setVoiceState("idle");
     showStatus(1600);
     avoidUntilRef.current = Date.now() + 900;
-  }, [showStatus]);
+    emitOrbRuntimeEvent("playback_interrupted", { turnId: voiceTurnIdRef.current });
+    window.setTimeout(() => void resumeAutonomousPresence(), 120);
+  }, [resumeAutonomousPresence, showStatus]);
 
   const requestStartupMicrophonePermission = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -1622,6 +1845,9 @@ export const AutonomousOrb: React.FC<Props> = ({
     api.websiteOrbPointerMap(pointerDomain, controller.signal)
       .then((pointerMap) => {
         pointerRecordsRef.current = Array.isArray(pointerMap.records) ? pointerMap.records : [];
+        lidarCacheRef.current.load(pointerRecordsRef.current);
+        lidarCacheRef.current.startDriftAudit();
+        emitOrbRuntimeEvent("pointer_map_ready", { count: pointerRecordsRef.current.length });
         bumpWorldStateSequence();
         if (process.env.NODE_ENV !== "production") {
           const demoQuery = new URLSearchParams(window.location.search).get("orbPointerDemo");
@@ -1632,10 +1858,30 @@ export const AutonomousOrb: React.FC<Props> = ({
       })
       .catch(() => {
         pointerRecordsRef.current = [];
+        lidarCacheRef.current.clear();
         bumpWorldStateSequence();
       });
     return () => controller.abort();
   }, [activeOrbContext?.canonical_domain, bumpWorldStateSequence, guideToPointerTarget]);
+
+  useEffect(() => {
+    guidanceSequenceRef.current += 1;
+    motionInterruptionSequenceRef.current += 1;
+    autonomousResumeActiveRef.current = false;
+    guidanceActiveRef.current = false;
+    movementControllerRef.current?.dispose();
+    setPointerBloom(null);
+    setMorbPointer(null);
+    setPointerWaltzPhase(null);
+    setGuidanceGeometrySource(null);
+    bumpWorldStateSequence();
+    const rebuild = window.setTimeout(() => {
+      lidarCacheRef.current.load(pointerRecordsRef.current);
+      emitOrbRuntimeEvent("route_spatial_state_ready", { route: location.pathname });
+      void resumeAutonomousPresenceRef.current();
+    }, 120);
+    return () => window.clearTimeout(rebuild);
+  }, [bumpWorldStateSequence, location.pathname]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1731,7 +1977,10 @@ export const AutonomousOrb: React.FC<Props> = ({
           setIsResting(false);
         }
 
-        if (speechPlaybackRef.current) {
+        if (
+          speechPlaybackRef.current || guidanceActiveRef.current || controlMotionActiveRef.current ||
+          autonomousResumeActiveRef.current || manualHoldRef.current
+        ) {
           await wait(160);
           continue;
         }
@@ -1747,6 +1996,7 @@ export const AutonomousOrb: React.FC<Props> = ({
 
         if (!activeRef.current) break;
 
+        const movementSequence = motionInterruptionSequenceRef.current;
         await move.start({
           x: destination.x,
           y: destination.y,
@@ -1759,6 +2009,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         });
 
         if (!activeRef.current) break;
+        if (movementSequence !== motionInterruptionSequenceRef.current) continue;
 
         positionRef.current = destination;
 
@@ -1802,6 +2053,35 @@ export const AutonomousOrb: React.FC<Props> = ({
     size,
     upperRightRestDestination,
   ]);
+
+  useEffect(() => {
+    const monitor = window.setInterval(() => {
+      const shouldRest =
+        Date.now() - lastActivityAtRef.current >= REST_AFTER_INACTIVITY_MS &&
+        !speechPlaybackRef.current && !recorderRef.current && !guidanceActiveRef.current &&
+        !controlMotionActiveRef.current && !restModeRef.current && !restTransitionActiveRef.current;
+      if (!shouldRest) return;
+      restTransitionActiveRef.current = true;
+      restModeRef.current = true;
+      setIsResting(true);
+      motionInterruptionSequenceRef.current += 1;
+      autonomousResumeActiveRef.current = false;
+      move.stop();
+      const destination = upperRightRestDestination();
+      emitOrbRuntimeEvent("rest_started", { destination });
+      void move.start({
+        x: destination.x,
+        y: destination.y,
+        transition: { duration: 1.8, ease: [0.37, 0, 0.22, 1] },
+      }).then(() => {
+        positionRef.current = destination;
+        emitOrbRuntimeEvent("rest_complete", { destination });
+      }).finally(() => {
+        restTransitionActiveRef.current = false;
+      });
+    }, 240);
+    return () => window.clearInterval(monitor);
+  }, [move, upperRightRestDestination]);
 
   // Voice resources are cancelled only when this ORB component unmounts.
   useEffect(() => {
@@ -1898,9 +2178,14 @@ export const AutonomousOrb: React.FC<Props> = ({
       </div>
     )}
     <motion.div
+      ref={orbElementRef}
       animate={move}
       className={`ow-v2-orb-position ${pointerBloom ? "is-pointing" : ""} ${greetingActive ? "is-greeting" : ""} ${morbPointer ? "has-deployed-morb" : ""} ${onboardingSafeMode ? "onboarding-safe-mode" : ""} ${className}`}
       data-orb-last-guided-target={lastGuidedTarget || undefined}
+      data-orb-voice-state={voiceState}
+      data-orb-resting={isResting ? "true" : "false"}
+      data-orb-guidance-source={guidanceGeometrySource || undefined}
+      data-orb-route={location.pathname}
       style={{
         position: "fixed",
         left: 0,

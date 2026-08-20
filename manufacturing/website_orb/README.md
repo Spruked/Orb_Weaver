@@ -4,6 +4,8 @@ This directory contains **manufacturing code and contracts only**. It is not a s
 
 Orb Weaver remains the manufacturer. `Website_Orb_Final` remains the golden runtime template. A customer ORB is created only after a fresh site scan has been compiled, owner-verified, injected into a clean runtime clone, validated, and packaged.
 
+The canonical local gold source is `manufacturing/templates/Website_Orb_Final`. Its upstream commit is recorded in `manufacturing/templates/Website_Orb_Final.source.json`. The builder copies this source into the Dock Station assembly, injects the canonical payload, mirrors A Priori data into `Orb_Vault_System/orb_vault_skg`, and initializes a clean A Posteriori vault.
+
 ## Storage boundary
 
 All persistent manufacturing evidence and generated customer artifacts belong under Orb Weaver's one canonical Vault System:

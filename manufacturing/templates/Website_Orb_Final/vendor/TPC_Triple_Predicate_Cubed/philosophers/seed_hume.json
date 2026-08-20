@@ -1,0 +1,122 @@
+{
+  "$schema": "https://schemas.seedvault.org/core/v1.1.0",
+  "vault_name": "SeedVault_Hume",
+  "vault_id": "seed_hume",
+  "version": "1.1.0",
+  "category": "Epistemology",
+  "type": "seed",
+  "license": "CC0-1.0",
+  "generated": "2025-10-23T12:00:00Z",
+  "compatibility": "backward-compatible",
+  "description": "David Hume's empiricist skepticism establishing the psychological foundations of knowledge and the limits of human understanding",
+  "author": "Bryan A. Spruk",
+  "philosopher": "David Hume",
+  "reasoning_type": "skeptical_empiricism",
+  "immutable": true,
+  "index": {
+    "critique_causation": "epi:critique_causation",
+    "problem_induction": "epi:problem_induction",
+    "impressions": "epi:impressions",
+    "ideas": "epi:ideas",
+    "custom_habit": "epi:custom_habit"
+  },
+  "entries": [
+    {
+      "id": "epi:critique_causation",
+      "term": "Critique of Causation",
+      "type": "concept",
+      "definition": "We never perceive a necessary connection between cause and effect — only constant conjunction observed through experience.",
+      "source_id": "WD:Q51666",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Causality"],
+      "examples": ["Seeing billiard balls collide doesn't reveal 'necessary connection'", "Fire following flint strike is constant conjunction, not necessity"],
+      "related_ids": ["epi:problem_induction", "epi:impressions"]
+    },
+    {
+      "id": "epi:problem_induction",
+      "term": "Problem of Induction",
+      "type": "problem",
+      "definition": "No logical basis guarantees the future will resemble the past; inductive belief rests on habit and custom, not rational necessity.",
+      "source_id": "WD:Q473400",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Problem_of_induction"],
+      "examples": ["Sun rising every day doesn't prove it will tomorrow", "Inductive science rests on unjustified assumptions"],
+      "related_ids": ["epi:custom_habit", "logic:inductive_reasoning"]
+    },
+    {
+      "id": "epi:impressions",
+      "term": "Impressions",
+      "type": "concept",
+      "definition": "Vivid, immediate, forceful perceptions arising from direct sensory experience or internal emotions.",
+      "source_id": "WD:Q51666",
+      "reference_urls": ["https://en.wikipedia.org/wiki/David_Hume"],
+      "examples": ["Feeling pain", "Seeing red color", "Experiencing anger"],
+      "related_ids": ["epi:ideas", "epi:sensory_experience"]
+    },
+    {
+      "id": "epi:ideas",
+      "term": "Ideas",
+      "type": "concept",
+      "definition": "Faint copies of impressions in thought, memory, and imagination. All ideas ultimately derive from impressions.",
+      "source_id": "WD:Q51666",
+      "reference_urls": ["https://en.wikipedia.org/wiki/David_Hume"],
+      "examples": ["Recalling a past pain", "Imagining a golden mountain", "Thinking about justice"],
+      "related_ids": ["epi:impressions", "epi:mental_operations"]
+    },
+    {
+      "id": "epi:custom_habit",
+      "term": "Custom and Habit",
+      "type": "principle",
+      "definition": "Primary drivers of belief and expectation. Through repetition, the mind forms habits that guide future expectations.",
+      "source_id": "WD:Q51666",
+      "reference_urls": ["https://en.wikipedia.org/wiki/David_Hume"],
+      "examples": ["Expecting bread to nourish after eating it repeatedly", "Believing in gravity through constant observation"],
+      "related_ids": ["epi:problem_induction", "epi:psychological_mechanisms"]
+    }
+  ],
+  "learning_principles": [
+    "Be skeptical of claims beyond direct experience.",
+    "Understand that reasoning often rests on psychological patterns, not logic.",
+    "Recognize the limits of certainty in human knowledge.",
+    "All ideas derive from impressions through mental operations.",
+    "Causation is a psychological association, not a logical necessity."
+  ],
+  "parameters": {
+    "epistemological_method": "skeptical_empiricism",
+    "knowledge_basis": "impressions_only",
+    "causation_nature": "psychological_association",
+    "induction_status": "unjustified"
+  },
+  "operations": {
+    "impression_analysis": {
+      "description": "Analyze experience into impressions and ideas",
+      "input": {"experience": "object"},
+      "output": {"impressions": "array", "derived_ideas": "array"}
+    },
+    "causation_assessment": {
+      "description": "Evaluate causal claims for psychological vs logical basis",
+      "input": {"cause": "string", "effect": "string", "observations": "array"},
+      "output": {"constant_conjunction": "boolean", "necessary_connection": "boolean"}
+    },
+    "inductive_skepticism": {
+      "description": "Apply Hume's critique to inductive inferences",
+      "input": {"inductive_argument": "object"},
+      "output": {"justified": "boolean", "psychological_basis": "string"}
+    }
+  },
+  "integration": {
+    "compatible_modules": ["skeptical_analyzer", "empirical_validator", "psychological_processor"],
+    "input_sources": ["sensory_experience", "mental_associations", "habit_patterns"],
+    "output_destinations": ["belief_formation", "expectation_engine", "certainty_assessor"]
+  },
+  "performance_metrics": {
+    "skepticism_level": "radical",
+    "empirical_focus": "strict",
+    "metaphysical_reach": "limited",
+    "psychological_insight": "deep"
+  },
+  "access_control": {
+    "mutable": false,
+    "curator": "Bryan A. Spruk",
+    "authorized_editors": ["Bryan A. Spruk"],
+    "hash": "sha256:f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8"
+  }
+}

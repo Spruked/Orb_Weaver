@@ -1,0 +1,64 @@
+{
+  "entities": [
+    {
+      "id": "biz-001",
+      "type": "CATEGORY",
+      "name": "Outdoor Gear Business",
+      "canonical_name": "Outdoor Gear Business",
+      "aliases": ["store", "shop", "company"],
+      "attributes": {
+        "description": "We sell premium outdoor gear for camping, hiking, and backpacking."
+      }
+    },
+    {
+      "id": "dept-001",
+      "type": "DEPARTMENT",
+      "name": "Customer Support",
+      "canonical_name": "Customer Support",
+      "aliases": ["support", "help desk", "service"],
+      "attributes": {
+        "phone": "1-800-OUTDOOR",
+        "email": "help@outdoorgear.com",
+        "hours": "Mon-Fri 9AM-6PM EST"
+      }
+    },
+    {
+      "id": "svc-001",
+      "type": "SERVICE",
+      "name": "Gear Repair",
+      "canonical_name": "Gear Repair",
+      "aliases": ["fix", "mend", "warranty repair"],
+      "attributes": {
+        "description": "Professional repair service for tents, packs, and sleeping bags.",
+        "purpose": "extend product life",
+        "turnaround": "5-7 business days"
+      }
+    },
+    {
+      "id": "intent-001",
+      "type": "INTENT",
+      "name": "PRODUCT_PRICE",
+      "canonical_name": "Product Price Inquiry",
+      "aliases": ["pricing", "cost check"],
+      "attributes": {}
+    }
+  ],
+  "relations": [
+    {
+      "id": "rel-001",
+      "type": "HANDLED_BY",
+      "source": "intent-001",
+      "target": "dept-001",
+      "weight": 1.0,
+      "attributes": {}
+    },
+    {
+      "id": "rel-002",
+      "type": "BELONGS_TO",
+      "source": "alp-001",
+      "target": "biz-001",
+      "weight": 1.0,
+      "attributes": {}
+    }
+  ]
+}

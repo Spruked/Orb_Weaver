@@ -212,6 +212,7 @@ export class OrbRoboticsMovementController {
       complete: () => {
         this.emit(command, "ARRIVAL_CONFIRMED", onTelemetry);
         this.emit(command, "COMMAND_COMPLETE", onTelemetry);
+        this.clearActiveMovement();
       },
       cancel: (reason?: string) => {
         this.emit(command, "COMMAND_CANCELLED", onTelemetry, reason || "cancelled_by_controller");

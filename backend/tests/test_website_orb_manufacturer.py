@@ -4,6 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
+from app.orb.vault_skg_adapter import VaultSKGAdapter
 from manufacturing.website_orb.orchestrator import REQUIRED_PAYLOAD_FILES, manufacture_website_orb
 
 
@@ -59,9 +60,18 @@ def test_manufacturer_builds_complete_delivery_ready_package(tmp_path):
     assert result["validation_results"]["catalog_validation"]["entry_count"] == 1
     dock_manifest = json.loads((Path(result["package_paths"]["dock_station"]) / "deployment" / "manifest.json").read_text())
     assert dock_manifest["manufacturing_pass"]["delivery_ready"] is True
+    orb_template = Path(result["package_paths"]["dock_station"]) / "app" / "orb" / "template"
+    assert (orb_template / "backend" / "app.py").is_file()
+    assert (orb_template / "frontend" / "src" / "WebsiteORB.tsx").is_file()
+    priori_dir = orb_template / "Orb_Vault_System" / "orb_vault_skg" / "vaults" / "A_Priori_Vault"
+    assert json.loads((priori_dir / "catalog.json").read_text())["entries"][0]["entity_id"] == "product-1"
+    skg_result = VaultSKGAdapter(priori_dir, tmp_path / "posteriori-proof").lookup("apriori", "How much is Known Product?")
+    assert skg_result and skg_result["source"] == "a_priori_catalog"
     with zipfile.ZipFile(result["package_paths"]["orbpack"]) as archive:
         names = archive.namelist()
     assert "dock-station/app/orb/template/runtime/vault_system/payload/catalog.db" in names
+    assert "dock-station/app/orb/template/backend/app.py" in names
+    assert "dock-station/app/orb/template/Orb_Vault_System/orb_vault_skg/vault/orb_assistant/vault_coordinator.py" in names
     assert sum(name.endswith("payload/payload_manifest.json") for name in names) == 1
 
 

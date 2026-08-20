@@ -1,0 +1,195 @@
+{
+  "events": [
+    {
+      "phase": "route_spatial_state_ready",
+      "at": 1787208750268,
+      "route": "/"
+    },
+    {
+      "phase": "autonomous_resume_started",
+      "at": 1787208750269,
+      "destination": {
+        "x": 785.0812321079713,
+        "y": 299.2740767359959
+      }
+    },
+    {
+      "phase": "recording_started",
+      "at": 1787208751214,
+      "turnId": 1,
+      "mimeType": "audio/webm;codecs=opus"
+    },
+    {
+      "phase": "pointer_map_ready",
+      "at": 1787208752008,
+      "count": 1872
+    },
+    {
+      "phase": "recording_stopped",
+      "at": 1787208754121,
+      "turnId": 1,
+      "bytes": 40938
+    },
+    {
+      "phase": "canonical_response",
+      "at": 1787208755904,
+      "turnId": 1,
+      "transcript": "Show me the Orbweaver logo.",
+      "sourceLane": "apriori",
+      "ttsProvider": "kokoro",
+      "controlCommand": null
+    },
+    {
+      "phase": "playback_started",
+      "at": 1787208755909,
+      "provider": "kokoro"
+    },
+    {
+      "phase": "playback_ended",
+      "at": 1787208759170,
+      "provider": "kokoro"
+    },
+    {
+      "phase": "guidance_acquire",
+      "at": 1787208759173,
+      "targetId": "orb-weaver-suite-logo",
+      "mayPoint": true,
+      "mayClick": false
+    },
+    {
+      "phase": "lidar_cache_hit",
+      "at": 1787208759199,
+      "targetId": "orb-weaver-suite-logo",
+      "drift": 0
+    },
+    {
+      "phase": "guidance_complete",
+      "at": 1787208770260,
+      "targetId": "orb-weaver-suite-logo"
+    },
+    {
+      "phase": "autonomous_resume_started",
+      "at": 1787208770380,
+      "destination": {
+        "x": 341.01886630680497,
+        "y": 236.72053144348
+      }
+    },
+    {
+      "phase": "recording_started",
+      "at": 1787208771062,
+      "turnId": 2,
+      "mimeType": "audio/webm;codecs=opus"
+    },
+    {
+      "phase": "recording_cancelled",
+      "at": 1787208774190,
+      "turnId": 2
+    },
+    {
+      "phase": "rest_started",
+      "at": 1787209075372,
+      "destination": {
+        "x": 1116,
+        "y": 120
+      }
+    },
+    {
+      "phase": "pointer_map_ready",
+      "at": 1787209075901,
+      "count": 1872
+    },
+    {
+      "phase": "autonomous_resume_started",
+      "at": 1787208776805,
+      "destination": {
+        "x": 307.37140918123725,
+        "y": 352.87536375906984
+      }
+    },
+    {
+      "phase": "rest_complete",
+      "at": 1787208776806,
+      "destination": {
+        "x": 1116,
+        "y": 120
+      }
+    },
+    {
+      "phase": "route_spatial_state_ready",
+      "at": 1787208778672,
+      "route": "/features"
+    },
+    {
+      "phase": "autonomous_resume_started",
+      "at": 1787208778673,
+      "destination": {
+        "x": 1115.878116647568,
+        "y": 255.6296480285167
+      }
+    },
+    {
+      "phase": "route_spatial_state_ready",
+      "at": 1787208780482,
+      "route": "/"
+    },
+    {
+      "phase": "autonomous_resume_started",
+      "at": 1787208780482,
+      "destination": {
+        "x": 998.2056956139794,
+        "y": 299.7507657396585
+      }
+    },
+    {
+      "phase": "recording_started",
+      "at": 1787208781850,
+      "turnId": 4,
+      "mimeType": "audio/webm;codecs=opus"
+    },
+    {
+      "phase": "recording_stopped",
+      "at": 1787208785103,
+      "turnId": 4,
+      "bytes": 44488
+    },
+    {
+      "phase": "canonical_response",
+      "at": 1787208785819,
+      "turnId": 4,
+      "transcript": "Show me the Orbweaver logo.",
+      "sourceLane": "apriori",
+      "ttsProvider": "kokoro",
+      "controlCommand": null
+    },
+    {
+      "phase": "playback_started",
+      "at": 1787208785823,
+      "provider": "kokoro"
+    },
+    {
+      "phase": "playback_interrupted",
+      "at": 1787208785952,
+      "turnId": 4
+    },
+    {
+      "phase": "autonomous_resume_started",
+      "at": 1787208786073,
+      "destination": {
+        "x": 831.8912205758447,
+        "y": 432.3917759179377
+      }
+    },
+    {
+      "phase": "autonomous_resume_complete",
+      "at": 1787208792393,
+      "destination": {
+        "x": 831.8912205758447,
+        "y": 432.3917759179377
+      }
+    }
+  ],
+  "finalRoute": "/",
+  "mountToken": "mount-0.6106478752519526",
+  "logoClicks": 0
+}

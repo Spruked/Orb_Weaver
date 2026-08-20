@@ -1,0 +1,52 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0a0a0a;
+  --surface:   #111118;
+  --border:    #1e1e2e;
+  --text:      #c8c8d4;
+  --text-dim:  #666680;
+  --cyan:      #00d4ff;
+  --green:     #00ff88;
+  --orange:    #ff6b35;
+  --gold:      #ffd700;
+  --red:       #ff4444;
+  --purple:    #9b59b6;
+  --blue:      #3498db;
+  --font:      'Segoe UI', system-ui, sans-serif;
+  --mono:      'Cascadia Code', 'Consolas', monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+#root { min-height: 100vh; display: flex; flex-direction: column; }
+
+button {
+  cursor: pointer;
+  border: none;
+  font-family: var(--font);
+}
+
+textarea, input {
+  font-family: var(--font);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+textarea:focus, input:focus {
+  outline: 1px solid var(--cyan);
+  border-color: var(--cyan);
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }

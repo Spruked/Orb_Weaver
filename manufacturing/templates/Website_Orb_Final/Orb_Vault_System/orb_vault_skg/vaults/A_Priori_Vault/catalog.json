@@ -1,0 +1,42 @@
+{
+  "entries": [
+    {
+      "product_id": "alp-001",
+      "name": "Alpine Ridge Tent",
+      "sku": "ALP-RDG-4P",
+      "current_price": 349.00,
+      "sale_price": 299.00,
+      "currency": "USD",
+      "variant": "4-Person",
+      "availability": "In Stock",
+      "specifications": {
+        "weight": "7.5 lbs",
+        "capacity": "4 persons",
+        "season_rating": "3-Season"
+      },
+      "source_url": "/products/alpine-ridge-tent",
+      "source_element": "div.product-card",
+      "crawl_version": "2026.08.19",
+      "owner_verified": true
+    },
+    {
+      "product_id": "sum-002",
+      "name": "Summit Pro Backpack",
+      "sku": "SUM-BP-45L",
+      "current_price": 189.00,
+      "sale_price": null,
+      "currency": "USD",
+      "variant": "45L",
+      "availability": "Low Stock",
+      "specifications": {
+        "volume": "45 liters",
+        "weight": "2.8 lbs",
+        "material": "Ripstop Nylon"
+      },
+      "source_url": "/products/summit-pro-backpack",
+      "source_element": "div.product-card",
+      "crawl_version": "2026.08.19",
+      "owner_verified": true
+    }
+  ]
+}

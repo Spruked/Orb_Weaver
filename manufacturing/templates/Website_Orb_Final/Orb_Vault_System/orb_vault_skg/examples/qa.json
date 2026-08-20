@@ -1,0 +1,29 @@
+{
+  "qa_pairs": [
+    {
+      "id": "qa-001",
+      "questions": [
+        "What are your hours?",
+        "When are you open?",
+        "What time do you close?",
+        "Store hours"
+      ],
+      "answer": "We're open Monday through Friday, 9 AM to 6 PM Eastern Time.",
+      "variables": [],
+      "intent": "HOURS_LOCATION",
+      "source": "owner"
+    },
+    {
+      "id": "qa-002",
+      "questions": [
+        "Do you ship internationally?",
+        "International shipping",
+        "Do you deliver overseas?"
+      ],
+      "answer": "Yes, we ship to over 40 countries. Shipping rates are calculated at checkout.",
+      "variables": [],
+      "intent": "POLICY_QUESTION",
+      "source": "owner"
+    }
+  ]
+}

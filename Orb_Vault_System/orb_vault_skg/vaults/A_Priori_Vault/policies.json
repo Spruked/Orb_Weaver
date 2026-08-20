@@ -1,0 +1,22 @@
+{
+  "policies": [
+    {
+      "id": "pol-001",
+      "category": "returns",
+      "statement": "Returns accepted within 30 days of purchase with original receipt.",
+      "conditions": ["within 30 days", "original receipt required"],
+      "exceptions": ["final sale items", "customized gear"],
+      "priority": 1,
+      "source": "owner"
+    },
+    {
+      "id": "pol-002",
+      "category": "warranty",
+      "statement": "All products carry a lifetime warranty against manufacturing defects.",
+      "conditions": ["manufacturing defect", "original owner"],
+      "exceptions": ["normal wear and tear", "accidental damage"],
+      "priority": 2,
+      "source": "owner"
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "canonical": {
+    "phase": "canonical_response",
+    "at": 1787208149733,
+    "turnId": 1,
+    "transcript": "Weaver move out of the way.",
+    "sourceLane": "control",
+    "ttsProvider": "kokoro",
+    "controlCommand": "move_out_of_way"
+  },
+  "moved": 108.7006272114145,
+  "events": [
+    {
+      "phase": "route_spatial_state_ready",
+      "at": 1787208144650,
+      "route": "/"
+    },
+    {
+      "phase": "recording_started",
+      "at": 1787208145094,
+      "turnId": 1,
+      "mimeType": "audio/webm;codecs=opus"
+    },
+    {
+      "phase": "pointer_map_ready",
+      "at": 1787208145285,
+      "count": 1872
+    },
+    {
+      "phase": "recording_stopped",
+      "at": 1787208148011,
+      "turnId": 1,
+      "bytes": 39369
+    },
+    {
+      "phase": "canonical_response",
+      "at": 1787208149733,
+      "turnId": 1,
+      "transcript": "Weaver move out of the way.",
+      "sourceLane": "control",
+      "ttsProvider": "kokoro",
+      "controlCommand": "move_out_of_way"
+    },
+    {
+      "phase": "playback_started",
+      "at": 1787208149734,
+      "provider": "kokoro"
+    },
+    {
+      "phase": "playback_ended",
+      "at": 1787208152083,
+      "provider": "kokoro"
+    },
+    {
+      "phase": "control_spatial_sample",
+      "at": 1787208152178,
+      "nearbyTag": "h1",
+      "lidarFeatures": 229,
+      "displacement": 108.7006272114145
+    },
+    {
+      "phase": "control_motion_started",
+      "at": 1787208152178,
+      "command": "move_out_of_way",
+      "current": {
+        "x": 920.3070068359375,
+        "y": 310.71099853515625
+      },
+      "destination": {
+        "x": 1024.4698233184024,
+        "y": 279.631519475892
+      },
+      "distance": 108.7006272114145
+    },
+    {
+      "phase": "control_motion_complete",
+      "at": 1787208153658,
+      "command": "move_out_of_way",
+      "moved": true,
+      "destination": {
+        "x": 1024.4698233184024,
+        "y": 279.631519475892
+      }
+    }
+  ]
+}

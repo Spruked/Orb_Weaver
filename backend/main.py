@@ -76,6 +76,7 @@ from app.orb.pointer_recovery import (
 from app.orb.site_learning import classify_answer_state, lookup_verified_case, record_interaction
 from app.orb.cco_runtime import build_runtime_trace
 from app.orb.turn_resolver import CanonicalTurnResolver
+from app.orb.vault_skg_adapter import get_vault_skg_adapter
 from app.pack_generator import generate_pack_file
 from manufacturing.website_orb import manufacture_website_orb
 from app.services.chrome_devtools import ChromeDevToolsReviewRunner
@@ -410,6 +411,7 @@ class WebsiteOrbVoiceResponse(BaseModel):
     escalation_used: Optional[str] = None
     learning_eligible: Optional[bool] = None
     resolution_trace: Optional[Dict[str, Any]] = None
+    control_action: Optional[Dict[str, Any]] = None
 
 
 class WebsiteOrbExperienceContext(BaseModel):
@@ -7217,7 +7219,19 @@ def _canonical_runtime_artifacts(domain: str, website_context: Optional[Dict[str
             "answer": str(spoken),
             "source_evidence_ids": [str(entry.get("id") or "tool-cache")],
         })
-    return {"vault_root": vault_root, "catalog_path": catalog_path, "apriori": apriori, "site_world": site_world}
+    skg_adapter = None
+    if vault_root:
+        priori_dir = vault_root / "payload" / "apriori"
+        posteriori_dir = vault_root / "posteriori" / "orb_vault_skg"
+        if (priori_dir / "catalog.json").is_file():
+            skg_adapter = get_vault_skg_adapter(str(priori_dir), str(posteriori_dir))
+    return {
+        "vault_root": vault_root,
+        "catalog_path": catalog_path,
+        "apriori": apriori,
+        "site_world": site_world,
+        "vault_skg_adapter": skg_adapter,
+    }
 
 
 async def _canonical_website_orb_turn(
@@ -7264,7 +7278,12 @@ async def _canonical_website_orb_turn(
             "error": source if source.endswith(("fallback", "adapter")) else None,
         }
 
-    resolver = CanonicalTurnResolver(local_model=local_model, posteriori_lookup=lookup_verified_case)
+    skg_adapter = artifacts.get("vault_skg_adapter")
+    resolver = CanonicalTurnResolver(
+        local_model=local_model,
+        posteriori_lookup=lookup_verified_case,
+        vault_skg_lookup=skg_adapter.lookup if skg_adapter else None,
+    )
     resolved = await resolver.resolve(
         transcript,
         domain=domain,
@@ -7324,6 +7343,7 @@ async def _canonical_website_orb_turn(
         "escalation_used": resolved["escalation_used"],
         "learning_eligible": resolved["learning_eligible"],
         "resolution_trace": resolved["trace"],
+        "control_action": resolved.get("control_action"),
     }
 
 

@@ -1,0 +1,51 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+.installed.cfg
+
+# ── Virtual environments ───────────────────────────────────────────────────────
+.env
+.venv
+env/
+venv/
+ENV/
+
+# ── Testing / linting caches ───────────────────────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ── Runtime outputs ───────────────────────────────────────────────────────────
+results/          # vault evidence trail — generated at runtime
+vault_traces/     # cochlear correction traces — generated at runtime
+outputs/          # visualization PNGs — generated at runtime
+*.log
+
+# ── UI ────────────────────────────────────────────────────────────────────────
+ui/node_modules/
+ui/dist/
+ui/dist-ssr/
+ui/.env.local
+ui/.env.*.local
+
+# ── OS / editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.suo
+*.sw?
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.env.local
+*.pem
+*.key

@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  cochlear-processor:
+    build: .
+    container_name: cochlear-processor
+    volumes:
+      - ./audio:/app/audio
+      - ./logs:/app/logs
+      - ./hearing_skg.json:/app/hearing_skg.json
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    command: python test_skg_cochlear.py
+    restart: unless-stopped
+
+  # Optional: Add a development service with Jupyter
+  cochlear-dev:
+    build: .
+    container_name: cochlear-dev
+    volumes:
+      - .:/app
+      - ./audio:/app/audio
+      - ./logs:/app/logs
+    ports:
+      - "8888:8888"
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    command: jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+    profiles:
+      - dev

@@ -56,6 +56,26 @@ async def test_resolution_order_control_catalog_apriori_posteriori_site_world(tm
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("utterance", [
+    "Weaver, move out of the way.", "move out of the way", "Move over.", "Scoot over.", "Move up.",
+    "Move down.", "Move left.", "Move right.", "Come back.", "Come here.",
+    "Stay there.", "Stop moving.", "Wait there.", "Wake up.", "Go back to listening.",
+])
+async def test_spoken_motion_commands_are_deterministic_control_intents(utterance):
+    result = await CanonicalTurnResolver().resolve(utterance, domain="example.com")
+    assert result["source_lane"] == "control"
+    assert result["control_action"]["type"] == "orb_motion"
+    assert result["trace"]["attempts"] == [{"lane": "control", "matched": True}]
+
+
+@pytest.mark.asyncio
+async def test_move_out_of_way_acknowledgement_is_brief_and_conversational():
+    result = await CanonicalTurnResolver().resolve("Weaver, move out of the way.", domain="example.com")
+    assert result["spoken_output"] == "Oh, excuse me."
+    assert result["control_action"] == {"type": "orb_motion", "command": "move_out_of_way"}
+
+
+@pytest.mark.asyncio
 async def test_local_then_external_provider_and_structured_failure():
     calls = []
 

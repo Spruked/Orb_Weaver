@@ -1,0 +1,124 @@
+
+.git/
+.github/
+.gitignore
+acp_synthesis.py
+api/
+  main.py
+  __init__.py
+  __pycache__/
+ARCHITECTURE_REGISTRY.md
+cochlear_processor_3.0/
+  .dockerignore
+  .gitignore
+  adaptive_plasticity.py
+  cochlear_processor_v3.py
+  cognitive_inference.py
+  correction_loop.py
+  docker-compose.yml
+  Dockerfile
+  hearing_skg.json
+  LICENSE
+  perceptual_filter.py
+  processor.py
+  processor_v2.py
+  README.md
+  requirements.txt
+  skg_learning_bridge.py
+  skg_perceptual_filter.py
+  test_skg_cochlear.py
+  __init__.py
+  __pycache__/
+core/
+  ecm.py
+  geometric_primitives.py
+  pipeline.py
+  __init__.py
+  __pycache__/
+docs/
+  PRODUCTION_WIRING_AUDIT_2026-04-21.md
+drift/
+  ping.py
+  __init__.py
+  __pycache__/
+Epistemic_Gravity_Field/
+  .gitignore
+  distribution_shift_test.py
+  LICENSE
+  perturb_test.py
+  README.md
+  space_field.py
+  stress_test.py
+  visualize.py
+  __init__.py
+  __pycache__/
+examples/
+  demo.py
+  __init__.py
+  __pycache__/
+image.png
+Integration.py
+logoconcept1.png
+logofinalTPC.png
+mypy.ini
+package-lock.json
+philosophers/
+  base.py
+  seed_hume.json
+  seed_kant.json
+  seed_locke.json
+  seed_spinoza.json
+  __init__.py
+  __pycache__/
+pytest.ini
+README.md
+requirements.txt
+results/
+  2026-04-21/
+    query_0001.json
+  index.json
+results_vault.py
+start_tpc_api.bat
+tests/
+  demo_test.py
+  hard_tests.py
+  quick_test.py
+  test_four_beam.py
+  __init__.py
+tools/
+  substrate/
+    register_tpc_tasks.ps1
+    wire_orb_mesh_handoff.ps1
+  visualization/
+    tpc_architecture_visualization.py
+TPC_Abstract
+tpc_architecture_visualization.py
+tpc_cubed.py
+TPC_dir_structure
+tpc_full_system_demo.py
+tpc_system_orchestrator.py
+tree.txt
+triple_tree.txt
+ui/
+  .gitignore
+  dist/
+  eslint.config.js
+  index.html
+  node_modules/
+  package-lock.json
+  package.json
+  public/
+  README.md
+  src/
+    App.css
+    App.jsx
+    assets/
+    index.css
+    main.jsx
+  vite.config.js
+vaults/
+  system.py
+  __init__.py
+  __pycache__/
+__init__.py
+__pycache__/

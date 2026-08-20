@@ -1,0 +1,122 @@
+{
+  "$schema": "https://schemas.seedvault.org/core/v1.1.0",
+  "vault_name": "SeedVault_Spinoza",
+  "vault_id": "seed_spinoza",
+  "version": "1.1.0",
+  "category": "Epistemology",
+  "type": "seed",
+  "license": "CC0-1.0",
+  "generated": "2025-10-23T12:00:00Z",
+  "compatibility": "backward-compatible",
+  "description": "Baruch Spinoza's rationalist metaphysics and epistemology emphasizing the unity of substance and the path to intellectual freedom",
+  "author": "Bryan A. Spruk",
+  "philosopher": "Baruch Spinoza",
+  "reasoning_type": "rationalist_metaphysics",
+  "immutable": true,
+  "index": {
+    "three_kinds_knowledge": "epi:three_kinds_knowledge",
+    "imagination": "epi:imagination",
+    "reason": "epi:reason",
+    "intuition": "epi:intuition",
+    "sub_specie_aeternitatis": "epi:sub_specie_aeternitatis"
+  },
+  "entries": [
+    {
+      "id": "epi:three_kinds_knowledge",
+      "term": "Three Kinds of Knowledge",
+      "type": "framework",
+      "definition": "Imagination (inadequate, sensory-based), Reason (adequate, through common notions), and Intuition (highest form, direct intellectual apprehension).",
+      "source_id": "WD:Q35802",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Baruch_Spinoza"],
+      "examples": ["Imagination: seeing colors", "Reason: mathematical proofs", "Intuition: grasping God's essence"],
+      "related_ids": ["epi:imagination", "epi:reason", "epi:intuition"]
+    },
+    {
+      "id": "epi:imagination",
+      "term": "Imagination",
+      "type": "knowledge_type",
+      "definition": "Knowledge from sense perception, memory, or hearsay — often confused, partial, and inadequate for true understanding.",
+      "source_id": "WD:Q35802",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Spinozism"],
+      "examples": ["Believing hearsay without verification", "Confusing memory with reality"],
+      "related_ids": ["epi:three_kinds_knowledge", "epi:inadequate_ideas"]
+    },
+    {
+      "id": "epi:reason",
+      "term": "Reason",
+      "type": "knowledge_type",
+      "definition": "Understanding through common notions and necessary causal connections. Adequate knowledge derived from logical inference.",
+      "source_id": "WD:Q35802",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Spinozism"],
+      "examples": ["Mathematical reasoning", "Understanding physical laws", "Logical deduction"],
+      "related_ids": ["epi:three_kinds_knowledge", "epi:adequate_ideas"]
+    },
+    {
+      "id": "epi:intuition",
+      "term": "Intuition",
+      "type": "knowledge_type",
+      "definition": "Immediate grasp of the essence of things as part of the whole of Nature/God. The highest form of knowledge.",
+      "source_id": "WD:Q35802",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Spinozism"],
+      "examples": ["Understanding the unity of all things", "Direct apprehension of eternal truths"],
+      "related_ids": ["epi:three_kinds_knowledge", "epi:intellectual_love"]
+    },
+    {
+      "id": "epi:sub_specie_aeternitatis",
+      "term": "Sub Specie Aeternitatis",
+      "type": "perspective",
+      "definition": "Viewing things under the aspect of eternity to achieve clarity, freedom, and understanding of necessity.",
+      "source_id": "WD:Q35802",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Sub_specie_aeternitatis"],
+      "examples": ["Seeing human affairs as momentary", "Understanding change as eternal transformation"],
+      "related_ids": ["epi:intuition", "epi:freedom_understanding"]
+    }
+  ],
+  "learning_principles": [
+    "Move from imagination toward reason to increase clarity.",
+    "Highest learning is seeing the interconnectedness of all things.",
+    "Freedom comes from understanding necessity.",
+    "All things are expressions of one substance (God/Nature).",
+    "Knowledge progresses from inadequate to adequate ideas."
+  ],
+  "parameters": {
+    "epistemological_method": "rational_intuition",
+    "knowledge_hierarchy": ["imagination", "reason", "intuition"],
+    "metaphysical_unity": "substance_monism",
+    "freedom_path": "understanding_necessity"
+  },
+  "operations": {
+    "knowledge_progression": {
+      "description": "Guide progression from imagination to intuition",
+      "input": {"current_knowledge": "object", "desired_level": "string"},
+      "output": {"next_steps": "array", "adequacy_assessment": "object"}
+    },
+    "eternal_perspective": {
+      "description": "Apply sub specie aeternitatis to gain clarity",
+      "input": {"temporal_event": "object"},
+      "output": {"eternal_view": "object", "freedom_insight": "string"}
+    },
+    "causal_understanding": {
+      "description": "Understand events through necessary causal connections",
+      "input": {"event": "object", "context": "object"},
+      "output": {"causal_chain": "array", "necessity_level": "float"}
+    }
+  },
+  "integration": {
+    "compatible_modules": ["rational_processor", "intuitive_engine", "metaphysical_analyzer"],
+    "input_sources": ["sensory_data", "logical_propositions", "intuitive_insights"],
+    "output_destinations": ["freedom_engine", "unity_recognizer", "necessity_processor"]
+  },
+  "performance_metrics": {
+    "knowledge_adequacy": "progressive",
+    "intuitive_clarity": "deep",
+    "metaphysical_insight": "comprehensive",
+    "freedom_achievement": "transformative"
+  },
+  "access_control": {
+    "mutable": false,
+    "curator": "Bryan A. Spruk",
+    "authorized_editors": ["Bryan A. Spruk"],
+    "hash": "sha256:a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "timestamp": "2026-04-21T21:14:35",
+  "query_id": "query_2_1776824075.9316993",
+  "input": "Epistemic governance requires verifiable evidence.",
+  "input_type": "text",
+  "verdict": "SUSPEND",
+  "confidence": 0.373313,
+  "phase_coherence": {
+    "score": 0.6296836279926337,
+    "status": "convergence"
+  },
+  "vault_status": "exact",
+  "beam_results": {
+    "HUME": {
+      "confidence": 0.95,
+      "verdict": "TERMINAL",
+      "rationale_trace": [
+        "HumeCore@2: START",
+        "HumeCore@2: EMPIRICAL_CHECK (conf=1.000)",
+        "HumeCore@2: TERMINAL (conf=0.980)"
+      ]
+    },
+    "KANT": {
+      "confidence": 0.8464,
+      "verdict": "TERMINAL",
+      "rationale_trace": [
+        "KantCore@2: START",
+        "KantCore@2: CHECK_CONTRADICTION (conf=1.000)",
+        "KantCore@2: TERMINAL (conf=0.920)"
+      ]
+    },
+    "LOCKE": {
+      "confidence": 0.2401,
+      "verdict": "TERMINAL",
+      "rationale_trace": [
+        "LockeCore@2: START",
+        "LockeCore@2: CHECK_RIGHTS_EVIDENCE (conf=1.000)",
+        "LockeCore@2: REJECT (conf=0.980)",
+        "LockeCore@2: TERMINAL (conf=0.245)"
+      ]
+    },
+    "SPINOZA": {
+      "confidence": 0.95,
+      "verdict": "TERMINAL",
+      "rationale_trace": [
+        "SpinozaCore@2: START",
+        "SpinozaCore@2: BUILD_AXIOM_CHAIN (conf=1.000)",
+        "SpinozaCore@2: TERMINAL (conf=0.980)"
+      ]
+    }
+  },
+  "invariants": {
+    "passed": false,
+    "violations": [
+      "drift_ping_confirmed"
+    ]
+  },
+  "contract_violated": true,
+  "escalation": {
+    "triggered": false,
+    "reason": "none"
+  },
+  "synthesis_trace": [
+    "TribunalSynthesizer (resolved fusion):",
+    "  HumeCore@0.9500 \u2192 HumeCore@2: TERMINAL (conf=0.980)",
+    "  KantCore@0.8464 \u2192 KantCore@2: TERMINAL (conf=0.920)",
+    "  LockeCore@0.2401 \u2192 LockeCore@2: TERMINAL (conf=0.245)",
+    "  SpinozaCore@0.9500 \u2192 SpinozaCore@2: TERMINAL (conf=0.980)",
+    "\u2192 Final: TERMINAL @ 0.7466 (coherence_bonus=0.000)",
+    "CONTRACT_VIOLATION: confidence halved"
+  ],
+  "drift_ping": {
+    "chain_intact": false,
+    "issues": [
+      "Gate acp: timeout",
+      "Gate output: unconfirmed"
+    ],
+    "stats": {
+      "total_pings": 20,
+      "confirmed": 20,
+      "integrity": 1.0
+    }
+  },
+  "trace_id": "query_2_1776824075.9316993",
+  "runtime_ms": 23.77
+}

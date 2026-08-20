@@ -1,0 +1,16 @@
+numpy>=1.24
+scipy>=1.10
+matplotlib>=3.7
+
+# API
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.0
+python-multipart>=0.0.9
+
+# Audio — Whisper STT
+openai-whisper>=20231117
+
+# Audio — Kokoro TTS
+kokoro>=0.9
+soundfile>=0.12

@@ -1,0 +1,117 @@
+{
+  "$schema": "https://schemas.seedvault.org/core/v1.1.0",
+  "vault_name": "SeedVault_Kant",
+  "vault_id": "seed_kant",
+  "version": "1.1.0",
+  "category": "Epistemology",
+  "type": "seed",
+  "license": "CC0-1.0",
+  "generated": "2025-10-23T12:00:00Z",
+  "compatibility": "backward-compatible",
+  "description": "Immanuel Kant's critical philosophy establishing the limits and structure of human knowledge through transcendental idealism",
+  "author": "Bryan A. Spruk",
+  "philosopher": "Immanuel Kant",
+  "reasoning_type": "transcendental",
+  "immutable": true,
+  "index": {
+    "copernican_revolution": "epi:copernican_revolution",
+    "phenomena_noumena": "epi:phenomena_noumena",
+    "transcendental_aesthetic": "epi:transcendental_aesthetic",
+    "categories_understanding": "epi:categories_understanding",
+    "synthetic_a_priori": "epi:synthetic_a_priori"
+  },
+  "entries": [
+    {
+      "id": "epi:copernican_revolution",
+      "term": "Copernican Revolution",
+      "type": "concept",
+      "definition": "Objects conform to our cognition, not the other way around. The mind actively structures experience rather than passively receiving it.",
+      "source_id": "WD:Q1130069",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Copernican_revolution_(metaphor)"],
+      "examples": ["Space and time as forms of intuition that organize sensory data"],
+      "related_ids": ["epi:transcendental_aesthetic", "epi:categories_understanding"]
+    },
+    {
+      "id": "epi:phenomena_noumena",
+      "term": "Phenomena vs. Noumena",
+      "type": "distinction",
+      "definition": "We can only know things as they appear to us (phenomena), never as they are in themselves (noumena). The 'thing-in-itself' remains forever beyond human cognition.",
+      "source_id": "WD:Q204287",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Ph%C3%A4nomenon"],
+      "examples": ["We know the apple as red and round, but not its essential nature"],
+      "related_ids": ["epi:transcendental_aesthetic", "epi:categories_understanding"]
+    },
+    {
+      "id": "epi:transcendental_aesthetic",
+      "term": "Transcendental Aesthetic",
+      "type": "framework",
+      "definition": "Space and time are a priori forms of intuition that structure all experience. They are necessary conditions for any possible experience.",
+      "source_id": "WD:Q471011",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Transcendental_aesthetic"],
+      "examples": ["Geometry as the science of space", "Arithmetic as the science of time"],
+      "related_ids": ["epi:synthetic_a_priori", "math:geometry"]
+    },
+    {
+      "id": "epi:categories_understanding",
+      "term": "Categories of Understanding",
+      "type": "framework",
+      "definition": "Innate concepts (causality, substance, unity, plurality, reality, negation, limitation, totality) applied to sensory data to make coherent experience possible.",
+      "source_id": "WD:Q1055251",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Category_(Kant)"],
+      "examples": ["Causality: every event has a cause", "Substance: objects persist through change"],
+      "related_ids": ["epi:synthetic_a_priori", "logic:causality"]
+    },
+    {
+      "id": "epi:synthetic_a_priori",
+      "term": "Synthetic A Priori",
+      "type": "concept",
+      "definition": "Knowledge that is both informative (synthetic) and independent of experience (a priori), such as mathematics and basic laws of science.",
+      "source_id": "WD:Q1455088",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Synthetic_a_priori_proposition"],
+      "examples": ["7 + 5 = 12", "Every event has a cause"],
+      "related_ids": ["epi:a_priori_reasoning", "math:arithmetic"]
+    }
+  ],
+  "learning_principles": [
+    "Learning is active — the mind shapes and organizes sensory data.",
+    "Some structures of thought are necessary preconditions for knowledge.",
+    "Limits of reason mean certain metaphysical truths are unknowable.",
+    "Experience requires both sensory data and conceptual organization.",
+    "Human knowledge is bounded by possible experience."
+  ],
+  "parameters": {
+    "epistemological_method": "transcendental_critique",
+    "knowledge_domain": "phenomena_only",
+    "certainty_level": "necessary_for_experience",
+    "metaphysical_scope": "limited"
+  },
+  "operations": {
+    "transcendental_deduction": {
+      "description": "Demonstrate how categories make experience possible",
+      "input": {"categories": "array", "experience": "object"},
+      "output": {"necessity": "boolean", "universality": "boolean"}
+    },
+    "phenomenal_analysis": {
+      "description": "Analyze experience within bounds of possible knowledge",
+      "input": {"observation": "object"},
+      "output": {"phenomenal_structure": "object", "noumenal_limit": "boolean"}
+    }
+  },
+  "integration": {
+    "compatible_modules": ["transcendental_processor", "categorical_applicator", "phenomenal_filter"],
+    "input_sources": ["sensory_data", "conceptual_frameworks", "metaphysical_questions"],
+    "output_destinations": ["knowledge_synthesis", "critique_engine", "boundary_marker"]
+  },
+  "performance_metrics": {
+    "critique_depth": "fundamental",
+    "knowledge_scope": "phenomenal",
+    "certainty_level": "transcendental",
+    "metaphysical_reach": "limited"
+  },
+  "access_control": {
+    "mutable": false,
+    "curator": "Bryan A. Spruk",
+    "authorized_editors": ["Bryan A. Spruk"],
+    "hash": "sha256:b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7"
+  }
+}

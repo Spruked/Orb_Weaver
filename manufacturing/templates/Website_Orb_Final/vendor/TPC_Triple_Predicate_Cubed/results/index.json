@@ -1,0 +1,11 @@
+[
+  {
+    "type": "query",
+    "file": "2026-04-21\\query_0001.json",
+    "timestamp": "2026-04-21T21:14:35",
+    "query_id": "query_2_1776824075.9316993",
+    "verdict": "SUSPEND",
+    "confidence": 0.373313,
+    "runtime_ms": 23.77
+  }
+]

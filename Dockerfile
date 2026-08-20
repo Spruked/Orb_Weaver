@@ -77,6 +77,8 @@ COPY backend /app/backend
 RUN chown -R orbweaver:orbweaver /app/backend
 
 COPY Orb_Assistant /app/Orb_Assistant
+COPY Orb_Vault_System /app/Orb_Vault_System
+COPY manufacturing /app/manufacturing
 COPY vault_system /app/vault_system
 COPY ["Preflight Scanner", "/app/Preflight Scanner"]
 COPY --from=frontend-build /app/frontend/build /app/frontend/build

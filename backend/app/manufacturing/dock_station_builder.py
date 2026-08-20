@@ -14,6 +14,7 @@ from .validator import validate_required_paths, verification_report
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_TEMPLATE_ROOT = REPO_ROOT / "manufacturing" / "templates" / "dock_station_master"
+DEFAULT_WEBSITE_ORB_TEMPLATE_ROOT = REPO_ROOT / "manufacturing" / "templates" / "Website_Orb_Final"
 DEFAULT_BUILDS_ROOT = REPO_ROOT / "builds"
 ID_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._-]{0,78}[a-z0-9])?$")
 WINDOWS_RESERVED_NAMES = {
@@ -65,6 +66,66 @@ def _copy_template(template_root: Path, build_root: Path) -> None:
     shutil.copytree(source, destination, symlinks=True)
 
 
+def _copy_website_orb_template(template_root: Path, destination: Path) -> Dict[str, Any]:
+    required = [
+        {"path": "backend/app.py", "type": "file"},
+        {"path": "frontend/src/WebsiteORB.tsx", "type": "file"},
+        {"path": "Orb_Vault_System/orb_vault_skg/vault/orb_assistant/vault_coordinator.py", "type": "file"},
+    ]
+    validation = validate_required_paths(template_root, required)
+    # The upstream gold repository currently tracks development bytecode. It is
+    # never copied into a manufactured package.
+    source_forbidden = [
+        path for path in validation.get("forbidden_payloads", [])
+        if "__pycache__" not in path and not path.endswith((".pyc", ".pyo"))
+    ]
+    if validation.get("missing") or validation.get("wrong_type") or validation.get("unsafe_paths") or source_forbidden or validation.get("symlinks"):
+        raise ValueError(f"Website ORB golden template is invalid: {validation}")
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.copytree(
+        template_root,
+        destination,
+        ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*.pyo", "node_modules", ".venv", "venv", "dist"),
+    )
+    (destination / "deployment").mkdir(exist_ok=True)
+    (destination / "assets").mkdir(exist_ok=True)
+    return hash_package_tree(destination)
+
+
+def _inject_website_orb_payload(payload_root: Path, orb_template: Path) -> None:
+    runtime_vault = orb_template / "runtime" / "vault_system"
+    if runtime_vault.exists():
+        shutil.rmtree(runtime_vault)
+    runtime_vault.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(payload_root, runtime_vault, symlinks=True)
+
+    compiled_orb = orb_template / "compiled_orb"
+    compiled_orb.mkdir(parents=True, exist_ok=True)
+    compiled_mapping = {
+        "payload/site_world.json": "site_world.json",
+        "payload/pointers.json": "pointer_plot_map.json",
+        "payload/pointer_correspondence.json": "pointer_correspondence.json",
+        "payload/runtime_language.json": "runtime_language.json",
+        "payload/tool_cache.json": "tool_cache.json",
+        "payload/site_config.json": "site_config.json",
+        "payload/catalog.db": "catalog.db",
+    }
+    for source_name, destination_name in compiled_mapping.items():
+        shutil.copy2(payload_root / source_name, compiled_orb / destination_name)
+
+    skg_vaults = orb_template / "Orb_Vault_System" / "orb_vault_skg" / "vaults"
+    priori_destination = skg_vaults / "A_Priori_Vault"
+    posteriori_destination = skg_vaults / "A_Posteriori_Vault"
+    if priori_destination.exists():
+        shutil.rmtree(priori_destination)
+    shutil.copytree(payload_root / "payload" / "apriori", priori_destination)
+    if posteriori_destination.exists():
+        shutil.rmtree(posteriori_destination)
+    (posteriori_destination / "ledger").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(payload_root / "posteriori" / "verified_cases.json", posteriori_destination / "verified_cases.json")
+
+
 def _build_required_paths(required_paths: list[Any]) -> list[Any]:
     return [
         {
@@ -90,6 +151,7 @@ def build_customer_dock_station(
     template_root: Optional[Path] = None,
     builds_root: Optional[Path] = None,
     payload_root: Optional[Path] = None,
+    website_orb_template_root: Optional[Path] = None,
     manufacturing_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     resolved_template = (template_root or DEFAULT_TEMPLATE_ROOT).resolve()
@@ -132,11 +194,19 @@ def build_customer_dock_station(
 
     try:
         _copy_template(resolved_template, staging_root)
+        website_orb_tree = None
+        resolved_website_orb_template = (
+            website_orb_template_root.resolve()
+            if website_orb_template_root
+            else DEFAULT_WEBSITE_ORB_TEMPLATE_ROOT.resolve() if template_root is None else None
+        )
+        if resolved_website_orb_template:
+            website_orb_tree = _copy_website_orb_template(
+                resolved_website_orb_template,
+                staging_dock_station / "app" / "orb" / "template",
+            )
         if resolved_payload:
-            payload_destination = staging_dock_station / "app" / "orb" / "template" / "runtime" / "vault_system"
-            if payload_destination.exists():
-                shutil.rmtree(payload_destination)
-            shutil.copytree(resolved_payload, payload_destination, symlinks=True)
+            _inject_website_orb_payload(resolved_payload, staging_dock_station / "app" / "orb" / "template")
         manifest = customer_manifest(
             template_manifest=template_manifest,
             customer_id=ids["customer_id"],
@@ -209,5 +279,6 @@ def build_customer_dock_station(
         "template_tree_hash": template_tree["tree_hash"],
         "package_tree_hash": package_tree["tree_hash"],
         "payload_tree_hash": payload_tree["tree_hash"] if payload_tree else None,
+        "website_orb_template_tree_hash": website_orb_tree["tree_hash"] if website_orb_tree else None,
         "passed": report["passed"],
     }

@@ -1,0 +1,23 @@
+{
+    "schema": "orb_weaver.website_orb.package.v1",
+    "name": "Website ORB Final Merge",
+    "package_role": "merged_local_orb_runtime",
+    "target_domain": "orbweaver.spruked.com",
+    "runtime_contract": "precompiled_skg_lookup_with_tpc_fields",
+    "cognitive_pipeline": "TPC-only runtime with resident site records, HLSF adjacency, and EGF telemetry",
+    "no_electron_runtime": true,
+    "dockstation_boundary": "adapter_only",
+    "active_tpc_components": {
+    "runtime": "backend/cognition/tpc_runtime.py",
+    "pipeline": "backend/cognition/tpc_pipeline.py",
+    "hlsf": "backend/cognition/hlsf_geometry/engine.py",
+    "egf": "backend/cognition/Epistemic_Gravity_Field/space_field.py"
+  },
+  "entrypoints": {
+    "backend": "backend/app.py",
+    "frontend_component": "frontend/src/WebsiteORB.tsx",
+    "site_world_compiler": "tools/compile_site_world.py",
+    "validator": "tools/validate_package.py",
+    "tpc_status": "GET /orb/tpc-status"
+  }
+}

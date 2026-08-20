@@ -1,0 +1,93 @@
+TPC_Triple_Predicate_Cubed/
+│
+├── .github/
+│   └── workflows/
+│       └── ci.yml                      CI: EGF stress/perturb/distribution tests
+│
+├── api/
+│   ├── __init__.py
+│   └── main.py                         FastAPI — port 8003
+│                                       Routes: /reason /transcribe /reason-audio /speak /run-tests /health
+│
+├── cochlear_processor_3.0/
+│   ├── adaptive_plasticity.py          AdaptivePlasticityEngine (wired into CochlearProcessorV3)
+│   ├── cochlear_processor_v3.py        CochlearProcessorV3 — Whisper STT + SKG correction loop
+│   ├── cognitive_inference.py          CognitiveInferenceEngine
+│   ├── correction_loop.py              RealtimeCorrectionLoop
+│   ├── hearing_skg.json                Speaker Knowledge Graph state
+│   ├── perceptual_filter.py            Perceptual filter base
+│   ├── processor.py                    AdaptiveCochlearProcessor
+│   ├── processor_v2.py                 v2 (superseded)
+│   ├── skg_learning_bridge.py          SKGLearningBridge
+│   ├── skg_perceptual_filter.py        SKGPerceptualFilter + SpeakerKnowledgeGraph
+│   └── test_skg_cochlear.py            Cochlear unit tests
+│
+├── core/
+│   ├── __init__.py
+│   ├── ecm.py                          ECM stub (production ECM is in tpc_cubed.py)
+│   ├── geometric_primitives.py         PHI, base glyph types
+│   └── pipeline.py                     Core pipeline primitives
+│
+├── drift/
+│   ├── __init__.py
+│   └── ping.py                         DriftPing primitives
+│
+├── Epistemic_Gravity_Field/
+│   ├── __init__.py
+│   ├── distribution_shift_test.py      CI test
+│   ├── perturb_test.py                 CI test — attractor self-repair
+│   ├── space_field.py                  SpaceFieldCognition (32³ PyTorch tensor physics)
+│   ├── stress_test.py                  CI test — memory leaks, boundary conditions
+│   └── visualize.py                    EGF real-time visualization
+│
+├── examples/
+│   ├── __init__.py
+│   └── demo.py
+│
+├── philosophers/
+│   ├── __init__.py
+│   ├── base.py                         Vault-backed beams — DEFERRED (see ARCHITECTURE_REGISTRY.md)
+│   ├── seed_hume.json
+│   ├── seed_kant.json
+│   ├── seed_locke.json
+│   └── seed_spinoza.json
+│
+├── tools/
+│   └── visualization/
+│       └── tpc_architecture_visualization.py   Architecture diagram (Matplotlib)
+│
+├── ui/
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.js                  Vite proxy → API:8003
+│   ├── public/
+│   │   └── logofinalTPC.png
+│   └── src/
+│       ├── App.jsx                     Dashboard: verdict, philosopher beams, pipeline, diagnostics log
+│       ├── App.css
+│       ├── Orb.jsx                     Floating canvas assistant (5 states, cursor-avoidance physics)
+│       ├── main.jsx
+│       └── index.css
+│
+├── vaults/
+│   ├── __init__.py
+│   └── system.py                       APrioriVault, APosterioriVault
+│
+├── acp_synthesis.py                    ACP, VaultSystem, DriftPingChain
+├── ARCHITECTURE_REGISTRY.md           Single source of truth: module status + integration tiers
+├── demo_test.py                        10 diagnostic tests (run via /run-tests endpoint)
+├── hard_tests.py                       pytest parametrized beam tests (pytest only)
+├── Integration.py                      CANONICAL ORCHESTRATOR — TPCSystem (10-stage pipeline)
+├── quick_test.py                       Quick smoke test
+├── requirements.txt                    Python dependencies
+├── results_vault.py                    Persistent evidence trail → results/
+├── tpc_architecture_visualization.py   Root shim → tools/visualization/
+├── tpc_cubed.py                        Core: GeometricGlyph, HLSF, EGF, ECM, MultiBeamRunner,
+│                                       PhaseCoherence, TribunalSynthesizer, 30 invariants
+├── tpc_full_system_demo.py             Standalone demo script
+├── tpc_system_orchestrator.py          RETIRED shim → re-exports from Integration.py
+├── TPC_dir_structure                   This file
+├── mypy.ini
+├── pytest.ini
+├── .gitignore
+└── README.md

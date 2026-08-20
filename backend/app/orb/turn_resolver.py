@@ -12,6 +12,7 @@ from .provider_router import invoke_provider
 
 LocalModel = Callable[[str, Dict[str, Any]], Awaitable[Dict[str, Any] | str]]
 PosterioriLookup = Callable[[str, str, str], Optional[Dict[str, Any]]]
+VaultSKGLookup = Callable[[str, str], Optional[Dict[str, Any]]]
 ProviderInvoke = Callable[..., Awaitable[Dict[str, Any]]]
 
 
@@ -41,10 +42,12 @@ class CanonicalTurnResolver:
         *,
         local_model: Optional[LocalModel] = None,
         posteriori_lookup: Optional[PosterioriLookup] = None,
+        vault_skg_lookup: Optional[VaultSKGLookup] = None,
         provider_invoke: ProviderInvoke = invoke_provider,
     ):
         self.local_model = local_model
         self.posteriori_lookup = posteriori_lookup
+        self.vault_skg_lookup = vault_skg_lookup
         self.provider_invoke = provider_invoke
 
     async def resolve(
@@ -73,6 +76,16 @@ class CanonicalTurnResolver:
         if semantic is None:
             semantic = self._apriori(query, apriori or {})
             attempts.append({"lane": "apriori", "matched": bool(semantic)})
+        if semantic is None and self.vault_skg_lookup:
+            match = self.vault_skg_lookup("apriori", query)
+            if match:
+                semantic = self._semantic(
+                    answer=str(match["answer"]), source_lane="apriori", answer_state="known",
+                    evidence_ids=[str(item) for item in match.get("evidence_ids") or []],
+                    confidence=float(match.get("confidence") or 0.0),
+                )
+                semantic["vault_skg_trace"] = match
+            attempts.append({"lane": "apriori_skg", "matched": bool(semantic)})
         if semantic is None and self.posteriori_lookup and domain:
             case = self.posteriori_lookup(domain, query, route)
             if case and case.get("spoken_output"):
@@ -82,6 +95,16 @@ class CanonicalTurnResolver:
                     confidence=float(case.get("cache_score") or 1.0),
                 )
             attempts.append({"lane": "posteriori", "matched": bool(semantic)})
+        if semantic is None and self.vault_skg_lookup:
+            match = self.vault_skg_lookup("posteriori", query)
+            if match:
+                semantic = self._semantic(
+                    answer=str(match["answer"]), source_lane="posteriori", answer_state="resolved",
+                    evidence_ids=[str(item) for item in match.get("evidence_ids") or []],
+                    confidence=float(match.get("confidence") or 0.0),
+                )
+                semantic["vault_skg_trace"] = match
+            attempts.append({"lane": "posteriori_skg", "matched": bool(semantic)})
         if semantic is None:
             semantic = self._site_world(query, site_world or {}, route)
             attempts.append({"lane": "site_world", "matched": bool(semantic)})
@@ -162,7 +185,31 @@ class CanonicalTurnResolver:
         }
 
     def _control(self, query: str) -> Optional[Dict[str, Any]]:
-        normalized = query.lower()
+        normalized = re.sub(r"^(?:hey\s+)?weaver[\s,:-]+", "", query.lower()).strip()
+        motion_commands = (
+            ("move_out_of_way", ("move out of the way", "get out of the way"), "Oh, excuse me."),
+            ("move_to_side", ("move over", "scoot over", "move to the side", "go over there"), "Of course."),
+            ("move_up", ("move up",), "Moving up."),
+            ("move_down", ("move down",), "Moving down."),
+            ("move_left", ("move left",), "Moving left."),
+            ("move_right", ("move right",), "Moving right."),
+            ("come_back", ("come back",), "Coming back."),
+            ("come_here", ("come here",), "Coming closer."),
+            ("hold_position", ("stay there", "stop moving", "wait there"), "I'll stay here."),
+            ("wake", ("wake up",), "I'm awake."),
+            ("listen", ("go back to listening",), "I'm listening."),
+        )
+        for command, phrases, answer in motion_commands:
+            if normalized.rstrip(".!?") in phrases:
+                semantic = self._semantic(
+                    answer=answer,
+                    source_lane="control",
+                    answer_state="known",
+                    evidence_ids=[f"control:{command}"],
+                    confidence=1.0,
+                )
+                semantic["control_action"] = {"type": "orb_motion", "command": command}
+                return semantic
         if any(re.search(rf"\b{re.escape(phrase)}\b", normalized) for phrase in ("who are you", "what are you", "what do you do", "your purpose")):
             return self._semantic(
                 answer="I'm Weaver, this website's ORB host. I use verified site knowledge to answer and guide visitors.",

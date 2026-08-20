@@ -1,0 +1,8 @@
+{
+  "schema": "orb_weaver.website_orb_golden_template_source.v1",
+  "repository": "https://github.com/Spruked/Website_Orb_Final.git",
+  "commit": "24bbc03227577decde3aefead33076edb48c9a4b",
+  "imported_at": "2026-08-20",
+  "vendored_path": "manufacturing/templates/Website_Orb_Final",
+  "nested_git_metadata": false
+}

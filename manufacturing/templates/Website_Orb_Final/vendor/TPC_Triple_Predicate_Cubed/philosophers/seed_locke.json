@@ -1,0 +1,117 @@
+{
+  "$schema": "https://schemas.seedvault.org/core/v1.1.0",
+  "vault_name": "SeedVault_Locke",
+  "vault_id": "seed_locke",
+  "version": "1.1.0",
+  "category": "Epistemology",
+  "type": "seed",
+  "license": "CC0-1.0",
+  "generated": "2025-10-23T12:00:00Z",
+  "compatibility": "backward-compatible",
+  "description": "John Locke's empiricist philosophy establishing that all knowledge comes from experience, with the mind as a blank slate shaped by sensation and reflection",
+  "author": "Bryan A. Spruk",
+  "philosopher": "John Locke",
+  "reasoning_type": "empiricist",
+  "immutable": true,
+  "index": {
+    "tabula_rasa": "epi:tabula_rasa",
+    "sensation": "epi:sensation",
+    "reflection": "epi:reflection",
+    "simple_ideas": "epi:simple_ideas",
+    "complex_ideas": "epi:complex_ideas"
+  },
+  "entries": [
+    {
+      "id": "epi:tabula_rasa",
+      "term": "Tabula Rasa",
+      "type": "concept",
+      "definition": "The mind is a blank slate at birth, shaped entirely by experience. There are no innate ideas or principles.",
+      "source_id": "WD:Q1151067",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Tabula_rasa"],
+      "examples": ["Infants have no preconceived notions", "Knowledge is acquired, not given"],
+      "related_ids": ["epi:a_posteriori_reasoning", "epi:simple_ideas"]
+    },
+    {
+      "id": "epi:sensation",
+      "term": "Sensation",
+      "type": "process",
+      "definition": "Knowledge gained from external objects via the senses. Primary source of simple ideas from the physical world.",
+      "source_id": "WD:Q542857",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Empiricism"],
+      "examples": ["Seeing color red", "Feeling heat", "Hearing sound"],
+      "related_ids": ["epi:simple_ideas", "epi:external_experience"]
+    },
+    {
+      "id": "epi:reflection",
+      "term": "Reflection",
+      "type": "process",
+      "definition": "Knowledge gained from observing the operations of one's own mind. Internal source of simple ideas from mental processes.",
+      "source_id": "WD:Q542857",
+      "reference_urls": ["https://en.wikipedia.org/wiki/John_Locke"],
+      "examples": ["Thinking about thinking", "Perceiving desire", "Noticing doubt"],
+      "related_ids": ["epi:simple_ideas", "epi:internal_experience"]
+    },
+    {
+      "id": "epi:simple_ideas",
+      "term": "Simple Ideas",
+      "type": "concept",
+      "definition": "Elementary perceptions from sensation or reflection that cannot be broken down further. The building blocks of all knowledge.",
+      "source_id": "WD:Q542857",
+      "reference_urls": ["https://en.wikipedia.org/wiki/Idea"],
+      "examples": ["Redness", "Sweetness", "Motion", "Thinking"],
+      "related_ids": ["epi:complex_ideas", "epi:sensation", "epi:reflection"]
+    },
+    {
+      "id": "epi:complex_ideas",
+      "term": "Complex Ideas",
+      "type": "concept",
+      "definition": "Formed by combining, relating, or abstracting simple ideas. All complex concepts are built from simple sensory or reflective elements.",
+      "source_id": "WD:Q542857",
+      "reference_urls": ["https://en.wikipedia.org/wiki/John_Locke"],
+      "examples": ["Apple (red + round + sweet)", "Justice (fairness + equality)", "Triangle (three + sides + angles)"],
+      "related_ids": ["epi:simple_ideas", "logic:abstraction"]
+    }
+  ],
+  "learning_principles": [
+    "All knowledge originates from experience.",
+    "Mind actively organizes sensory input into concepts.",
+    "No innate principles exist; knowledge is built, not given.",
+    "Simple ideas are the foundation of all complex knowledge.",
+    "Experience shapes both content and structure of thought."
+  ],
+  "parameters": {
+    "epistemological_method": "empirical_observation",
+    "knowledge_sources": ["sensation", "reflection"],
+    "innate_content": "none",
+    "idea_formation": "combinatorial"
+  },
+  "operations": {
+    "idea_combination": {
+      "description": "Combine simple ideas into complex concepts",
+      "input": {"simple_ideas": "array", "relations": "array"},
+      "output": {"complex_idea": "object", "validity": "boolean"}
+    },
+    "experience_analysis": {
+      "description": "Analyze experience into simple and complex ideas",
+      "input": {"experience": "object"},
+      "output": {"simple_ideas": "array", "complex_ideas": "array"}
+    }
+  },
+  "integration": {
+    "compatible_modules": ["empirical_processor", "idea_combiner", "experience_tracker"],
+    "input_sources": ["sensory_input", "mental_operations", "environmental_data"],
+    "output_destinations": ["concept_builder", "knowledge_synthesizer", "learning_engine"]
+  },
+  "performance_metrics": {
+    "learning_method": "experience_based",
+    "knowledge_scope": "empirical",
+    "innate_assumptions": "minimal",
+    "concept_complexity": "unlimited"
+  },
+  "access_control": {
+    "mutable": false,
+    "curator": "Bryan A. Spruk",
+    "authorized_editors": ["Bryan A. Spruk"],
+    "hash": "sha256:c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3"
+  }
+}

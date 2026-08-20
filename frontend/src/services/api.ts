@@ -1063,6 +1063,7 @@ export interface WebsiteOrbVoiceResponse {
   escalation_used?: string | null;
   learning_eligible?: boolean | null;
   resolution_trace?: Record<string, unknown> | null;
+  control_action?: { type: 'orb_motion'; command: string } | null;
 }
 
 export interface WebsiteOrbManufacturingStatus {
@@ -1113,6 +1114,8 @@ export interface WebsiteOrbPointerRecord {
   pointer_health?: 'NEW' | 'VERIFIED' | 'RECOVERED' | 'OWNER_VERIFIED' | 'DEPRECATED' | 'REMOVED';
   runtime_policy?: {
     may_point?: boolean;
+    may_click?: boolean;
+    may_navigate?: boolean;
     requires_live_verification?: boolean;
     requires_user_confirmation?: boolean;
     reason?: string;
