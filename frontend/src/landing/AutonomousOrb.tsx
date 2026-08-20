@@ -28,9 +28,8 @@ const END_SILENCE_MS = 850;
 const ABSOLUTE_RECORDING_LIMIT_MS = 14000;
 const SPEECH_LEVEL_THRESHOLD = 0.018;
 
-type PulseKind = "intro" | "ripple" | "flare";
+type PulseKind = "ripple" | "flare";
 type FirstEncounterFlag =
-  | "splash_complete"
   | "voice_ready"
   | "entrance_complete"
   | "communication_orientation_complete"
@@ -83,6 +82,7 @@ const REST_AFTER_INACTIVITY_MS = 10 * 60 * 1000;
 const ACTIVE_ORB_OPACITY = 0.94;
 const REST_ORB_OPACITY = 0.55;
 const FIRST_ENCOUNTER_STORAGE_KEY = "orbweaver-first-encounter-state";
+const STARTUP_GREETING_SESSION_KEY = "orbweaver-startup-greeting-played";
 const SUITE_LOGO_POINTER_RECORD: WebsiteOrbPointerRecord = {
   target_id: "orb-weaver-suite-logo",
   page_route: "/",
@@ -99,7 +99,6 @@ const SUITE_LOGO_POINTER_RECORD: WebsiteOrbPointerRecord = {
   runtime_policy: { may_point: true, requires_live_verification: true },
 };
 const EMPTY_FIRST_ENCOUNTER_STATE: FirstEncounterState = {
-  splash_complete: false,
   voice_ready: false,
   entrance_complete: false,
   communication_orientation_complete: false,
@@ -206,6 +205,10 @@ const routeForUrl = (value?: string | null): string => {
   }
 };
 
+const isPublicLandingExperience = (): boolean =>
+  window.location.pathname === "/" &&
+  Boolean(document.getElementById("weaver-first-encounter"));
+
 const startupGreetingText = (): string => {
   return "Hi, I'm Weaver. Welcome to ORB Weaver. I'm going to show you how I listen, understand this site, and guide with verified targets.";
 };
@@ -216,7 +219,6 @@ export const AutonomousOrb: React.FC<Props> = ({
 }) => {
   const onboardingSafeMode = ['/signup', '/login'].includes(window.location.pathname);
   const move = useAnimationControls();
-  const surge = useAnimationControls();
   const glow = useAnimationControls();
   const presence = useAnimationControls();
   const activeRef = useRef(true);
@@ -296,7 +298,6 @@ export const AutonomousOrb: React.FC<Props> = ({
   const firstEncounterComplete = useCallback(() => {
     const state = firstEncounterStateRef.current;
     return (
-      state.splash_complete &&
       state.voice_ready &&
       state.entrance_complete &&
       state.communication_orientation_complete &&
@@ -865,6 +866,25 @@ export const AutonomousOrb: React.FC<Props> = ({
     presence.stop();
   }, [move, presence]);
 
+  const speakBrowserFallback = useCallback(async (text: string) => {
+    if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+      throw new Error("Browser speech synthesis unavailable");
+    }
+
+    const synth = window.speechSynthesis;
+    synth.cancel();
+
+    await new Promise<void>((resolve, reject) => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      utterance.volume = speakerBoostRef.current ? 1 : 0.92;
+      utterance.onend = () => resolve();
+      utterance.onerror = () => reject(new Error("Browser speech synthesis failed"));
+      synth.speak(utterance);
+    });
+  }, []);
+
   const speak = useCallback(async (
     text: string,
     audioUrl?: string | null,
@@ -893,11 +913,10 @@ export const AutonomousOrb: React.FC<Props> = ({
     try {
       setStatusTitle("Voice response");
       if (!audioUrl) {
+        await speakBrowserFallback(text);
         speechPlaybackRef.current = false;
-        setStatusTitle("Voice unavailable");
-        setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
         setVoiceState("idle");
-        showStatus(3600);
+        showStatus(1400);
         return;
       }
       if (speakerBoostRef.current) {
@@ -927,22 +946,26 @@ export const AutonomousOrb: React.FC<Props> = ({
           if (speechAudioRef.current === audio) {
             speechAudioRef.current = null;
           }
-          setStatusTitle("Voice unavailable");
-          setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
-          setVoiceState("idle");
-          showStatus(3600);
           reject(new Error("Audio playback failed"));
         };
         audio.play().catch(reject);
       });
     } catch {
-      speechPlaybackRef.current = false;
-      setStatusTitle("Voice unavailable");
-      setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
-      setVoiceState("idle");
-      showStatus(3600);
+      try {
+        setStatusTitle("Voice response");
+        await speakBrowserFallback(text);
+        speechPlaybackRef.current = false;
+        setVoiceState("idle");
+        showStatus(1400);
+      } catch {
+        speechPlaybackRef.current = false;
+        setStatusTitle("Voice unavailable");
+        setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
+        setVoiceState("idle");
+        showStatus(3600);
+      }
     }
-  }, [freezeOrbInPlace, playDecodedSpeech, showStatus]);
+  }, [freezeOrbInPlace, playDecodedSpeech, showStatus, speakBrowserFallback]);
 
   const speakWithGeneratedAudio = useCallback(async (text: string, audioUrl?: string | null, provider?: string | null) => {
     setStatusTitle("Preparing voice");
@@ -956,10 +979,25 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const speakRecovery = useCallback(async (text: string) => {
     setStatusLine(text);
-    setStatusTitle("Voice unavailable");
-    setVoiceState("idle");
-    showStatus(3600);
-  }, [showStatus]);
+    setStatusTitle("Voice response");
+    setVoiceState("speaking");
+    speechPlaybackRef.current = true;
+    showStatus();
+    freezeOrbInPlace(4200);
+
+    try {
+      await speakBrowserFallback(text);
+      setStatusTitle("Voice response");
+      showStatus(1400);
+    } catch {
+      setStatusTitle("Voice unavailable");
+      setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
+      showStatus(3600);
+    } finally {
+      speechPlaybackRef.current = false;
+      setVoiceState("idle");
+    }
+  }, [freezeOrbInPlace, showStatus, speakBrowserFallback]);
 
   const contextTargetUrl = useCallback(() => {
     if (activeOrbContext) return buildCustomerPageCapsuleUrl(activeOrbContext);
@@ -984,7 +1022,14 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, [activeOrbContext?.project_id, contextTargetUrl, speakWithGeneratedAudio]);
 
   const runFirstEncounterChoreography = useCallback(async () => {
-    if (firstEncounterRunningRef.current || firstEncounterComplete() || onboardingSafeMode) return;
+    if (
+      !isPublicLandingExperience() ||
+      firstEncounterRunningRef.current ||
+      firstEncounterComplete() ||
+      onboardingSafeMode
+    ) {
+      return;
+    }
     firstEncounterRunningRef.current = true;
     try {
       const encounterSection = document.getElementById("weaver-first-encounter");
@@ -1075,7 +1120,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       const targetUrl = contextTargetUrl();
       const visitorTurn = firstEncounterVisitorTurnRef.current + 1;
       firstEncounterVisitorTurnRef.current = visitorTurn;
-      const inFirstEncounter = !firstEncounterComplete();
+      const inFirstEncounter = isPublicLandingExperience() && !firstEncounterComplete();
       const experience: WebsiteOrbExperienceContext | null = inFirstEncounter
         ? visitorTurn === 1
           ? {
@@ -1376,7 +1421,6 @@ export const AutonomousOrb: React.FC<Props> = ({
     if (startupVoicePreparationRef.current) return startupVoicePreparationRef.current;
 
     unlockAudio();
-    markFirstEncounter("splash_complete");
     setStatusTitle("Opening the ORB Weaver suite");
     setStatusLine("Preparing voice permission and guidance.");
     showStatus();
@@ -1389,37 +1433,62 @@ export const AutonomousOrb: React.FC<Props> = ({
     };
     startupVoicePreparationRef.current = preparation;
     return preparation;
-  }, [markFirstEncounter, requestStartupMicrophonePermission, showStatus, unlockAudio]);
+  }, [requestStartupMicrophonePermission, showStatus, unlockAudio]);
 
   const runStartupVoiceSequence = useCallback(async () => {
     if (startupAutoStartedRef.current || onboardingSafeMode) return;
+
+    const onLanding = isPublicLandingExperience();
+    const greetingAlreadyPlayed =
+      window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1";
+    const establishedVoiceSession =
+      greetingAlreadyPlayed || firstEncounterStateRef.current.voice_ready;
+
+    // A first-time visitor who lands deep in the site should not get a surprise
+    // microphone prompt. Once voice has been established, page reloads resume
+    // hands-free listening without replaying the landing greeting.
+    if (!onLanding && !establishedVoiceSession) return;
+
     startupAutoStartedRef.current = true;
-    const preparation = prepareStartupVoice();
-    const micReady = await preparation.micReady;
-    setGreetingActive(true);
-    try {
-      const tts = await preparation.tts;
-      if (!tts?.tts_audio_url) throw new Error("Startup voice synthesis failed");
-      const spokenGreeting = speak(preparation.greeting, tts.tts_audio_url, tts.tts_provider);
-      void guideToPointerRecord(SUITE_LOGO_POINTER_RECORD, "ORB Weaver suite", { launchMorbOnly: true });
-      await spokenGreeting;
-      markFirstEncounter("entrance_complete");
-    } catch {
-      await speakRecovery(preparation.greeting);
-      markFirstEncounter("entrance_complete");
-    } finally {
-      setGreetingActive(false);
+    let micReady = false;
+
+    if (onLanding && !greetingAlreadyPlayed) {
+      const preparation = prepareStartupVoice();
+      micReady = await preparation.micReady;
+      setGreetingActive(true);
+      try {
+        const tts = await preparation.tts;
+        if (!tts?.tts_audio_url) throw new Error("Startup voice synthesis failed");
+        const spokenGreeting = speak(preparation.greeting, tts.tts_audio_url, tts.tts_provider);
+        void guideToPointerRecord(SUITE_LOGO_POINTER_RECORD, "ORB Weaver suite", { launchMorbOnly: true });
+        await spokenGreeting;
+        markFirstEncounter("entrance_complete");
+      } catch {
+        await speakRecovery(preparation.greeting);
+        markFirstEncounter("entrance_complete");
+      } finally {
+        setGreetingActive(false);
+        window.sessionStorage.setItem(STARTUP_GREETING_SESSION_KEY, "1");
+      }
+
+      // Choreography is enrichment, never a gate on conversation.
+      try {
+        await runFirstEncounterChoreography();
+      } catch {
+        // The choreography reports its own status. Weaver must still listen.
+      }
+    } else {
+      micReady = await requestStartupMicrophonePermission();
     }
 
-    await runFirstEncounterChoreography();
     if (micReady && activeRef.current) {
       handsFreeEnabledRef.current = true;
       window.setTimeout(() => {
-        if (!activeRef.current || voiceRequestInFlightRef.current) return;
+        if (!activeRef.current || voiceRequestInFlightRef.current || recorderRef.current) return;
         void startOrbRecording();
       }, 420);
     }
-  }, [guideToPointerRecord, markFirstEncounter, onboardingSafeMode, prepareStartupVoice, runFirstEncounterChoreography, setGreetingActive, speak, speakRecovery, startOrbRecording]);
+  }, [guideToPointerRecord, markFirstEncounter, onboardingSafeMode, prepareStartupVoice, requestStartupMicrophonePermission, runFirstEncounterChoreography, setGreetingActive, speak, speakRecovery, startOrbRecording]);
 
   // Keep the autonomous loop mounted. Voice state changes are frequent and must not replay
   // the entrance sequence or reset Weaver's position.
@@ -1473,6 +1542,13 @@ export const AutonomousOrb: React.FC<Props> = ({
       movementControllerRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    if (onboardingSafeMode) return;
+    if (firstEncounterStateRef.current.voice_ready) {
+      handsFreeEnabledRef.current = true;
+    }
+  }, [onboardingSafeMode]);
 
   useEffect(() => {
     if (!handsFreeEnabledRef.current || voiceState !== "idle" || onboardingSafeMode) return;
@@ -1606,43 +1682,19 @@ export const AutonomousOrb: React.FC<Props> = ({
     move.set(start);
 
     const run = async () => {
-      prepareStartupVoiceRef.current();
-
-      if (reducedMotionRef.current) {
-        surge.set({ scale: 1, opacity: 1 });
-        setPulse({ id: Date.now(), kind: "intro" });
-        void runStartupVoiceSequenceRef.current();
-        return;
-      }
-
-      surge.set({ scale: 0.26, opacity: 0, x: window.innerWidth * 0.42, rotate: 10 });
-      setPulse({ id: Date.now(), kind: "intro" });
-      await surge.start({
-        x: [window.innerWidth * 0.42, -28, 10, 0],
-        scale: [0.26, 1.78, 0.88, 1.04, 1],
-        opacity: [0, 1, 1, 1, 1],
-        rotate: [10, -6, 3, 0],
-        transition: {
-          duration: 2.65,
-          ease: [0.15, 0.9, 0.18, 1],
-          times: [0, 0.54, 0.74, 0.9, 1],
-        },
-      });
-
-      if (!activeRef.current) return;
-
-      setPulse(null);
       void runStartupVoiceSequenceRef.current();
 
-      glow.start({
-        opacity: [0.62, 0.96, 0.58, 0.88, 0.62],
-        scale: [1, 1.1, 0.97, 1.06, 1],
-        transition: {
-          duration: 15,
-          repeat: Infinity,
-          ease: "easeInOut",
-        },
-      });
+      if (!reducedMotionRef.current) {
+        glow.start({
+          opacity: [0.62, 0.96, 0.58, 0.88, 0.62],
+          scale: [1, 1.1, 0.97, 1.06, 1],
+          transition: {
+            duration: 15,
+            repeat: Infinity,
+            ease: "easeInOut",
+          },
+        });
+      }
 
       await wait(700);
 
@@ -1738,7 +1790,16 @@ export const AutonomousOrb: React.FC<Props> = ({
       }
       window.removeEventListener("resize", handleResize);
     };
-  }, [clampPosition, glow, move, nextDestination, playLocalPresence, presence, size, stopRecordingMonitor, surge, upperRightRestDestination]);
+  }, [
+    clampPosition,
+    glow,
+    move,
+    nextDestination,
+    playLocalPresence,
+    presence,
+    size,
+    upperRightRestDestination,
+  ]);
 
   // Voice resources are cancelled only when this ORB component unmounts.
   useEffect(() => {
@@ -1859,16 +1920,11 @@ export const AutonomousOrb: React.FC<Props> = ({
             className="ow-v2-local-bloom"
             initial={{ scale: 0.1, opacity: 0 }}
             animate={{
-              scale:
-                pulse.kind === "intro"
-                  ? [0.1, 1.2, 3.2]
-                  : pulse.kind === "flare"
-                  ? [0.12, 2.05]
-                  : [0.12, 1.12],
+              scale: pulse.kind === "flare" ? [0.12, 2.05] : [0.12, 1.12],
               opacity: [0, 0.88, 0],
             }}
             transition={{
-              duration: pulse.kind === "intro" ? 2 : visual.duration,
+              duration: visual.duration,
               ease: "easeOut",
             }}
           />
@@ -1888,31 +1944,18 @@ export const AutonomousOrb: React.FC<Props> = ({
               }}
               transition={{
                 duration: visual.duration,
-                delay:
-                  index *
-                  (pulse.kind === "intro" ? 0.18 : 0.13),
+                delay: index * 0.13,
                 ease: [0.22, 0.61, 0.36, 1],
               }}
             />
           ))}
 
-          {pulse.kind === "intro" && (
-            <motion.div
-              className="ow-v2-local-flash"
-              initial={{ scale: 0.2, opacity: 0 }}
-              animate={{
-                scale: [0.2, 1.6, 0.4],
-                opacity: [0, 0.9, 0],
-              }}
-              transition={{ duration: 0.9, ease: "easeOut" }}
-            />
-          )}
+   
         </div>
       )}
 
       <motion.div animate={presence} style={{ transformOrigin: "center" }}>
-        <motion.div animate={surge} style={{ transformOrigin: "center" }}>
-          <motion.div animate={glow}>
+        <motion.div animate={glow}>
             <div className="ow-v2-deploy-effect" aria-hidden="true">
               <span />
               <span />
@@ -1933,7 +1976,6 @@ export const AutonomousOrb: React.FC<Props> = ({
             >
               {speakerBoost ? <Volume2 size={17} /> : <VolumeX size={17} />}
             </button>
-          </motion.div>
         </motion.div>
       </motion.div>
       {statusVisible && (

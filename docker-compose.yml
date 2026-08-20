@@ -70,6 +70,8 @@ services:
       - SQUARE_ACCESS_TOKEN=${SQUARE_ACCESS_TOKEN:-}
       - SQUARE_VERSION=${SQUARE_VERSION:-2026-07-15}
       - SQUARE_REDIRECT_URL=${SQUARE_REDIRECT_URL:-}
+      # >>> PLACE IT HERE WITH YOUR OTHER SECRETS/ENV VARS <<<
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/vault_system/secrets/ga4-key.json
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
