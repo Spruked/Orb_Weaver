@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orb_weaver.website_orb.ontology.v1",
+  "title": "Website ORB Ontology v1",
+  "type": "object",
+  "required": ["schema", "site_id", "domain", "generated_at", "compiler_version", "nodes", "edges"],
+  "properties": {
+    "schema": {"const": "orb_weaver.website_orb.ontology.v1"},
+    "site_id": {"type": "string", "minLength": 1},
+    "domain": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "compiler_version": {"type": "string", "minLength": 1},
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["node_id", "node_type", "label", "source_url", "source_evidence_ids", "verified", "confidence", "content_hash"],
+        "properties": {
+          "node_id": {"type": "string", "minLength": 1},
+          "node_type": {"type": "string", "minLength": 1},
+          "label": {"type": "string", "minLength": 1},
+          "aliases": {"type": "array", "items": {"type": "string"}},
+          "route": {"type": ["string", "null"]},
+          "source_url": {"type": "string", "format": "uri"},
+          "source_evidence_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "pointer_target_id": {"type": ["string", "null"]},
+          "verified": {"type": "boolean"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "content_hash": {"type": "string", "minLength": 1},
+          "attributes": {"type": "object"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["edge_id", "from_node", "relation", "to_node", "source_evidence_ids", "verified", "confidence"],
+        "properties": {
+          "edge_id": {"type": "string", "minLength": 1},
+          "from_node": {"type": "string", "minLength": 1},
+          "relation": {"type": "string", "minLength": 1},
+          "to_node": {"type": "string", "minLength": 1},
+          "source_evidence_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "verified": {"type": "boolean"},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
