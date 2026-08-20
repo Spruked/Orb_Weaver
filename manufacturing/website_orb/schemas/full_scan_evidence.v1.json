@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orb_weaver.full_scan_evidence.v1",
+  "title": "Orb Weaver Full Scan Evidence v1",
+  "type": "object",
+  "required": ["schema", "site_id", "domain", "scan_id", "captured_at", "scanner_version", "pages", "evidence"],
+  "properties": {
+    "schema": {"const": "orb_weaver.full_scan_evidence.v1"},
+    "site_id": {"type": "string", "minLength": 1},
+    "domain": {"type": "string", "minLength": 1},
+    "scan_id": {"type": "string", "minLength": 1},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "scanner_version": {"type": "string", "minLength": 1},
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["page_id", "url", "route", "content_hash"],
+        "properties": {
+          "page_id": {"type": "string", "minLength": 1},
+          "url": {"type": "string", "format": "uri"},
+          "route": {"type": "string"},
+          "title": {"type": ["string", "null"]},
+          "content_hash": {"type": "string", "minLength": 1},
+          "route_category": {"enum": ["public_content", "admin", "transactional", "utility", "system", "private", "unknown"]}
+        },
+        "additionalProperties": true
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["evidence_id", "evidence_type", "source_url", "route", "content_hash", "payload"],
+        "properties": {
+          "evidence_id": {"type": "string", "minLength": 1},
+          "evidence_type": {"enum": ["page_text", "structured_data", "product", "service", "plan", "fee", "faq", "policy", "navigation_target", "form", "contact", "business_fact", "other"]},
+          "source_url": {"type": "string", "format": "uri"},
+          "route": {"type": "string"},
+          "selector": {"type": ["string", "null"]},
+          "pointer_target_id": {"type": ["string", "null"]},
+          "captured_at": {"type": ["string", "null"], "format": "date-time"},
+          "content_hash": {"type": "string", "minLength": 1},
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "verified": {"type": "boolean", "default": false},
+          "payload": {"type": "object"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}

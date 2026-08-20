@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orb_weaver.website_orb.verification_manifest.v1",
+  "title": "Website ORB Verification Manifest v1",
+  "type": "object",
+  "required": ["schema", "site_id", "domain", "build_id", "generated_at", "artifacts", "shipping_gate"],
+  "properties": {
+    "schema": {"const": "orb_weaver.website_orb.verification_manifest.v1"},
+    "site_id": {"type": "string", "minLength": 1},
+    "domain": {"type": "string", "minLength": 1},
+    "build_id": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "owner": {"type": ["string", "null"]},
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["artifact", "content_hash", "status"],
+        "properties": {
+          "artifact": {"type": "string", "minLength": 1},
+          "content_hash": {"type": "string", "minLength": 1},
+          "status": {"enum": ["pending", "approved", "rejected"]},
+          "approved_at": {"type": ["string", "null"], "format": "date-time"},
+          "notes": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "shipping_gate": {
+      "type": "object",
+      "required": ["all_required_artifacts_approved", "package_allowed"],
+      "properties": {
+        "all_required_artifacts_approved": {"type": "boolean"},
+        "package_allowed": {"type": "boolean"},
+        "blocked_reasons": {"type": "array", "items": {"type": "string"}}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
