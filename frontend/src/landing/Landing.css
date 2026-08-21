@@ -658,8 +658,8 @@
 .ow-v2-morb-pointer {
   position: fixed;
   z-index: 2147483001;
-  width: 65px;
-  height: 65px;
+  width: 50px;
+  height: 50px;
   border-radius: 50%;
   pointer-events: none;
   background:
@@ -1185,9 +1185,9 @@
 }
 
 @keyframes ow-v2-morb-ping {
-  0% { filter: brightness(1); box-shadow: 0 0 18px var(--ow-morb-shadow, rgba(91, 200, 230, .68)), 0 0 34px var(--ow-morb-glow, rgba(91, 200, 230, .32)); }
-  42% { filter: brightness(1.46); box-shadow: 0 0 30px var(--ow-morb-shadow, rgba(91, 200, 230, .82)), 0 0 74px var(--ow-morb-glow, rgba(91, 200, 230, .5)); }
-  100% { filter: brightness(1); box-shadow: 0 0 22px var(--ow-morb-shadow, rgba(91, 200, 230, .68)), 0 0 48px var(--ow-morb-glow, rgba(91, 200, 230, .32)); }
+  0% { filter: brightness(1); box-shadow: 0 0 8px var(--ow-morb-shadow, rgba(91, 200, 230, .68)), 0 0 14px var(--ow-morb-glow, rgba(91, 200, 230, .32)); }
+  42% { filter: brightness(1.34); box-shadow: 0 0 12px var(--ow-morb-shadow, rgba(91, 200, 230, .82)), 0 0 24px var(--ow-morb-glow, rgba(91, 200, 230, .44)); }
+  100% { filter: brightness(1); box-shadow: 0 0 9px var(--ow-morb-shadow, rgba(91, 200, 230, .68)), 0 0 16px var(--ow-morb-glow, rgba(91, 200, 230, .32)); }
 }
 
 @keyframes ow-v2-morb-arrival {
