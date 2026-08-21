@@ -1,0 +1,53 @@
+name: One-shot catalog and report repair
+
+on:
+  push:
+    branches:
+      - orb/catalog-audit-reporting-20260820
+    paths:
+      - '.github/workflows/one-shot-catalog-report-repair.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repair branch
+        uses: actions/checkout@v4
+        with:
+          ref: orb/catalog-audit-reporting-20260820
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply guarded source repair
+        run: python scripts/apply_catalog_report_repairs.py
+
+      - name: Syntax-check changed backend
+        run: |
+          python -m py_compile \
+            backend/main.py \
+            backend/app/catalog/compiler.py \
+            backend/app/reporting/audit_reporting.py \
+            scripts/verify_local_llm_runtime.py \
+            scripts/apply_catalog_report_repairs.py
+
+      - name: Run commercial catalog unit tests
+        run: |
+          python -m pip install --quiet pytest
+          PYTHONPATH=backend python -m pytest -q backend/tests/test_commercial_catalog.py
+
+      - name: Commit guarded integration
+        run: |
+          rm .github/workflows/one-shot-catalog-report-repair.yml
+          git config user.name "orb-weaver-repair"
+          git config user.email "actions@users.noreply.github.com"
+          git add backend/main.py frontend/src/landing/LandingPage.tsx .github/workflows/one-shot-catalog-report-repair.yml
+          git diff --cached --check
+          git commit -m "Wire commercial catalog through crawl audit and PDF"
+          git push origin HEAD:orb/catalog-audit-reporting-20260820
