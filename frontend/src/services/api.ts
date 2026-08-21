@@ -1066,6 +1066,12 @@ export interface WebsiteOrbVoiceResponse {
   control_action?: { type: 'orb_motion'; command: string } | null;
 }
 
+export interface WebsiteOrbTtsVoices {
+  provider: string;
+  current_voice: string;
+  voices: string[];
+}
+
 export interface WebsiteOrbManufacturingStatus {
   schema: 'orb_weaver.website_orb_manufacturing_status.v1';
   project_id: string;
@@ -1357,6 +1363,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ text }),
       signal
+    }),
+  getWebsiteOrbTtsVoices: () =>
+    request<WebsiteOrbTtsVoices>('/api/orb/tts/voices'),
+  setWebsiteOrbTtsVoice: (voice: string) =>
+    request<WebsiteOrbTtsVoices>('/api/orb/tts/voice', {
+      method: 'POST',
+      body: JSON.stringify({ voice })
     }),
   websiteOrbPointerMap: (domain?: string, signal?: AbortSignal) => {
     const query = domain ? `?domain=${encodeURIComponent(domain)}` : '';

@@ -54,7 +54,7 @@ export class OrbRuntimeClient {
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
         transcript,
-        synthesize_tts: true,
+        synthesize_tts: false,
         target_url: window.location.href,
         site_id: this.config.siteId,
       }),

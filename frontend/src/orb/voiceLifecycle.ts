@@ -76,3 +76,15 @@ export const shouldRearmVoice = (state: {
   !state.firstEncounterRunning &&
   state.voiceReady
 );
+
+export const shouldRunMountedStartupVoiceSequence = (state: {
+  startupAutoStarted: boolean;
+  onboardingSafeMode: boolean;
+  onLanding: boolean;
+  greetingAlreadyPlayed: boolean;
+  voiceReady: boolean;
+}): boolean => (
+  !state.startupAutoStarted &&
+  !state.onboardingSafeMode &&
+  state.onLanding
+);

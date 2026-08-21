@@ -88,6 +88,35 @@ def test_orphaned_crawl_is_reconciled_and_history_uses_lightweight_rows(tmp_path
     assert workspace.json()["latest_crawl"]["id"] == row["id"]
 
 
+def test_combined_dashboard_uses_latest_completed_crawl_for_summary(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    token = signup(client, "combined-dashboard@example.com")
+    project_response = client.post(
+        "/api/projects",
+        headers=auth(token),
+        json={"name": "Dashboard", "domain": "dashboard.example.test"},
+    )
+    assert project_response.status_code == 200, project_response.text
+    project_id = int(project_response.json()["id"])
+
+    with main.SessionLocal() as db:
+        crawl = main.CrawlJob(
+            project_id=project_id,
+            status="completed",
+            pages_crawled=3,
+            pages_found=5,
+            config={"stats": {"pages_crawled": 3, "custom_dashboard_marker": 1}},
+        )
+        db.add(crawl)
+        db.commit()
+
+    response = client.get(f"/api/combined/{project_id}/dashboard", headers=auth(token))
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["latest_crawl"]["status"] == "completed"
+    assert payload["crawl_summary"]["custom_dashboard_marker"] == 1
+
+
 def test_lifecycle_jobs_and_review_decisions_are_owner_scoped(tmp_path, monkeypatch):
     main, client = load_app(tmp_path, monkeypatch)
     owner_token = signup(client, "lifecycle-owner@example.com")

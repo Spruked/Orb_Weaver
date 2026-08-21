@@ -26,6 +26,7 @@ import {
   DockOllamaStatus,
   DockSituationalGuideRail,
   OrbDockStation,
+  WebsiteOrbTtsVoices,
 } from '../services/api';
 import OrbAssemblyStatus from '../components/OrbAssemblyStatus';
 
@@ -165,6 +166,7 @@ const OrbDockStationPage: React.FC = () => {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [ollama, setOllama] = useState<DockOllamaStatus | null>(null);
+  const [ttsVoices, setTtsVoices] = useState<WebsiteOrbTtsVoices | null>(null);
   const [pullModel, setPullModel] = useState('');
 
   const load = async () => {
@@ -189,6 +191,25 @@ const OrbDockStationPage: React.FC = () => {
     if (tab !== 'models' || !projectId || ollama) return;
     void api.getOrbDockOllama(projectId).then(setOllama).catch((err) => setError(err instanceof Error ? err.message : 'Unable to inspect Ollama'));
   }, [tab, projectId, ollama]);
+
+  useEffect(() => {
+    if (tab !== 'behavior' || ttsVoices) return;
+    void api.getWebsiteOrbTtsVoices().then(setTtsVoices).catch((err) => setError(err instanceof Error ? err.message : 'Unable to load Kokoro voices'));
+  }, [tab, ttsVoices]);
+
+  const changeTtsVoice = async (voice: string) => {
+    setWorking('tts-voice');
+    setError('');
+    try {
+      const response = await api.setWebsiteOrbTtsVoice(voice);
+      setTtsVoices(response);
+      setNotice(`Kokoro voice changed to ${response.current_voice}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to change Kokoro voice');
+    } finally {
+      setWorking('');
+    }
+  };
 
   const updateDraft = (updater: (current: DockConfiguration) => DockConfiguration) => {
     setDraft((current) => current ? updater(current) : current);
@@ -407,6 +428,19 @@ const OrbDockStationPage: React.FC = () => {
                     <option value="guided">Guided</option>
                     <option value="diagnostic">Diagnostic</option>
                     <option value="sales_assistant">Sales assistant</option>
+                  </select>
+                </label>
+                <label className={labelClass}>Kokoro voice
+                  <select
+                    className={inputClass}
+                    value={ttsVoices?.current_voice || ''}
+                    disabled={!ttsVoices || working === 'tts-voice'}
+                    onChange={(event) => void changeTtsVoice(event.target.value)}
+                  >
+                    {!ttsVoices && <option value="">Loading voices...</option>}
+                    {ttsVoices?.voices.map((voice) => (
+                      <option key={voice} value={voice}>{voice}</option>
+                    ))}
                   </select>
                 </label>
               </div>

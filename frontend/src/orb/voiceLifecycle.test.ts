@@ -2,6 +2,7 @@ import {
   createPlaybackSettlement,
   runBackendRecovery,
   shouldRearmVoice,
+  shouldRunMountedStartupVoiceSequence,
 } from './voiceLifecycle';
 
 declare const describe: (name: string, suite: () => void) => void;
@@ -83,5 +84,25 @@ describe('Website ORB voice lifecycle', () => {
     expect(shouldRearmVoice({ ...ready, requestInFlight: true })).toBe(false);
     expect(shouldRearmVoice({ ...ready, recording: true })).toBe(false);
     expect(shouldRearmVoice(ready)).toBe(true);
+  });
+
+  test('mounted startup runs on a true first-encounter landing', () => {
+    expect(shouldRunMountedStartupVoiceSequence({
+      startupAutoStarted: false,
+      onboardingSafeMode: false,
+      onLanding: true,
+      greetingAlreadyPlayed: false,
+      voiceReady: false,
+    })).toBe(true);
+  });
+
+  test('mounted startup avoids surprise mic prompts away from landing even after voice was established', () => {
+    expect(shouldRunMountedStartupVoiceSequence({
+      startupAutoStarted: false,
+      onboardingSafeMode: false,
+      onLanding: false,
+      greetingAlreadyPlayed: true,
+      voiceReady: true,
+    })).toBe(false);
   });
 });

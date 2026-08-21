@@ -192,6 +192,13 @@ ORB_TTS_INFLIGHT_LOCK = asyncio.Lock()
 ORB_TTS_INFLIGHT: Dict[str, asyncio.Task] = {}
 ORB_TTS_PROVIDER_LOCKS: Dict[str, asyncio.Lock] = {}
 logger = logging.getLogger("orb_weaver")
+
+KOKORO_VOICE_OPTIONS = [
+    "af_heart", "af_bella", "af_nicole", "af_sarah", "af_sky",
+    "am_adam", "am_echo", "am_eric", "am_fenrir", "am_liam", "am_michael", "am_onyx", "am_puck",
+    "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
+    "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
+]
 ORB_TOOL_AVAILABILITY_STATES = frozenset({
     "installed",
     "registered",
@@ -437,6 +444,10 @@ class WebsiteOrbTtsRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=1200)
 
 
+class WebsiteOrbTtsVoiceRequest(BaseModel):
+    voice: str = Field(..., min_length=2, max_length=80)
+
+
 class WebsiteOrbTtsResponse(BaseModel):
     text: str
     tts_audio_url: Optional[str] = None
@@ -481,6 +492,7 @@ class WebsiteOrbPageCapsuleResponse(BaseModel):
     secondary_pointer_targets: List[Dict[str, Any]] = Field(default_factory=list)
     relevant_navigation: Dict[str, str] = Field(default_factory=dict)
     relevant_guiderails: List[str] = Field(default_factory=list)
+    fresh_crawl_provenance: Optional[Dict[str, Any]] = None
 
 
 class WebsiteOrbPageContext(BaseModel):
@@ -3974,6 +3986,45 @@ def _load_domain_website_context(target_url: Optional[str]) -> Optional[Dict[str
     return None
 
 
+def _latest_completed_crawl_pack_for_domain(domain: str, db: Session) -> Optional[Dict[str, Any]]:
+    project = db.query(Project).filter(Project.domain == domain).first()
+    if not project:
+        return None
+    crawl = (
+        db.query(CrawlJob)
+        .filter(CrawlJob.project_id == project.id, CrawlJob.status == "completed")
+        .order_by(CrawlJob.id.desc())
+        .first()
+    )
+    if not crawl:
+        return None
+    pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl.id).all()
+    if not pages:
+        return None
+    return _client_crawl_pack(project, crawl, pages, db)
+
+
+def _fresh_runtime_website_context(target_url: Optional[str], db: Session) -> Optional[Dict[str, Any]]:
+    base_context = _load_domain_website_context(target_url) or {}
+    domain = _domain_from_url(target_url)
+    if not domain:
+        return base_context or None
+    crawl_pack = _latest_completed_crawl_pack_for_domain(domain, db)
+    if not crawl_pack:
+        return base_context or None
+    crawl_context = crawl_pack.get("website_orb_context") or {}
+    fresh_context = {**base_context, **crawl_context}
+    fresh_context["domain"] = domain
+    fresh_context["fresh_crawl_injected"] = True
+    fresh_context["fresh_crawl_provenance"] = {
+        "project_id": str((crawl_pack.get("client") or {}).get("project_id") or ""),
+        "crawl_job_id": str(((crawl_pack.get("site_profile") or {}).get("latest_crawl_id")) or ""),
+        "page_count": int((crawl_pack.get("site_profile") or {}).get("page_count") or 0),
+        "source": "latest_completed_db_crawl",
+    }
+    return fresh_context
+
+
 def _record_site_learning_interaction(
     *,
     transcript: str,
@@ -4389,8 +4440,8 @@ def _queue_pointer_lock(pointer_matches: List[Dict[str, Any]], transcript: str) 
     )
 
 
-def _build_page_capsule(target_url: str) -> Dict[str, Any]:
-    website_context = _load_domain_website_context(target_url) or {}
+def _build_page_capsule(target_url: str, website_context_override: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    website_context = website_context_override or _load_domain_website_context(target_url) or {}
     domain = website_context.get("domain") or _domain_from_url(target_url)
     route = _route_from_url(target_url)
     records = _load_pointer_records_for_domain(str(domain))
@@ -4445,6 +4496,7 @@ def _build_page_capsule(target_url: str) -> Dict[str, Any]:
         "secondary_pointer_targets": [_pointer_summary(record, value_score(record)) for record in ranked[5:15]],
         "relevant_navigation": route_hints,
         "relevant_guiderails": (website_context.get("answer_boundaries") or [])[:8],
+        "fresh_crawl_provenance": website_context.get("fresh_crawl_provenance"),
     }
 
 
@@ -4507,8 +4559,31 @@ def _runtime_pointer_map(domain: str, db: Session) -> Dict[str, Any]:
             except (OSError, json.JSONDecodeError):
                 raise HTTPException(status_code=500, detail="Pointer map is unreadable")
 
+    project = db.query(Project).filter(Project.domain == domain).first()
+    latest_completed = None
+    if project:
+        latest_completed = (
+            db.query(CrawlJob)
+            .filter(CrawlJob.project_id == project.id, CrawlJob.status == "completed")
+            .order_by(CrawlJob.id.desc())
+            .first()
+        )
+    if latest_completed and str(pointer_map.get("source_crawl_job_id") or "") != str(latest_completed.id):
+        latest_pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == latest_completed.id).all()
+        if latest_pages:
+            latest_pointer_map = pointer_plot_map_from_pages(latest_pages)
+            if int(latest_pointer_map.get("record_count") or 0) > 0:
+                latest_pointer_map.update({
+                    "project_id": str(project.id) if project else None,
+                    "domain": domain,
+                    "source_crawl_job_id": str(latest_completed.id),
+                    "runtime_data_source": "latest_completed_db_crawl",
+                    "fresh_crawl_injected": True,
+                })
+                latest_pointer_map["quality"] = assess_pointer_quality(latest_pointer_map)
+                pointer_map = latest_pointer_map
+
     if int(pointer_map.get("record_count") or 0) == 0:
-        project = db.query(Project).filter(Project.domain == domain).first()
         if project:
             completed_crawls = (
                 db.query(CrawlJob)
@@ -4540,17 +4615,10 @@ def _runtime_pointer_map(domain: str, db: Session) -> Dict[str, Any]:
                 recovered["source_crawl_job_id"] = str(crawl.id)
                 pointer_map = recovered
                 break
-    project = db.query(Project).filter(Project.domain == domain).first()
     if project:
         pointer_map.setdefault("project_id", str(project.id))
         pointer_map.setdefault("domain", project.domain)
         if not pointer_map.get("source_crawl_job_id"):
-            latest_completed = (
-                db.query(CrawlJob)
-                .filter(CrawlJob.project_id == project.id, CrawlJob.status == "completed")
-                .order_by(CrawlJob.id.desc())
-                .first()
-            )
             if latest_completed:
                 pointer_map["source_crawl_job_id"] = str(latest_completed.id)
     normalized_records = []
@@ -7382,16 +7450,33 @@ async def website_orb_voice(
     started = time.perf_counter()
     transcript = await _transcribe_with_faster_whisper(audio)
     mark("transcription", started)
+    if not transcript.strip():
+        timings["total"] = round((time.perf_counter() - route_started) * 1000, 1)
+        logger.warning("ORB voice ignored empty transcript %s", json.dumps({
+            "request_id": request_id,
+            "target_url": target_url,
+            "timings_ms": timings,
+        }, sort_keys=True))
+        return {
+            "transcript": "",
+            "spoken_output": "I did not hear speech. Tap the ORB when you are ready.",
+            "cognitive_pulse": {"cognitive_mode": "NO_SPEECH_DETECTED"},
+            "llm_source": "no-speech",
+            "answer_state": "no_speech",
+            "tts_audio_url": None,
+            "tts_provider": None,
+            "tts_error": None,
+        }
 
     started = time.perf_counter()
     memory_context = _orb_memory_summary(customer, db)
     context_target_url = _orb_context_target_url(target_url, site_id, origin)
-    website_context = _load_domain_website_context(context_target_url)
+    website_context = _fresh_runtime_website_context(context_target_url, db)
     operating_policy = _published_dock_policy_for_target(context_target_url or target_url, db)
     if website_context is not None:
         website_context["current_url"] = target_url
         website_context["current_domain"] = _domain_from_url(target_url)
-    page_capsule = _build_page_capsule(context_target_url) if context_target_url else None
+    page_capsule = _build_page_capsule(context_target_url, website_context) if context_target_url else None
     if page_capsule is not None and target_url:
         page_capsule["current_url"] = target_url
         page_capsule["route"] = _route_from_url(target_url)
@@ -7688,9 +7773,9 @@ async def website_orb_text(
     project = _owned_project(payload.project_id, customer, db) if customer and payload.project_id else None
     target_url = payload.target_url or (_project_target_url(project) if project else None)
     context_target_url = _orb_context_target_url(target_url, payload.site_id, origin)
-    website_context = _load_domain_website_context(context_target_url)
+    website_context = _fresh_runtime_website_context(context_target_url, db)
     operating_policy = _published_dock_policy_for_target(context_target_url or target_url, db)
-    page_capsule = _build_page_capsule(context_target_url or "") if context_target_url else None
+    page_capsule = _build_page_capsule(context_target_url or "", website_context) if context_target_url else None
     if website_context is not None:
         website_context["current_url"] = target_url
         website_context["current_domain"] = _domain_from_url(target_url)
@@ -8004,8 +8089,8 @@ async def website_orb_bootstrap(
     context_target_url = _orb_context_target_url(target_url, site_id, origin)
     context_domain = _domain_from_url(context_target_url)
     pointer_map = _runtime_pointer_map(context_domain, db)
-    website_context = _load_domain_website_context(context_target_url) or {}
-    page_capsule = _build_page_capsule(context_target_url or target_url)
+    website_context = _fresh_runtime_website_context(context_target_url, db) or {}
+    page_capsule = _build_page_capsule(context_target_url or target_url, website_context)
     page_capsule["current_url"] = target_url
     page_capsule["route"] = _route_from_url(target_url)
     page_capsule["context_domain"] = page_capsule.get("domain")
@@ -8028,6 +8113,8 @@ async def website_orb_bootstrap(
             "knowledge_graph",
             "competitor_gap",
             "template_detection",
+            "fresh_crawl_injected",
+            "fresh_crawl_provenance",
         )
         if website_context.get(key) is not None
     }
@@ -8199,8 +8286,9 @@ async def website_orb_pointer_map(
 @app.get("/api/orb/page-capsule", response_model=WebsiteOrbPageCapsuleResponse)
 async def website_orb_page_capsule(
     target_url: str = Query(..., min_length=1, max_length=500),
+    db: Session = Depends(get_db),
 ):
-    return _build_page_capsule(target_url)
+    return _build_page_capsule(target_url, _fresh_runtime_website_context(target_url, db))
 
 
 @app.get("/api/orb/tools/catalog")
@@ -8222,6 +8310,35 @@ async def website_orb_tts(payload: WebsiteOrbTtsRequest):
     text = payload.text.strip()
     tts_result = await _synthesize_orb_tts(text)
     return {"text": text, **tts_result}
+
+
+@app.get("/api/orb/tts/voices")
+async def website_orb_tts_voices():
+    return {
+        "provider": "kokoro",
+        "current_voice": settings.ORB_TTS_KOKORO_VOICE,
+        "voices": KOKORO_VOICE_OPTIONS,
+    }
+
+
+@app.post("/api/orb/tts/voice")
+async def website_orb_set_tts_voice(payload: WebsiteOrbTtsVoiceRequest):
+    voice = payload.voice.strip()
+    if voice not in KOKORO_VOICE_OPTIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported Kokoro voice: {voice}")
+    settings.ORB_TTS_KOKORO_VOICE = voice
+    ORB_TTS_WARM_STATUS.update({
+        "ready": False,
+        "checked_at": datetime.utcnow().isoformat(),
+        "provider": "kokoro",
+        "voice": voice,
+        "message": "Kokoro voice changed; next synthesis will warm this voice.",
+    })
+    return {
+        "provider": "kokoro",
+        "current_voice": settings.ORB_TTS_KOKORO_VOICE,
+        "voices": KOKORO_VOICE_OPTIONS,
+    }
 
 
 @app.post("/api/orb/debug-pointer-lock")
@@ -10895,7 +11012,7 @@ async def get_combined_dashboard(project_id: str, db: Session = Depends(get_db),
             ga4_data = None
 
     latest_crawl_payload = _serialize_crawl_job(latest_crawl, db) if latest_crawl else None
-    crawl_summary = _serialize_crawl_job(latest_completed_crawl, db).get("stats") if latest_completed_crawl else None
+    crawl_summary = latest_crawl_payload.get("stats") if latest_crawl_payload else None
     audit_payload = latest_audit.report_data if latest_audit and latest_audit.report_data else None
 
     return {

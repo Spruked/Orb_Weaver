@@ -153,3 +153,7 @@ builds/
 IRS 
 EIN
 /EIN Number.pdf
+
+# Local Vault secrets and runtime CRM ingress
+/vault_system/secrets/
+/vault_system/integrations/cali_crm/imports/pending/*.json

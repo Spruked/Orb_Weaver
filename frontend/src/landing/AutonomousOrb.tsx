@@ -23,6 +23,7 @@ import {
   type PlaybackSettlement,
   runBackendRecovery,
   shouldRearmVoice,
+  shouldRunMountedStartupVoiceSequence,
 } from "../orb/voiceLifecycle";
 
 const wait = (ms: number) =>
@@ -32,8 +33,8 @@ const VOICE_UNAVAILABLE_MESSAGE = "Voice unavailable";
 const POINTER_PING_AUDIO_PATH = "/orb/voice/pointer-ping.mp3";
 const MORB_TRAVEL_AUDIO_PATH = "/orb/voice/travel-morb.mp3";
 const MIN_RECORDING_MS = 700;
-const END_SILENCE_MS = 850;
-const ABSOLUTE_RECORDING_LIMIT_MS = 14000;
+const END_SILENCE_MS = 2200;
+const ABSOLUTE_RECORDING_LIMIT_MS = 22000;
 const SPEECH_LEVEL_THRESHOLD = 0.018;
 const LIDAR_DRIFT_THRESHOLD_PX = 12;
 
@@ -282,6 +283,11 @@ export const AutonomousOrb: React.FC<Props> = ({
   const recordingStartedAtRef = useRef(0);
   const speechDetectedRef = useRef(false);
   const silenceStartedAtRef = useRef<number | null>(null);
+  const speechRecognitionRef = useRef<any>(null);
+  const speechRecognitionTranscriptRef = useRef("");
+  const speechRecognitionDisabledRef = useRef(false);
+  const speechRecognitionStopTimerRef = useRef<number | null>(null);
+  const speechRecognitionAbsoluteTimerRef = useRef<number | null>(null);
   const speakerBoostRef = useRef(false);
   const startupAutoStartedRef = useRef(false);
   const startupVoicePreparationRef = useRef<StartupVoicePreparation | null>(null);
@@ -1390,6 +1396,87 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
   }, [activeOrbContext?.project_id, contextTargetUrl, executeOrbControlAction, firstEncounterComplete, freezeOrbInPlace, guideFromRuntimeResult, logVoice, markFirstEncounter, markVisitorActivity, showStatus, speakRecovery, speakWithGeneratedAudio]);
 
+  const processRecognizedOrbText = useCallback(async (transcript: string) => {
+    markVisitorActivity();
+    const cleanTranscript = transcript.replace(/\s+/g, " ").trim();
+    if (!cleanTranscript || voiceRequestInFlightRef.current) return;
+    const turnId = voiceTurnIdRef.current;
+    const controller = new AbortController();
+    activeVoiceAbortControllerRef.current = controller;
+    voiceRequestInFlightRef.current = true;
+
+    setStatusTitle("Thinking");
+    setStatusLine(cleanTranscript);
+    setVoiceState("speaking");
+    showStatus();
+    freezeOrbInPlace(4200);
+    try {
+      logVoice("browser-speech-recognition", turnId);
+      const targetUrl = contextTargetUrl();
+      const visitorTurn = firstEncounterVisitorTurnRef.current + 1;
+      firstEncounterVisitorTurnRef.current = visitorTurn;
+      const inFirstEncounter = isPublicLandingExperience() && !firstEncounterComplete();
+      const experience: WebsiteOrbExperienceContext | null = inFirstEncounter
+        ? visitorTurn === 1
+          ? {
+              phase: "make_it_personal",
+              objective: "Respond to the visitor's actual first request, show that it was understood in context, and guide to a verified relevant target when one exists.",
+              visitor_turn: visitorTurn,
+              verification_state: "pending",
+              demonstrated_capabilities: ["browser speech recognition", "Site World reasoning", "Kokoro neural voice"],
+            }
+          : {
+              phase: "relevant_continuation",
+              objective: "Continue from the visitor's words and prior demonstrated capability with a relevant next step, preserving their progress and transitioning into normal consultation.",
+              visitor_turn: visitorTurn,
+              verification_state: "pending",
+              demonstrated_capabilities: ["voice turn-taking", "contextual reasoning", "verified visual guidance"],
+            }
+        : null;
+      const result = await api.websiteOrbText(cleanTranscript, true, controller.signal, {
+        project_id: activeOrbContext?.project_id,
+        target_url: targetUrl,
+        experience,
+      });
+      const spokenOutput = result.spoken_output;
+      setStatusTitle("Voice response");
+      setStatusLine(spokenOutput);
+      emitOrbRuntimeEvent("canonical_response", {
+        turnId,
+        transcript: result.transcript,
+        sourceLane: result.source_lane || result.llm_source,
+        ttsProvider: result.tts_provider || null,
+        controlCommand: result.control_action?.command || null,
+      });
+      await speakWithGeneratedAudio(spokenOutput, result.tts_audio_url, result.tts_provider);
+      if (controller.signal.aborted) return;
+      const controlHandled = await executeOrbControlAction(result.control_action);
+      const guided = controlHandled ? false : await guideFromRuntimeResult(result);
+      if (guided) markFirstEncounter("responsive_guidance_complete");
+      if (experience?.phase === "make_it_personal") {
+        markFirstEncounter("visitor_first_turn_complete");
+        markFirstEncounter("personal_relevance_complete");
+      } else if (experience?.phase === "relevant_continuation") {
+        markFirstEncounter("relevant_continuation_complete");
+        if (guided || firstEncounterStateRef.current.responsive_guidance_complete) {
+          markFirstEncounter("controller_handoff_complete");
+        }
+      }
+    } catch (error) {
+      if ((error as Error)?.name === "AbortError") return;
+      setStatusTitle("ORB route unavailable");
+      await speakRecovery("I am reconnecting to my response service. Please try again in a moment.", controller.signal);
+    } finally {
+      if (activeVoiceAbortControllerRef.current === controller) {
+        activeVoiceAbortControllerRef.current = null;
+        voiceRequestInFlightRef.current = false;
+        setVoiceState("idle");
+        setVoiceRearmSequence((value) => value + 1);
+      }
+      logVoice("finalized", turnId);
+    }
+  }, [activeOrbContext?.project_id, contextTargetUrl, executeOrbControlAction, firstEncounterComplete, freezeOrbInPlace, guideFromRuntimeResult, logVoice, markFirstEncounter, markVisitorActivity, showStatus, speakRecovery, speakWithGeneratedAudio]);
+
   const stopOrbRecording = useCallback((cancel = false) => {
     if (recordingStopTimerRef.current) {
       window.clearTimeout(recordingStopTimerRef.current);
@@ -1477,9 +1564,122 @@ export const AutonomousOrb: React.FC<Props> = ({
     }, 120);
   }, [stopOrbRecording, stopRecordingMonitor]);
 
+  const stopBrowserSpeechRecognition = useCallback((cancel = false) => {
+    if (speechRecognitionStopTimerRef.current) {
+      window.clearTimeout(speechRecognitionStopTimerRef.current);
+      speechRecognitionStopTimerRef.current = null;
+    }
+    if (speechRecognitionAbsoluteTimerRef.current) {
+      window.clearTimeout(speechRecognitionAbsoluteTimerRef.current);
+      speechRecognitionAbsoluteTimerRef.current = null;
+    }
+    const recognition = speechRecognitionRef.current;
+    if (!recognition) return;
+    recognition.__orbCancelled = cancel;
+    try {
+      recognition.stop();
+    } catch {
+      speechRecognitionRef.current = null;
+    }
+  }, []);
+
+  const startBrowserSpeechRecognition = useCallback(() => {
+    if (speechRecognitionDisabledRef.current) return false;
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionCtor) return false;
+    if (speechRecognitionRef.current) {
+      stopBrowserSpeechRecognition(true);
+      return true;
+    }
+
+    const turnId = voiceTurnIdRef.current + 1;
+    voiceTurnIdRef.current = turnId;
+    const recognition = new SpeechRecognitionCtor();
+    speechRecognitionRef.current = recognition;
+    speechRecognitionTranscriptRef.current = "";
+    recognition.lang = "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    const armPauseTimer = () => {
+      if (speechRecognitionStopTimerRef.current) window.clearTimeout(speechRecognitionStopTimerRef.current);
+      speechRecognitionStopTimerRef.current = window.setTimeout(() => stopBrowserSpeechRecognition(false), END_SILENCE_MS);
+    };
+
+    recognition.onresult = (event: any) => {
+      let interim = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const text = String(result?.[0]?.transcript || "");
+        if (result.isFinal) {
+          speechRecognitionTranscriptRef.current = `${speechRecognitionTranscriptRef.current} ${text}`.trim();
+        } else {
+          interim = `${interim} ${text}`.trim();
+        }
+      }
+      const preview = `${speechRecognitionTranscriptRef.current} ${interim}`.replace(/\s+/g, " ").trim();
+      if (preview) {
+        setStatusTitle("Listening");
+        setStatusLine(preview);
+        armPauseTimer();
+      }
+    };
+    recognition.onerror = () => {
+      speechRecognitionDisabledRef.current = true;
+      speechRecognitionRef.current = null;
+      setStatusTitle("Speech recognition unavailable");
+      setStatusLine("Tap the ORB again to use microphone recording.");
+      setVoiceState("idle");
+      showStatus(1800);
+    };
+    recognition.onend = () => {
+      const cancelled = Boolean(recognition.__orbCancelled);
+      speechRecognitionRef.current = null;
+      if (speechRecognitionStopTimerRef.current) window.clearTimeout(speechRecognitionStopTimerRef.current);
+      if (speechRecognitionAbsoluteTimerRef.current) window.clearTimeout(speechRecognitionAbsoluteTimerRef.current);
+      speechRecognitionStopTimerRef.current = null;
+      speechRecognitionAbsoluteTimerRef.current = null;
+      const transcript = speechRecognitionTranscriptRef.current.replace(/\s+/g, " ").trim();
+      speechRecognitionTranscriptRef.current = "";
+      if (cancelled) {
+        setStatusTitle("Listening cancelled");
+        setStatusLine("Tap the ORB when you want to speak.");
+        setVoiceState("idle");
+        showStatus(1800);
+        return;
+      }
+      if (!transcript) {
+        handsFreeEnabledRef.current = false;
+        setStatusTitle("Still listening");
+        setStatusLine("I did not hear speech. Tap the ORB when you are ready.");
+        setVoiceState("idle");
+        showStatus(2600);
+        return;
+      }
+      handsFreeEnabledRef.current = isPublicLandingExperience();
+      void processRecognizedOrbText(transcript);
+    };
+
+    try {
+      setStatusTitle("Listening");
+      setStatusLine("Speak your full question. Pause when you are done.");
+      setVoiceState("listening");
+      showStatus();
+      recognition.start();
+      speechRecognitionAbsoluteTimerRef.current = window.setTimeout(() => stopBrowserSpeechRecognition(false), ABSOLUTE_RECORDING_LIMIT_MS);
+      return true;
+    } catch {
+      speechRecognitionRef.current = null;
+      return false;
+    }
+  }, [processRecognizedOrbText, showStatus, stopBrowserSpeechRecognition]);
+
   const startOrbRecording = useCallback(async () => {
     unlockAudio();
     if (voiceRequestInFlightRef.current || voiceState === "speaking") return;
+
+    if (startBrowserSpeechRecognition()) return;
 
     if (recorderRef.current) {
       stopOrbRecording(true);
@@ -1540,6 +1740,7 @@ export const AutonomousOrb: React.FC<Props> = ({
 
       recorder.onstop = () => {
         const cancelled = recordingCancelledRef.current;
+        const speechDetected = speechDetectedRef.current;
         recordingCancelledRef.current = false;
         const audio = new Blob(audioChunksRef.current, {
           type: recorder.mimeType || "audio/webm",
@@ -1558,6 +1759,16 @@ export const AutonomousOrb: React.FC<Props> = ({
           showStatus(1800);
           return;
         }
+        if (!speechDetected) {
+          handsFreeEnabledRef.current = false;
+          emitOrbRuntimeEvent("recording_discarded", { turnId, reason: "no_speech_detected", bytes: audio.size });
+          setStatusTitle("Still listening");
+          setStatusLine("I did not hear speech. Tap the ORB when you are ready.");
+          setVoiceState("idle");
+          showStatus(2600);
+          return;
+        }
+        handsFreeEnabledRef.current = isPublicLandingExperience();
         emitOrbRuntimeEvent("recording_stopped", { turnId, bytes: audio.size });
         void processRecordedOrbAudio(audio);
       };
@@ -1575,7 +1786,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       setVoiceState("idle");
       showStatus(3600);
     }
-  }, [freezeOrbInPlace, logVoice, monitorRecordingSilence, playPulse, processRecordedOrbAudio, showStatus, stopOrbRecording, unlockAudio, voiceState]);
+  }, [freezeOrbInPlace, logVoice, monitorRecordingSilence, playPulse, processRecordedOrbAudio, showStatus, startBrowserSpeechRecognition, stopOrbRecording, unlockAudio, voiceState]);
 
   const interruptOrbSpeech = useCallback(() => {
     activeVoiceAbortControllerRef.current?.abort();
@@ -1655,18 +1866,20 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, [requestStartupMicrophonePermission, showStatus, unlockAudio]);
 
   const runStartupVoiceSequence = useCallback(async () => {
-    if (startupAutoStartedRef.current || onboardingSafeMode) return;
-
     const onLanding = isPublicLandingExperience();
     const greetingAlreadyPlayed =
       window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1";
-    const establishedVoiceSession =
-      greetingAlreadyPlayed || firstEncounterStateRef.current.voice_ready;
 
     // A first-time visitor who lands deep in the site should not get a surprise
     // microphone prompt. Once voice has been established, page reloads resume
     // hands-free listening without replaying the landing greeting.
-    if (!onLanding && !establishedVoiceSession) return;
+    if (!shouldRunMountedStartupVoiceSequence({
+      startupAutoStarted: startupAutoStartedRef.current,
+      onboardingSafeMode,
+      onLanding,
+      greetingAlreadyPlayed,
+      voiceReady: firstEncounterStateRef.current.voice_ready,
+    })) return;
 
     startupAutoStartedRef.current = true;
     let micReady = false;
@@ -1709,12 +1922,10 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
   }, [guideToPointerRecord, markFirstEncounter, onboardingSafeMode, prepareStartupVoice, requestStartupMicrophonePermission, runFirstEncounterChoreography, setGreetingActive, speak, speakRecovery, startOrbRecording]);
 
-  // Keep the autonomous loop mounted. Voice state changes are frequent and must not replay
-  // the entrance sequence or reset Weaver's position.
-  useEffect(() => {
-    prepareStartupVoiceRef.current = prepareStartupVoice;
-    runStartupVoiceSequenceRef.current = runStartupVoiceSequence;
-  }, [prepareStartupVoice, runStartupVoiceSequence]);
+  // Keep the mounted startup path pointed at the live sequence before mount
+  // effects can call it.
+  prepareStartupVoiceRef.current = prepareStartupVoice;
+  runStartupVoiceSequenceRef.current = runStartupVoiceSequence;
 
   const handleOrbClick = useCallback(() => {
     markVisitorActivity();
@@ -1764,12 +1975,13 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   useEffect(() => {
     if (onboardingSafeMode) return;
-    if (firstEncounterStateRef.current.voice_ready) {
+    if (isPublicLandingExperience() && firstEncounterStateRef.current.voice_ready) {
       handsFreeEnabledRef.current = true;
     }
   }, [onboardingSafeMode]);
 
   useEffect(() => {
+    if (!isPublicLandingExperience()) return;
     if (!shouldRearmVoice({
       handsFree: handsFreeEnabledRef.current,
       voiceState,
@@ -1951,7 +2163,8 @@ export const AutonomousOrb: React.FC<Props> = ({
         const shouldEnterRest =
           inactiveForMs >= REST_AFTER_INACTIVITY_MS &&
           !speechPlaybackRef.current &&
-          !recorderRef.current;
+          !recorderRef.current &&
+          !speechRecognitionRef.current;
 
         if (shouldEnterRest) {
           if (!restModeRef.current) {
@@ -2058,7 +2271,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     const monitor = window.setInterval(() => {
       const shouldRest =
         Date.now() - lastActivityAtRef.current >= REST_AFTER_INACTIVITY_MS &&
-        !speechPlaybackRef.current && !recorderRef.current && !guidanceActiveRef.current &&
+        !speechPlaybackRef.current && !recorderRef.current && !speechRecognitionRef.current && !guidanceActiveRef.current &&
         !controlMotionActiveRef.current && !restModeRef.current && !restTransitionActiveRef.current;
       if (!shouldRest) return;
       restTransitionActiveRef.current = true;
@@ -2099,6 +2312,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       }
 
       stopRecordingMonitor();
+      stopBrowserSpeechRecognition(true);
       activeVoiceAbortControllerRef.current?.abort();
       activeVoiceAbortControllerRef.current = null;
       voiceRequestInFlightRef.current = false;

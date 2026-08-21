@@ -4,6 +4,8 @@ import { captureSiteSnapshot, observeSite } from './site-observer';
 import type { OrbConnectionState, OrbLoaderConfig, OrbMountHandle, OrbPointerRecord, OrbRuntimeResponse, OrbSiteSnapshot, OrbSkinSelection } from './types';
 
 const HOST_ID = 'orb-weaver-universal-root';
+const STARTUP_SESSION_KEY = 'orbweaver-loader-startup-complete';
+const STARTUP_GREETING = 'Hi, I am Weaver. I am here on this site, ready to listen and guide you to verified targets.';
 const routeOf = (value?: string) => {
   try { return new URL(value || '/', window.location.href).pathname.replace(/\/+$/, '') || '/'; }
   catch { return '/'; }
@@ -67,6 +69,7 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
   let chunks: BlobPart[] = [];
   let pointerTimer = 0;
   let travelTimer = 0;
+  let startupStarted = false;
   const element = <T extends HTMLElement>(selector: string) => shadow.querySelector<T>(selector)!;
   const skinImage = element<HTMLImageElement>('[data-skin]');
   const restoreFactory = () => {
@@ -125,6 +128,11 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
     log('Runtime status', { state, text });
   };
   const setMessage = (text: string) => { element('[data-output]').textContent = text.slice(0, 700); };
+  const setOpen = (next: boolean) => {
+    open = next;
+    element('[data-panel]').hidden = !open;
+    element('[data-toggle]').setAttribute('aria-expanded', String(open));
+  };
   const aliases = (record: OrbPointerRecord) => [
     (record.meaning || '').replace(/^[^:]+:\s*/, ''),
     ...(record.direct_aliases || []), ...(record.intent_aliases || []), ...(record.topic_aliases || []),
@@ -232,6 +240,13 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
   const ask = async (text: string) => {
     const transcript = text.trim();
     if (!transcript) return;
+    const localGuided = guide(transcript);
+    if (localGuided) {
+      setStatus('online', 'Guiding');
+      setMessage('I found a verified target for that. I am moving there now.');
+      log('Local verified guidance started', { transcript });
+      return;
+    }
     setStatus('loading', 'Thinking');
     try { handleResponse(await client.ask(transcript), transcript); }
     catch (error) {
@@ -239,6 +254,75 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
       setMessage('I could not answer that right now. The rest of the site is unaffected.');
       log('Runtime failure', { stage: 'text', message: error instanceof Error ? error.message : String(error) });
     }
+  };
+  const speakStartupGreeting = () => {
+    try {
+      if (!('speechSynthesis' in window) || typeof window.SpeechSynthesisUtterance !== 'function') return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(STARTUP_GREETING);
+      utterance.rate = 0.96;
+      utterance.pitch = 1.02;
+      window.speechSynthesis.speak(utterance);
+      log('Startup greeting spoken', { provider: 'browser-speech-synthesis' });
+    } catch {
+      log('Startup greeting unavailable', { provider: 'browser-speech-synthesis' });
+    }
+  };
+  const startVoiceQuestion = async (source: 'startup' | 'button') => {
+    const button = element<HTMLButtonElement>('[data-voice]');
+    if (recorder?.state === 'recording') { recorder.stop(); return true; }
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setMessage('Voice recording is not supported here. You can still type a question.');
+      log('Voice initialization available', { available: false, source });
+      return false;
+    }
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunks = [];
+      recorder = new MediaRecorder(mediaStream);
+      recorder.addEventListener('dataavailable', (event) => { if (event.data.size) chunks.push(event.data); });
+      recorder.addEventListener('stop', async () => {
+        button.textContent = 'Start voice question';
+        mediaStream?.getTracks().forEach((track) => track.stop());
+        mediaStream = undefined;
+        setStatus('loading', 'Understanding');
+        try {
+          const response = await client.askVoice(new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' }));
+          handleResponse(response, response.transcript || '');
+        } catch (error) {
+          setStatus('offline', 'Voice unavailable');
+          setMessage('Voice could not connect. You can still type a question.');
+          log('Runtime failure', { stage: 'voice', message: error instanceof Error ? error.message : String(error), source });
+        }
+      });
+      recorder.start();
+      button.textContent = 'Finish voice question';
+      setStatus('online', 'Listening');
+      setMessage(source === 'startup'
+        ? 'I am listening. Speak naturally, then pause when your question is complete.'
+        : 'I am listening. Choose Finish when your question is complete.');
+      log('Voice initialization available', { available: true, permissionRequested: true, source });
+      window.setTimeout(() => { if (recorder?.state === 'recording') recorder.stop(); }, 12000);
+      return true;
+    } catch {
+      setMessage('Microphone permission was not granted. You can still type a question.');
+      log('Voice initialization available', { available: true, permission: 'denied', source });
+      return false;
+    }
+  };
+  const runStartupEncounter = (siteName: string) => {
+    if (startupStarted || routeOf(window.location.href) !== '/') return;
+    if (window.sessionStorage.getItem(STARTUP_SESSION_KEY) === '1') return;
+    startupStarted = true;
+    window.sessionStorage.setItem(STARTUP_SESSION_KEY, '1');
+    setOpen(true);
+    setStatus('online', 'Listening');
+    setMessage(`Hi, I am Weaver. I am connected to ${siteName} and I am listening.`);
+    speakStartupGreeting();
+    window.setTimeout(() => {
+      if (!mounted || recorder?.state === 'recording') return;
+      void startVoiceQuestion('startup');
+    }, 650);
   };
   const load = async (snapshot: OrbSiteSnapshot) => {
     abortController?.abort();
@@ -283,6 +367,7 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
       });
       log('Pointer targets discovered', { count: pointers.length });
       client.reportRoute(snapshot);
+      runStartupEncounter(name);
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
       setStatus('offline', 'Offline');
@@ -299,9 +384,7 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
   });
 
   element('[data-toggle]').addEventListener('click', () => {
-    open = !open;
-    element('[data-panel]').hidden = !open;
-    element('[data-toggle]').setAttribute('aria-expanded', String(open));
+    setOpen(!open);
   });
   element<HTMLFormElement>('[data-form]').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -311,42 +394,7 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
     void ask(value);
   });
   element('[data-voice]').addEventListener('click', async () => {
-    const button = element<HTMLButtonElement>('[data-voice]');
-    if (recorder?.state === 'recording') { recorder.stop(); return; }
-    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-      setMessage('Voice recording is not supported here. You can still type a question.');
-      log('Voice initialization available', { available: false });
-      return;
-    }
-    try {
-      mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      chunks = [];
-      recorder = new MediaRecorder(mediaStream);
-      recorder.addEventListener('dataavailable', (event) => { if (event.data.size) chunks.push(event.data); });
-      recorder.addEventListener('stop', async () => {
-        button.textContent = 'Start voice question';
-        mediaStream?.getTracks().forEach((track) => track.stop());
-        mediaStream = undefined;
-        setStatus('loading', 'Understanding');
-        try {
-          const response = await client.askVoice(new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' }));
-          handleResponse(response, response.transcript || '');
-        } catch (error) {
-          setStatus('offline', 'Voice unavailable');
-          setMessage('Voice could not connect. You can still type a question.');
-          log('Runtime failure', { stage: 'voice', message: error instanceof Error ? error.message : String(error) });
-        }
-      });
-      recorder.start();
-      button.textContent = 'Finish voice question';
-      setStatus('online', 'Listening');
-      setMessage('I am listening. Choose Finish when your question is complete.');
-      log('Voice initialization available', { available: true });
-      window.setTimeout(() => { if (recorder?.state === 'recording') recorder.stop(); }, 12000);
-    } catch {
-      setMessage('Microphone permission was not granted. You can still type a question.');
-      log('Voice initialization available', { available: true, permission: 'denied' });
-    }
+    void startVoiceQuestion('button');
   });
 
   const unmount = () => {
