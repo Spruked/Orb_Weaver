@@ -50,6 +50,8 @@ from app.core.storage import (
     require_vault_path,
 )
 from app.crawler.engine import OrbWeaverCrawler, PageData
+from app.catalog.compiler import compile_commercial_catalog
+from app.reporting.audit_reporting import build_audit_pdf, enrich_audit_report
 from app.lifecycle import (
     finalize_evidence_run,
     initialize_evidence_run,
@@ -4814,6 +4816,7 @@ def _index_crawl_pack(project: Project, crawl_job: CrawlJob, payload: Dict, json
                     ("route_classification", "route_classification.json"),
                     ("source_validation", "source_validation.json"),
                     ("scan_stage_execution", "scan_stage_execution.json"),
+                    ("commercial_catalog", "commercial_catalog.json"),
                 )
                 if (payload.get("website_orb_context") or {}).get(key) is not None
             ],
@@ -4886,6 +4889,7 @@ def _client_crawl_pack(project: Project, crawl_job: CrawlJob, pages: List[Crawle
     })
     pointer_plot_map["quality"] = assess_pointer_quality(pointer_plot_map)
     config = crawl_job.config or {}
+    commercial_catalog = config.get("commercial_catalog") or compile_commercial_catalog(pages)
     page_knowledge = [
         {
             "url": page.url,
@@ -4926,6 +4930,7 @@ def _client_crawl_pack(project: Project, crawl_job: CrawlJob, pages: List[Crawle
         },
         "crawl": crawl_payload,
         "pointer_plot_map": pointer_plot_map,
+        "commercial_catalog": commercial_catalog,
         "website_orb_context": {
             "schema": "orb_weaver.website_orb_context.v1",
             "source": "completed_crawl_artifacts",
@@ -4945,6 +4950,7 @@ def _client_crawl_pack(project: Project, crawl_job: CrawlJob, pages: List[Crawle
             "route_classification": config.get("route_classification"),
             "source_validation": config.get("source_validation"),
             "scan_stage_execution": config.get("scan_stage_execution"),
+            "commercial_catalog": commercial_catalog,
             "competitor_gap": crawl_payload.get("competitor_gap"),
             "template_detection": crawl_payload.get("template_detection"),
             "pointer_plot_map": pointer_plot_map,
@@ -5067,6 +5073,7 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
             ("route_classification", "route_classification.json"),
             ("source_validation", "source_validation.json"),
             ("scan_stage_execution", "scan_stage_execution.json"),
+            ("commercial_catalog", "commercial_catalog.json"),
         ):
             artifact = payload["website_orb_context"].get(key)
             if artifact is not None:
@@ -5439,6 +5446,7 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
     uncertain_count = int(pointer_quality.get("uncertain_count") or 0)
     duplicate_conflicts = int(pointer_quality.get("duplicate_conflict_count") or 0)
     guidance_eligible_count = int(pointer_summary.get("guidance_eligible_count") or 0)
+    catalog_summary = (crawl_job.config or {}).get("catalog_summary") or stats.get("commercial_catalog") or {}
     route_categories = (stats.get("route_category_counts") or (crawl_job.config or {}).get("route_category_counts") or {})
     route_count = sum(int(value or 0) for value in route_categories.values()) if isinstance(route_categories, dict) else 0
 
@@ -5447,7 +5455,8 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
     retrieval_sources = int(((crawl_job.config or {}).get("retrieval_index") or {}).get("chunk_count") or 0)
     required_stage_ids = {
         "url_discovery", "crawl_control", "page_fetch", "javascript_rendering",
-        "page_content_scan", "content_structure_extraction", "schema_extraction", "mobile_ux_analysis",
+        "page_content_scan", "content_structure_extraction", "schema_extraction",
+        "commercial_catalog_extraction", "commercial_catalog_index_build", "mobile_ux_analysis",
         "semantic_indexing", "lexical_indexing", "entity_extraction",
         "relationship_mapping", "pointer_mapping", "route_classification", "knowledge_chunking",
         "retrieval_index_build", "source_validation", "pointer_verification", "pointer_recovery",
@@ -5487,6 +5496,19 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
             _scan_stage("schema_extraction", "Schema Extraction", stage_status("schema_extraction"), [
                 {"label": "schema pages", "value": int(stats.get("schema_pages") or 0)},
                 {"label": "schema errors", "value": int(stats.get("schema_errors") or 0)},
+            ], execution_note),
+            _scan_stage("commercial_catalog_extraction", "Commercial Catalog Extraction", stage_status("commercial_catalog_extraction"), [
+                {"label": "catalog entries", "value": int(catalog_summary.get("entry_count") or 0)},
+                {"label": "products", "value": int(catalog_summary.get("product_count") or 0)},
+                {"label": "services", "value": int(catalog_summary.get("service_count") or 0)},
+                {"label": "priced entries", "value": int(catalog_summary.get("priced_entry_count") or 0)},
+                {"label": "SKU/model records", "value": int(catalog_summary.get("sku_model_count") or 0)},
+            ], execution_note),
+            _scan_stage("commercial_catalog_index_build", "Catalog Lookup Index Build", stage_status("commercial_catalog_index_build"), [
+                {"label": "availability records", "value": int(catalog_summary.get("availability_count") or 0)},
+                {"label": "variants", "value": int(catalog_summary.get("variant_count") or 0)},
+                {"label": "specifications", "value": int(catalog_summary.get("specification_count") or 0)},
+                {"label": "source pages", "value": int(catalog_summary.get("source_page_count") or 0)},
             ], execution_note),
             _scan_stage("mobile_ux_analysis", "Mobile / UX Analysis", stage_status("mobile_ux_analysis"), [
                 {"label": "pages analyzed", "value": sum(1 for page in pages if page.mobile_ux_analysis)},
@@ -6169,6 +6191,7 @@ def _serialize_crawl_job(crawl_job: CrawlJob, db: Session, include_pages: bool =
         "assembly_status": _scan_assembly_status(crawl_job, pages, stats),
         "pointer_summary": pointer_summary,
         "planned_tool_calls": _planned_tool_calls(pointer_summary, stats),
+        "commercial_catalog_summary": config.get("catalog_summary") or stats.get("commercial_catalog") or {},
         "historical": config.get("historical"),
         "trend_model": config.get("trend_model"),
         "internal_link_graph": config.get("internal_link_graph"),
@@ -6332,8 +6355,9 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
                 }
                 for stage_id in (
                     "url_discovery", "crawl_control", "page_fetch", "javascript_rendering", "admin_route_scanning",
-                    "page_content_scan", "content_structure_extraction", "schema_extraction", "mobile_ux_analysis",
-                    "semantic_indexing", "lexical_indexing", "entity_extraction", "relationship_mapping",
+                    "page_content_scan", "content_structure_extraction", "schema_extraction", "commercial_catalog_extraction",
+                    "commercial_catalog_index_build", "mobile_ux_analysis", "semantic_indexing", "lexical_indexing",
+                    "entity_extraction", "relationship_mapping",
                     "internal_link_graph", "authority_analysis", "route_classification", "template_detection",
                     "pointer_mapping", "knowledge_chunking", "retrieval_index_build", "source_validation",
                 )
@@ -6449,6 +6473,16 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
         retrieval_index = _build_retrieval_index(knowledge_chunks)
         route_classification = _build_route_classification(stored_pages)
         source_validation = _build_source_validation(stored_pages, knowledge_chunks)
+        commercial_catalog = compile_commercial_catalog(stored_pages)
+        commercial_catalog_summary = {
+            key: int(commercial_catalog.get(key) or 0)
+            for key in (
+                "entry_count", "product_count", "service_count", "priced_entry_count",
+                "sku_model_count", "availability_count", "variant_count",
+                "specification_count", "source_page_count",
+            )
+        }
+        stats["commercial_catalog"] = commercial_catalog_summary
         if source_validation["status"] != "COMPLETE":
             raise RuntimeError("Source validation failed for generated knowledge chunks")
         stats["route_category_counts"] = route_classification["category_counts"]
@@ -6491,6 +6525,8 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             "page_content_scan": evidence("COMPLETE", len(pages), len(stored_pages), "db:crawled_pages"),
             "content_structure_extraction": evidence("COMPLETE", len(stored_pages), sum(1 for page in stored_pages if page.title or page.h1 or page.h2_tags), "db:crawled_pages.title,h1,h2_tags"),
             "schema_extraction": evidence("COMPLETE", len(stored_pages), int(stats.get("schema_pages") or 0), "db:crawled_pages.schema_markup"),
+            "commercial_catalog_extraction": evidence("COMPLETE", len(stored_pages), int(commercial_catalog.get("entry_count") or 0), "crawl.config.commercial_catalog"),
+            "commercial_catalog_index_build": evidence("COMPLETE", int(commercial_catalog.get("entry_count") or 0), len((commercial_catalog.get("indexes") or {}).get("by_name") or {}), "crawl.config.commercial_catalog.indexes"),
             "mobile_ux_analysis": evidence("COMPLETE", len(stored_pages), sum(1 for page in stored_pages if page.mobile_ux_analysis), "db:crawled_pages.mobile_ux_analysis"),
             "semantic_indexing": evidence("COMPLETE", len(stored_pages), sum(1 for page in stored_pages if page.semantic_analysis), "db:crawled_pages.semantic_analysis"),
             "lexical_indexing": evidence("COMPLETE", len(stored_pages), len(lexical_index["canonical_terms"]), "crawl.config.lexical_index"),
@@ -6531,6 +6567,8 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             "retrieval_index": retrieval_index,
             "route_classification": route_classification,
             "source_validation": source_validation,
+            "commercial_catalog": commercial_catalog,
+            "catalog_summary": commercial_catalog_summary,
             "scan_stage_execution": scan_stage_execution,
         }
         if lifecycle_job:
@@ -7155,12 +7193,14 @@ async def run_audit_job(audit_id: int, crawl_job_id: int):
 
         pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl_job_id).all()
         page_data = [PageData(**_page_to_dict(page)) for page in pages]
-        stats = _compute_stats(pages)
+        crawl_config = crawl_job.config or {}
+        stats = {**_compute_stats(pages), **(crawl_config.get("stats") or {})}
 
         auditor = SEOAuditor()
         report_payload = auditor.audit(page_data, stats)
-        report_payload["pointer_summary"] = stats.get("pointer_summary") or _pointer_summary_from_pages(pages)
-        report_payload["planned_tool_calls"] = stats.get("planned_tool_calls") or _planned_tool_calls(report_payload["pointer_summary"], stats)
+        report_payload["pointer_summary"] = _pointer_summary_with_execution(_pointer_summary_from_pages(pages), crawl_config)
+        report_payload["planned_tool_calls"] = _planned_tool_calls(report_payload["pointer_summary"], stats)
+        report_payload = enrich_audit_report(report_payload, crawl_config=crawl_config, pages=page_data)
 
         audit.report_data = report_payload
         audit.overall_score = report_payload["scores"].get("overall")
@@ -10042,6 +10082,24 @@ async def get_crawl_pointer_plot_map(
     }
 
 
+@app.get("/api/crawl-jobs/{job_id}/commercial-catalog")
+async def get_crawl_commercial_catalog(
+    job_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    crawl_job = _owned_crawl_job(job_id, customer, db)
+    catalog = (crawl_job.config or {}).get("commercial_catalog")
+    if not isinstance(catalog, dict):
+        pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl_job.id).all()
+        catalog = compile_commercial_catalog(pages)
+    return {
+        "crawl_id": str(crawl_job.id),
+        "project_id": str(crawl_job.project_id),
+        **catalog,
+    }
+
+
 @app.get("/api/crawl-jobs/{job_id}/export/csv")
 async def export_crawl_csv(job_id: str, db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
     crawl_job = _owned_crawl_job(job_id, customer, db)
@@ -10158,87 +10216,12 @@ async def export_audit_pdf(audit_id: str, db: Session = Depends(get_db), custome
     report = _owned_audit_report(audit_id, customer, db)
     if not report.report_data:
         raise HTTPException(status_code=404, detail="Audit report not found")
-
     try:
-        from reportlab.lib.pagesizes import letter
-        from reportlab.pdfgen import canvas
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"PDF export dependency missing: {exc}")
-
-    data = report.report_data
-    buf = BytesIO()
-    pdf = canvas.Canvas(buf, pagesize=letter)
-    width, height = letter
-
-    y = height - 50
-    pdf.setFont("Helvetica-Bold", 16)
-    pdf.drawString(40, y, f"SEO Audit Report #{audit_id}")
-    y -= 30
-
-    pdf.setFont("Helvetica", 11)
-    scores = data.get("scores", {})
-    pdf.drawString(40, y, f"Overall Score: {scores.get('overall', '-')}")
-    y -= 20
-    summary = data.get("summary", {})
-    pdf.drawString(40, y, f"Critical: {summary.get('critical_count', 0)}  Warnings: {summary.get('warning_count', 0)}  Opportunities: {summary.get('opportunity_count', 0)}")
-    y -= 30
-
-    pointer_summary = data.get("pointer_summary") or {}
-    if pointer_summary:
-        pdf.setFont("Helvetica-Bold", 12)
-        pdf.drawString(40, y, "ORB Pointer Guidance")
-        y -= 18
-        pdf.setFont("Helvetica", 10)
-        pdf.drawString(
-            40,
-            y,
-            (
-                f"Targets: {pointer_summary.get('record_count', 0)}  "
-                f"Routes: {pointer_summary.get('routes_with_pointers', 0)}  "
-                f"Duplicate IDs: {pointer_summary.get('duplicate_target_ids', 0)}  "
-                f"Status: {pointer_summary.get('status', 'needs_review')}"
-            )[:110],
-        )
-        y -= 30
-
-    planned_tool_calls = data.get("planned_tool_calls") or []
-    if planned_tool_calls:
-        pdf.setFont("Helvetica-Bold", 12)
-        pdf.drawString(40, y, "Planned ORB Tool Calls")
-        y -= 18
-        pdf.setFont("Helvetica", 9)
-        for item in planned_tool_calls[:5]:
-            line = (
-                f"- {item.get('tool', '')}: {item.get('status', '')} "
-                f"({item.get('scope', '')})"
-            )
-            pdf.drawString(40, y, line[:120])
-            y -= 14
-            if y < 50:
-                pdf.showPage()
-                y = height - 50
-                pdf.setFont("Helvetica", 9)
-        y -= 16
-
-    pdf.setFont("Helvetica-Bold", 12)
-    pdf.drawString(40, y, "Top Issues")
-    y -= 20
-    pdf.setFont("Helvetica", 10)
-
-    for issue in data.get("top_issues", [])[:12]:
-        text = f"- {issue.get('title', '')} (Impact {issue.get('impact_score', '-')})"
-        pdf.drawString(40, y, text[:110])
-        y -= 16
-        if y < 50:
-            pdf.showPage()
-            y = height - 50
-            pdf.setFont("Helvetica", 10)
-
-    pdf.save()
-    buf.seek(0)
+        buf = build_audit_pdf(report.report_data, str(audit_id))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
     headers = {"Content-Disposition": f"attachment; filename=audit_{audit_id}.pdf"}
     return StreamingResponse(buf, media_type="application/pdf", headers=headers)
-
 
 @app.get("/api/projects/{project_id}/report-compiler")
 async def report_compiler(project_id: str, db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):

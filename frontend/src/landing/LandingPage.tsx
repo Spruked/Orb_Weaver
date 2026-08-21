@@ -8,6 +8,10 @@ import { createIntentGuestSession, LandingIntent } from "../onboarding/guestOnbo
 import "./Landing.css";
 
 const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
+<<<<<<< HEAD
+=======
+const LANDING_SPLASH_DURATION_MS = 3800;
+>>>>>>> origin/orb/catalog-audit-reporting-20260820
 
 const LandingPage: React.FC = () => {
   const [pendingTarget, setPendingTarget] = useState<string | null>(null);
@@ -23,7 +27,11 @@ const LandingPage: React.FC = () => {
 
   useEffect(() => {
     if (!splashTrigger) return;
+<<<<<<< HEAD
     const timer = window.setTimeout(() => setSplashTrigger(0), 2800);
+=======
+    const timer = window.setTimeout(() => setSplashTrigger(0), LANDING_SPLASH_DURATION_MS);
+>>>>>>> origin/orb/catalog-audit-reporting-20260820
     return () => window.clearTimeout(timer);
   }, [splashTrigger]);
 
@@ -109,9 +117,9 @@ const LandingPage: React.FC = () => {
           <div className="ow-cut-copy ow-cut-first-encounter">
             <h2>Meet Weaver.</h2>
             <div className="ow-cut-encounter-steps" aria-label="Weaver communication orientation">
-              <p data-orb-target="speak_naturally"><strong>Just talk.</strong> Use the words you would use with a person who knows the site.</p>
-              <p data-orb-target="pause_when_finished"><strong>Finish the thought, then pause.</strong> Weaver takes the turn when your voice settles.</p>
-              <p data-orb-target="watch_weaver_guide"><strong>Watch the page.</strong> When showing is clearer, Weaver moves and points to the verified target.</p>
+              <p data-orb-target="what_weaver_does"><strong>What does Weaver do?</strong> It understands this website, answers from its verified knowledge, and guides you to the right place when showing is faster than explaining.</p>
+              <p data-orb-target="what_to_say"><strong>What do I say?</strong> Anything you would ask a person who knows the site. Click Weaver, speak naturally, finish your thought, and pause.</p>
+              <p data-orb-target="interrupt_or_guide"><strong>You stay in control.</strong> Click Weaver while it is talking to stop it. Click again when you want help. When pointing is useful, Weaver guides only to a verified target.</p>
             </div>
           </div>
         </div>

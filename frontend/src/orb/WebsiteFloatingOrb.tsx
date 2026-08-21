@@ -598,7 +598,6 @@ const WebsiteFloatingOrb: React.FC = () => {
       setIsListening(true);
       setStatusLine('Listening');
       setMode('learning');
-      setSpokenOutput('Listening...');
       recorder.start();
       window.setTimeout(() => {
         if (recorder.state !== 'inactive') recorder.stop();
@@ -693,9 +692,8 @@ const WebsiteFloatingOrb: React.FC = () => {
               if (pulse.cognitive_mode) {
                 setStatusLine(`Dock mode: ${pulse.cognitive_mode}`);
               }
-              if (typeof data.transcription === 'string') {
-                void speakRecovery(data.transcription);
-              }
+              // Visitor transcription is input/telemetry only. It must never be
+              // routed into Weaver's speech bubble or synthesized as ORB speech.
               if (typeof pulse.spoken_output === 'string') {
                 void speakRecovery(pulse.spoken_output);
               }
@@ -882,7 +880,7 @@ const WebsiteFloatingOrb: React.FC = () => {
         <span>{statusLine}</span>
       </div>
 
-      <div className={`ow-website-orb-speech ${isSpeaking || isListening ? 'visible' : ''}`} aria-live="polite">
+      <div className={`ow-website-orb-speech ${isSpeaking ? 'visible' : ''}`} aria-live="polite">
         {spokenOutput}
       </div>
     </div>

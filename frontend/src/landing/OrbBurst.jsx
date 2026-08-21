@@ -9,6 +9,8 @@ const COLORS = {
 
 // A reusable, pronounced "splash" shockwave for the Orb.
 // Replays every time `trigger` changes. direction: "out" (arrive) | "in" (leave).
+// Arrival timing is intentionally stretched without changing the visual path so
+// ORB cold-start work can run underneath the splash instead of after it.
 export const OrbBurst = ({ trigger = 0, size = 200, color = "blue", direction = "out" }) => {
   const rgb = COLORS[color] || COLORS.blue;
   const out = direction === "out";
@@ -25,7 +27,7 @@ export const OrbBurst = ({ trigger = 0, size = 200, color = "blue", direction = 
                 style={{ width: size * 0.7, height: size * 0.7, filter: "blur(10px)" }}
                 initial={{ scale: out ? 0.2 : 1.6, opacity: 0 }}
                 animate={{ scale: out ? [0.2, 1.8, 0.4] : [1.6, 0.2], opacity: [0, 0.95, 0] }}
-                transition={{ duration: out ? 0.95 : 0.7, ease: "easeOut" }}
+                transition={{ duration: out ? 1.28 : 0.7, ease: "easeOut" }}
               />
             </Centered>
 
@@ -39,7 +41,7 @@ export const OrbBurst = ({ trigger = 0, size = 200, color = "blue", direction = 
                 }}
                 initial={{ scale: out ? 0.1 : 3.2, opacity: 0 }}
                 animate={{ scale: out ? [0.1, 1.3, 3.8] : [3.2, 0.2], opacity: out ? [0, 1, 0] : [0.9, 0] }}
-                transition={{ duration: out ? 2.0 : 0.8, ease: "easeOut" }}
+                transition={{ duration: out ? 2.7 : 0.8, ease: "easeOut" }}
               />
             </Centered>
 
@@ -55,7 +57,7 @@ export const OrbBurst = ({ trigger = 0, size = 200, color = "blue", direction = 
                   }}
                   initial={{ scale: out ? 0.12 : 9.5, opacity: 0 }}
                   animate={{ scale: out ? [0.12, 9.5] : [9.5, 0.1], opacity: [0.95, 0] }}
-                  transition={{ duration: out ? 1.8 : 0.9, delay: i * (out ? 0.16 : 0.06), ease: [0.22, 0.61, 0.36, 1] }}
+                  transition={{ duration: out ? 2.43 : 0.9, delay: i * (out ? 0.216 : 0.06), ease: [0.22, 0.61, 0.36, 1] }}
                 />
               </Centered>
             ))}

@@ -38,12 +38,15 @@ const ABSOLUTE_RECORDING_LIMIT_MS = 22000;
 const SPEECH_LEVEL_THRESHOLD = 0.018;
 const LIDAR_DRIFT_THRESHOLD_PX = 12;
 
+<<<<<<< HEAD
 const emitOrbRuntimeEvent = (phase: string, detail: Record<string, unknown> = {}) => {
   window.dispatchEvent(new CustomEvent("orbweaver:mounted-runtime", {
     detail: { phase, at: Date.now(), ...detail },
   }));
 };
 
+=======
+>>>>>>> origin/orb/catalog-audit-reporting-20260820
 type PulseKind = "ripple" | "flare";
 type FirstEncounterFlag =
   | "voice_ready"
@@ -127,9 +130,10 @@ const EMPTY_FIRST_ENCOUNTER_STATE: FirstEncounterState = {
   relevant_continuation_complete: false,
   controller_handoff_complete: false,
 };
-const MORB_SIZE = 65;
+const MORB_SIZE = 50;
 const MORB_HALF = MORB_SIZE / 2;
 const MORB_REUSE_DISTANCE_PX = 250;
+const ORB_TARGET_CLEARANCE_PX = 56;
 const MORB_ROLE_STYLES: Record<MorbWorkRole, { primary: string; glow: string; shadow: string; skin: string }> = {
   target: {
     primary: "rgba(91, 200, 230, .96)",
@@ -773,11 +777,18 @@ export const AutonomousOrb: React.FC<Props> = ({
     const latestGoal = movement.getLatestGoal();
     const targetCenterX = latestGoal.normalizedX * window.innerWidth;
     const targetCenterY = latestGoal.normalizedY * window.innerHeight;
-    const side = targetCenterX < window.innerWidth / 2 ? 1 : -1;
-    const guidedDestination = clampPosition(
-      targetCenterX + side * Math.max(84, size * 0.62) - size / 2,
-      targetCenterY - size / 2,
-    );
+    const preferredSide = targetCenterX < window.innerWidth / 2 ? 1 : -1;
+    const requiredCenterOffset = size / 2 + MORB_HALF + ORB_TARGET_CLEARANCE_PX;
+    const guidedDestination = [preferredSide, -preferredSide]
+      .map((candidateSide) => clampPosition(
+        targetCenterX + candidateSide * requiredCenterOffset - size / 2,
+        targetCenterY - size / 2,
+      ))
+      .reduce((best, candidate) => {
+        const bestClearance = Math.abs(best.x + size / 2 - targetCenterX);
+        const candidateClearance = Math.abs(candidate.x + size / 2 - targetCenterX);
+        return candidateClearance > bestClearance ? candidate : best;
+      });
     const current = positionRef.current;
     const destination = options.launchMorbOnly ? current : guidedDestination;
     const distance = Math.hypot(destination.x - current.x, destination.y - current.y);
@@ -1092,6 +1103,25 @@ export const AutonomousOrb: React.FC<Props> = ({
     presence.stop();
   }, [move, presence]);
 
+  const speakBrowserFallback = useCallback(async (text: string) => {
+    if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+      throw new Error("Browser speech synthesis unavailable");
+    }
+
+    const synth = window.speechSynthesis;
+    synth.cancel();
+
+    await new Promise<void>((resolve, reject) => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      utterance.volume = speakerBoostRef.current ? 1 : 0.92;
+      utterance.onend = () => resolve();
+      utterance.onerror = () => reject(new Error("Browser speech synthesis failed"));
+      synth.speak(utterance);
+    });
+  }, []);
+
   const speak = useCallback(async (
     text: string,
     audioUrl?: string | null,
@@ -1121,12 +1151,16 @@ export const AutonomousOrb: React.FC<Props> = ({
     try {
       setStatusTitle("Voice response");
       if (!audioUrl) {
+        await speakBrowserFallback(text);
         speechPlaybackRef.current = false;
-        setStatusTitle("Voice unavailable");
-        setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
         setVoiceState("idle");
+<<<<<<< HEAD
         showStatus(3600);
         return false;
+=======
+        showStatus(1400);
+        return;
+>>>>>>> origin/orb/catalog-audit-reporting-20260820
       }
       if (speakerBoostRef.current) {
         await playDecodedSpeech(audioUrl);
@@ -1141,6 +1175,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       audio.volume = speakerBoostRef.current ? 1 : 0.86;
       audio.src = api.orbMediaUrl(audioUrl);
       speechAudioRef.current = audio;
+<<<<<<< HEAD
       const settlement = createPlaybackSettlement();
       speechPlaybackSettlementRef.current = settlement;
       audio.onended = () => {
@@ -1174,8 +1209,42 @@ export const AutonomousOrb: React.FC<Props> = ({
       setVoiceState("idle");
       showStatus(3600);
       return false;
+=======
+      await new Promise<void>((resolve, reject) => {
+        audio.onended = () => {
+          if (speechAudioRef.current === audio) {
+            speechAudioRef.current = null;
+          }
+          speechPlaybackRef.current = false;
+          setVoiceState("idle");
+          showStatus(1400);
+          resolve();
+        };
+        audio.onerror = () => {
+          if (speechAudioRef.current === audio) {
+            speechAudioRef.current = null;
+          }
+          reject(new Error("Audio playback failed"));
+        };
+        audio.play().catch(reject);
+      });
+    } catch {
+      try {
+        setStatusTitle("Voice response");
+        await speakBrowserFallback(text);
+        speechPlaybackRef.current = false;
+        setVoiceState("idle");
+        showStatus(1400);
+      } catch {
+        speechPlaybackRef.current = false;
+        setStatusTitle("Voice unavailable");
+        setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
+        setVoiceState("idle");
+        showStatus(3600);
+      }
+>>>>>>> origin/orb/catalog-audit-reporting-20260820
     }
-  }, [freezeOrbInPlace, playDecodedSpeech, showStatus]);
+  }, [freezeOrbInPlace, playDecodedSpeech, showStatus, speakBrowserFallback]);
 
   const speakWithGeneratedAudio = useCallback(async (text: string, audioUrl?: string | null, provider?: string | null) => {
     setStatusTitle("Preparing voice");
@@ -1189,6 +1258,7 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const speakRecovery = useCallback(async (text: string, signal?: AbortSignal) => {
     setStatusLine(text);
+<<<<<<< HEAD
     setStatusTitle("Recovering voice");
     setVoiceState("speaking");
     showStatus();
@@ -1206,6 +1276,27 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
     return outcome;
   }, [showStatus, speak]);
+=======
+    setStatusTitle("Voice response");
+    setVoiceState("speaking");
+    speechPlaybackRef.current = true;
+    showStatus();
+    freezeOrbInPlace(4200);
+
+    try {
+      await speakBrowserFallback(text);
+      setStatusTitle("Voice response");
+      showStatus(1400);
+    } catch {
+      setStatusTitle("Voice unavailable");
+      setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
+      showStatus(3600);
+    } finally {
+      speechPlaybackRef.current = false;
+      setVoiceState("idle");
+    }
+  }, [freezeOrbInPlace, showStatus, speakBrowserFallback]);
+>>>>>>> origin/orb/catalog-audit-reporting-20260820
 
   const contextTargetUrl = useCallback(() => {
     if (activeOrbContext) return buildCustomerPageCapsuleUrl(activeOrbContext);
@@ -1866,13 +1957,24 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, [requestStartupMicrophonePermission, showStatus, unlockAudio]);
 
   const runStartupVoiceSequence = useCallback(async () => {
+<<<<<<< HEAD
     const onLanding = isPublicLandingExperience();
     const greetingAlreadyPlayed =
       window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1";
+=======
+    if (startupAutoStartedRef.current || onboardingSafeMode) return;
+
+    const onLanding = isPublicLandingExperience();
+    const greetingAlreadyPlayed =
+      window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1";
+    const establishedVoiceSession =
+      greetingAlreadyPlayed || firstEncounterStateRef.current.voice_ready;
+>>>>>>> origin/orb/catalog-audit-reporting-20260820
 
     // A first-time visitor who lands deep in the site should not get a surprise
     // microphone prompt. Once voice has been established, page reloads resume
     // hands-free listening without replaying the landing greeting.
+<<<<<<< HEAD
     if (!shouldRunMountedStartupVoiceSequence({
       startupAutoStarted: startupAutoStartedRef.current,
       onboardingSafeMode,
@@ -1880,6 +1982,9 @@ export const AutonomousOrb: React.FC<Props> = ({
       greetingAlreadyPlayed,
       voiceReady: firstEncounterStateRef.current.voice_ready,
     })) return;
+=======
+    if (!onLanding && !establishedVoiceSession) return;
+>>>>>>> origin/orb/catalog-audit-reporting-20260820
 
     startupAutoStartedRef.current = true;
     let micReady = false;
@@ -1975,12 +2080,17 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   useEffect(() => {
     if (onboardingSafeMode) return;
+<<<<<<< HEAD
     if (isPublicLandingExperience() && firstEncounterStateRef.current.voice_ready) {
+=======
+    if (firstEncounterStateRef.current.voice_ready) {
+>>>>>>> origin/orb/catalog-audit-reporting-20260820
       handsFreeEnabledRef.current = true;
     }
   }, [onboardingSafeMode]);
 
   useEffect(() => {
+<<<<<<< HEAD
     if (!isPublicLandingExperience()) return;
     if (!shouldRearmVoice({
       handsFree: handsFreeEnabledRef.current,
@@ -1991,6 +2101,11 @@ export const AutonomousOrb: React.FC<Props> = ({
       firstEncounterRunning: firstEncounterRunningRef.current,
       voiceReady: firstEncounterStateRef.current.voice_ready,
     })) return;
+=======
+    if (!handsFreeEnabledRef.current || voiceState !== "idle" || onboardingSafeMode) return;
+    if (voiceRequestInFlightRef.current || recorderRef.current || firstEncounterRunningRef.current) return;
+    if (!firstEncounterStateRef.current.voice_ready) return;
+>>>>>>> origin/orb/catalog-audit-reporting-20260820
 
     const rearmTimer = window.setTimeout(() => {
       if (!activeRef.current || voiceRequestInFlightRef.current || recorderRef.current) return;
@@ -2266,6 +2381,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     size,
     upperRightRestDestination,
   ]);
+<<<<<<< HEAD
 
   useEffect(() => {
     const monitor = window.setInterval(() => {
@@ -2295,6 +2411,8 @@ export const AutonomousOrb: React.FC<Props> = ({
     }, 240);
     return () => window.clearInterval(monitor);
   }, [move, upperRightRestDestination]);
+=======
+>>>>>>> origin/orb/catalog-audit-reporting-20260820
 
   // Voice resources are cancelled only when this ORB component unmounts.
   useEffect(() => {
