@@ -2,11 +2,11 @@ const INTRO_AUDIO_PATH = '/orb/voice/orb-intro-presence.mp3';
 const HUM_AUDIO_PATH = '/orb/voice/orb-presence-hum.mp3';
 
 const INTRO_VOLUME = 0.82;
-const HUM_IDLE_VOLUME = 0.026;
-const HUM_MOVING_VOLUME = 0.052;
-const HUM_RESTING_VOLUME = 0.012;
-const HUM_BOOST_MULTIPLIER = 1.2;
-const HUM_MAX_VOLUME = 0.064;
+const HUM_IDLE_VOLUME = 0.018;
+const HUM_MOVING_VOLUME = 0.032;
+const HUM_RESTING_VOLUME = 0.008;
+const HUM_BOOST_MULTIPLIER = 1.15;
+const HUM_MAX_VOLUME = 0.04;
 const VOLUME_RAMP_MS = 420;
 
 type OrbVoiceState = 'idle' | 'listening' | 'speaking';
