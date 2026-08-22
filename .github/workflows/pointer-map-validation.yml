@@ -20,6 +20,24 @@ on:
       - "backend/tests/test_pointer_recovery_integration.py"
       - "scripts/validate_pointer_plot_map.py"
       - ".github/workflows/pointer-map-validation.yml"
+  pull_request:
+    paths:
+      - "backend/main.py"
+      - "backend/app/core/storage.py"
+      - "backend/app/orb/navigation_world.py"
+      - "backend/app/orb/pointer_map_optimizer.py"
+      - "backend/app/orb/pointer_recovery_integration.py"
+      - "backend/app/orb/__init__.py"
+      - "backend/app/orb/pointer_recovery.py"
+      - "backend/app/orb/pointer_plot.py"
+      - "backend/tests/test_navigation_world.py"
+      - "backend/tests/test_lifecycle_api.py"
+      - "backend/tests/test_orb_loader_runtime.py"
+      - "backend/tests/test_pointer_map_optimizer.py"
+      - "backend/tests/test_pointer_recovery.py"
+      - "backend/tests/test_pointer_recovery_integration.py"
+      - "scripts/validate_pointer_plot_map.py"
+      - ".github/workflows/pointer-map-validation.yml"
 
 permissions:
   contents: read
