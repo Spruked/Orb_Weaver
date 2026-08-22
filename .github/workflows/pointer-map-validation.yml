@@ -6,11 +6,31 @@ on:
     paths:
       - "backend/main.py"
       - "backend/app/core/storage.py"
+      - "backend/app/orb/navigation_world.py"
       - "backend/app/orb/pointer_map_optimizer.py"
       - "backend/app/orb/pointer_recovery_integration.py"
       - "backend/app/orb/__init__.py"
       - "backend/app/orb/pointer_recovery.py"
       - "backend/app/orb/pointer_plot.py"
+      - "backend/tests/test_navigation_world.py"
+      - "backend/tests/test_lifecycle_api.py"
+      - "backend/tests/test_orb_loader_runtime.py"
+      - "backend/tests/test_pointer_map_optimizer.py"
+      - "backend/tests/test_pointer_recovery.py"
+      - "backend/tests/test_pointer_recovery_integration.py"
+      - "scripts/validate_pointer_plot_map.py"
+      - ".github/workflows/pointer-map-validation.yml"
+  pull_request:
+    paths:
+      - "backend/main.py"
+      - "backend/app/core/storage.py"
+      - "backend/app/orb/navigation_world.py"
+      - "backend/app/orb/pointer_map_optimizer.py"
+      - "backend/app/orb/pointer_recovery_integration.py"
+      - "backend/app/orb/__init__.py"
+      - "backend/app/orb/pointer_recovery.py"
+      - "backend/app/orb/pointer_plot.py"
+      - "backend/tests/test_navigation_world.py"
       - "backend/tests/test_lifecycle_api.py"
       - "backend/tests/test_orb_loader_runtime.py"
       - "backend/tests/test_pointer_map_optimizer.py"
@@ -45,16 +65,18 @@ jobs:
         run: |
           python -m py_compile \
             backend/main.py \
+            backend/app/orb/navigation_world.py \
             backend/app/orb/pointer_recovery.py \
             backend/app/orb/pointer_map_optimizer.py \
             backend/app/orb/pointer_recovery_integration.py \
             scripts/validate_pointer_plot_map.py
 
-      - name: Run pointer authority and map regressions
+      - name: Run pointer authority, navigation-world, and map regressions
         env:
           PYTHONPATH: backend
         run: |
           python -m pytest -q \
+            backend/tests/test_navigation_world.py \
             backend/tests/test_pointer_map_optimizer.py \
             backend/tests/test_pointer_recovery.py \
             backend/tests/test_pointer_recovery_integration.py \
