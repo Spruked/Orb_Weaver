@@ -140,3 +140,51 @@ def test_world_state_seed_matches_orbot_contract_shape():
     assert seed["etag"] == f"{seed['snapshot_id']}:{seed['version']}"
     assert "pointer_registry" in seed["components"]
     assert world["nats_worldstate_contract"]["binding_status"] == "transport_binding_deferred_to_runtime"
+
+
+def test_scanned_route_with_no_topological_path_returns_empty_path():
+    pages = [
+        page("/", links=("/pricing",)),
+        page("/pricing"),
+        page("/isolated"),
+    ]
+    world = build_navigation_world(pages, domain="example.com")
+    assert localize_route(world, "/isolated")["route"] == "/isolated"
+    assert plan_route_path(world, "/", "/isolated") == []
+    assert plan_route_path(world, "/isolated", "/pricing") == []
+
+
+def test_discovered_frontier_node_never_localizes_or_becomes_plannable():
+    world = build_navigation_world(
+        [page("/", links=("/ghost",), terms=("home",))],
+        domain="example.com",
+    )
+    frontier = world["route_graph"]["frontier_nodes"]
+    assert len(frontier) == 1
+    assert frontier[0]["route"] == "/ghost"
+    assert frontier[0]["scanned"] is False
+    assert frontier[0]["status"] == "discovered_not_scanned"
+    assert localize_route(world, "/ghost") is None
+    assert plan_route_path(world, "/", "/ghost") == []
+
+
+def test_route_with_zero_valid_pointer_targets_does_not_inherit_home_target():
+    home = pointer("home-safe", "/", "button#home")
+    pricing_uncertain = pointer(
+        "pricing-uncertain",
+        "/pricing",
+        "button#pricing",
+        klass="UNCERTAIN",
+        may_point=False,
+    )
+    world = build_navigation_world(
+        [
+            page("/", links=("/pricing",), pointers=(home,)),
+            page("/pricing", pointers=(pricing_uncertain,)),
+        ],
+        domain="example.com",
+    )
+    assert world["semantic_tiles"]["/"]["eligible_pointer_ids"] == ["home-safe"]
+    assert world["semantic_tiles"]["/pricing"]["eligible_pointer_ids"] == []
+    assert world["pointer_registry"]["by_route"]["/pricing"] == ["pricing-uncertain"]
+    assert "home-safe" not in world["pointer_registry"]["by_route"]["/pricing"]
