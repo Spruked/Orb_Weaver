@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const COLORS = {
@@ -11,9 +11,21 @@ const COLORS = {
 // Replays every time `trigger` changes. direction: "out" (arrive) | "in" (leave).
 // Arrival timing is intentionally stretched without changing the visual path so
 // ORB cold-start work can run underneath the splash instead of after it.
-export const OrbBurst = ({ trigger = 0, size = 200, color = "blue", direction = "out" }) => {
+export const OrbBurst = ({ trigger = 0, size = 200, color = "blue", direction = "out", onComplete }) => {
   const rgb = COLORS[color] || COLORS.blue;
   const out = direction === "out";
+  const finalRingIndex = 4;
+  const completionFiredRef = useRef(false);
+
+  useEffect(() => {
+    completionFiredRef.current = false;
+  }, [trigger]);
+
+  const completeOnce = () => {
+    if (completionFiredRef.current) return;
+    completionFiredRef.current = true;
+    onComplete?.();
+  };
 
   return (
     <div className="absolute inset-0 pointer-events-none" style={{ overflow: "visible", zIndex: 9 }}>
@@ -58,6 +70,7 @@ export const OrbBurst = ({ trigger = 0, size = 200, color = "blue", direction = 
                   initial={{ scale: out ? 0.12 : 9.5, opacity: 0 }}
                   animate={{ scale: out ? [0.12, 9.5] : [9.5, 0.1], opacity: [0.95, 0] }}
                   transition={{ duration: out ? 2.43 : 0.9, delay: i * (out ? 0.216 : 0.06), ease: [0.22, 0.61, 0.36, 1] }}
+                  onAnimationComplete={i === finalRingIndex ? completeOnce : undefined}
                 />
               </Centered>
             ))}

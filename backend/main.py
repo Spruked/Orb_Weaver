@@ -30,7 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 import httpx
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, object_session
 
 from app.analytics.ga4 import GA4Connector
@@ -61,8 +61,8 @@ from app.lifecycle import (
     write_json_artifact,
 )
 from app.orb import scan_semantic_topology
-from app.orb.pointer_intent import resolve_pointer_intent
-from app.orb.pointer_plot import pointer_plot_map_from_pages, pointer_runtime_policy
+from app.orb.pointer_intent import requires_guidance, resolve_pointer_intent
+from app.orb.pointer_plot import mark_route_locator_conflicts, pointer_map_diagnostics, pointer_plot_map_from_pages, pointer_runtime_policy
 from app.orb.pointer_recovery import (
     assess_pointer_quality,
     guidance_eligible_pointer_count,
@@ -78,7 +78,7 @@ from app.orb.pointer_recovery import (
 from app.orb.site_learning import classify_answer_state, lookup_verified_case, record_interaction
 from app.orb.cco_runtime import build_runtime_trace
 from app.orb.turn_resolver import CanonicalTurnResolver
-from app.orb.vault_skg_adapter import get_vault_skg_adapter
+from app.orb.vault_skg_adapter import get_vault_skg_adapter, materialize_site_apriori
 from app.pack_generator import generate_pack_file
 from manufacturing.website_orb import manufacture_website_orb
 from app.services.chrome_devtools import ChromeDevToolsReviewRunner
@@ -167,6 +167,17 @@ app.add_middleware(
 app.include_router(orb_telemetry_router)
 
 
+@app.middleware("http")
+async def request_timing_middleware(request: Request, call_next):
+    started = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    response.headers["X-Orb-Request-Time-Ms"] = f"{elapsed_ms:.1f}"
+    if settings.DEBUG and elapsed_ms >= 750:
+        logger.warning("slow request %.1fms %s %s", elapsed_ms, request.method, request.url.path)
+    return response
+
+
 def _resolve_database_url() -> str:
     if settings.DATABASE_URL.strip() == "postgresql://user:pass@localhost/orb_weaver":
         return canonical_database_url(None)
@@ -188,19 +199,15 @@ init_db(ENGINE)
 
 REPORT_COMPILER_ROOT = REPORTS_ROOT
 REPORT_COMPILER_ROOT.mkdir(parents=True, exist_ok=True)
-ORB_TTS_CACHE_ROOT = TTS_CACHE_ROOT
+ORB_TTS_CACHE_ROOT = Path(settings.ORB_TTS_CACHE_DIR).expanduser().resolve()
+require_vault_path(ORB_TTS_CACHE_ROOT, "Website ORB TTS cache")
 ORB_TTS_CACHE_ROOT.mkdir(parents=True, exist_ok=True)
 ORB_TTS_INFLIGHT_LOCK = asyncio.Lock()
 ORB_TTS_INFLIGHT: Dict[str, asyncio.Task] = {}
 ORB_TTS_PROVIDER_LOCKS: Dict[str, asyncio.Lock] = {}
 logger = logging.getLogger("orb_weaver")
 
-KOKORO_VOICE_OPTIONS = [
-    "af_heart", "af_bella", "af_nicole", "af_sarah", "af_sky",
-    "am_adam", "am_echo", "am_eric", "am_fenrir", "am_liam", "am_michael", "am_onyx", "am_puck",
-    "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
-    "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
-]
+QWEN_TTS_VOICE_OPTIONS = [settings.ORB_TTS_QWEN_VOICE]
 ORB_TOOL_AVAILABILITY_STATES = frozenset({
     "installed",
     "registered",
@@ -217,19 +224,40 @@ LLM_WARM_STATUS: Dict[str, Any] = {
     "configured": bool(settings.LOCAL_LLM_URL and settings.LOCAL_LLM_MODEL),
     "ready": False,
     "model": settings.LOCAL_LLM_MODEL,
+    "model_lock": "Qwen 2.5 1.5B Instruct Q4_K_M via llama.cpp",
+    "provider": "llamacpp",
+    "endpoint": settings.LOCAL_LLM_URL,
     "checked_at": None,
     "error": None,
 }
 ORB_TTS_WARM_STATUS: Dict[str, Any] = {
-    "configured": bool(settings.ORB_TTS_KOKORO_URL or settings.ORB_TTS_QWEN_URL),
+    "configured": bool(settings.ORB_TTS_QWEN_URL),
     "ready": None,
     "checked_at": None,
-    "provider": None,
+    "provider": "qwen",
+    "voice": settings.ORB_TTS_QWEN_VOICE,
+    "allowed_voices": QWEN_TTS_VOICE_OPTIONS,
     "errors": [],
 }
 CRAWL_WORKER_INSTANCE_ID = f"{os.getpid()}-{secrets.token_hex(6)}"
 
 ORB_INSTALL_SITES: Dict[str, Dict[str, Any]] = {
+    "orb-weaver": {
+        "name": "Orb Weaver",
+        "context_domain": "orbweaver.spruked.com",
+        "pointer_recovery_routes": ["/", "/features", "/how-it-works", "/web-weave", "/preflight", "/marketplace"],
+        "allowed_origins": {
+            "https://orbweaver.spruked.com",
+            "https://www.orbweaver.spruked.com",
+            "http://localhost:16510",
+            "http://127.0.0.1:16510",
+            "http://localhost:16610",
+            "http://127.0.0.1:16610",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        },
+        "allowed_origin_suffixes": (),
+    },
     "orb-weaver-campaign": {
         "name": "Orb Weaver Campaign",
         "context_domain": "campaign.orbweaver.spruked.com",
@@ -246,8 +274,14 @@ ORB_INSTALL_SITES: Dict[str, Dict[str, Any]] = {
 
 
 async def _warm_local_llm() -> None:
-    """Load the configured Ollama model and retain it without delaying app startup."""
-    if not settings.LOCAL_LLM_URL or not settings.LOCAL_LLM_MODEL:
+    """Warm the configured llama.cpp inference gateway without delaying app startup."""
+    if not _local_llm_is_locked_llamacpp():
+        if settings.LOCAL_LLM_URL or settings.LOCAL_LLM_MODEL:
+            LLM_WARM_STATUS.update({
+                "ready": False,
+                "checked_at": datetime.utcnow().isoformat(),
+                "error": "Website ORB cognition model is locked to llama.cpp Qwen 2.5 1.5B Instruct Q4_K_M.",
+            })
         return
     try:
         async with httpx.AsyncClient(timeout=min(120.0, max(15.0, settings.LOCAL_LLM_TIMEOUT_SECONDS))) as client:
@@ -344,6 +378,12 @@ class ProjectCreate(BaseModel):
     ga4_measurement_id: Optional[str] = None
 
 
+class ProjectUrlUpdate(BaseModel):
+    primary_url: str = Field(min_length=1, max_length=2048)
+    alternate_urls: List[str] = Field(default_factory=list, max_length=25)
+    reason: Optional[str] = Field(default=None, max_length=500)
+
+
 class ProjectGA4Config(BaseModel):
     ga4_property_id: Optional[str] = None
     ga4_measurement_id: Optional[str] = None
@@ -411,6 +451,7 @@ class WebsiteOrbVoiceResponse(BaseModel):
     memory_context: Optional[Dict[str, Any]] = None
     tts_audio_url: Optional[str] = None
     tts_provider: Optional[str] = None
+    tts_voice: Optional[str] = None
     tts_error: Optional[str] = None
     source_lane: Optional[str] = None
     evidence_ids: List[str] = Field(default_factory=list)
@@ -420,6 +461,8 @@ class WebsiteOrbVoiceResponse(BaseModel):
     escalation_used: Optional[str] = None
     learning_eligible: Optional[bool] = None
     resolution_trace: Optional[Dict[str, Any]] = None
+    resolution_diagnostics: Optional[Dict[str, Any]] = None
+    skg_learning: Optional[Dict[str, Any]] = None
     control_action: Optional[Dict[str, Any]] = None
 
 
@@ -454,6 +497,7 @@ class WebsiteOrbTtsResponse(BaseModel):
     text: str
     tts_audio_url: Optional[str] = None
     tts_provider: Optional[str] = None
+    tts_voice: Optional[str] = None
     tts_error: Optional[str] = None
 
 
@@ -1799,6 +1843,18 @@ def _ollama_base_url() -> Optional[str]:
     return raw
 
 
+def _local_llm_is_locked_llamacpp() -> bool:
+    url = (settings.LOCAL_LLM_URL or "").strip()
+    model = (settings.LOCAL_LLM_MODEL or "").strip()
+    if not url or not model:
+        return False
+    return "11434" not in url and model in {
+        "orb-auto",
+        "qwen2.5-1.5b-instruct-q4_k_m",
+        "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+    }
+
+
 def _dock_orb_identity(compiled_policy: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     appearance = (compiled_policy or {}).get("appearance") or {}
     skin_id = str(appearance.get("skin_id") or "orb_factory_default_v1")
@@ -1892,8 +1948,37 @@ def _owned_audit_report(audit_id: str, customer: Customer, db: Session) -> Audit
     return report
 
 
+def _normalize_site_url(raw_url: str) -> str:
+    value = (raw_url or "").strip()
+    if not value:
+        return ""
+    if not re.match(r"^https?://", value, flags=re.IGNORECASE):
+        value = f"https://{value}"
+    parsed = urlparse(value)
+    host = (parsed.netloc or parsed.path).strip().lower()
+    path = parsed.path if parsed.netloc else ""
+    if "@" in host:
+        host = host.rsplit("@", 1)[-1]
+    host = host.rstrip("/")
+    path = "/" + path.strip("/") if path and path != "/" else ""
+    normalized = f"{(parsed.scheme or 'https').lower()}://{host}{path}"
+    return normalized.rstrip("/")
+
+
+def _domain_key(host: str) -> str:
+    normalized = (host or "").strip().lower().rstrip(".")
+    if normalized.startswith("www."):
+        normalized = normalized[4:]
+    return normalized
+
+
 def _normalize_domain(raw_domain: str) -> str:
-    return raw_domain.strip().replace("http://", "").replace("https://", "").rstrip("/")
+    value = (raw_domain or "").strip()
+    if not value:
+        return ""
+    normalized_url = _normalize_site_url(value)
+    parsed = urlparse(normalized_url)
+    return (parsed.netloc or normalized_url.replace("http://", "").replace("https://", "").split("/", 1)[0]).lower()
 
 
 def _default_project_name(domain: str) -> str:
@@ -1903,19 +1988,43 @@ def _default_project_name(domain: str) -> str:
     return " ".join([p.replace("-", " ").capitalize() for p in parts[:2]])
 
 
-def _serialize_project(project: Project, db: Session) -> Dict:
+def _project_primary_url(project: Project) -> str:
+    return project.primary_url or _normalize_site_url(project.domain)
+
+
+def _project_url_payload(project: Project) -> Dict[str, Any]:
+    alternate_urls = project.alternate_urls or []
+    url_history = project.url_history or []
+    return {
+        "primary_url": _project_primary_url(project),
+        "alternate_urls": alternate_urls if isinstance(alternate_urls, list) else [],
+        "url_history": url_history if isinstance(url_history, list) else [],
+        "artifacts_require_revalidation": bool(project.artifacts_require_revalidation),
+    }
+
+
+def _serialize_project(
+    project: Project,
+    db: Session,
+    latest_crawl: Optional[CrawlJob] = None,
+    latest_audit: Optional[AuditReport] = None,
+    recent_lifecycle_jobs: Optional[List[LifecycleJob]] = None,
+) -> Dict:
     report_folder = _project_report_dir(project)
-    latest_crawl = (
-        db.query(CrawlJob).filter(CrawlJob.project_id == project.id).order_by(CrawlJob.id.desc()).first()
-    )
-    latest_audit = (
-        db.query(AuditReport).filter(AuditReport.project_id == project.id).order_by(AuditReport.id.desc()).first()
-    )
+    if latest_crawl is None:
+        latest_crawl = (
+            db.query(CrawlJob).filter(CrawlJob.project_id == project.id).order_by(CrawlJob.id.desc()).first()
+        )
+    if latest_audit is None:
+        latest_audit = (
+            db.query(AuditReport).filter(AuditReport.project_id == project.id).order_by(AuditReport.id.desc()).first()
+        )
 
     return {
         "id": str(project.id),
         "name": project.name,
         "domain": project.domain,
+        **_project_url_payload(project),
         "folder_title": report_folder.name,
         "ga4_property_id": project.ga4_property_id,
         "ga4_measurement_id": project.ga4_measurement_id,
@@ -1925,6 +2034,7 @@ def _serialize_project(project: Project, db: Session) -> Dict:
         "latest_pages_crawled": latest_crawl.pages_crawled if latest_crawl else None,
         "latest_audit_id": str(latest_audit.id) if latest_audit else None,
         "latest_audit_score": latest_audit.overall_score if latest_audit else None,
+        "recent_lifecycle_jobs": [_serialize_lifecycle_job(job) for job in (recent_lifecycle_jobs or [])],
     }
 
 
@@ -2286,6 +2396,14 @@ def _orb_capabilities() -> Dict[str, Any]:
             },
         },
         "local_llm": dict(LLM_WARM_STATUS),
+        "local_cognition_model_lock": {
+            "provider": "llamacpp",
+            "model": "Qwen 2.5 1.5B Instruct Q4_K_M",
+            "endpoint": settings.LOCAL_LLM_URL,
+            "runtime_model": settings.LOCAL_LLM_MODEL,
+            "locked": _local_llm_is_locked_llamacpp(),
+            "bypass_rule": "Use deterministic TPC, Site World, Vault, catalog, A Priori, and verified A Posteriori answers before calling the model.",
+        },
         "local_tts": dict(ORB_TTS_WARM_STATUS),
         "chrome_devtools_mcp": {
             "enabled": settings.CHROME_DEVTOOLS_ENABLED,
@@ -2308,11 +2426,15 @@ def _orb_capabilities() -> Dict[str, Any]:
             "browser_speech_synthesis": False,
             "recorded_audio_stt_url": settings.FASTER_WHISPER_STT_URL,
             "text_query_low_latency": True,
-            "tts_primary": "kokoro" if settings.ORB_TTS_KOKORO_URL else "qwen",
-            "tts_primary_configured": bool(settings.ORB_TTS_KOKORO_URL or settings.ORB_TTS_QWEN_URL),
-            "tts_primary_url": settings.ORB_TTS_KOKORO_URL or settings.ORB_TTS_QWEN_URL,
-            "tts_fallback": "qwen" if settings.ORB_TTS_KOKORO_URL and settings.ORB_TTS_QWEN_URL else None,
-            "tts_fallback_url": settings.ORB_TTS_QWEN_URL if settings.ORB_TTS_KOKORO_URL else None,
+            "tts_primary": "qwen",
+            "tts_primary_configured": bool(settings.ORB_TTS_QWEN_URL),
+            "tts_primary_url": settings.ORB_TTS_QWEN_URL,
+            "tts_selected_voice": settings.ORB_TTS_QWEN_VOICE,
+            "tts_allowed_voices": QWEN_TTS_VOICE_OPTIONS,
+            "tts_voice_mode": settings.ORB_TTS_QWEN_PAYLOAD_MODE,
+            "tts_voice_instruct": settings.ORB_TTS_QWEN_INSTRUCT,
+            "tts_fallback": None,
+            "tts_fallback_url": None,
         },
         "tools": [
             "public_preflight",
@@ -2566,10 +2688,7 @@ def _cache_orb_tool_result(
 
 
 def _project_target_url(project: Project) -> str:
-    domain = (project.domain or "").strip()
-    if domain.startswith(("http://", "https://")):
-        return domain
-    return f"https://{domain}"
+    return _project_primary_url(project)
 
 
 async def _run_orb_tool(payload: OrbToolRunRequest, customer: Customer, db: Session) -> Dict[str, Any]:
@@ -2994,14 +3113,12 @@ async def _llm_orb_spoken_output(
     fallback = _fallback_orb_spoken_output(transcript, pulse, memory_context, website_context)
     llm_configuration = (operating_policy or {}).get("llm") or {}
     provider = str(llm_configuration.get("provider") or "runtime_default").strip()
+    if provider == "ollama_local":
+        provider = "runtime_default"
     if provider in {"openai_api", "anthropic_api", "openai_compatible"}:
         return {"spoken_output": fallback, "llm_source": f"{provider}-pending-adapter"}
-    configured_model = (
-        str(llm_configuration.get("model") or "").strip()
-        if provider == "ollama_local"
-        else str(settings.LOCAL_LLM_MODEL or "").strip()
-    )
-    if not settings.LOCAL_LLM_URL or not configured_model:
+    configured_model = str(settings.LOCAL_LLM_MODEL or "").strip()
+    if not _local_llm_is_locked_llamacpp():
         return {"spoken_output": fallback, "llm_source": "local-fallback"}
 
     pulse_brief = {
@@ -3100,8 +3217,7 @@ async def _llm_orb_spoken_output(
             response.raise_for_status()
             payload = response.json()
         spoken = _clean_spoken_output(str(payload.get("response") or payload.get("text") or ""))
-        source = "ollama-owner-model" if provider == "ollama_local" else "local-llm"
-        return {"spoken_output": spoken or fallback, "llm_source": source}
+        return {"spoken_output": spoken or fallback, "llm_source": "llamacpp-qwen2.5-1.5b-instruct-q4_k_m"}
     except Exception:
         return {"spoken_output": fallback, "llm_source": "local-fallback"}
 
@@ -3222,6 +3338,12 @@ def _tts_payload(mode: str, text: str, model: str, voice: str, audio_format: str
             "instruct": settings.ORB_TTS_QWEN_INSTRUCT,
             "format": audio_format,
         }
+    if normalized_mode in {"qwen-voice-clone", "qwen_voice_clone", "voice-clone", "voice_clone"}:
+        return {
+            "text": text,
+            "mode": "voice_clone",
+            "language": settings.ORB_TTS_QWEN_LANGUAGE,
+        }
     if normalized_mode == "generic":
         return {
             "text": text,
@@ -3240,8 +3362,9 @@ def _tts_payload(mode: str, text: str, model: str, voice: str, audio_format: str
 def _visitor_safe_tts_unavailable() -> Dict[str, Optional[str]]:
     return {
         "tts_audio_url": None,
-        "tts_provider": None,
-        "tts_error": "Voice is temporarily unavailable, but I can still help here in text.",
+        "tts_provider": "qwen",
+        "tts_voice": settings.ORB_TTS_QWEN_VOICE,
+        "tts_error": "Qwen TTS is temporarily unavailable; no alternate voice engine was used.",
     }
 
 
@@ -3333,13 +3456,14 @@ async def _call_tts_provider(
     raise RuntimeError(f"{provider} TTS response did not include audio")
 
 
-def _cached_tts_result(digest: str, provider: str) -> Optional[Dict[str, Optional[str]]]:
+def _cached_tts_result(digest: str, provider: str, voice: Optional[str] = None) -> Optional[Dict[str, Optional[str]]]:
     cached_matches = sorted(ORB_TTS_CACHE_ROOT.glob(f"{digest}.*"))
     if not cached_matches:
         return None
     return {
         "tts_audio_url": f"/api/orb/tts/{cached_matches[0].name}",
         "tts_provider": provider,
+        "tts_voice": voice,
         "tts_error": None,
     }
 
@@ -3348,15 +3472,6 @@ def _tts_cache_probe(text: str) -> Dict[str, Any]:
     clean_text = text.strip()
     probes = []
     for provider, url, _api_key, _payload_mode, model, voice, _audio_format in [
-        (
-            "kokoro",
-            settings.ORB_TTS_KOKORO_URL,
-            settings.ORB_TTS_KOKORO_API_KEY,
-            settings.ORB_TTS_KOKORO_PAYLOAD_MODE,
-            settings.ORB_TTS_KOKORO_MODEL,
-            settings.ORB_TTS_KOKORO_VOICE,
-            settings.ORB_TTS_KOKORO_FORMAT,
-        ),
         (
             "qwen",
             settings.ORB_TTS_QWEN_URL,
@@ -3373,7 +3488,8 @@ def _tts_cache_probe(text: str) -> Dict[str, Any]:
         probes.append({
             "provider": provider,
             "digest": digest,
-            "hit": bool(_cached_tts_result(digest, provider)),
+            "hit": bool(_cached_tts_result(digest, provider, voice)),
+            "voice": voice,
         })
     return {"hit": any(probe["hit"] for probe in probes), "probes": probes}
 
@@ -3389,7 +3505,7 @@ async def _synthesize_orb_tts_uncached(
     voice: str,
     audio_format: str,
 ) -> Dict[str, Optional[str]]:
-    cached = _cached_tts_result(digest, provider)
+    cached = _cached_tts_result(digest, provider, voice)
     if cached:
         return cached
 
@@ -3410,6 +3526,7 @@ async def _synthesize_orb_tts_uncached(
     return {
         "tts_audio_url": f"/api/orb/tts/{audio_id}",
         "tts_provider": provider,
+        "tts_voice": voice,
         "tts_error": None,
     }
 
@@ -3429,28 +3546,20 @@ async def _run_tts_singleflight(key: str, factory) -> Dict[str, Optional[str]]:
                 ORB_TTS_INFLIGHT.pop(key, None)
 
 
-async def _synthesize_orb_tts(text: str) -> Dict[str, Optional[str]]:
+async def _synthesize_orb_tts(text: str, voice_override: Optional[str] = None) -> Dict[str, Optional[str]]:
     clean_text = text.strip()
     if not clean_text:
         return _visitor_safe_tts_unavailable()
+    qwen_voice = (voice_override or settings.ORB_TTS_QWEN_VOICE).strip()
 
     providers = [
-        (
-            "kokoro",
-            settings.ORB_TTS_KOKORO_URL,
-            settings.ORB_TTS_KOKORO_API_KEY,
-            settings.ORB_TTS_KOKORO_PAYLOAD_MODE,
-            settings.ORB_TTS_KOKORO_MODEL,
-            settings.ORB_TTS_KOKORO_VOICE,
-            settings.ORB_TTS_KOKORO_FORMAT,
-        ),
         (
             "qwen",
             settings.ORB_TTS_QWEN_URL,
             settings.ORB_TTS_QWEN_API_KEY,
             settings.ORB_TTS_QWEN_PAYLOAD_MODE,
             settings.ORB_TTS_QWEN_MODEL,
-            settings.ORB_TTS_QWEN_VOICE,
+            qwen_voice,
             settings.ORB_TTS_QWEN_FORMAT,
         ),
     ]
@@ -3462,12 +3571,13 @@ async def _synthesize_orb_tts(text: str) -> Dict[str, Optional[str]]:
         digest = hashlib.sha256(
             f"{provider}:{model}:{voice}:{clean_text}".encode("utf-8")
         ).hexdigest()[:24]
-        cached = _cached_tts_result(digest, provider)
+        cached = _cached_tts_result(digest, provider, voice)
         if cached:
             ORB_TTS_WARM_STATUS.update({
                 "ready": True,
                 "checked_at": datetime.utcnow().isoformat(),
                 "provider": provider,
+                "voice": voice,
                 "errors": [],
             })
             return cached
@@ -3498,6 +3608,7 @@ async def _synthesize_orb_tts(text: str) -> Dict[str, Optional[str]]:
                 "ready": True,
                 "checked_at": datetime.utcnow().isoformat(),
                 "provider": provider,
+                "voice": voice,
                 "errors": [],
             })
             return result
@@ -3988,16 +4099,35 @@ def _load_domain_website_context(target_url: Optional[str]) -> Optional[Dict[str
     return None
 
 
-def _latest_completed_crawl_pack_for_domain(domain: str, db: Session) -> Optional[Dict[str, Any]]:
-    project = db.query(Project).filter(Project.domain == domain).first()
-    if not project:
+def _project_for_runtime_domain(domain: str, db: Session) -> Optional[Project]:
+    normalized = _domain_key(domain)
+    if not normalized:
         return None
-    crawl = (
+    exact = db.query(Project).filter(Project.domain == domain).first()
+    if exact:
+        return exact
+    return next((project for project in db.query(Project).all() if _domain_key(project.domain) == normalized), None)
+
+
+def _preferred_runtime_crawl(project: Project, db: Session) -> Optional[CrawlJob]:
+    configured_crawl_id = settings.ORB_WEAVER_SITE_ORB_SOURCE_CRAWL_ID
+    if configured_crawl_id and _domain_key(project.domain) == "orbweaver.spruked.com":
+        configured = db.get(CrawlJob, int(configured_crawl_id))
+        if configured and configured.project_id == project.id and str(configured.status).lower() in {"completed", "complete"}:
+            return configured
+    return (
         db.query(CrawlJob)
-        .filter(CrawlJob.project_id == project.id, CrawlJob.status == "completed")
+        .filter(CrawlJob.project_id == project.id, CrawlJob.status.in_({"completed", "complete"}))
         .order_by(CrawlJob.id.desc())
         .first()
     )
+
+
+def _latest_completed_crawl_pack_for_domain(domain: str, db: Session) -> Optional[Dict[str, Any]]:
+    project = _project_for_runtime_domain(domain, db)
+    if not project:
+        return None
+    crawl = _preferred_runtime_crawl(project, db)
     if not crawl:
         return None
     pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl.id).all()
@@ -4239,6 +4369,7 @@ def _pointer_summary(record: Dict[str, Any], score: float = 0.0) -> Dict[str, An
         "target_id": record.get("target_id"),
         "page_route": record.get("page_route"),
         "target_type": record.get("target_type"),
+        "pointer_class": record.get("pointer_class"),
         "meaning": record.get("meaning"),
         "semantic_locator": record.get("semantic_locator"),
         "structural_context": record.get("structural_context") or {},
@@ -4325,6 +4456,7 @@ def _owner_showcase_pointer_records(domain: str) -> List[Dict[str, Any]]:
         {
             **record,
             "status": "active",
+            "pointer_class": "live_guidance",
             "allowed_actions": ["point"],
             "confidence": 1.0,
             "confidence_class": "VERIFIED",
@@ -4361,6 +4493,8 @@ def _lookup_pointer_context(
     max_records: int = 6,
 ) -> List[Dict[str, Any]]:
     if not website_context:
+        return []
+    if not requires_guidance(transcript):
         return []
     domain = website_context.get("domain")
     if not domain:
@@ -4466,7 +4600,8 @@ def _build_page_capsule(target_url: str, website_context_override: Optional[Dict
             score += 0.28
         return score
 
-    ranked = sorted(route_records, key=value_score, reverse=True)
+    guidance_records = [record for record in route_records if pointer_guidance_eligible(record)]
+    ranked = sorted(guidance_records, key=value_score, reverse=True)
     route_hints = website_context.get("route_hints") or {}
     visitor_tools = website_context.get("visitor_tools") or []
     route_text = " ".join([route, *[str(item.get("id") or "") for item in visitor_tools]])
@@ -4561,15 +4696,10 @@ def _runtime_pointer_map(domain: str, db: Session) -> Dict[str, Any]:
             except (OSError, json.JSONDecodeError):
                 raise HTTPException(status_code=500, detail="Pointer map is unreadable")
 
-    project = db.query(Project).filter(Project.domain == domain).first()
+    project = _project_for_runtime_domain(domain, db)
     latest_completed = None
     if project:
-        latest_completed = (
-            db.query(CrawlJob)
-            .filter(CrawlJob.project_id == project.id, CrawlJob.status == "completed")
-            .order_by(CrawlJob.id.desc())
-            .first()
-        )
+        latest_completed = _preferred_runtime_crawl(project, db)
     if latest_completed and str(pointer_map.get("source_crawl_job_id") or "") != str(latest_completed.id):
         latest_pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == latest_completed.id).all()
         if latest_pages:
@@ -4628,9 +4758,35 @@ def _runtime_pointer_map(domain: str, db: Session) -> Dict[str, Any]:
         if not isinstance(original, dict):
             continue
         record = dict(original)
+        if not record.get("pointer_class"):
+            target_type = str(record.get("target_type") or "")
+            locator = str(record.get("semantic_locator") or "")
+            durable_locator = (
+                locator.startswith("[data-orb-")
+                or locator.startswith("#")
+                or "[id=" in locator
+                or "aria-label" in locator
+                or "data-testid" in locator
+                or target_type in {"nav", "download"}
+            )
+            if target_type in {"heading", "paragraph", "faq_answer", "policy_line"}:
+                record["pointer_class"] = "semantic_reference"
+            elif target_type in {"nav", "form_field", "button", "price_card", "download"} and durable_locator:
+                record["pointer_class"] = "live_guidance"
+            elif target_type == "section" and durable_locator and re.search(
+                r"\b(sign ?up|register|contact|pricing|price|plan|package|checkout|cart|preflight|scan|marketplace|download|demo|orb)\b",
+                str(record.get("meaning") or "").lower(),
+            ):
+                record["pointer_class"] = "live_guidance"
+            else:
+                record["pointer_class"] = "semantic_reference"
+            record.setdefault(
+                "pointer_admission_reason",
+                "accepted_as_live_guidance" if record["pointer_class"] == "live_guidance" else "runtime_legacy_semantic_reference",
+            )
         if not record.get("confidence_class") or not isinstance(record.get("runtime_policy"), dict):
             confidence = float(record.get("confidence") or 0.0)
-            confidence_class, runtime_policy = pointer_runtime_policy(confidence)
+            confidence_class, runtime_policy = pointer_runtime_policy(confidence, pointer_class=str(record.get("pointer_class") or "live_guidance"))
             record["confidence_class"] = confidence_class
             record["runtime_policy"] = runtime_policy
             record["confidence_evidence"] = {
@@ -4646,7 +4802,11 @@ def _runtime_pointer_map(domain: str, db: Session) -> Dict[str, Any]:
         record.setdefault("pointer_health", "VERIFIED" if safe_class else "NEW")
         normalized_records.append(record)
     pointer_map["records"] = _merge_owner_showcase_pointers(domain, normalized_records)
+    mark_route_locator_conflicts(pointer_map["records"])
     pointer_map["record_count"] = len(pointer_map["records"])
+    pointer_map["guidance_record_count"] = sum(1 for record in pointer_map["records"] if str(record.get("pointer_class") or "") == "live_guidance")
+    pointer_map["reference_record_count"] = sum(1 for record in pointer_map["records"] if str(record.get("pointer_class") or "") == "semantic_reference")
+    pointer_map["diagnostics"] = pointer_map_diagnostics(pointer_map["records"])
     pointer_map.setdefault("domain", domain)
     pointer_map.setdefault("schema", "orb_weaver.pointer_plot_map.v1")
     pointer_map["by_page"] = {}
@@ -4654,6 +4814,68 @@ def _runtime_pointer_map(domain: str, db: Session) -> Dict[str, Any]:
         pointer_map["by_page"].setdefault(str(record.get("page_route") or "/"), []).append(record.get("target_id"))
     pointer_map["quality"] = assess_pointer_quality(pointer_map)
     return pointer_map
+
+
+def _site_world_artifact_diagnostics(domain: str, db: Session) -> Dict[str, Any]:
+    root = _website_context_root(domain)
+    artifacts = []
+    for filename in (
+        "orb_runtime_context.json",
+        "latest_context.json",
+        "pointer_plot_map.json",
+        "tool_cache.json",
+        "site_preflight_report.json",
+        "pointer_authority.json",
+    ):
+        path = root / filename if root else None
+        payload = _load_json_if_present(path) if path else None
+        artifacts.append({
+            "name": filename,
+            "loaded": bool(payload),
+            "path": str(path) if path else None,
+            "schema": payload.get("schema") if isinstance(payload, dict) else None,
+            "source": payload.get("source") if isinstance(payload, dict) else None,
+            "source_crawl_job_id": payload.get("source_crawl_job_id") if isinstance(payload, dict) else None,
+            "record_count": payload.get("record_count") if isinstance(payload, dict) else None,
+            "page_count": len(payload.get("page_knowledge") or []) if isinstance(payload, dict) else None,
+            "updated_at": (payload.get("updated_at") or payload.get("generated_at")) if isinstance(payload, dict) else None,
+        })
+    pointer_map = _runtime_pointer_map(domain, db)
+    context = _fresh_runtime_website_context(f"https://{domain}", db) or {}
+    guidance_records = [
+        record for record in pointer_map.get("records") or []
+        if isinstance(record, dict) and str(record.get("pointer_class") or "") == "live_guidance"
+    ]
+    stable_guidance = [record for record in guidance_records if pointer_guidance_eligible(record)]
+    unresolved_guidance = [
+        record for record in guidance_records
+        if not pointer_guidance_eligible(record)
+        and record.get("status") in (None, "active")
+        and record.get("finding_subreason") != "owner_rejected_pointer_identity"
+    ]
+    guidance_total = len(guidance_records)
+    return {
+        "schema": "orb_weaver.site_world_diagnostic.v1",
+        "domain": domain,
+        "generated_at": datetime.utcnow().isoformat(),
+        "configured_orb_weaver_source_crawl_id": str(settings.ORB_WEAVER_SITE_ORB_SOURCE_CRAWL_ID) if settings.ORB_WEAVER_SITE_ORB_SOURCE_CRAWL_ID else None,
+        "fresh_crawl_provenance": context.get("fresh_crawl_provenance"),
+        "site_world_loaded": bool(context),
+        "site_world_keys": sorted(context.keys()),
+        "artifact_count": sum(1 for artifact in artifacts if artifact["loaded"]),
+        "artifacts": artifacts,
+        "pointer_summary": {
+            "source_crawl_job_id": pointer_map.get("source_crawl_job_id") or pointer_map.get("recovered_from_crawl_id"),
+            "record_count": int(pointer_map.get("record_count") or 0),
+            "semantic_reference_count": int(pointer_map.get("reference_record_count") or 0),
+            "live_guidance_count": guidance_total,
+            "stable_guidance_count": len(stable_guidance),
+            "unresolved_guidance_count": len(unresolved_guidance),
+            "guidance_readiness_percent": round((len(stable_guidance) / guidance_total) * 100, 2) if guidance_total else 100.0,
+            "quality": pointer_map.get("quality") or {},
+            "guidance_eligible_count": guidance_eligible_pointer_count(pointer_map),
+        },
+    }
 
 
 def _client_intelligence_root(project: Project) -> Path:
@@ -5621,6 +5843,7 @@ def _pointer_summary_with_execution(pointer_summary: Dict[str, Any], config: Opt
 def _planned_tool_calls(pointer_summary: Dict, stats: Optional[Dict] = None, pages: Optional[List[CrawledPage]] = None) -> List[Dict[str, Any]]:
     stats = stats or {}
     record_count = int(pointer_summary.get("record_count") or 0)
+    guidance_count = int(pointer_summary.get("guidance_eligible_count") or pointer_summary.get("guidance_record_count") or 0)
     duplicate_count = int(pointer_summary.get("duplicate_target_ids") or 0)
     runtime_ready = str(pointer_summary.get("runtime_guidance_status") or "").upper() == "COMPLETE"
     depth_limit_hit = bool(stats.get("depth_limit_hit"))
@@ -5633,16 +5856,16 @@ def _planned_tool_calls(pointer_summary: Dict, stats: Optional[Dict] = None, pag
             "scope": "basic_customer_orb",
             "trigger": "website_orb_boot",
             "purpose": "Load verified pointable targets for the current site package.",
-            "status": "ready" if record_count > 0 and runtime_ready else "needs_review",
+            "status": "ready" if guidance_count > 0 and runtime_ready else "needs_review",
             "requires_mcp": False,
         },
         {
             "id": "resolve_pointer_target",
             "tool": "runtime_pointer_resolver",
             "scope": "basic_customer_orb",
-            "trigger": "visitor_intent_match",
-            "purpose": "Resolve a cached target record against the live DOM before moving or blooming.",
-            "status": "ready" if record_count > 0 and runtime_ready else "blocked_until_pointer_recovery",
+            "trigger": "visitor_intent_requires_guidance",
+            "purpose": "Resolve a high-confidence guidance target against the live DOM before moving or blooming.",
+            "status": "ready" if guidance_count > 0 and runtime_ready else "no_verified_guidance_targets" if guidance_count == 0 else "blocked_until_pointer_recovery",
             "requires_mcp": False,
         },
         {
@@ -5708,6 +5931,8 @@ def _planned_pointer_tool_calls_from_pages(pages: List[CrawledPage], limit: int 
             if len(planned) >= limit:
                 return planned
             if not isinstance(record, dict) or not record.get("target_id"):
+                continue
+            if not pointer_guidance_eligible(record):
                 continue
 
             target_type = str(record.get("target_type") or "other")
@@ -6585,6 +6810,9 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
         }
         _write_json(report_dir / f"crawl_{crawl_job.id}.json", snapshot)
         preserve_client_crawl_intelligence(project, crawl_job, stored_pages, db)
+        if project.artifacts_require_revalidation:
+            project.artifacts_require_revalidation = False
+            project.updated_at = datetime.utcnow()
         db.commit()
     except CrawlCancellationRequested as exc:
         crawl_job = db.query(CrawlJob).filter(CrawlJob.id == crawl_job_id).first()
@@ -7290,7 +7518,12 @@ def _manufactured_vault_root(domain: str) -> Optional[Path]:
 def _canonical_runtime_artifacts(domain: str, website_context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     vault_root = _manufactured_vault_root(domain)
     catalog_path: Optional[Path] = None
-    apriori: Dict[str, Any] = {"qa": {"entries": []}, "policies": {"rules": []}, "ontology": {"nodes": [], "edges": []}}
+    apriori: Dict[str, Any] = {
+        "catalog": {"entries": []},
+        "qa": {"entries": []},
+        "policies": {"rules": []},
+        "ontology": {"nodes": [], "edges": []},
+    }
     site_world = dict(website_context or {})
     if vault_root:
         payload_root = vault_root / "payload"
@@ -7332,7 +7565,14 @@ def _canonical_runtime_artifacts(domain: str, website_context: Optional[Dict[str
         priori_dir = vault_root / "payload" / "apriori"
         posteriori_dir = vault_root / "posteriori" / "orb_vault_skg"
         if (priori_dir / "catalog.json").is_file():
-            skg_adapter = get_vault_skg_adapter(str(priori_dir), str(posteriori_dir))
+            source_version = str((priori_dir / "catalog.json").stat().st_mtime_ns)
+            skg_adapter = get_vault_skg_adapter(str(priori_dir), str(posteriori_dir), source_version)
+    elif domain:
+        skg_root = client_root(domain) / "website_orb_learning" / "orb_vault_skg"
+        priori_dir = skg_root / "A_Priori_Vault"
+        posteriori_dir = skg_root / "A_Posteriori_Vault"
+        source_version = materialize_site_apriori(priori_dir, apriori)
+        skg_adapter = get_vault_skg_adapter(str(priori_dir), str(posteriori_dir), source_version)
     return {
         "vault_root": vault_root,
         "catalog_path": catalog_path,
@@ -7410,6 +7650,19 @@ async def _canonical_website_orb_turn(
 
     spoken_output = resolved["spoken_output"]
     llm_source = resolved["source_lane"]
+    skg_learning = None
+    if skg_adapter and resolved["source_lane"] != "control":
+        try:
+            skg_learning = skg_adapter.report_outcome(
+                query=transcript,
+                resolution_source=resolved["source_lane"],
+                answer=spoken_output,
+                success=resolved["source_lane"] != "unknown" and bool(spoken_output),
+                session_id=str(getattr(customer, "id", None) or site_id or ""),
+            )
+        except Exception as exc:
+            logger.warning("Website ORB SKG learning writeback failed for %s: %s", domain, exc)
+            skg_learning = {"error": str(exc), "candidate_state": "WRITE_FAILED"}
     learning_meta = _record_site_learning_interaction(
         transcript=transcript,
         spoken_output=spoken_output,
@@ -7435,6 +7688,14 @@ async def _canonical_website_orb_turn(
         learning_meta=learning_meta,
         retrieved_ids=resolved["evidence_ids"],
     )
+    resolution_source = {
+        "catalog": "catalog",
+        "apriori": "apriori",
+        "posteriori": "posteriori",
+        "site_world": "retrieval",
+        "local_model": "qwen",
+        "external_provider": "external_provider",
+    }.get(resolved["source_lane"], resolved["source_lane"])
     return {
         "transcript": transcript,
         "spoken_output": spoken_output,
@@ -7451,6 +7712,17 @@ async def _canonical_website_orb_turn(
         "escalation_used": resolved["escalation_used"],
         "learning_eligible": resolved["learning_eligible"],
         "resolution_trace": resolved["trace"],
+        "resolution_diagnostics": {
+            "resolution_source": resolution_source,
+            "fact_record_id": (resolved["evidence_ids"] or [None])[0],
+            "confidence": resolved["confidence"],
+            "qwen_bypassed": resolved["source_lane"] != "local_model",
+            "cached_speech": None,
+            "learning_candidate_eligible": resolved["source_lane"] not in {"control", "unknown"},
+            "learning_candidate_id": (skg_learning or {}).get("candidate_id"),
+            "learning_candidate_state": (skg_learning or {}).get("candidate_state"),
+        },
+        "skg_learning": skg_learning,
         "control_action": resolved.get("control_action"),
     }
 
@@ -7560,6 +7832,7 @@ async def website_orb_voice(
     started = time.perf_counter()
     tts_result = await _synthesize_orb_tts(semantic_result["spoken_output"])
     mark("tts", started)
+    semantic_result["resolution_diagnostics"]["cached_speech"] = bool(tts_cache_before.get("hit"))
     timings["total"] = round((time.perf_counter() - route_started) * 1000, 1)
     logger.warning("ORB voice timing %s", json.dumps({
         "request_id": request_id,
@@ -7837,10 +8110,14 @@ async def website_orb_text(
         db=db,
         experience_context=payload.experience.model_dump() if payload.experience else None,
     )
+    tts_cache_before = _tts_cache_probe(semantic_result["spoken_output"])
     tts_result = (
         await _synthesize_orb_tts(semantic_result["spoken_output"])
         if payload.synthesize_tts
         else {"tts_audio_url": None, "tts_provider": None, "tts_error": None}
+    )
+    semantic_result["resolution_diagnostics"]["cached_speech"] = (
+        bool(tts_cache_before.get("hit")) if payload.synthesize_tts else False
     )
     return {**semantic_result, **tts_result}
     if payload.experience:
@@ -8295,12 +8572,16 @@ async def website_orb_capabilities():
 @app.get("/api/orb/pointer-map", response_model=WebsiteOrbPointerMapResponse)
 async def website_orb_pointer_map(
     domain: Optional[str] = Query(default=None, max_length=255),
+    site_id: Optional[str] = Query(default=None, min_length=2, max_length=120),
     host: Optional[str] = Header(default=None),
     x_forwarded_host: Optional[str] = Header(default=None),
     db: Session = Depends(get_db),
 ):
     raw_domain = domain or x_forwarded_host or host or ""
     raw_domain = raw_domain.split(",")[0].split(":")[0].strip()
+    if site_id:
+        site = _orb_install_site(site_id)
+        raw_domain = str(site.get("context_domain") or raw_domain)
     if not raw_domain:
         raise HTTPException(status_code=404, detail="Pointer map domain is unknown")
 
@@ -8326,9 +8607,36 @@ async def website_orb_pointer_map(
 @app.get("/api/orb/page-capsule", response_model=WebsiteOrbPageCapsuleResponse)
 async def website_orb_page_capsule(
     target_url: str = Query(..., min_length=1, max_length=500),
+    site_id: Optional[str] = Query(default=None, min_length=2, max_length=120),
+    origin: Optional[str] = Header(default=None),
     db: Session = Depends(get_db),
 ):
-    return _build_page_capsule(target_url, _fresh_runtime_website_context(target_url, db))
+    context_target_url = _orb_context_target_url(target_url, site_id, origin) if site_id else target_url
+    website_context = _fresh_runtime_website_context(context_target_url, db)
+    capsule = _build_page_capsule(context_target_url or target_url, website_context)
+    capsule["current_url"] = target_url
+    capsule["route"] = _route_from_url(target_url)
+    capsule["context_domain"] = capsule.get("domain")
+    capsule["domain"] = _domain_from_url(target_url)
+    return capsule
+
+
+@app.get("/api/orb/site-world-diagnostics")
+async def website_orb_site_world_diagnostics(
+    domain: Optional[str] = Query(default=None, max_length=255),
+    site_id: Optional[str] = Query(default=None, min_length=2, max_length=120),
+    host: Optional[str] = Header(default=None),
+    x_forwarded_host: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    raw_domain = domain or x_forwarded_host or host or ""
+    raw_domain = raw_domain.split(",")[0].split(":")[0].strip()
+    if site_id:
+        site = _orb_install_site(site_id)
+        raw_domain = str(site.get("context_domain") or raw_domain)
+    if not raw_domain:
+        raise HTTPException(status_code=404, detail="Site World domain is unknown")
+    return _site_world_artifact_diagnostics(raw_domain, db)
 
 
 @app.get("/api/orb/tools/catalog")
@@ -8355,29 +8663,44 @@ async def website_orb_tts(payload: WebsiteOrbTtsRequest):
 @app.get("/api/orb/tts/voices")
 async def website_orb_tts_voices():
     return {
-        "provider": "kokoro",
-        "current_voice": settings.ORB_TTS_KOKORO_VOICE,
-        "voices": KOKORO_VOICE_OPTIONS,
+        "provider": "qwen",
+        "current_voice": settings.ORB_TTS_QWEN_VOICE,
+        "voices": QWEN_TTS_VOICE_OPTIONS,
+        "voice_mode": settings.ORB_TTS_QWEN_PAYLOAD_MODE,
+        "instruct": settings.ORB_TTS_QWEN_INSTRUCT,
     }
 
 
 @app.post("/api/orb/tts/voice")
 async def website_orb_set_tts_voice(payload: WebsiteOrbTtsVoiceRequest):
     voice = payload.voice.strip()
-    if voice not in KOKORO_VOICE_OPTIONS:
-        raise HTTPException(status_code=400, detail=f"Unsupported Kokoro voice: {voice}")
-    settings.ORB_TTS_KOKORO_VOICE = voice
+    if voice not in QWEN_TTS_VOICE_OPTIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported Qwen TTS voice: {voice}")
+    settings.ORB_TTS_QWEN_VOICE = voice
     ORB_TTS_WARM_STATUS.update({
         "ready": False,
         "checked_at": datetime.utcnow().isoformat(),
-        "provider": "kokoro",
+        "provider": "qwen",
         "voice": voice,
-        "message": "Kokoro voice changed; next synthesis will warm this voice.",
+        "message": "Qwen TTS voice selected; next synthesis will warm this voice.",
     })
     return {
-        "provider": "kokoro",
-        "current_voice": settings.ORB_TTS_KOKORO_VOICE,
-        "voices": KOKORO_VOICE_OPTIONS,
+        "provider": "qwen",
+        "current_voice": settings.ORB_TTS_QWEN_VOICE,
+        "voices": QWEN_TTS_VOICE_OPTIONS,
+        "voice_mode": settings.ORB_TTS_QWEN_PAYLOAD_MODE,
+        "instruct": settings.ORB_TTS_QWEN_INSTRUCT,
+    }
+
+
+@app.post("/api/orb/tts/voice-samples")
+async def website_orb_tts_voice_samples():
+    sample_text = "Hi, I'm Weaver. This is the Website ORB voice sample."
+    result = await _synthesize_orb_tts(sample_text)
+    return {
+        "provider": "qwen",
+        "sample_text": sample_text,
+        "samples": [{"voice": settings.ORB_TTS_QWEN_VOICE, **result}],
     }
 
 
@@ -9284,18 +9607,27 @@ async def create_project(
     if not domain:
         raise HTTPException(status_code=400, detail="Domain is required")
 
-    existing = db.query(Project).filter(Project.domain == domain, Project.customer_id == customer.id).first()
+    requested_key = _domain_key(domain)
+    customer_projects = db.query(Project).filter(Project.customer_id == customer.id).all()
+    existing = next((row for row in customer_projects if _domain_key(row.domain) == requested_key), None)
     if existing:
+        changed = False
         if project.ga4_property_id:
             existing.ga4_property_id = project.ga4_property_id
+            changed = True
         if project.ga4_measurement_id:
             existing.ga4_measurement_id = project.ga4_measurement_id
-        if project.ga4_property_id or project.ga4_measurement_id:
+            changed = True
+        if not existing.primary_url:
+            existing.primary_url = _normalize_site_url(project.domain)
+            changed = True
+        if changed:
             db.commit()
             db.refresh(existing)
         return _serialize_project(existing, db)
 
-    existing_domain = db.query(Project).filter(Project.domain == domain).first()
+    all_domain_matches = db.query(Project).all()
+    existing_domain = next((row for row in all_domain_matches if _domain_key(row.domain) == requested_key), None)
     if existing_domain:
         if existing_domain.customer_id is None:
             existing_domain.customer_id = customer.id
@@ -9305,6 +9637,8 @@ async def create_project(
                 existing_domain.ga4_property_id = project.ga4_property_id
             if project.ga4_measurement_id:
                 existing_domain.ga4_measurement_id = project.ga4_measurement_id
+            if not existing_domain.primary_url:
+                existing_domain.primary_url = _normalize_site_url(project.domain)
             db.commit()
             db.refresh(existing_domain)
             return _serialize_project(existing_domain, db)
@@ -9314,6 +9648,10 @@ async def create_project(
     created = Project(
         name=name,
         domain=domain,
+        primary_url=_normalize_site_url(project.domain),
+        alternate_urls=[],
+        url_history=[],
+        artifacts_require_revalidation=False,
         ga4_property_id=project.ga4_property_id,
         ga4_measurement_id=project.ga4_measurement_id,
         customer_id=customer.id,
@@ -9325,15 +9663,123 @@ async def create_project(
     return _serialize_project(created, db)
 
 
+def _latest_by_project(db: Session, model, project_ids: List[int]) -> Dict[int, Any]:
+    if not project_ids:
+        return {}
+    latest_ids = (
+        db.query(model.project_id.label("project_id"), func.max(model.id).label("latest_id"))
+        .filter(model.project_id.in_(project_ids))
+        .group_by(model.project_id)
+        .subquery()
+    )
+    rows = (
+        db.query(model)
+        .join(latest_ids, model.id == latest_ids.c.latest_id)
+        .all()
+    )
+    return {int(row.project_id): row for row in rows}
+
+
+def _recent_lifecycle_by_project(db: Session, project_ids: List[int], per_project_limit: int = 8) -> Dict[int, List[LifecycleJob]]:
+    if not project_ids:
+        return {}
+    rows = (
+        db.query(LifecycleJob)
+        .filter(LifecycleJob.project_id.in_(project_ids))
+        .order_by(LifecycleJob.project_id.asc(), LifecycleJob.id.desc())
+        .all()
+    )
+    grouped: Dict[int, List[LifecycleJob]] = {project_id: [] for project_id in project_ids}
+    for row in rows:
+        bucket = grouped.setdefault(int(row.project_id), [])
+        if len(bucket) < per_project_limit:
+            bucket.append(row)
+    return grouped
+
+
 @app.get("/api/projects")
 async def list_projects(db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
     projects = db.query(Project).filter(Project.customer_id == customer.id).order_by(Project.id.asc()).all()
-    return [_serialize_project(project, db) for project in projects]
+    project_ids = [project.id for project in projects]
+    latest_crawls = _latest_by_project(db, CrawlJob, project_ids)
+    latest_audits = _latest_by_project(db, AuditReport, project_ids)
+    lifecycle_jobs = _recent_lifecycle_by_project(db, project_ids)
+    return [
+        _serialize_project(
+            project,
+            db,
+            latest_crawl=latest_crawls.get(project.id),
+            latest_audit=latest_audits.get(project.id),
+            recent_lifecycle_jobs=lifecycle_jobs.get(project.id, []),
+        )
+        for project in projects
+    ]
 
 
 @app.get("/api/projects/{project_id}")
 async def get_project(project_id: str, db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
     project = _owned_project(project_id, customer, db)
+    return _serialize_project(project, db)
+
+
+@app.put("/api/projects/{project_id}/urls")
+async def update_project_urls(
+    project_id: str,
+    payload: ProjectUrlUpdate,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    primary_url = _normalize_site_url(payload.primary_url)
+    domain = _normalize_domain(primary_url)
+    if not domain:
+        raise HTTPException(status_code=400, detail="Primary URL is required")
+
+    domain_key = _domain_key(domain)
+    duplicate = next(
+        (
+            row for row in db.query(Project).filter(Project.customer_id == customer.id, Project.id != project.id).all()
+            if _domain_key(row.domain) == domain_key
+        ),
+        None,
+    )
+    if duplicate:
+        raise HTTPException(status_code=409, detail="That site is already represented by another project")
+
+    alternates: List[str] = []
+    seen = {primary_url.rstrip("/"), f"https://{domain}".rstrip("/"), f"http://{domain}".rstrip("/")}
+    for raw_url in payload.alternate_urls:
+        normalized = _normalize_site_url(raw_url)
+        if not normalized or normalized.rstrip("/") in seen:
+            continue
+        alternates.append(normalized)
+        seen.add(normalized.rstrip("/"))
+
+    now = datetime.utcnow().isoformat()
+    previous_url = _project_primary_url(project)
+    previous_domain = project.domain
+    primary_changed = _domain_key(previous_domain) != domain_key or previous_url.rstrip("/") != primary_url.rstrip("/")
+    if primary_changed:
+        history = project.url_history or []
+        if not isinstance(history, list):
+            history = []
+        history.append({
+            "previous_url": previous_url,
+            "new_url": primary_url,
+            "previous_domain": previous_domain,
+            "new_domain": domain,
+            "timestamp": now,
+            "reason": (payload.reason or "").strip() or "site_edit",
+            "source": "projects_edit_site",
+        })
+        project.url_history = history[-100:]
+        project.artifacts_require_revalidation = True
+    project.domain = domain
+    project.primary_url = primary_url
+    project.alternate_urls = alternates
+    project.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(project)
     return _serialize_project(project, db)
 
 
@@ -10713,6 +11159,20 @@ def _manufacturing_source_context(project: Project) -> Dict[str, Any]:
     }
 
 
+def _default_manufacturing_crawl(project: Project, db: Session) -> Optional[CrawlJob]:
+    configured_crawl_id = settings.ORB_WEAVER_SITE_ORB_SOURCE_CRAWL_ID
+    if configured_crawl_id and _domain_key(project.domain) == "orbweaver.spruked.com":
+        configured = db.get(CrawlJob, int(configured_crawl_id))
+        if configured and configured.project_id == project.id and str(configured.status).lower() in {"completed", "complete"}:
+            return configured
+    return (
+        db.query(CrawlJob)
+        .filter(CrawlJob.project_id == project.id, CrawlJob.status.in_({"completed", "complete"}))
+        .order_by(CrawlJob.id.desc())
+        .first()
+    )
+
+
 @app.post("/api/projects/{project_id}/website-orb/manufacture")
 async def manufacture_project_website_orb(
     project_id: str,
@@ -10721,9 +11181,7 @@ async def manufacture_project_website_orb(
     customer: Customer = Depends(get_current_customer),
 ):
     project = _owned_project(project_id, customer, db)
-    crawl = _owned_crawl_job(payload.crawl_id, customer, db) if payload.crawl_id else (
-        db.query(CrawlJob).filter(CrawlJob.project_id == project.id).order_by(CrawlJob.id.desc()).first()
-    )
+    crawl = _owned_crawl_job(payload.crawl_id, customer, db) if payload.crawl_id else _default_manufacturing_crawl(project, db)
     if not crawl or crawl.project_id != project.id:
         raise HTTPException(status_code=409, detail="A completed project crawl is required before manufacturing")
     if str(crawl.status).lower() not in {"completed", "complete"}:

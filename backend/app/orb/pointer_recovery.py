@@ -24,6 +24,9 @@ DEFAULT_THRESHOLDS = {
     "maximum_automatic_recovery_attempts": 1,
 }
 
+LIVE_GUIDANCE_TARGET_TYPES = {"nav", "form_field", "button", "price_card", "download", "section"}
+SEMANTIC_REFERENCE_TARGET_TYPES = {"heading", "paragraph", "faq_answer", "policy_line"}
+
 UNCERTAINTY_REASONS = {
     "layout_not_stable",
     "selector_not_durable",
@@ -42,13 +45,15 @@ def assess_pointer_quality(
 ) -> Dict[str, Any]:
     policy = {**DEFAULT_THRESHOLDS, **(thresholds or {})}
     all_records = [item for item in pointer_map.get("records") or [] if isinstance(item, dict)]
-    records = [
+    active_records = [
         item
         for item in all_records
         if item.get("status") in (None, "active")
         and item.get("finding_subreason") != "owner_rejected_pointer_identity"
     ]
-    excluded = len(all_records) - len(records)
+    records = [item for item in active_records if _is_live_guidance_candidate(item)]
+    reference_count = len(active_records) - len(records)
+    excluded = len(all_records) - len(active_records)
     total = len(records)
     classes = Counter(str(item.get("confidence_class") or "UNCERTAIN") for item in records)
     stable = classes["VERIFIED"] + classes["STABLE"]
@@ -66,6 +71,25 @@ def assess_pointer_quality(
     stable_ratio = stable / total if total else 0.0
     uncertain_ratio = uncertain / total if total else 1.0
     triggers: List[str] = []
+    if total == 0:
+        return {
+            "schema": "orb_weaver.pointer_quality.v1",
+            "status": "NO_GUIDANCE_TARGETS",
+            "recovery_required": False,
+            "record_count": 0,
+            "total_record_count": len(all_records),
+            "excluded_count": excluded,
+            "reference_record_count": reference_count,
+            "guidance_record_count": 0,
+            "stable_count": 0,
+            "uncertain_count": 0,
+            "stable_ratio": 0.0,
+            "uncertain_ratio": 0.0,
+            "duplicate_conflict_count": 0,
+            "confidence_classes": dict(classes),
+            "thresholds": policy,
+            "triggers": [],
+        }
     if stable_ratio < float(policy["minimum_stable_ratio"]):
         triggers.append("stable_ratio_below_threshold")
     if stable < int(policy["minimum_stable_pointers"]):
@@ -82,6 +106,8 @@ def assess_pointer_quality(
         "record_count": total,
         "total_record_count": len(all_records),
         "excluded_count": excluded,
+        "reference_record_count": reference_count,
+        "guidance_record_count": total,
         "stable_count": stable,
         "uncertain_count": uncertain,
         "stable_ratio": round(stable_ratio, 4),
@@ -99,6 +125,8 @@ def pointer_guidance_eligible(record: Dict[str, Any]) -> bool:
         return False
     if record.get("status") not in (None, "active"):
         return False
+    if not _is_live_guidance_candidate(record):
+        return False
     if str(record.get("confidence_class") or "") not in {"VERIFIED", "STABLE"}:
         return False
     if (record.get("runtime_policy") or {}).get("may_point") is not True:
@@ -108,6 +136,41 @@ def pointer_guidance_eligible(record: Dict[str, Any]) -> bool:
     if record.get("finding_subreason") == "owner_rejected_pointer_identity":
         return False
     return True
+
+
+def _is_live_guidance_candidate(record: Dict[str, Any]) -> bool:
+    if not isinstance(record, dict):
+        return False
+    pointer_class = str(record.get("pointer_class") or "")
+    target_type = str(record.get("target_type") or "")
+    if pointer_class == "semantic_reference" or target_type in SEMANTIC_REFERENCE_TARGET_TYPES:
+        return False
+    if pointer_class == "live_guidance":
+        return True
+    # Legacy maps predate pointer_class. Preserve explicitly actionable records so
+    # weak historical locators can enter recovery and receive a durable identity.
+    allowed_actions = {str(item) for item in (record.get("allowed_actions") or [])}
+    runtime_policy = record.get("runtime_policy") or {}
+    if "point" in allowed_actions or "may_point" in runtime_policy:
+        return target_type in LIVE_GUIDANCE_TARGET_TYPES
+    if target_type not in LIVE_GUIDANCE_TARGET_TYPES:
+        return False
+    locator = str(record.get("semantic_locator") or "")
+    aliases = [str(item).strip() for key in ("direct_aliases", "intent_aliases") for item in (record.get(key) or [])]
+    evidence = record.get("confidence_evidence") or {}
+    structural = record.get("structural_context") or {}
+    has_durable_locator = (
+        locator.startswith("[data-orb-")
+        or locator.startswith("#")
+        or "[id=" in locator
+        or "aria-label" in locator
+        or "data-testid" in locator
+        or target_type in {"nav", "download"}
+    )
+    has_label = bool(str(record.get("meaning") or "").strip() or aliases or structural.get("parent_heading"))
+    has_route = bool(record.get("page_route"))
+    has_fingerprint = bool(record.get("content_fingerprint") or evidence.get("source_revision"))
+    return has_durable_locator and has_label and has_route and has_fingerprint
 
 
 def guidance_eligible_pointer_count(pointer_map: Dict[str, Any]) -> int:
@@ -149,7 +212,9 @@ def reconcile_pointer_recovery(
     baseline_map: Dict[str, Any],
     capture: Dict[str, Any],
 ) -> Dict[str, Any]:
-    baseline = [item for item in baseline_map.get("records") or [] if isinstance(item, dict)]
+    baseline_all = [item for item in baseline_map.get("records") or [] if isinstance(item, dict)]
+    reference_records = [item for item in baseline_all if not _is_live_guidance_candidate(item)]
+    baseline = [item for item in baseline_all if _is_live_guidance_candidate(item)]
     observations = [item for item in capture.get("observations") or [] if isinstance(item, dict)]
     observed_by_key: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for observation in observations:
@@ -230,7 +295,7 @@ def reconcile_pointer_recovery(
             unresolved_record["pointer_health"] = str(record.get("pointer_health") or "NEW")
             unresolved.append(unresolved_record)
 
-    records = recovered + unresolved
+    records = reference_records + recovered + unresolved
     by_page: Dict[str, List[str]] = defaultdict(list)
     for record in records:
         by_page[str(record.get("page_route") or "")].append(str(record.get("target_id") or ""))
@@ -337,6 +402,7 @@ def promote_owner_verified_pointer(
         if record.get("status") not in (None, "active"):
             raise ValueError("Only an active pointer may receive owner verification")
         prior_health = str(record.get("pointer_health") or "NEW")
+        record["pointer_class"] = "live_guidance"
         record["confidence"] = max(float(record.get("confidence") or 0.0), 0.95)
         record["confidence_class"] = "VERIFIED"
         record["pointer_health"] = "OWNER_VERIFIED"
@@ -616,6 +682,7 @@ def recovery_routes(pointer_map: Dict[str, Any], configured: Optional[List[str]]
         uncertain = [
             _route(item.get("page_route"))
             for item in pointer_map.get("records") or []
+            if _is_live_guidance_candidate(item)
             if item.get("confidence_class") in {"UNCERTAIN", "BLOCKED", None}
         ]
         routes = [route for route, _count in Counter(uncertain).most_common(8)]

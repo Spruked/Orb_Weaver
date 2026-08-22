@@ -12,11 +12,14 @@ import {
   FolderPlus,
   Globe,
   MoreVertical,
+  Pencil,
   RotateCw,
+  Save,
   Search,
   ShieldCheck,
   Square,
   Trash2,
+  X,
 } from 'lucide-react';
 import { api, CrawlJob, LifecycleJob, LifecycleJobType, PreflightReport, Project } from '../services/api';
 import { canonicalOrbBaseUrl, setActiveOrbProjectContext } from '../orb/activeProjectContext';
@@ -164,11 +167,14 @@ const Projects: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatusFilter>('all');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditSiteModal, setShowEditSiteModal] = useState(false);
   const [openMenuProjectId, setOpenMenuProjectId] = useState('');
   const [newProject, setNewProject] = useState({ client_name: '', domain: '', ga4_property_id: '' });
+  const [editSite, setEditSite] = useState({ primary_url: '', alternate_urls: '', reason: '' });
   const [includeAdminSections, setIncludeAdminSections] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [isSavingSite, setIsSavingSite] = useState(false);
   const [startingCrawlProjectId, setStartingCrawlProjectId] = useState('');
   const [startingAuditProjectId, setStartingAuditProjectId] = useState('');
   const [stoppingCrawlJobId, setStoppingCrawlJobId] = useState('');
@@ -180,13 +186,7 @@ const Projects: React.FC = () => {
   const [error, setError] = useState('');
 
   const loadLifecycles = useCallback(async (projectList: Project[]) => {
-    const entries = await Promise.all(projectList.map(async (project) => {
-      try {
-        return [project.id, await api.listLifecycleJobs(project.id)] as const;
-      } catch {
-        return [project.id, []] as const;
-      }
-    }));
+    const entries = projectList.map((project) => [project.id, project.recent_lifecycle_jobs || []] as const);
     const nextJobs = Object.fromEntries(entries) as Record<string, LifecycleJob[]>;
     setLifecycleJobs(nextJobs);
     return nextJobs;
@@ -340,6 +340,39 @@ const Projects: React.FC = () => {
       await loadProjects();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete project');
+    }
+  };
+
+  const openEditSite = (project: Project) => {
+    setEditSite({
+      primary_url: project.primary_url || `https://${project.domain}`,
+      alternate_urls: (project.alternate_urls || []).join('\n'),
+      reason: '',
+    });
+    setOpenMenuProjectId('');
+    setShowEditSiteModal(true);
+  };
+
+  const handleSaveSite = async () => {
+    if (!selectedProject || !editSite.primary_url.trim()) return;
+    setError('');
+    setIsSavingSite(true);
+    try {
+      const updated = await api.updateProjectUrls(selectedProject.id, {
+        primary_url: editSite.primary_url.trim(),
+        alternate_urls: editSite.alternate_urls
+          .split(/\n|,/)
+          .map((value) => value.trim())
+          .filter(Boolean),
+        reason: editSite.reason.trim() || null,
+      });
+      setProjects((current) => current.map((project) => project.id === updated.id ? updated : project));
+      setLifecycleJobs((current) => ({ ...current, [updated.id]: updated.recent_lifecycle_jobs || current[updated.id] || [] }));
+      setShowEditSiteModal(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update site URLs');
+    } finally {
+      setIsSavingSite(false);
     }
   };
 
@@ -771,8 +804,9 @@ const Projects: React.FC = () => {
                 <StatusBadge status={selectedProject.latest_crawl_status} active={isCrawlActive || isStartingCrawl} />
               </div>
               <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                <span className="truncate">{selectedProject.domain}</span>
-                <a href={`https://${selectedProject.domain}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-brand-accent hover:text-brand-dark">Visit site <ExternalLink className="h-3.5 w-3.5" /></a>
+                <span className="truncate">{selectedProject.primary_url || selectedProject.domain}</span>
+                {selectedProject.artifacts_require_revalidation && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800">Revalidation needed</span>}
+                <a href={selectedProject.primary_url || `https://${selectedProject.domain}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-brand-accent hover:text-brand-dark">Visit site <ExternalLink className="h-3.5 w-3.5" /></a>
               </div>
               <p className="mt-3 text-sm text-slate-600">{stateSentence}</p>
             </div>
@@ -780,6 +814,7 @@ const Projects: React.FC = () => {
               <button onClick={() => setOpenMenuProjectId(openMenuProjectId === selectedProject.id ? '' : selectedProject.id)} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="Project actions"><MoreVertical className="h-5 w-5" /></button>
               {openMenuProjectId === selectedProject.id && (
                 <div className="absolute right-0 top-11 z-20 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                  <button onClick={() => openEditSite(selectedProject)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"><Pencil className="h-4 w-4" /> Edit site</button>
                   <button onClick={() => handleDelete(selectedProject.id)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold text-red-700 hover:bg-red-50"><Trash2 className="h-4 w-4" /> Delete project</button>
                 </div>
               )}
@@ -914,6 +949,55 @@ const Projects: React.FC = () => {
             <div className="flex gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
               <button onClick={() => { setShowAddModal(false); setError(''); }} disabled={isCreatingProject} className="flex-1 rounded-lg border border-gray-300 bg-white py-3 font-semibold text-slate-700 hover:bg-gray-100">Cancel</button>
               <button onClick={handleAddProject} disabled={isCreatingProject || !newProject.client_name.trim() || !newProject.domain.trim()} className="flex-1 rounded-lg bg-brand-orange py-3 font-bold text-brand-dark hover:bg-brand-accent hover:text-white disabled:opacity-50">{isCreatingProject ? 'Creating…' : 'Create project'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditSiteModal && selectedProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-dark/75 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-6 py-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-accent">Edit site</p>
+                <h2 className="mt-1 text-2xl font-bold text-gray-900">{selectedProject.name}</h2>
+                <p className="mt-1 text-sm text-slate-500">Primary URL changes preserve this project and mark existing site artifacts for revalidation.</p>
+              </div>
+              <button onClick={() => setShowEditSiteModal(false)} className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:bg-slate-100" aria-label="Close edit site"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              {selectedProject.artifacts_require_revalidation && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">Site artifacts are marked for revalidation. Run a fresh crawl when the new URL is ready.</div>
+              )}
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-700">Primary URL</label>
+                <input value={editSite.primary_url} onChange={(event) => setEditSite({ ...editSite, primary_url: event.target.value })} className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-brand-accent focus:outline-none focus:ring-2 focus:ring-brand-orange/25" placeholder="https://domain.com" />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-700">Alternate URLs</label>
+                <textarea value={editSite.alternate_urls} onChange={(event) => setEditSite({ ...editSite, alternate_urls: event.target.value })} rows={4} className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-brand-accent focus:outline-none focus:ring-2 focus:ring-brand-orange/25" placeholder="https://www.domain.com&#10;https://shop.domain.com" />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-bold text-gray-700">Reason <span className="font-medium text-slate-400">(optional)</span></label>
+                <input value={editSite.reason} onChange={(event) => setEditSite({ ...editSite, reason: event.target.value })} className="w-full rounded-lg border border-gray-300 px-4 py-3 focus:border-brand-accent focus:outline-none focus:ring-2 focus:ring-brand-orange/25" placeholder="Domain migration, owner correction, staging promotion..." />
+              </div>
+              {(selectedProject.url_history || []).length > 0 && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-slate-500">URL history</p>
+                  <div className="mt-3 max-h-36 space-y-2 overflow-y-auto text-xs text-slate-600">
+                    {(selectedProject.url_history || []).slice(-5).reverse().map((entry, index) => (
+                      <div key={index} className="rounded-lg bg-white px-3 py-2 shadow-sm">
+                        <p className="font-bold text-slate-900">{String(entry.previous_url || 'unknown')} → {String(entry.new_url || 'unknown')}</p>
+                        <p className="mt-0.5">{String(entry.timestamp || '')} · {String(entry.reason || 'site_edit')}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4">
+              <button onClick={() => { setShowEditSiteModal(false); setError(''); }} disabled={isSavingSite} className="flex-1 rounded-lg border border-gray-300 bg-white py-3 font-semibold text-slate-700 hover:bg-gray-100">Cancel</button>
+              <button onClick={handleSaveSite} disabled={isSavingSite || !editSite.primary_url.trim()} className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-brand-orange py-3 font-bold text-brand-dark hover:bg-brand-accent hover:text-white disabled:opacity-50">{isSavingSite ? <Activity className="h-4 w-4 animate-pulse" /> : <Save className="h-4 w-4" />}{isSavingSite ? 'Saving...' : 'Save site'}</button>
             </div>
           </div>
         </div>

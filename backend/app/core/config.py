@@ -62,8 +62,8 @@ class Settings(BaseSettings):
     # often absent from sitemap discovery. Public preflight scans do not use
     # these seeds.
     ORB_ADMIN_ROUTE_SEEDS: List[str] = ["/admin"]
-    LOCAL_LLM_URL: Optional[str] = None
-    LOCAL_LLM_MODEL: Optional[str] = None
+    LOCAL_LLM_URL: Optional[str] = "http://127.0.0.1:16520/api/generate"
+    LOCAL_LLM_MODEL: Optional[str] = "orb-auto"
     LOCAL_LLM_TIMEOUT_SECONDS: float = 60.0
     LOCAL_LLM_KEEP_ALIVE: str = "30m"
     LOCAL_LLM_NUM_CTX: int = 512
@@ -72,21 +72,22 @@ class Settings(BaseSettings):
     FASTER_WHISPER_STT_URL: str = "http://127.0.0.1:9000/stt"
     ORB_ASSISTANT_ROOT: str = "../Orb_Assistant"
     ORB_TTS_CACHE_DIR: str = "../vault_system/runtime/tts_cache"
-    ORB_TTS_TIMEOUT_SECONDS: float = 45.0
+    ORB_TTS_TIMEOUT_SECONDS: float = 180.0
     ORB_TTS_QWEN_URL: Optional[str] = "http://127.0.0.1:9880/speak"
     ORB_TTS_QWEN_API_KEY: Optional[str] = None
     ORB_TTS_QWEN_MODEL: str = "qwen-tts"
-    ORB_TTS_QWEN_VOICE: str = "Cherry"
+    ORB_TTS_QWEN_VOICE: str = "OrbWeaver"
     ORB_TTS_QWEN_LANGUAGE: str = "English"
     ORB_TTS_QWEN_INSTRUCT: str = "A warm, confident adult male assistant voice. Clear, calm, lightly theatrical, friendly, and concise."
     ORB_TTS_QWEN_FORMAT: str = "wav"
-    ORB_TTS_QWEN_PAYLOAD_MODE: str = "qwen-custom"
+    ORB_TTS_QWEN_PAYLOAD_MODE: str = "qwen-voice-clone"
     ORB_TTS_KOKORO_URL: Optional[str] = "http://127.0.0.1:8880/speak"
     ORB_TTS_KOKORO_API_KEY: Optional[str] = None
     ORB_TTS_KOKORO_MODEL: str = "kokoro"
-    ORB_TTS_KOKORO_VOICE: str = "am_puck"
+    ORB_TTS_KOKORO_VOICE: str = "am_echo"
     ORB_TTS_KOKORO_FORMAT: str = "wav"
     ORB_TTS_KOKORO_PAYLOAD_MODE: str = "kokoro-direct"
+    ORB_WEAVER_SITE_ORB_SOURCE_CRAWL_ID: Optional[int] = 59
 
     # Browser review / install verification
     CHROME_DEVTOOLS_ENABLED: bool = False

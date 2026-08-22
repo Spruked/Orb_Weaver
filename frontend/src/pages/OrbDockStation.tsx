@@ -194,7 +194,7 @@ const OrbDockStationPage: React.FC = () => {
 
   useEffect(() => {
     if (tab !== 'behavior' || ttsVoices) return;
-    void api.getWebsiteOrbTtsVoices().then(setTtsVoices).catch((err) => setError(err instanceof Error ? err.message : 'Unable to load Kokoro voices'));
+    void api.getWebsiteOrbTtsVoices().then(setTtsVoices).catch((err) => setError(err instanceof Error ? err.message : 'Unable to load Qwen TTS voice'));
   }, [tab, ttsVoices]);
 
   const changeTtsVoice = async (voice: string) => {
@@ -203,9 +203,9 @@ const OrbDockStationPage: React.FC = () => {
     try {
       const response = await api.setWebsiteOrbTtsVoice(voice);
       setTtsVoices(response);
-      setNotice(`Kokoro voice changed to ${response.current_voice}.`);
+      setNotice(`Qwen TTS voice set to ${response.current_voice}.`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to change Kokoro voice');
+      setError(err instanceof Error ? err.message : 'Unable to change Qwen TTS voice');
     } finally {
       setWorking('');
     }
@@ -430,7 +430,7 @@ const OrbDockStationPage: React.FC = () => {
                     <option value="sales_assistant">Sales assistant</option>
                   </select>
                 </label>
-                <label className={labelClass}>Kokoro voice
+                <label className={labelClass}>Qwen TTS voice
                   <select
                     className={inputClass}
                     value={ttsVoices?.current_voice || ''}

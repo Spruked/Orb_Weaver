@@ -210,6 +210,10 @@ export interface Project {
   id: string;
   name: string;
   domain: string;
+  primary_url?: string | null;
+  alternate_urls?: string[];
+  url_history?: Array<Record<string, unknown>>;
+  artifacts_require_revalidation?: boolean;
   ga4_property_id?: string | null;
   ga4_measurement_id?: string | null;
   created_at?: string;
@@ -219,6 +223,7 @@ export interface Project {
   latest_audit_id?: string | null;
   latest_audit_score?: number | null;
   folder_title?: string;
+  recent_lifecycle_jobs?: LifecycleJob[];
 }
 
 export interface OrbsAllowedAction {
@@ -1053,6 +1058,7 @@ export interface WebsiteOrbVoiceResponse {
   memory_context?: Record<string, unknown> | null;
   tts_audio_url?: string | null;
   tts_provider?: string | null;
+  tts_voice?: string | null;
   tts_error?: string | null;
   answer_state?: 'known' | 'resolved' | 'clarification_required' | 'unknown' | null;
   source_lane?: 'control' | 'catalog' | 'apriori' | 'posteriori' | 'site_world' | 'local_model' | 'external_provider' | 'unknown' | null;
@@ -1063,6 +1069,17 @@ export interface WebsiteOrbVoiceResponse {
   escalation_used?: string | null;
   learning_eligible?: boolean | null;
   resolution_trace?: Record<string, unknown> | null;
+  resolution_diagnostics?: {
+    resolution_source?: string | null;
+    fact_record_id?: string | null;
+    confidence?: number | null;
+    qwen_bypassed?: boolean | null;
+    cached_speech?: boolean | null;
+    learning_candidate_eligible?: boolean | null;
+    learning_candidate_id?: string | null;
+    learning_candidate_state?: string | null;
+  } | null;
+  skg_learning?: Record<string, unknown> | null;
   control_action?: { type: 'orb_motion'; command: string } | null;
 }
 
@@ -1106,6 +1123,7 @@ export interface WebsiteOrbPointerRecord {
   target_id: string;
   page_route: string;
   target_type: string;
+  pointer_class?: 'semantic_reference' | 'live_guidance' | string;
   meaning?: string;
   intent_aliases?: string[];
   direct_aliases?: string[];
@@ -1161,6 +1179,7 @@ export interface WebsiteOrbTtsResponse {
   text: string;
   tts_audio_url?: string | null;
   tts_provider?: string | null;
+  tts_voice?: string | null;
   tts_error?: string | null;
 }
 
@@ -1324,7 +1343,7 @@ export const api = {
   websiteOrbVoice: (
     audio: Blob,
     signal?: AbortSignal,
-    context?: { project_id?: string | null; target_url?: string | null; experience?: WebsiteOrbExperienceContext | null }
+    context?: { project_id?: string | null; target_url?: string | null; site_id?: string | null; experience?: WebsiteOrbExperienceContext | null }
   ) => {
     const formData = new FormData();
     formData.append('audio', audio, 'website-orb.webm');
@@ -1333,6 +1352,9 @@ export const api = {
     }
     if (context?.target_url) {
       formData.append('target_url', context.target_url);
+    }
+    if (context?.site_id) {
+      formData.append('site_id', context.site_id);
     }
     if (context?.experience) {
       formData.append('experience_phase', context.experience.phase);
@@ -1351,7 +1373,7 @@ export const api = {
     transcript: string,
     synthesizeTts = true,
     signal?: AbortSignal,
-    context?: { project_id?: string | null; target_url?: string | null; experience?: WebsiteOrbExperienceContext | null }
+    context?: { project_id?: string | null; target_url?: string | null; site_id?: string | null; experience?: WebsiteOrbExperienceContext | null }
   ) =>
     request<WebsiteOrbVoiceResponse>('/api/orb/website-text', {
       method: 'POST',
@@ -1371,12 +1393,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ voice })
     }),
-  websiteOrbPointerMap: (domain?: string, signal?: AbortSignal) => {
+  websiteOrbPointerMap: (domain?: string, signal?: AbortSignal, siteId?: string | null) => {
     const query = domain ? `?domain=${encodeURIComponent(domain)}` : '';
-    return request<WebsiteOrbPointerMap>(`/api/orb/pointer-map${query}`, { signal });
+    const siteQuery = siteId ? `${query ? '&' : '?'}site_id=${encodeURIComponent(siteId)}` : '';
+    return request<WebsiteOrbPointerMap>(`/api/orb/pointer-map${query}${siteQuery}`, { signal });
   },
-  websiteOrbPageCapsule: (targetUrl: string, signal?: AbortSignal) =>
-    request<WebsiteOrbPageCapsule>(`/api/orb/page-capsule?target_url=${encodeURIComponent(targetUrl)}`, { signal }),
+  websiteOrbPageCapsule: (targetUrl: string, signal?: AbortSignal, siteId?: string | null) =>
+    request<WebsiteOrbPageCapsule>(
+      `/api/orb/page-capsule?target_url=${encodeURIComponent(targetUrl)}${siteId ? `&site_id=${encodeURIComponent(siteId)}` : ''}`,
+      { signal }
+    ),
   orbMediaUrl: mediaUrl,
   websiteOrbCapabilities: () => request<WebsiteOrbCapabilities>('/api/orb/capabilities'),
   orbToolCatalog: () => request<OrbToolCatalog>('/api/orb/tools/catalog'),
@@ -1533,6 +1559,11 @@ export const api = {
     request<Project>('/api/projects', {
       method: 'POST',
       body: JSON.stringify(project)
+    }),
+  updateProjectUrls: (projectId: string, payload: { primary_url: string; alternate_urls?: string[]; reason?: string | null }) =>
+    request<Project>(`/api/projects/${projectId}/urls`, {
+      method: 'PUT',
+      body: JSON.stringify(payload)
     }),
   updateProjectGA4Config: (projectId: string, payload: { ga4_property_id?: string | null; ga4_measurement_id?: string | null }) =>
     request<Project>(`/api/projects/${projectId}/ga4/config`, {

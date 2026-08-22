@@ -56,6 +56,28 @@ async def test_resolution_order_control_catalog_apriori_posteriori_site_world(tm
 
 
 @pytest.mark.asyncio
+async def test_site_world_identity_summary_bypasses_local_model():
+    calls = []
+
+    async def local_model(query, context):
+        calls.append(query)
+        return {"text": "Model answer."}
+
+    result = await CanonicalTurnResolver(local_model=local_model).resolve(
+        "What does ORB Weaver do?",
+        domain="orbweaver.spruked.com",
+        site_world={
+            "site_name": "ORB Weaver",
+            "site_summary": "ORB Weaver scans sites and builds Website ORBs.",
+        },
+    )
+
+    assert result["source_lane"] == "site_world"
+    assert result["spoken_output"] == "ORB Weaver scans sites and builds Website ORBs."
+    assert calls == []
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("utterance", [
     "Weaver, move out of the way.", "move out of the way", "Move over.", "Scoot over.", "Move up.",
     "Move down.", "Move left.", "Move right.", "Come back.", "Come here.",

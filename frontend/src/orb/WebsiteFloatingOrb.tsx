@@ -31,6 +31,8 @@ const LATENCY_FILLER_PATHS = [
   '/orb/voice/latency-fillers/working.wav',
 ];
 const VOICE_UNAVAILABLE_MESSAGE = 'Voice unavailable';
+const ORB_SPEECH_PLAYBACK_RATE = 1.3;
+const EMBEDDED_ORB_SITE_ID = 'orb-weaver';
 const lidar = LidarCoordinateCache.getInstance();
 const MORB_SIZE = 50;
 const MORB_HALF = MORB_SIZE / 2;
@@ -432,6 +434,8 @@ const WebsiteFloatingOrb: React.FC = () => {
     const source = context.createBufferSource();
     const gain = context.createGain();
     source.buffer = buffer;
+    source.playbackRate.value = ORB_SPEECH_PLAYBACK_RATE;
+    source.detune.value = -1200 * Math.log2(ORB_SPEECH_PLAYBACK_RATE);
     gain.gain.value = 1;
     source.connect(gain);
     gain.connect(context.destination);
@@ -483,6 +487,8 @@ const WebsiteFloatingOrb: React.FC = () => {
       const audio = speechAudioRef.current || new Audio();
       audio.pause();
       audio.muted = false;
+      audio.playbackRate = ORB_SPEECH_PLAYBACK_RATE;
+      audio.preservesPitch = true;
       audio.src = api.orbMediaUrl(audioUrl);
       speechAudioRef.current = audio;
       audio.onended = () => {
@@ -569,6 +575,7 @@ const WebsiteFloatingOrb: React.FC = () => {
         try {
           const result = await api.websiteOrbVoice(audio, undefined, {
             target_url: window.location.href,
+            site_id: EMBEDDED_ORB_SITE_ID,
           });
           setStatusLine(result.llm_source === 'local-llm' ? 'ORB cognition + LLM' : 'ORB cognition');
           const glowIntensity = result.cognitive_pulse?.glow_intensity;
@@ -611,7 +618,7 @@ const WebsiteFloatingOrb: React.FC = () => {
 
   useEffect(() => {
     const controller = new AbortController();
-    api.websiteOrbPointerMap(window.location.hostname, controller.signal)
+    api.websiteOrbPointerMap(window.location.hostname, controller.signal, EMBEDDED_ORB_SITE_ID)
       .then((pointerMap) => {
         pointerRecordsRef.current = Array.isArray(pointerMap.records) ? pointerMap.records : [];
         if (pointerRecordsRef.current.length > 0) {

@@ -122,12 +122,12 @@ class VaultCoordinator:
         )
 
     def report_outcome(self, query_text: str, intent: IntentType, entities: List[str],
-                       resolution_source: str, answer: str, success: bool, session_id: str = ""):
+                       resolution_source: str, answer: str, success: bool, session_id: str = "") -> str:
         """
         Report outcome for learning.
         Call this after ANY resolution (vault or LLM/TPC) so the posteriori vault learns.
         """
-        self.posteriori.ingest_experience(
+        return self.posteriori.ingest_experience(
             query_text=query_text,
             detected_intent=intent,
             detected_entities=entities,

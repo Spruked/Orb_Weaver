@@ -262,6 +262,21 @@ class CanonicalTurnResolver:
 
     def _site_world(self, query: str, site_world: Dict[str, Any], route: str) -> Optional[Dict[str, Any]]:
         best = None
+        normalized_query = " ".join(query.lower().split())
+        site_name = str(site_world.get("site_name") or site_world.get("brand") or "").strip()
+        site_summary = str(site_world.get("site_summary") or "").strip()
+        if site_name and site_summary:
+            normalized_name = " ".join(site_name.lower().split())
+            identity_question = normalized_name in normalized_query and any(
+                phrase in normalized_query for phrase in ("what does", "what is", "tell me about", "explain")
+            )
+            if identity_question:
+                best = (0.9, site_summary, ["site_world:site_summary"])
+        for index, fact in enumerate(site_world.get("key_facts") or []):
+            fact_text = str(fact).strip()
+            score = _score(query, [fact_text])
+            if fact_text and score >= 0.55 and (best is None or score > best[0]):
+                best = (score, fact_text, [f"site_world:key_fact:{index}"])
         for label, destination in (site_world.get("route_hints") or {}).items():
             score = _score(query, [str(label), str(destination)])
             if score >= 0.62 and (best is None or score > best[0]):

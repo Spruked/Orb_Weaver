@@ -12,6 +12,10 @@ class Project(Base):
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
     name = Column(String(255), nullable=False)
     domain = Column(String(255), nullable=False)
+    primary_url = Column(Text, nullable=True)
+    alternate_urls = Column(JSON, default=list)
+    url_history = Column(JSON, default=list)
+    artifacts_require_revalidation = Column(Boolean, default=False)
     ga4_property_id = Column(String(100), nullable=True)
     ga4_measurement_id = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -574,10 +578,12 @@ def init_db(engine):
     Base.metadata.create_all(bind=engine)
     _ensure_json_columns(engine)
     _ensure_project_customer_column(engine)
+    _ensure_project_url_columns(engine)
     _ensure_project_ga4_measurement_column(engine)
     _ensure_customer_profile_columns(engine)
     _ensure_checkout_governor_columns(engine)
     _ensure_crawl_lease_columns(engine)
+    _ensure_lookup_indexes(engine)
     _ensure_default_admin_customer(engine)
     _ensure_marketplace_number_sequence(engine)
 
@@ -626,6 +632,40 @@ def _ensure_project_customer_column(engine):
 
     with engine.begin() as connection:
         connection.execute(text("ALTER TABLE projects ADD COLUMN customer_id INTEGER"))
+
+
+def _ensure_project_url_columns(engine):
+    inspector = inspect(engine)
+    if "projects" not in inspector.get_table_names():
+        return
+
+    existing = {column["name"] for column in inspector.get_columns("projects")}
+    json_type = "JSON" if engine.dialect.name != "sqlite" else "TEXT"
+    columns = {
+        "primary_url": "TEXT",
+        "alternate_urls": json_type,
+        "url_history": json_type,
+        "artifacts_require_revalidation": "BOOLEAN DEFAULT 0",
+    }
+    missing = [(name, type_name) for name, type_name in columns.items() if name not in existing]
+    if not missing:
+        return
+
+    with engine.begin() as connection:
+        for name, type_name in missing:
+            connection.execute(text(f"ALTER TABLE projects ADD COLUMN {name} {type_name}"))
+        connection.execute(
+            text(
+                """
+                UPDATE projects
+                SET primary_url = CASE
+                    WHEN domain LIKE 'http://%' OR domain LIKE 'https://%' THEN domain
+                    ELSE 'https://' || domain
+                END
+                WHERE primary_url IS NULL OR primary_url = ''
+                """
+            )
+        )
 
 
 def _ensure_project_ga4_measurement_column(engine):
@@ -708,6 +748,35 @@ def _ensure_crawl_lease_columns(engine):
     with engine.begin() as connection:
         for name, type_name in missing:
             connection.execute(text(f"ALTER TABLE crawl_jobs ADD COLUMN {name} {type_name}"))
+
+
+def _ensure_lookup_indexes(engine):
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+    statements = []
+    if "projects" in table_names:
+        statements.extend([
+            "CREATE INDEX IF NOT EXISTS ix_projects_customer_id_id ON projects (customer_id, id)",
+            "CREATE INDEX IF NOT EXISTS ix_projects_customer_id_domain ON projects (customer_id, domain)",
+        ])
+    if "crawl_jobs" in table_names:
+        statements.extend([
+            "CREATE INDEX IF NOT EXISTS ix_crawl_jobs_project_id_id ON crawl_jobs (project_id, id)",
+            "CREATE INDEX IF NOT EXISTS ix_crawl_jobs_project_id_status ON crawl_jobs (project_id, status)",
+        ])
+    if "audit_reports" in table_names:
+        statements.append("CREATE INDEX IF NOT EXISTS ix_audit_reports_project_id_id ON audit_reports (project_id, id)")
+    if "lifecycle_jobs" in table_names:
+        statements.extend([
+            "CREATE INDEX IF NOT EXISTS ix_lifecycle_jobs_project_id_id ON lifecycle_jobs (project_id, id)",
+            "CREATE INDEX IF NOT EXISTS ix_lifecycle_jobs_project_id_status ON lifecycle_jobs (project_id, status)",
+        ])
+    if not statements:
+        return
+
+    with engine.begin() as connection:
+        for statement in statements:
+            connection.execute(text(statement))
 
 
 def _ensure_default_admin_customer(engine):

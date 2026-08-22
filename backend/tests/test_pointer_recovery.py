@@ -238,3 +238,40 @@ def test_guidance_requires_explicit_target_permission_and_safe_state():
     rejected["finding_subreason"] = "owner_rejected_pointer_identity"
     assert pointer_guidance_eligible(rejected) is False
     assert guidance_eligible_pointer_count({"records": [explicit, missing_permission, uncertain, rejected]}) == 1
+
+
+def test_pointer_quality_ignores_semantic_reference_records():
+    references = [
+        {
+            **record(f"reference-{index}", "UNCERTAIN", f"main p:nth-of-type({index + 1})", meaning="paragraph: Helpful explanatory text"),
+            "target_type": "paragraph",
+            "pointer_class": "semantic_reference",
+            "runtime_policy": {"may_point": False},
+        }
+        for index in range(40)
+    ]
+    guidance = record("guidance", "STABLE", "#start")
+    guidance["pointer_class"] = "live_guidance"
+    quality = assess_pointer_quality({"records": [guidance, *references]}, thresholds={"minimum_stable_pointers": 1})
+    assert quality["record_count"] == 1
+    assert quality["guidance_record_count"] == 1
+    assert quality["reference_record_count"] == 40
+    assert quality["stable_ratio"] == 1.0
+    assert quality["recovery_required"] is False
+
+
+def test_no_guidance_targets_do_not_trigger_recovery():
+    references = [
+        {
+            **record(f"reference-{index}", "UNCERTAIN", f"main p:nth-of-type({index + 1})", meaning="faq answer: General context"),
+            "target_type": "faq_answer",
+            "pointer_class": "semantic_reference",
+            "runtime_policy": {"may_point": False},
+        }
+        for index in range(5)
+    ]
+    quality = assess_pointer_quality({"records": references})
+    assert quality["status"] == "NO_GUIDANCE_TARGETS"
+    assert quality["recovery_required"] is False
+    assert quality["reference_record_count"] == 5
+    assert guidance_eligible_pointer_count({"records": references}) == 0

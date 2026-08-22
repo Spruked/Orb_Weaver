@@ -110,10 +110,12 @@ class PruningLogic:
             }
 
         # Default: retain
-        return "retire", {
-            "reason": "confidence_critical",
-            "confidence": node.confidence.value,
-        } if node.confidence.value < 0.10 else ("retain", None)
+        if node.confidence.value < 0.10:
+            return "retire", {
+                "reason": "confidence_critical",
+                "confidence": node.confidence.value,
+            }
+        return "retain", None
 
     @staticmethod
     def execute_weaken(node: KnowledgeNode, reason: str) -> KnowledgeNode:

@@ -92,25 +92,43 @@ class PosterioriVault:
             "content": node.content,
             "confidence_value": node.confidence.value,
             "confidence_cap": node.confidence.cap,
+            "confidence_provenance": list(node.confidence.provenance),
             "state": node.state.name,
             "created_at": node.created_at.to_dict(),
+            "verified_at": node.verified_at.to_dict() if node.verified_at else None,
+            "promoted_at": node.promoted_at.to_dict() if node.promoted_at else None,
+            "last_reinforced": node.last_reinforced.to_dict() if node.last_reinforced else None,
             "access_count": node.access_count,
             "success_streak": node.success_streak,
             "failure_streak": node.failure_streak,
+            "verification_signals": {signal.name: count for signal, count in node.verification_signals.items()},
+            "degradation_signals": {signal.name: count for signal, count in node.degradation_signals.items()},
+            "merged_into": node.merged_into,
         }
 
     def _deserialize_node(self, data: Dict[str, Any]) -> KnowledgeNode:
-        from ..shared.types import Confidence, VaultTimestamp
+        from ..shared.types import Confidence, DegradationSignal, VerificationSignal, VaultTimestamp
+        timestamp = lambda value: VaultTimestamp(**value) if value else None
         return KnowledgeNode(
             node_id=data["node_id"],
             node_type=EntityType[data["node_type"]],
             content=data["content"],
-            confidence=Confidence(value=data["confidence_value"], cap=data["confidence_cap"]),
+            confidence=Confidence(
+                value=data["confidence_value"],
+                cap=data["confidence_cap"],
+                provenance=list(data.get("confidence_provenance") or []),
+            ),
             state=KnowledgeState[data["state"]],
             created_at=VaultTimestamp(**data["created_at"]),
+            verified_at=timestamp(data.get("verified_at")),
+            promoted_at=timestamp(data.get("promoted_at")),
+            last_reinforced=timestamp(data.get("last_reinforced")),
             access_count=data.get("access_count", 0),
             success_streak=data.get("success_streak", 0),
             failure_streak=data.get("failure_streak", 0),
+            verification_signals={VerificationSignal[name]: count for name, count in (data.get("verification_signals") or {}).items()},
+            degradation_signals={DegradationSignal[name]: count for name, count in (data.get("degradation_signals") or {}).items()},
+            merged_into=data.get("merged_into"),
         )
 
     # PUBLIC API
@@ -145,7 +163,7 @@ class PosterioriVault:
             if candidate:
                 self._process_candidate(candidate, exp)
 
-        self._maybe_save()
+        self._save_state()
         return exp.experience_id
 
     def query(self, query_text: str, intent: IntentType, entities: List[str]) -> ResolutionResult:
@@ -186,6 +204,8 @@ class PosterioriVault:
         retired = len(self.prune_cog.retired_nodes)
 
         if not self.prune_logic.should_periodic_prune(total, retired, self.prune_cog.last_prune_timestamp):
+            self._evaluate_promotions()
+            self._save_state()
             return
 
         self.prune_cog.last_prune_timestamp = now
@@ -214,7 +234,7 @@ class PosterioriVault:
             action, details = self.prune_logic.evaluate_for_pruning(node)
 
             if action == "retire":
-                self.prune_logic.execute_retire(node)
+                self.prune_logic.execute_retire(node, details["reason"])
                 self.prune_cog.archive_node(node)
                 self._remove_from_active(node.node_id)
                 self.prune_cog.record_prune(node.node_id, "retire", details["reason"])
@@ -249,14 +269,18 @@ class PosterioriVault:
                     self.prom_cog.register_promotion(pattern, "compressed_pattern")
 
         # 4. Evaluate promotions
+        self._evaluate_promotions()
+
+        self._save_state()
+
+    def _evaluate_promotions(self):
+        """Promotion is event-driven; it must not wait for the pruning schedule."""
         for node in list(self.exp_cog.candidate_queue.values()):
             should_promote, reason = self.prom_logic.evaluate_promotion(node)
             if should_promote:
                 self.prom_logic.promote(node)
                 self.exp_cog.remove_candidate(node.node_id)
                 self.prom_cog.register_promotion(node, reason)
-
-        self._save_state()
 
     def get_stats(self) -> Dict[str, Any]:
         return {
@@ -287,6 +311,11 @@ class PosterioriVault:
                 break
 
         if existing:
+            aliases = existing.content.setdefault("aliases", [])
+            if candidate.content.get("query_pattern") != existing.content.get("query_pattern"):
+                alias = candidate.content.get("query_pattern")
+                if alias and alias not in aliases:
+                    aliases.append(alias)
             existing.add_verification_signal(VerificationSignal.REPETITION)
             existing.access_count += 1
             if exp.outcome_success:
@@ -313,9 +342,14 @@ class PosterioriVault:
             overlap = len(node_entities & query_entities) / len(node_entities | query_entities)
             score += overlap * 0.3
 
-        node_query = node.content.get("query_pattern", "")
-        text_sim = self.exp_logic._text_similarity(query_text, node_query)
-        score += text_sim * 0.2
+        patterns = [node.content.get("query_pattern", ""), *(node.content.get("aliases") or [])]
+        text_sim = max((self.exp_logic._text_similarity(query_text, pattern) for pattern in patterns), default=0.0)
+        exact_alias = " ".join(query_text.lower().split()) in {
+            " ".join(str(pattern).lower().split()) for pattern in patterns
+        }
+        if exact_alias:
+            text_sim = 1.0
+        score += 0.7 if exact_alias else text_sim * 0.45
         score *= (0.5 + node.confidence.value * 0.5)
         return score
 
@@ -324,6 +358,4 @@ class PosterioriVault:
         self.prom_cog.promoted_nodes.pop(node_id, None)
 
     def _maybe_save(self):
-        import random
-        if random.random() < 0.1:
-            self._save_state()
+        self._save_state()

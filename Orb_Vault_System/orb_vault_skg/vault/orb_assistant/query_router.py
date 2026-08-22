@@ -5,6 +5,7 @@ Determines which vault layer to query first.
 """
 
 from __future__ import annotations
+import re
 from typing import Dict, List, Any, Optional, Tuple
 
 from ..shared.types import IntentType, ResolutionResult
@@ -68,7 +69,7 @@ class QueryRouter:
         for intent, keywords in cls.INTENT_KEYWORDS.items():
             score = 0.0
             for kw in keywords:
-                if kw in query_lower:
+                if cls._contains_keyword(query_lower, kw):
                     score += 1.0
             if score > best_score:
                 best_score = score
@@ -77,6 +78,15 @@ class QueryRouter:
         # Normalize confidence
         confidence = min(1.0, best_score / 3.0) if best_score > 0 else 0.0
         return best_intent, confidence
+
+    @staticmethod
+    def _contains_keyword(query_lower: str, keyword: str) -> bool:
+        normalized = keyword.lower().strip()
+        if not normalized:
+            return False
+        if " " in normalized:
+            return normalized in query_lower
+        return re.search(rf"(?<![a-z0-9]){re.escape(normalized)}(?![a-z0-9])", query_lower) is not None
 
     @classmethod
     def extract_entities(cls, query_text: str, catalog_names: Optional[List[str]] = None) -> List[str]:

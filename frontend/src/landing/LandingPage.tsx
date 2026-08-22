@@ -8,25 +8,53 @@ import { createIntentGuestSession, LandingIntent } from "../onboarding/guestOnbo
 import "./Landing.css";
 
 const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
-const LANDING_SPLASH_DURATION_MS = 3800;
+const LANDING_SPLASH_COMPLETE_SESSION_KEY = "orbweaver-landing-splash-complete";
+const STARTUP_GREETING_SESSION_KEY = "orbweaver-startup-greeting-played";
+const FIRST_ENCOUNTER_STORAGE_KEY = "orbweaver-first-encounter-state";
 
 const LandingPage: React.FC = () => {
   const [pendingTarget, setPendingTarget] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [visibleBeats, setVisibleBeats] = useState<Record<string, boolean>>({ beat1: true });
   const [splashTrigger, setSplashTrigger] = useState(0);
+  const [splashReady, setSplashReady] = useState(false);
 
   useEffect(() => {
-    if (window.sessionStorage.getItem(LANDING_SPLASH_SESSION_KEY) === "1") return;
-    window.sessionStorage.setItem(LANDING_SPLASH_SESSION_KEY, "1");
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("orbStartupReset") === "1") {
+      window.sessionStorage.removeItem(LANDING_SPLASH_SESSION_KEY);
+      window.sessionStorage.removeItem(LANDING_SPLASH_COMPLETE_SESSION_KEY);
+      window.sessionStorage.removeItem(STARTUP_GREETING_SESSION_KEY);
+      window.sessionStorage.removeItem(FIRST_ENCOUNTER_STORAGE_KEY);
+    }
+
+    if (window.sessionStorage.getItem(LANDING_SPLASH_SESSION_KEY) === "1") {
+      window.sessionStorage.setItem(LANDING_SPLASH_COMPLETE_SESSION_KEY, "1");
+      window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-complete", {
+        detail: { splash_state: "skipped_session_once" },
+      }));
+      return;
+    }
+
     setSplashTrigger(Date.now());
   }, []);
 
   useEffect(() => {
     if (!splashTrigger) return;
-    const timer = window.setTimeout(() => setSplashTrigger(0), LANDING_SPLASH_DURATION_MS);
-    return () => window.clearTimeout(timer);
+    window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-started", {
+      detail: { splash_state: "playing" },
+    }));
   }, [splashTrigger]);
+
+  const completeStartupGate = () => {
+    window.sessionStorage.setItem(LANDING_SPLASH_SESSION_KEY, "1");
+    window.sessionStorage.setItem(LANDING_SPLASH_COMPLETE_SESSION_KEY, "1");
+    setSplashTrigger(0);
+    setSplashReady(false);
+    window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-complete", {
+      detail: { splash_state: "complete", permission_state: "user_activated" },
+    }));
+  };
 
   useEffect(() => {
     const observed = Array.from(document.querySelectorAll<HTMLElement>('[data-beat-id]'));
@@ -75,18 +103,32 @@ const LandingPage: React.FC = () => {
     <main className="ow-cut-page">
       {splashTrigger > 0 && (
         <div
-          aria-hidden="true"
-          style={{
-            position: "fixed",
-            left: "66vw",
-            top: "37vh",
-            width: 1,
-            height: 1,
-            zIndex: 2147482999,
-            pointerEvents: "none",
-          }}
+          className={`ow-cut-startup-gate ${splashReady ? "is-ready" : ""}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Start ORB Weaver"
+          onClick={splashReady ? completeStartupGate : undefined}
         >
-          <OrbBurst trigger={splashTrigger} size={200} color="blue" direction="out" />
+          <div className="ow-cut-startup-burst" aria-hidden="true">
+            <OrbBurst
+              trigger={splashTrigger}
+              size={260}
+              color="blue"
+              direction="out"
+              onComplete={() => setSplashReady(true)}
+            />
+          </div>
+          <button
+            type="button"
+            className="ow-cut-startup-button"
+            onClick={(event) => {
+              event.stopPropagation();
+              completeStartupGate();
+            }}
+            disabled={!splashReady}
+          >
+            {splashReady ? "Start ORB" : "Opening ORB"}
+          </button>
         </div>
       )}
 
@@ -112,7 +154,8 @@ const LandingPage: React.FC = () => {
             <div className="ow-cut-encounter-steps" aria-label="Weaver communication orientation">
               <p data-orb-target="what_weaver_does"><strong>What does Weaver do?</strong> It understands this website, answers from its verified knowledge, and guides you to the right place when showing is faster than explaining.</p>
               <p data-orb-target="what_to_say"><strong>What do I say?</strong> Anything you would ask a person who knows the site. Click Weaver, speak naturally, finish your thought, and pause.</p>
-              <p data-orb-target="interrupt_or_guide"><strong>You stay in control.</strong> Click Weaver while it is talking to stop it. Click again when you want help. When pointing is useful, Weaver guides only to a verified target.</p>
+              <p id="watch-weaver-guide" data-orb-target="watch_weaver_guide"><strong>Watch Weaver guide.</strong> When pointing is useful, Weaver guides only to a verified target and pings the exact place it can prove is live.</p>
+              <p data-orb-target="interrupt_or_guide"><strong>You stay in control.</strong> Click Weaver while it is talking to stop it. Click again when you want help.</p>
             </div>
           </div>
         </div>

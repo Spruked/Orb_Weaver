@@ -1,4 +1,4 @@
-from app.orb.pointer_intent import resolve_pointer_intent
+from app.orb.pointer_intent import requires_guidance, resolve_pointer_intent
 
 
 def pointer(target_id, route, meaning, aliases, confidence_class="VERIFIED"):
@@ -6,6 +6,7 @@ def pointer(target_id, route, meaning, aliases, confidence_class="VERIFIED"):
         "target_id": target_id,
         "page_route": route,
         "target_type": "button",
+        "pointer_class": "live_guidance",
         "meaning": meaning,
         "direct_aliases": aliases,
         "intent_aliases": aliases,
@@ -38,8 +39,7 @@ def test_similarly_named_competing_targets_are_rejected_as_ambiguous():
 def test_low_confidence_semantic_match_remains_voice_only():
     records = [pointer("book-consult", "/", "button: Book a consultation", ["schedule a consult"], "UNCERTAIN")]
     matches = resolve_pointer_intent(records, "Where can I reserve a meeting?", "https://example.test/")
-    assert len(matches) == 1
-    assert matches[0].guidance_eligible is False
+    assert matches == []
 
 
 def test_owner_authority_disambiguates_an_unapproved_duplicate():
@@ -75,3 +75,24 @@ def test_beta_paraphrases_resolve_to_owner_verified_target_without_exact_alias()
     ):
         matches = resolve_pointer_intent(records, transcript, "https://example.test/")
         assert [match.record["target_id"] for match in matches] == ["approved-beta"]
+
+
+def test_informational_question_bypasses_pointer_resolution():
+    records = [pointer("web-weaver", "/", "button: Web Weaver", ["web weaver"])]
+    assert requires_guidance("What does Web Weaver do?") is False
+    assert resolve_pointer_intent(records, "What does Web Weaver do?", "https://example.test/") == []
+
+
+def test_guidance_request_uses_only_live_guidance_records():
+    records = [
+        {
+            **pointer("reference", "/", "paragraph: Web Weaver", ["web weaver"]),
+            "target_type": "paragraph",
+            "pointer_class": "semantic_reference",
+            "runtime_policy": {"may_point": False},
+        },
+        pointer("cta", "/", "button: Start Web Weaver", ["start web weaver"]),
+    ]
+    assert requires_guidance("Show me where to start Web Weaver") is True
+    matches = resolve_pointer_intent(records, "Show me where to start Web Weaver", "https://example.test/")
+    assert [match.record["target_id"] for match in matches] == ["cta"]

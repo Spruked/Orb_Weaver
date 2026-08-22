@@ -8,6 +8,7 @@ import {
   type WebsiteOrbExperienceContext,
   type WebsiteOrbPointerRecord,
   type WebsiteOrbTtsResponse,
+  type WebsiteOrbVoiceResponse,
 } from "../services/api";
 import {
   ACTIVE_ORB_PROJECT_CONTEXT_EVENT,
@@ -37,6 +38,7 @@ const END_SILENCE_MS = 2200;
 const ABSOLUTE_RECORDING_LIMIT_MS = 22000;
 const SPEECH_LEVEL_THRESHOLD = 0.018;
 const LIDAR_DRIFT_THRESHOLD_PX = 12;
+const ORB_SPEECH_PLAYBACK_RATE = 1.3;
 
 const emitOrbRuntimeEvent = (phase: string, detail: Record<string, unknown> = {}) => {
   window.dispatchEvent(new CustomEvent("orbweaver:mounted-runtime", {
@@ -99,6 +101,19 @@ const ACTIVE_ORB_OPACITY = 0.94;
 const REST_ORB_OPACITY = 0.55;
 const FIRST_ENCOUNTER_STORAGE_KEY = "orbweaver-first-encounter-state";
 const STARTUP_GREETING_SESSION_KEY = "orbweaver-startup-greeting-played";
+const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
+const LANDING_SPLASH_COMPLETE_SESSION_KEY = "orbweaver-landing-splash-complete";
+const STARTUP_GATE_COMPLETE_EVENT = "orbweaver:startup-gate-complete";
+type StartupDiagnostics = {
+  splash_state: "waiting" | "playing" | "complete" | "skipped_session_once";
+  permission_state: "waiting" | "user_activated" | "requesting" | "ready" | "blocked";
+  greeting_state: "waiting" | "preparing" | "playing" | "played" | "skipped_session_once" | "failed";
+  audio_tts_state: "idle" | "requesting" | "ready" | "playing" | "played" | "failed";
+  tts_voice: string;
+  session_once_flag: boolean;
+  orb_readiness_state: "mounting" | "waiting_for_gate" | "voice_ready" | "intro_playing" | "ready";
+};
+type RuntimeAnswerDiagnostics = NonNullable<WebsiteOrbVoiceResponse["resolution_diagnostics"]>;
 const SUITE_LOGO_POINTER_RECORD: WebsiteOrbPointerRecord = {
   target_id: "orb-weaver-suite-logo",
   page_route: "/",
@@ -230,6 +245,22 @@ const startupGreetingText = (): string => {
   return "Hi, I'm Weaver. Welcome to ORB Weaver. I'm going to show you how I listen, understand this site, and guide with verified targets.";
 };
 
+const initialStartupDiagnostics = (): StartupDiagnostics => ({
+  splash_state: window.sessionStorage.getItem(LANDING_SPLASH_COMPLETE_SESSION_KEY) === "1" ? "skipped_session_once" : "waiting",
+  permission_state: "waiting",
+  greeting_state: window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1" ? "skipped_session_once" : "waiting",
+  audio_tts_state: "idle",
+  tts_voice: "OrbWeaver",
+  session_once_flag: window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1",
+  orb_readiness_state: "mounting",
+});
+
+const startupDiagnosticsPanelEnabled = (): boolean => {
+  if (process.env.NODE_ENV === "production" || !isPublicLandingExperience()) return false;
+  const params = new URLSearchParams(window.location.search);
+  return params.get("orbStartupDiagnostics") === "1";
+};
+
 export const AutonomousOrb: React.FC<Props> = ({
   size = 190,
   className = "",
@@ -276,6 +307,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const speechPlaybackRef = useRef(false);
   const audioUnlockedRef = useRef(false);
   const statusTimerRef = useRef<number | null>(null);
+  const visitorSpeechTimerRef = useRef<number | null>(null);
   const avoidUntilRef = useRef(0);
   const voiceRequestInFlightRef = useRef(false);
   const activeVoiceAbortControllerRef = useRef<AbortController | null>(null);
@@ -308,6 +340,8 @@ export const AutonomousOrb: React.FC<Props> = ({
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusTitle, setStatusTitle] = useState("ORB online");
   const [statusLine, setStatusLine] = useState("Weaver is preparing voice.");
+  const [visitorUtterance, setVisitorUtterance] = useState("");
+  const [diagnosticUtterance, setDiagnosticUtterance] = useState("");
   const [activeOrbContext, setActiveOrbContext] = useState<ActiveOrbProjectContext | null>(() => getActiveOrbProjectContext());
   const [speakerBoost, setSpeakerBoost] = useState(false);
   const [lastGuidedTarget, setLastGuidedTarget] = useState<string | null>(null);
@@ -325,6 +359,22 @@ export const AutonomousOrb: React.FC<Props> = ({
   const [morbPointer, setMorbPointer] = useState<MorbPointerState | null>(null);
   const [pointerWaltzPhase, setPointerWaltzPhase] = useState<PointerWaltzPhase | null>(null);
   const [greetingActive, setGreetingActive] = useState(false);
+  const [showStartupDiagnosticsPanel] = useState(() => startupDiagnosticsPanelEnabled());
+  const [startupDiagnostics, setStartupDiagnostics] = useState<StartupDiagnostics>(() => initialStartupDiagnostics());
+  const [runtimeAnswerDiagnostics, setRuntimeAnswerDiagnostics] = useState<RuntimeAnswerDiagnostics | null>(null);
+
+  const updateStartupDiagnostics = useCallback((patch: Partial<StartupDiagnostics>) => {
+    setStartupDiagnostics((current) => {
+      const next = {
+        ...current,
+        ...patch,
+        session_once_flag: window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1",
+      };
+      (window as any).__ORB_WEAVER_STARTUP_DIAGNOSTICS__ = next;
+      emitOrbRuntimeEvent("startup_diagnostics", next);
+      return next;
+    });
+  }, []);
 
   const markFirstEncounter = useCallback((flag: FirstEncounterFlag) => {
     const next = { ...firstEncounterStateRef.current, [flag]: true };
@@ -1006,6 +1056,20 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
   }, []);
 
+  const showVisitorUtterance = useCallback((text: string, hideAfterMs?: number) => {
+    setVisitorUtterance(text);
+    if (visitorSpeechTimerRef.current) {
+      window.clearTimeout(visitorSpeechTimerRef.current);
+      visitorSpeechTimerRef.current = null;
+    }
+    if (hideAfterMs) {
+      visitorSpeechTimerRef.current = window.setTimeout(() => {
+        setVisitorUtterance("");
+        visitorSpeechTimerRef.current = null;
+      }, hideAfterMs);
+    }
+  }, []);
+
   const unlockAudio = useCallback(() => {
     if (audioUnlockedRef.current) return;
     audioUnlockedRef.current = true;
@@ -1053,6 +1117,8 @@ export const AutonomousOrb: React.FC<Props> = ({
     const source = context.createBufferSource();
     const gain = context.createGain();
     source.buffer = buffer;
+    source.playbackRate.value = ORB_SPEECH_PLAYBACK_RATE;
+    source.detune.value = -1200 * Math.log2(ORB_SPEECH_PLAYBACK_RATE);
     gain.gain.value = speakerBoostRef.current ? 1.85 : 1;
     source.connect(gain);
     gain.connect(context.destination);
@@ -1100,25 +1166,6 @@ export const AutonomousOrb: React.FC<Props> = ({
     presence.stop();
   }, [move, presence]);
 
-  const speakBrowserFallback = useCallback(async (text: string) => {
-    if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
-      throw new Error("Browser speech synthesis unavailable");
-    }
-
-    const synth = window.speechSynthesis;
-    synth.cancel();
-
-    await new Promise<void>((resolve, reject) => {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      utterance.volume = speakerBoostRef.current ? 1 : 0.92;
-      utterance.onend = () => resolve();
-      utterance.onerror = () => reject(new Error("Browser speech synthesis failed"));
-      synth.speak(utterance);
-    });
-  }, []);
-
   const speak = useCallback(async (
     text: string,
     audioUrl?: string | null,
@@ -1128,10 +1175,11 @@ export const AutonomousOrb: React.FC<Props> = ({
     const showTranscript = options.showTranscript !== false;
     if (showTranscript) {
       showStatus();
+      showVisitorUtterance(text);
     } else {
-      setStatusVisible(false);
+      showVisitorUtterance("");
     }
-    setStatusLine(showTranscript ? text : "Speaking.");
+    setStatusLine("Speaking through Website ORB voice.");
     setVoiceState("speaking");
     speechPlaybackRef.current = true;
     freezeOrbInPlace(4200);
@@ -1148,9 +1196,10 @@ export const AutonomousOrb: React.FC<Props> = ({
     try {
       setStatusTitle("Voice response");
       if (!audioUrl) {
-        await speakBrowserFallback(text);
         speechPlaybackRef.current = false;
         setVoiceState("idle");
+        setStatusTitle("Voice unavailable");
+        setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
         showStatus(3600);
         return false;
       }
@@ -1159,12 +1208,15 @@ export const AutonomousOrb: React.FC<Props> = ({
         speechPlaybackRef.current = false;
         setVoiceState("idle");
         showStatus(1400);
+        showVisitorUtterance("", 1);
         return true;
       }
       const audio = speechAudioRef.current || new Audio();
       audio.pause();
       audio.muted = false;
       audio.volume = speakerBoostRef.current ? 1 : 0.86;
+      audio.playbackRate = ORB_SPEECH_PLAYBACK_RATE;
+      audio.preservesPitch = true;
       audio.src = api.orbMediaUrl(audioUrl);
       speechAudioRef.current = audio;
       const settlement = createPlaybackSettlement();
@@ -1175,6 +1227,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         setVoiceState("idle");
         showStatus(1400);
         emitOrbRuntimeEvent("playback_ended", { provider: provider || null });
+        showVisitorUtterance("", 1);
         settlement.resolve();
       };
       audio.onerror = () => {
@@ -1198,10 +1251,11 @@ export const AutonomousOrb: React.FC<Props> = ({
       setStatusTitle("Voice unavailable");
       setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
       setVoiceState("idle");
+      showVisitorUtterance("", 1);
       showStatus(3600);
       return false;
     }
-  }, [freezeOrbInPlace, playDecodedSpeech, showStatus, speakBrowserFallback]);
+  }, [freezeOrbInPlace, playDecodedSpeech, showStatus, showVisitorUtterance]);
 
   const speakWithGeneratedAudio = useCallback(async (text: string, audioUrl?: string | null, provider?: string | null) => {
     setStatusTitle("Preparing voice");
@@ -1212,6 +1266,44 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     return speak(text, audioUrl, provider);
   }, [freezeOrbInPlace, showStatus, speak]);
+
+  const diagnosticNarrationText = useCallback(() => {
+    return [
+      "Startup diagnostics.",
+      `Splash is ${startupDiagnostics.splash_state}.`,
+      `Permission is ${startupDiagnostics.permission_state}.`,
+      `Greeting is ${startupDiagnostics.greeting_state}.`,
+      `Audio is ${startupDiagnostics.audio_tts_state}.`,
+      `The selected Qwen TTS voice is ${startupDiagnostics.tts_voice}.`,
+      `Session flag is ${startupDiagnostics.session_once_flag ? "played once" : "not played"}.`,
+      `ORB readiness is ${startupDiagnostics.orb_readiness_state}.`,
+      runtimeAnswerDiagnostics?.resolution_source
+        ? `The latest answer source is ${runtimeAnswerDiagnostics.resolution_source}.`
+        : "No visitor answer has been resolved yet.",
+      runtimeAnswerDiagnostics?.qwen_bypassed === true ? "Qwen cognition was bypassed." : "Qwen cognition was used or not yet measured.",
+      runtimeAnswerDiagnostics?.cached_speech === true ? "Cached Qwen speech was used." : "Cached speech was not used or not yet measured.",
+      runtimeAnswerDiagnostics?.learning_candidate_state
+        ? `The learning candidate state is ${runtimeAnswerDiagnostics.learning_candidate_state}.`
+        : "There is no learning candidate state yet.",
+    ].join(" ");
+  }, [runtimeAnswerDiagnostics, startupDiagnostics]);
+
+  const speakDiagnostics = useCallback(async () => {
+    const text = diagnosticNarrationText();
+    setDiagnosticUtterance(text);
+    setStatusTitle("Speaking diagnostics");
+    setStatusLine("Diagnostic narration is separate from visitor speech.");
+    showStatus();
+    try {
+      const tts = await api.websiteOrbTts(text);
+      if (!tts.tts_audio_url) throw new Error(tts.tts_error || "Diagnostic TTS unavailable");
+      await speak(text, tts.tts_audio_url, tts.tts_provider, { showTranscript: false });
+    } catch (error) {
+      setStatusTitle("Diagnostic voice unavailable");
+      setStatusLine(error instanceof Error ? error.message : VOICE_UNAVAILABLE_MESSAGE);
+      showStatus(3600);
+    }
+  }, [diagnosticNarrationText, showStatus, speak]);
 
   const speakRecovery = useCallback(async (text: string, signal?: AbortSignal) => {
     setStatusLine(text);
@@ -1279,7 +1371,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           phase: "orientation",
           objective: "Orient the visitor to natural voice turn-taking: they can speak normally, finish the thought, and pause so Weaver can respond.",
           verification_state: "not_applicable",
-          demonstrated_capabilities: ["Kokoro neural voice is playing", "Faster Whisper microphone path is ready"],
+          demonstrated_capabilities: ["Qwen TTS voice is playing", "Faster Whisper microphone path is ready"],
         },
       );
       markFirstEncounter("communication_orientation_complete");
@@ -1296,20 +1388,38 @@ export const AutonomousOrb: React.FC<Props> = ({
 
       const hasPointerMap = await waitForPointerRecords();
       const proofTarget = hasPointerMap ? findPointerRecordById("watch_weaver_guide") : null;
-      if (!proofTarget) throw new Error("Owner-approved orientation target is unavailable");
-      const guided = await guideToPointerRecord(proofTarget, "Demonstrate verified visual guidance");
-      if (!guided) throw new Error("Live target verification did not complete");
-      markFirstEncounter("orientation_pointer_proof_complete");
+      if (proofTarget) {
+        const guided = await guideToPointerRecord(proofTarget, "Demonstrate verified visual guidance");
+        if (guided) {
+          markFirstEncounter("orientation_pointer_proof_complete");
+        } else {
+          emitOrbRuntimeEvent("startup_pointer_demo_skipped", {
+            targetId: "watch_weaver_guide",
+            reason: "live_target_verification_failed",
+          });
+          markFirstEncounter("orientation_pointer_proof_complete");
+        }
+      } else {
+        emitOrbRuntimeEvent("startup_pointer_demo_skipped", {
+          targetId: "watch_weaver_guide",
+          reason: hasPointerMap ? "target_missing_on_route" : "pointer_map_unavailable",
+        });
+        markFirstEncounter("orientation_pointer_proof_complete");
+      }
 
       await runGeneratedAct(
-        "The verified visual-guidance target was acquired, approached, pointed to, and pinged successfully.",
+        proofTarget
+          ? "The visual-guidance demo was attempted after the greeting without blocking startup readiness."
+          : "The visual-guidance demo target was unavailable, so the greeting continues and Weaver remains ready.",
         {
           phase: "agency",
-          objective: "Establish agency by connecting the completed visual proof to useful next actions and invite an open, meaningful first request without asking a generic help question.",
-          verified_target_id: proofTarget.target_id,
-          verified_target_label: proofTarget.meaning,
-          verification_state: "verified",
-          demonstrated_capabilities: ["live DOM target verification", "movement", "point", "ping", "neural voice"],
+          objective: "Establish agency after the startup introduction and invite a useful next action without making pointer readiness a prerequisite.",
+          verified_target_id: proofTarget?.target_id,
+          verified_target_label: proofTarget?.meaning,
+          verification_state: proofTarget ? "verified" : "not_applicable",
+          demonstrated_capabilities: proofTarget
+            ? ["optional live DOM target verification", "movement", "point", "ping", "neural voice"]
+            : ["neural voice", "startup readiness", "Site World explanation"],
         },
       );
       markFirstEncounter("agency_complete");
@@ -1362,7 +1472,7 @@ export const AutonomousOrb: React.FC<Props> = ({
               objective: "Respond to the visitor's actual first request, show that it was understood in context, and guide to a verified relevant target when one exists.",
               visitor_turn: visitorTurn,
               verification_state: "pending",
-              demonstrated_capabilities: ["Faster Whisper transcription", "Site World reasoning", "Kokoro neural voice"],
+              demonstrated_capabilities: ["Faster Whisper transcription", "Site World reasoning", "Qwen TTS voice"],
             }
           : {
               phase: "relevant_continuation",
@@ -1378,6 +1488,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         experience,
       });
       const spokenOutput = result.spoken_output;
+      setRuntimeAnswerDiagnostics(result.resolution_diagnostics || null);
       setStatusTitle("Voice response");
       setStatusLine(spokenOutput);
       if (result.tts_error && !result.tts_audio_url) {
@@ -1449,7 +1560,7 @@ export const AutonomousOrb: React.FC<Props> = ({
               objective: "Respond to the visitor's actual first request, show that it was understood in context, and guide to a verified relevant target when one exists.",
               visitor_turn: visitorTurn,
               verification_state: "pending",
-              demonstrated_capabilities: ["browser speech recognition", "Site World reasoning", "Kokoro neural voice"],
+              demonstrated_capabilities: ["browser speech recognition", "Site World reasoning", "Qwen TTS voice"],
             }
           : {
               phase: "relevant_continuation",
@@ -1465,6 +1576,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         experience,
       });
       const spokenOutput = result.spoken_output;
+      setRuntimeAnswerDiagnostics(result.resolution_diagnostics || null);
       setStatusTitle("Voice response");
       setStatusLine(spokenOutput);
       emitOrbRuntimeEvent("canonical_response", {
@@ -1847,10 +1959,12 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, [resumeAutonomousPresence, showStatus]);
 
   const requestStartupMicrophonePermission = useCallback(async () => {
+    updateStartupDiagnostics({ permission_state: "requesting" });
     if (!navigator.mediaDevices?.getUserMedia) {
       setStatusTitle("Voice unavailable");
       setStatusLine("Microphone recording is unavailable in this browser.");
       showStatus(4200);
+      updateStartupDiagnostics({ permission_state: "blocked" });
       return false;
     }
 
@@ -1864,19 +1978,45 @@ export const AutonomousOrb: React.FC<Props> = ({
       });
       recordingStreamRef.current = stream;
       markFirstEncounter("voice_ready");
+      updateStartupDiagnostics({ permission_state: "ready", orb_readiness_state: "voice_ready" });
       return true;
     } catch {
       setStatusTitle("Microphone blocked");
       setStatusLine("Allow microphone access in the browser to talk with Weaver.");
       showStatus(5200);
+      updateStartupDiagnostics({ permission_state: "blocked" });
       return false;
     }
-  }, [markFirstEncounter, showStatus]);
+  }, [markFirstEncounter, showStatus, updateStartupDiagnostics]);
+
+  const waitForStartupGate = useCallback(async () => {
+    if (!isPublicLandingExperience()) return;
+    if (window.sessionStorage.getItem(LANDING_SPLASH_COMPLETE_SESSION_KEY) === "1") {
+      updateStartupDiagnostics({ splash_state: "skipped_session_once" });
+      return;
+    }
+
+    updateStartupDiagnostics({ splash_state: "playing", orb_readiness_state: "waiting_for_gate" });
+    await new Promise<void>((resolve) => {
+      const handler = (event: Event) => {
+        const detail = (event as CustomEvent).detail || {};
+        unlockAudio();
+        updateStartupDiagnostics({
+          splash_state: detail.splash_state === "skipped_session_once" ? "skipped_session_once" : "complete",
+          permission_state: detail.permission_state === "user_activated" ? "user_activated" : "waiting",
+        });
+        window.removeEventListener(STARTUP_GATE_COMPLETE_EVENT, handler);
+        resolve();
+      };
+      window.addEventListener(STARTUP_GATE_COMPLETE_EVENT, handler, { once: true });
+    });
+  }, [unlockAudio, updateStartupDiagnostics]);
 
   const prepareStartupVoice = useCallback((): StartupVoicePreparation => {
     if (startupVoicePreparationRef.current) return startupVoicePreparationRef.current;
 
     unlockAudio();
+    updateStartupDiagnostics({ greeting_state: "preparing", audio_tts_state: "requesting" });
     setStatusTitle("Opening the ORB Weaver suite");
     setStatusLine("Preparing voice permission and guidance.");
     showStatus();
@@ -1885,11 +2025,20 @@ export const AutonomousOrb: React.FC<Props> = ({
     const preparation: StartupVoicePreparation = {
       greeting,
       micReady: requestStartupMicrophonePermission(),
-      tts: api.websiteOrbTts(greeting).catch(() => null),
+      tts: api.websiteOrbTts(greeting)
+        .then((tts) => {
+          updateStartupDiagnostics({ audio_tts_state: tts.tts_audio_url ? "ready" : "failed" });
+          if (tts.tts_voice) updateStartupDiagnostics({ tts_voice: tts.tts_voice });
+          return tts;
+        })
+        .catch(() => {
+          updateStartupDiagnostics({ audio_tts_state: "failed" });
+          return null;
+        }),
     };
     startupVoicePreparationRef.current = preparation;
     return preparation;
-  }, [requestStartupMicrophonePermission, showStatus, unlockAudio]);
+  }, [requestStartupMicrophonePermission, showStatus, unlockAudio, updateStartupDiagnostics]);
 
   const runStartupVoiceSequence = useCallback(async () => {
     const onLanding = isPublicLandingExperience();
@@ -1909,25 +2058,45 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     startupAutoStartedRef.current = true;
     let micReady = false;
+    emitOrbRuntimeEvent("orb_mount_confirmed", { onLanding });
+    updateStartupDiagnostics({ orb_readiness_state: onLanding ? "waiting_for_gate" : "mounting" });
+    await waitForStartupGate();
 
     if (onLanding && !greetingAlreadyPlayed) {
       const preparation = prepareStartupVoice();
       micReady = await preparation.micReady;
+      emitOrbRuntimeEvent("permission_handoff_complete", { micReady });
       setGreetingActive(true);
+      updateStartupDiagnostics({ greeting_state: "playing", orb_readiness_state: "intro_playing" });
+      emitOrbRuntimeEvent("intro_started", { provider: "website_orb_tts" });
+      let introAudioPlayed = false;
       try {
         const tts = await preparation.tts;
         if (!tts?.tts_audio_url) throw new Error("Startup voice synthesis failed");
+        updateStartupDiagnostics({ audio_tts_state: "playing" });
+        emitOrbRuntimeEvent("intro_audio_started", { provider: tts.tts_provider || null, voice: tts.tts_voice || null });
         const spokenGreeting = speak(preparation.greeting, tts.tts_audio_url, tts.tts_provider);
         void guideToPointerRecord(SUITE_LOGO_POINTER_RECORD, "ORB Weaver suite", { launchMorbOnly: true });
-        await spokenGreeting;
+        introAudioPlayed = await spokenGreeting;
+        if (!introAudioPlayed) throw new Error("Startup voice playback failed");
+        updateStartupDiagnostics({ audio_tts_state: "played", greeting_state: "played" });
         markFirstEncounter("entrance_complete");
       } catch {
+        updateStartupDiagnostics({ audio_tts_state: "failed", greeting_state: "failed" });
         await speakRecovery(preparation.greeting);
-        markFirstEncounter("entrance_complete");
       } finally {
         setGreetingActive(false);
-        window.sessionStorage.setItem(STARTUP_GREETING_SESSION_KEY, "1");
+        if (introAudioPlayed) {
+          window.sessionStorage.setItem(STARTUP_GREETING_SESSION_KEY, "1");
+          updateStartupDiagnostics({ greeting_state: "played", orb_readiness_state: "ready" });
+          emitOrbRuntimeEvent("intro_complete");
+          emitOrbRuntimeEvent("orb_ready");
+        } else {
+          updateStartupDiagnostics({ greeting_state: "failed", orb_readiness_state: "voice_ready" });
+        }
       }
+
+      if (!introAudioPlayed) return;
 
       // Choreography is enrichment, never a gate on conversation.
       try {
@@ -1936,7 +2105,11 @@ export const AutonomousOrb: React.FC<Props> = ({
         // The choreography reports its own status. Weaver must still listen.
       }
     } else {
+      updateStartupDiagnostics({ greeting_state: "skipped_session_once" });
       micReady = await requestStartupMicrophonePermission();
+      emitOrbRuntimeEvent("permission_handoff_complete", { micReady });
+      updateStartupDiagnostics({ orb_readiness_state: "ready" });
+      emitOrbRuntimeEvent("orb_ready");
     }
 
     if (micReady && activeRef.current) {
@@ -1946,7 +2119,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         void startOrbRecording();
       }, 420);
     }
-  }, [guideToPointerRecord, markFirstEncounter, onboardingSafeMode, prepareStartupVoice, requestStartupMicrophonePermission, runFirstEncounterChoreography, setGreetingActive, speak, speakRecovery, startOrbRecording]);
+  }, [guideToPointerRecord, markFirstEncounter, onboardingSafeMode, prepareStartupVoice, requestStartupMicrophonePermission, runFirstEncounterChoreography, setGreetingActive, speak, speakRecovery, startOrbRecording, updateStartupDiagnostics, waitForStartupGate]);
 
   // Keep the mounted startup path pointed at the live sequence before mount
   // effects can call it.
@@ -1967,6 +2140,21 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     void startOrbRecording();
   }, [interruptOrbSpeech, markVisitorActivity, startOrbRecording, stopOrbRecording, voiceState]);
+
+  const resetStartupSequence = useCallback(() => {
+    window.sessionStorage.removeItem(LANDING_SPLASH_SESSION_KEY);
+    window.sessionStorage.removeItem(LANDING_SPLASH_COMPLETE_SESSION_KEY);
+    window.sessionStorage.removeItem(STARTUP_GREETING_SESSION_KEY);
+    window.sessionStorage.removeItem(FIRST_ENCOUNTER_STORAGE_KEY);
+    firstEncounterStateRef.current = { ...EMPTY_FIRST_ENCOUNTER_STATE };
+    startupVoicePreparationRef.current = null;
+    startupAutoStartedRef.current = false;
+    updateStartupDiagnostics(initialStartupDiagnostics());
+    emitOrbRuntimeEvent("startup_reset");
+    const url = new URL(window.location.href);
+    url.searchParams.set("orbStartupReset", "1");
+    window.location.assign(url.toString());
+  }, [updateStartupDiagnostics]);
 
   const toggleSpeakerBoost = useCallback(() => {
     markVisitorActivity();
@@ -2507,12 +2695,50 @@ export const AutonomousOrb: React.FC<Props> = ({
             </button>
         </motion.div>
       </motion.div>
-      {statusVisible && (
-        <div className="ow-v2-orb-status" aria-live="polite" aria-label={statusTitle}>
-          <span>{statusLine}</span>
+      {visitorUtterance && (
+        <div className="ow-v2-orb-speech" aria-live="polite" aria-label="Weaver says">
+          <span>{visitorUtterance}</span>
         </div>
       )}
     </motion.div>
+    {showStartupDiagnosticsPanel && statusVisible && (
+      <aside className="ow-v2-startup-panel" aria-label="Startup diagnostics">
+        <strong>{statusTitle}</strong>
+        <p>{statusLine}</p>
+        <dl className="ow-v2-startup-diagnostics">
+          <div><dt>Splash</dt><dd>{startupDiagnostics.splash_state}</dd></div>
+          <div><dt>Permission</dt><dd>{startupDiagnostics.permission_state}</dd></div>
+          <div><dt>Greeting</dt><dd>{startupDiagnostics.greeting_state}</dd></div>
+          <div><dt>Audio</dt><dd>{startupDiagnostics.audio_tts_state}</dd></div>
+          <div><dt>Voice</dt><dd>{startupDiagnostics.tts_voice}</dd></div>
+          <div><dt>Session</dt><dd>{startupDiagnostics.session_once_flag ? "once played" : "not played"}</dd></div>
+          <div><dt>Ready</dt><dd>{startupDiagnostics.orb_readiness_state}</dd></div>
+          <div><dt>Answer</dt><dd>{runtimeAnswerDiagnostics?.resolution_source || "not resolved"}</dd></div>
+          <div><dt>Record</dt><dd>{runtimeAnswerDiagnostics?.fact_record_id || "none"}</dd></div>
+          <div><dt>Confidence</dt><dd>{runtimeAnswerDiagnostics?.confidence?.toFixed(2) || "n/a"}</dd></div>
+          <div><dt>Qwen</dt><dd>{runtimeAnswerDiagnostics?.qwen_bypassed ? "bypassed" : "used / n/a"}</dd></div>
+          <div><dt>Speech</dt><dd>{runtimeAnswerDiagnostics?.cached_speech ? "cached" : "live / n/a"}</dd></div>
+          <div><dt>Learning</dt><dd>{runtimeAnswerDiagnostics?.learning_candidate_state || "none"}</dd></div>
+        </dl>
+        {diagnosticUtterance && (
+          <p className="ow-v2-diagnostic-utterance">{diagnosticUtterance}</p>
+        )}
+        <button
+          type="button"
+          className="ow-v2-startup-reset"
+          onClick={speakDiagnostics}
+        >
+          Speak diagnostics
+        </button>
+        <button
+          type="button"
+          className="ow-v2-startup-reset"
+          onClick={resetStartupSequence}
+        >
+          Reset first encounter
+        </button>
+      </aside>
+    )}
     </>
   );
 };

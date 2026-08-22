@@ -136,6 +136,7 @@ class OrbWeaverCrawler:
         self.depth_limit_hits = 0
         self.max_page_limit_hit = False
         self.current_depth: Dict[str, int] = {}
+        self.frontier_drain_count = 0
         self.total_pages_scraped = 0
         self.rejected_external_urls: Set[str] = set()
         self.discovery_provenance: Dict[str, List[Dict]] = {}
@@ -1044,6 +1045,8 @@ class OrbWeaverCrawler:
                     await self._crawl_page(session, sitemap_url, 0)
                 elif sitemap_url:
                     self.rejected_external_urls.add(sitemap_url)
+            if self.tier != "free":
+                await self._drain_discovered_frontier(session)
             self._emit_progress(force=True)
 
         # Post-processing: detect duplicate content
@@ -1061,6 +1064,30 @@ class OrbWeaverCrawler:
             page.has_robots_txt = self.robots_rules is not None
 
         return self.crawled_data
+
+    async def _drain_discovered_frontier(self, session: aiohttp.ClientSession) -> None:
+        """Fetch same-origin discovered URLs that depth recursion found but did not visit."""
+        while self.total_pages_scraped < self.max_pages:
+            pending = [
+                url for url in sorted(self.discovered_urls)
+                if url not in self.visited_urls
+                and self._is_same_domain(url)
+                and url not in self.robots_blocked_urls
+            ]
+            if not pending:
+                return
+            progress = False
+            for url in pending:
+                if self.total_pages_scraped >= self.max_pages:
+                    self.max_page_limit_hit = True
+                    return
+                before = self.total_pages_scraped
+                await self._crawl_page(session, url, min(self.current_depth.get(url, self.max_depth), self.max_depth))
+                if self.total_pages_scraped > before:
+                    self.frontier_drain_count += 1
+                    progress = True
+            if not progress:
+                return
 
     def get_crawl_stats(self) -> Dict:
         discovered_count = len(self.discovered_urls)
@@ -1084,7 +1111,8 @@ class OrbWeaverCrawler:
             'robots_error': self.robots_error,
             'javascript_render_attempts': self.render_attempts,
             'javascript_render_successes': self.render_successes,
-            'queue_exhausted': not self.max_page_limit_hit and self.depth_limit_hits == 0 and skipped_estimate == 0,
+            'queue_exhausted': not self.max_page_limit_hit and skipped_estimate == 0,
+            'frontier_drain_count': self.frontier_drain_count,
             'max_page_limit_hit': self.max_page_limit_hit,
             'depth_limit_hit': self.depth_limit_hits > 0,
             'depth_limit_hits': self.depth_limit_hits,

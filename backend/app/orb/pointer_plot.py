@@ -22,6 +22,13 @@ TARGET_TYPES = {
     "other",
 }
 
+SEMANTIC_REFERENCE_TARGET_TYPES = {"heading", "paragraph", "faq_answer", "policy_line"}
+LIVE_GUIDANCE_TARGET_TYPES = {"nav", "form_field", "button", "price_card", "download"}
+APPROVED_GUIDEABLE_SECTION_HINTS = {
+    "signup", "sign up", "register", "contact", "pricing", "price", "plan", "package",
+    "checkout", "cart", "preflight", "scan", "marketplace", "download", "demo", "orb",
+}
+
 
 def extract_pointer_plot_records(
     page_route: str,
@@ -55,14 +62,17 @@ def extract_pointer_plot_records(
             continue
         seen.add(dedupe_key)
 
+        pointer_class, admission_reason = _pointer_admission(element, target_type, text, locator, aliases)
         confidence = _confidence(element, target_type, text)
-        confidence_class, runtime_policy = pointer_runtime_policy(confidence)
+        confidence_class, runtime_policy = pointer_runtime_policy(confidence, pointer_class=pointer_class)
         verified_at = datetime.utcnow().isoformat()
         records.append(
             {
                 "target_id": target_id,
                 "page_route": page_route,
                 "target_type": target_type,
+                "pointer_class": pointer_class,
+                "pointer_admission_reason": admission_reason,
                 "meaning": _summarize_meaning(text, target_type),
                 "intent_aliases": aliases["direct_aliases"],
                 "direct_aliases": aliases["direct_aliases"],
@@ -115,10 +125,15 @@ def pointer_plot_map_from_pages(pages: Iterable[Any]) -> Dict[str, Any]:
             records.append(record)
             by_page.setdefault(url, []).append(record["target_id"])
 
+    _mark_route_locator_conflicts(records)
+    diagnostics = pointer_map_diagnostics(records)
     return {
         "schema": "orb_weaver.pointer_plot_map.v1",
         "generated_at": datetime.utcnow().isoformat(),
         "record_count": len(records),
+        "guidance_record_count": diagnostics["live_guidance_candidates"],
+        "reference_record_count": diagnostics["semantic_reference_records"],
+        "diagnostics": diagnostics,
         "records": records,
         "by_page": by_page,
     }
@@ -382,8 +397,112 @@ def _confidence(element: Tag, target_type: str, text: str) -> float:
     return round(max(0.0, min(score, 0.96)), 2)
 
 
-def pointer_runtime_policy(confidence: float) -> tuple[str, Dict[str, Any]]:
+def _has_stable_guidance_identity(element: Tag, locator: str, aliases: Dict[str, List[str]]) -> bool:
+    if _explicit_orb_locator(element):
+        return True
+    if element.get("id") or element.get("aria-label") or element.get("role"):
+        return True
+    if element.name == "a" and element.get("href"):
+        return True
+    if any(alias for alias in aliases.get("direct_aliases") or []):
+        return _locator_method(locator) != "structural_css"
+    return False
+
+
+def _pointer_admission(
+    element: Tag,
+    target_type: str,
+    text: str,
+    locator: str,
+    aliases: Dict[str, List[str]],
+) -> tuple[str, str]:
+    if target_type in SEMANTIC_REFERENCE_TARGET_TYPES:
+        return "semantic_reference", "semantic_reference_content"
+    if target_type == "section":
+        combined = f"{text} {' '.join(aliases.get('direct_aliases') or [])}".lower()
+        if not any(hint in combined for hint in APPROVED_GUIDEABLE_SECTION_HINTS):
+            return "semantic_reference", "section_not_intentionally_guideable"
+    if target_type in LIVE_GUIDANCE_TARGET_TYPES or target_type == "section":
+        return ("live_guidance", "accepted_as_live_guidance") if _has_stable_guidance_identity(element, locator, aliases) else ("semantic_reference", "missing_stable_guidance_identity")
+    return "semantic_reference", "unsupported_target_type_for_guidance"
+
+
+def mark_route_locator_conflicts(records: List[Dict[str, Any]]) -> None:
+    _mark_route_locator_conflicts(records)
+
+
+def pointer_map_diagnostics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    route_locator: Dict[tuple[str, str], List[str]] = {}
+    admission_reasons: Dict[str, int] = {}
+    stable_guidance = 0
+    unresolved_guidance = 0
+    for record in records:
+        reason = str(record.get("pointer_admission_reason") or "unknown")
+        admission_reasons[reason] = admission_reasons.get(reason, 0) + 1
+        if record.get("pointer_class") == "live_guidance":
+            route = _canonical_route(str(record.get("page_route") or "/"))
+            locator = str(record.get("semantic_locator") or "")
+            route_locator.setdefault((route, locator), []).append(str(record.get("target_id") or ""))
+            if record.get("confidence_class") in {"VERIFIED", "STABLE"} and (record.get("runtime_policy") or {}).get("may_point") is True:
+                stable_guidance += 1
+            else:
+                unresolved_guidance += 1
+    conflicts = [
+        {"route": route, "semantic_locator": locator, "target_ids": target_ids, "count": len(target_ids)}
+        for (route, locator), target_ids in route_locator.items()
+        if locator and len(target_ids) > 1
+    ]
+    live_guidance = sum(1 for record in records if record.get("pointer_class") == "live_guidance")
+    return {
+        "schema": "orb_weaver.pointer_plot_diagnostics.v1",
+        "raw_record_count": len(records),
+        "semantic_reference_records": sum(1 for record in records if record.get("pointer_class") == "semantic_reference"),
+        "live_guidance_candidates": live_guidance,
+        "unique_verified_guidance_targets": stable_guidance,
+        "unresolved_guidance_targets": unresolved_guidance,
+        "route_locator_conflict_count": sum(item["count"] - 1 for item in conflicts),
+        "route_locator_conflicts": conflicts[:200],
+        "admission_reasons": admission_reasons,
+        "guidance_readiness_percent": round((stable_guidance / live_guidance) * 100, 2) if live_guidance else 100.0,
+    }
+
+
+def _mark_route_locator_conflicts(records: List[Dict[str, Any]]) -> None:
+    grouped: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
+    for record in records:
+        if record.get("pointer_class") != "live_guidance":
+            continue
+        locator = str(record.get("semantic_locator") or "")
+        if not locator:
+            continue
+        grouped.setdefault((_canonical_route(str(record.get("page_route") or "/")), locator), []).append(record)
+    for group in grouped.values():
+        if len(group) <= 1:
+            continue
+        for record in group:
+            record["confidence_class"] = "UNCERTAIN"
+            record["finding_class"] = "CONFLICT"
+            record["finding_subreason"] = "duplicate_route_locator_conflict"
+            record["pointer_admission_reason"] = "duplicate_route_locator_conflict"
+            policy = dict(record.get("runtime_policy") or {})
+            policy.update({
+                "behavior": "explain_without_unverified_point_until_locator_conflict_repaired",
+                "may_point": False,
+                "must_verify_before_action": True,
+                "requires_confirmation": True,
+            })
+            record["runtime_policy"] = policy
+
+
+def pointer_runtime_policy(confidence: float, *, pointer_class: str = "live_guidance") -> tuple[str, Dict[str, Any]]:
     """Translate evidence confidence into the product's enforced runtime boundary."""
+    if pointer_class != "live_guidance":
+        return "REFERENCE", {
+            "behavior": "answer_from_site_world_without_pointer_obligation",
+            "may_point": False,
+            "must_verify_before_action": False,
+            "requires_confirmation": False,
+        }
     if confidence >= 0.90:
         return "VERIFIED", {
             "behavior": "guide_or_act_within_permission_policy",
@@ -426,6 +545,8 @@ def _locator_method(locator: str) -> str:
 
 
 def _default_actions(target_type: str) -> List[str]:
+    if target_type in SEMANTIC_REFERENCE_TARGET_TYPES:
+        return []
     if target_type in {"nav", "button"}:
         return ["point", "point_and_confirm_navigate"]
     return ["point"]

@@ -12,6 +12,12 @@ STOP_WORDS = {
     "where", "with", "become",
 }
 
+GUIDANCE_VERBS = {
+    "show", "find", "where", "open", "go", "take", "navigate", "click", "tap", "press",
+    "select", "scroll", "jump", "sign", "signup", "register", "start", "download",
+    "checkout", "buy", "contact", "book", "schedule", "join", "participate",
+}
+
 CONCEPTS = {
     "book": {"book", "booking", "reserve", "reservation", "schedule", "scheduled", "arrange", "setup", "set"},
     "consult": {"consult", "consultation", "conversation", "discussion", "meeting", "call", "appointment"},
@@ -76,9 +82,24 @@ def pointer_text(record: Dict[str, Any]) -> str:
 def guidance_eligible(record: Dict[str, Any]) -> bool:
     if record.get("status") not in (None, "active"):
         return False
+    if str(record.get("pointer_class") or "") == "semantic_reference":
+        return False
+    if record.get("target_type") in {"heading", "paragraph", "faq_answer", "policy_line"}:
+        return False
     if record.get("confidence_class") not in {"VERIFIED", "STABLE"}:
         return False
-    return (record.get("runtime_policy") or {}).get("may_point") is not False
+    return (record.get("runtime_policy") or {}).get("may_point") is True
+
+
+def requires_guidance(transcript: str) -> bool:
+    normalized = str(transcript or "").lower()
+    raw_tokens = set(re.findall(r"[a-z0-9]+", normalized))
+    if raw_tokens & GUIDANCE_VERBS:
+        return True
+    tokens = semantic_tokens(normalized)
+    if tokens & GUIDANCE_VERBS:
+        return True
+    return bool(re.search(r"\b(where (?:do|can|should|is)|how do i (?:sign|start|buy|download|contact|book|schedule|open|go|become))\b", normalized))
 
 
 def authority_rank(record: Dict[str, Any]) -> int:
@@ -97,6 +118,8 @@ def resolve_pointer_intent(
     minimum_score: float = 0.42,
     ambiguity_margin: float = 0.08,
 ) -> List[PointerIntentMatch]:
+    if not requires_guidance(transcript):
+        return []
     query_tokens = semantic_tokens(transcript)
     if not query_tokens:
         return []
@@ -104,6 +127,8 @@ def resolve_pointer_intent(
     scored: List[PointerIntentMatch] = []
     for record in records:
         if record.get("status") not in (None, "active") or route_of(record.get("page_route")) != current_route:
+            continue
+        if not guidance_eligible(record):
             continue
         record_tokens = semantic_tokens(pointer_text(record))
         overlap = query_tokens & record_tokens
