@@ -29,6 +29,7 @@ if str(ROOT) not in sys.path:
 from app.crawler.engine import OrbWeaverCrawler  # noqa: E402
 from app.orb.navigation_world import build_navigation_world  # noqa: E402
 from app.orb.pointer_plot import pointer_plot_map_from_pages  # noqa: E402
+from app.orb.pointer_recovery import assess_pointer_quality  # noqa: E402
 from vault_system.paths import client_root  # noqa: E402
 
 
@@ -83,6 +84,8 @@ async def run(args: argparse.Namespace) -> Dict[str, Any]:
 
     if preserve_existing:
         pointer_map = existing_pointer_map
+    elif "quality" not in pointer_map:
+        pointer_map["quality"] = assess_pointer_quality(pointer_map)
 
     records = pointer_map.get("records") or []
     duplicates = _duplicate_target_ids(records)
