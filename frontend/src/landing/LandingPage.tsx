@@ -8,10 +8,7 @@ import { createIntentGuestSession, LandingIntent } from "../onboarding/guestOnbo
 import "./Landing.css";
 
 const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
-<<<<<<< HEAD
-=======
 const LANDING_SPLASH_DURATION_MS = 3800;
->>>>>>> origin/orb/catalog-audit-reporting-20260820
 
 const LandingPage: React.FC = () => {
   const [pendingTarget, setPendingTarget] = useState<string | null>(null);
@@ -27,11 +24,7 @@ const LandingPage: React.FC = () => {
 
   useEffect(() => {
     if (!splashTrigger) return;
-<<<<<<< HEAD
-    const timer = window.setTimeout(() => setSplashTrigger(0), 2800);
-=======
     const timer = window.setTimeout(() => setSplashTrigger(0), LANDING_SPLASH_DURATION_MS);
->>>>>>> origin/orb/catalog-audit-reporting-20260820
     return () => window.clearTimeout(timer);
   }, [splashTrigger]);
 
