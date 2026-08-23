@@ -76,3 +76,8 @@ export function setActiveOrbProjectContext(context: ActiveOrbProjectContext): Ac
   window.dispatchEvent(new CustomEvent(ACTIVE_ORB_PROJECT_CONTEXT_EVENT, { detail: normalized }));
   return normalized;
 }
+
+export function clearActiveOrbProjectContext(): void {
+  window.localStorage.removeItem(STORAGE_KEY);
+  window.dispatchEvent(new CustomEvent(ACTIVE_ORB_PROJECT_CONTEXT_EVENT, { detail: null }));
+}

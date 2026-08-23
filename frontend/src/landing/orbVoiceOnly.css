@@ -2,3 +2,22 @@
 .ow-v2-orb-rest-cue {
   display: none !important;
 }
+
+/* Product doctrine: the splash hands off automatically; there is no normal
+   visitor-facing Start ORB button. Browser-policy interaction is fallback only. */
+.ow-cut-startup-button {
+  display: none !important;
+}
+
+.ow-cut-startup-gate,
+.ow-cut-startup-gate.is-ready {
+  cursor: default !important;
+}
+
+/* The runtime guard repositions this child of the translated ORB container so
+   long response/recovery text remains inside the viewport. */
+.ow-v2-orb-speech {
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
