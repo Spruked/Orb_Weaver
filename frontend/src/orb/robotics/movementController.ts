@@ -9,6 +9,7 @@ import {
   validateCommand,
   type SpatialGoal,
 } from "./webActuator.hal";
+import { validateMovementOntologyCommand } from "./movementOntology";
 import "./webActuator.hal.css";
 
 const VALID_ACTION_TYPES = new Set([
@@ -28,6 +29,9 @@ const VALID_INTENTS = new Set([
   "Transition",
   "Rest",
   "Summon",
+  "Ambient",
+  "Dormant",
+  "Awaken",
 ]);
 
 const VALID_APPROACH_BEHAVIORS = new Set([
@@ -115,6 +119,12 @@ export class OrbRoboticsMovementController {
     if (closedVocabularyError) {
       this.emit(command, "SAFETY_BLOCKED", onTelemetry, closedVocabularyError);
       return { ok: false, reason: closedVocabularyError };
+    }
+
+    const ontologyValidation = validateMovementOntologyCommand(command, currentWorldStateSequence);
+    if (!ontologyValidation.ok) {
+      this.emit(command, "SAFETY_BLOCKED", onTelemetry, ontologyValidation.reason);
+      return { ok: false, reason: ontologyValidation.reason };
     }
 
     const commandValidation = validateCommand(command, currentWorldStateSequence);

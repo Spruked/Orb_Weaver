@@ -16,8 +16,20 @@ VaultSKGLookup = Callable[[str, str], Optional[Dict[str, Any]]]
 ProviderInvoke = Callable[..., Awaitable[Dict[str, Any]]]
 
 
+_CORRESPONDENCE_STOPWORDS = {
+    "about", "and", "are", "can", "could", "does", "for", "from", "have", "how", "i",
+    "into", "is", "it", "me", "my", "of", "on", "or", "please", "tell", "that", "the",
+    "this", "to", "was", "we", "what", "when", "where", "which", "who", "with", "would", "you",
+    "your",
+}
+
+
 def _tokens(value: str) -> set[str]:
-    return {token for token in re.findall(r"[a-z0-9][a-z0-9_-]+", (value or "").lower()) if len(token) > 2}
+    return {
+        token
+        for token in re.findall(r"[a-z0-9][a-z0-9_-]+", (value or "").lower())
+        if len(token) > 2 and token not in _CORRESPONDENCE_STOPWORDS
+    }
 
 
 def _score(query: str, candidates: list[str]) -> float:
@@ -34,6 +46,16 @@ def _score(query: str, candidates: list[str]) -> float:
 
 def _answer_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _correspondence(query: str, candidates: list[str]) -> float:
+    """Measure query-to-record correspondence separately from record trust."""
+    query_tokens = _tokens(query)
+    candidate_tokens = set().union(*(_tokens(item) for item in candidates if item))
+    if not query_tokens or not candidate_tokens:
+        return 0.0
+    overlap = query_tokens & candidate_tokens
+    return len(overlap) / max(1, min(len(query_tokens), len(candidate_tokens)))
 
 
 class CanonicalTurnResolver:
@@ -78,14 +100,18 @@ class CanonicalTurnResolver:
             attempts.append({"lane": "apriori", "matched": bool(semantic)})
         if semantic is None and self.vault_skg_lookup:
             match = self.vault_skg_lookup("apriori", query)
-            if match:
+            correspondence = self._vault_correspondence(query, match) if match else 0.0
+            if match and correspondence >= 0.62:
                 semantic = self._semantic(
                     answer=str(match["answer"]), source_lane="apriori", answer_state="known",
                     evidence_ids=[str(item) for item in match.get("evidence_ids") or []],
-                    confidence=float(match.get("confidence") or 0.0),
+                    confidence=min(float(match.get("confidence") or 0.0), correspondence),
                 )
                 semantic["vault_skg_trace"] = match
-            attempts.append({"lane": "apriori_skg", "matched": bool(semantic)})
+                semantic["source_truth_confidence"] = float(match.get("confidence") or 0.0)
+                semantic["query_correspondence_confidence"] = correspondence
+                semantic["query_correspondence_verified"] = True
+            attempts.append({"lane": "apriori_skg", "matched": bool(semantic), "query_correspondence": round(correspondence, 3)})
         if semantic is None and self.posteriori_lookup and domain:
             case = self.posteriori_lookup(domain, query, route)
             if case and case.get("spoken_output"):
@@ -150,7 +176,7 @@ class CanonicalTurnResolver:
                 evidence_ids=[],
                 confidence=0.0,
             )
-            semantic["learning_eligible"] = True
+            semantic["learning_eligible"] = False
 
         semantic["route_context"] = {"domain": domain, "route": route}
         semantic["guidance"] = (pointer_matches or [None])[0]
@@ -182,6 +208,12 @@ class CanonicalTurnResolver:
             "verification_state": "verified" if source_lane in {"control", "catalog", "apriori", "posteriori", "site_world"} else "not_verified",
             "escalation_used": None,
             "learning_eligible": source_lane not in {"control", "catalog", "apriori", "posteriori", "site_world"},
+            "source_truth_confidence": 1.0 if source_lane in {"control", "catalog", "apriori", "posteriori", "site_world"} else 0.0,
+            "query_correspondence_confidence": round(confidence, 3),
+            "query_correspondence_verified": (
+                source_lane == "control"
+                or (source_lane in {"catalog", "apriori", "posteriori", "site_world"} and confidence >= 0.62)
+            ),
         }
 
     def _control(self, query: str) -> Optional[Dict[str, Any]]:
@@ -255,10 +287,27 @@ class CanonicalTurnResolver:
                 best = (score, rule.get("text"), rule.get("source_evidence_ids") or [])
         if not best or not best[1]:
             return None
-        return self._semantic(
+        semantic = self._semantic(
             answer=str(best[1]), source_lane="apriori", answer_state="known",
             evidence_ids=[str(item) for item in best[2]], confidence=float(best[0]),
         )
+        semantic["source_truth_confidence"] = 1.0
+        semantic["query_correspondence_confidence"] = float(best[0])
+        semantic["query_correspondence_verified"] = True
+        return semantic
+
+    @staticmethod
+    def _vault_correspondence(query: str, match: Dict[str, Any]) -> float:
+        data = match.get("data") or {}
+        values = [str(match.get("answer") or ""), *(str(item) for item in match.get("evidence_ids") or [])]
+        if isinstance(data, dict):
+            for key in ("question", "title", "name", "aliases", "keywords", "topic", "category"):
+                value = data.get(key)
+                if isinstance(value, list):
+                    values.extend(str(item) for item in value)
+                elif value:
+                    values.append(str(value))
+        return _correspondence(query, values)
 
     def _site_world(self, query: str, site_world: Dict[str, Any], route: str) -> Optional[Dict[str, Any]]:
         best = None
@@ -271,7 +320,16 @@ class CanonicalTurnResolver:
                 phrase in normalized_query for phrase in ("what does", "what is", "tell me about", "explain")
             )
             if identity_question:
-                best = (0.9, site_summary, ["site_world:site_summary"])
+                # The compiled summary is the canonical visitor-facing identity answer.
+                # Raw crawl chunks may have stronger token overlap but can contain page
+                # chrome, JavaScript fallbacks, and far too much text for speech.
+                return self._semantic(
+                    answer=site_summary,
+                    source_lane="site_world",
+                    answer_state="known",
+                    evidence_ids=["site_world:site_summary"],
+                    confidence=0.9,
+                )
         for index, fact in enumerate(site_world.get("key_facts") or []):
             fact_text = str(fact).strip()
             score = _score(query, [fact_text])

@@ -14,6 +14,7 @@ import shutil
 import sqlite3
 import sys
 import tempfile
+import wave
 import logging
 import time
 from pathlib import Path
@@ -37,6 +38,7 @@ from app.analytics.ga4 import GA4Connector
 from app.audit.engine import SEOAuditor
 from app.core.config import settings
 from app.core.storage import (
+    APRIORI_ROOT,
     BROWSER_REVIEWS_ROOT,
     GLOBAL_INTELLIGENCE_ROOT,
     INTEGRATIONS_ROOT,
@@ -78,6 +80,14 @@ from app.orb.pointer_recovery import (
 from app.orb.site_learning import classify_answer_state, lookup_verified_case, record_interaction
 from app.orb.cco_runtime import build_runtime_trace
 from app.orb.turn_resolver import CanonicalTurnResolver
+from app.orb.governance import (
+    compile_website_orb_governance,
+    finalize_governance_trace,
+    initial_governance_trace,
+    persist_governance_artifacts,
+    prompt_layers,
+)
+from app.orb.vault_glyph_trace import record_vault_object
 from app.orb.vault_skg_adapter import get_vault_skg_adapter, materialize_site_apriori
 from app.pack_generator import generate_pack_file
 from manufacturing.website_orb import manufacture_website_orb
@@ -231,12 +241,12 @@ LLM_WARM_STATUS: Dict[str, Any] = {
     "error": None,
 }
 ORB_TTS_WARM_STATUS: Dict[str, Any] = {
-    "configured": bool(settings.ORB_TTS_QWEN_URL),
+    "configured": bool(settings.ORB_TTS_KOKORO_URL),
     "ready": None,
     "checked_at": None,
-    "provider": "qwen",
-    "voice": settings.ORB_TTS_QWEN_VOICE,
-    "allowed_voices": QWEN_TTS_VOICE_OPTIONS,
+    "provider": "kokoro",
+    "voice": settings.ORB_TTS_KOKORO_VOICE,
+    "allowed_voices": [settings.ORB_TTS_KOKORO_VOICE],
     "errors": [],
 }
 CRAWL_WORKER_INSTANCE_ID = f"{os.getpid()}-{secrets.token_hex(6)}"
@@ -453,6 +463,7 @@ class WebsiteOrbVoiceResponse(BaseModel):
     tts_provider: Optional[str] = None
     tts_voice: Optional[str] = None
     tts_error: Optional[str] = None
+    tts_cache_class: Optional[str] = None
     source_lane: Optional[str] = None
     evidence_ids: List[str] = Field(default_factory=list)
     confidence: Optional[float] = None
@@ -461,6 +472,7 @@ class WebsiteOrbVoiceResponse(BaseModel):
     escalation_used: Optional[str] = None
     learning_eligible: Optional[bool] = None
     resolution_trace: Optional[Dict[str, Any]] = None
+    governance_trace: Optional[Dict[str, Any]] = None
     resolution_diagnostics: Optional[Dict[str, Any]] = None
     skg_learning: Optional[Dict[str, Any]] = None
     control_action: Optional[Dict[str, Any]] = None
@@ -487,6 +499,12 @@ class WebsiteOrbTextRequest(BaseModel):
 
 class WebsiteOrbTtsRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=1200)
+    provider: Optional[str] = Field(default=None, pattern="^(qwen|kokoro)$")
+
+
+class WebsiteOrbStartupReadinessRequest(BaseModel):
+    site_id: str = Field(default="orb-weaver", min_length=2, max_length=120)
+    target_url: str = Field(default="https://orbweaver.spruked.com/", min_length=4, max_length=1000)
 
 
 class WebsiteOrbTtsVoiceRequest(BaseModel):
@@ -2426,13 +2444,13 @@ def _orb_capabilities() -> Dict[str, Any]:
             "browser_speech_synthesis": False,
             "recorded_audio_stt_url": settings.FASTER_WHISPER_STT_URL,
             "text_query_low_latency": True,
-            "tts_primary": "qwen",
-            "tts_primary_configured": bool(settings.ORB_TTS_QWEN_URL),
-            "tts_primary_url": settings.ORB_TTS_QWEN_URL,
-            "tts_selected_voice": settings.ORB_TTS_QWEN_VOICE,
-            "tts_allowed_voices": QWEN_TTS_VOICE_OPTIONS,
-            "tts_voice_mode": settings.ORB_TTS_QWEN_PAYLOAD_MODE,
-            "tts_voice_instruct": settings.ORB_TTS_QWEN_INSTRUCT,
+            "tts_primary": "kokoro",
+            "tts_primary_configured": bool(settings.ORB_TTS_KOKORO_URL),
+            "tts_primary_url": settings.ORB_TTS_KOKORO_URL,
+            "tts_selected_voice": settings.ORB_TTS_KOKORO_VOICE,
+            "tts_allowed_voices": [settings.ORB_TTS_KOKORO_VOICE],
+            "tts_voice_mode": settings.ORB_TTS_KOKORO_PAYLOAD_MODE,
+            "tts_voice_instruct": None,
             "tts_fallback": None,
             "tts_fallback_url": None,
         },
@@ -3106,7 +3124,8 @@ async def _llm_orb_spoken_output(
     page_capsule: Optional[Dict[str, Any]] = None,
     operating_policy: Optional[Dict[str, Any]] = None,
     experience_context: Optional[Dict[str, Any]] = None,
-) -> Dict[str, str]:
+    governance_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     if not experience_context and _is_orb_identity_question(transcript):
         return {"spoken_output": ORB_PUBLIC_IDENTITY_ANSWER, "llm_source": "deterministic-identity"}
 
@@ -3175,6 +3194,7 @@ async def _llm_orb_spoken_output(
         }.get(phase, "Fulfill the objective directly.")
         prompt = (
             "You are Weaver, the embodied website host for Orb Weaver. Generate the words for one live choreographed act; the words themselves are not scripted.\n"
+            f"{prompt_layers(governance_context) if governance_context else ''}\n"
             f"ACTIVE ACT: {json.dumps(experience_context, ensure_ascii=False)}\n"
             f"LIVE CONTEXT: {json.dumps(compact_live_context, ensure_ascii=False)}\n"
             f"VISITOR WORDS OR SITUATION: {transcript}\n"
@@ -3185,7 +3205,8 @@ async def _llm_orb_spoken_output(
         )
     else:
         prompt = (
-            "You are Weaver. Obey the Website Weaver envelope as the authoritative operating contract.\n"
+            "You are Weaver. Obey the complete governed Website ORB assembly as the authoritative operating contract.\n"
+            f"{prompt_layers(governance_context) if governance_context else ''}\n"
             f"Website Weaver envelope: {json.dumps(weaver_envelope, ensure_ascii=False)}\n"
             f"Safe account memory, only if relevant: {json.dumps(memory_brief, ensure_ascii=False)}\n"
             f"Advisory cognitive pulse: {json.dumps(pulse_brief, ensure_ascii=False)}\n"
@@ -3217,9 +3238,17 @@ async def _llm_orb_spoken_output(
             response.raise_for_status()
             payload = response.json()
         spoken = _clean_spoken_output(str(payload.get("response") or payload.get("text") or ""))
-        return {"spoken_output": spoken or fallback, "llm_source": "llamacpp-qwen2.5-1.5b-instruct-q4_k_m"}
+        return {
+            "spoken_output": spoken or fallback,
+            "llm_source": "llamacpp-qwen2.5-1.5b-instruct-q4_k_m",
+            "governance_trace": initial_governance_trace(governance_context) if governance_context else None,
+        }
     except Exception:
-        return {"spoken_output": fallback, "llm_source": "local-fallback"}
+        return {
+            "spoken_output": fallback,
+            "llm_source": "local-fallback",
+            "governance_trace": initial_governance_trace(governance_context) if governance_context else None,
+        }
 
 
 async def _first_visitor_act_response(
@@ -3359,12 +3388,12 @@ def _tts_payload(mode: str, text: str, model: str, voice: str, audio_format: str
     }
 
 
-def _visitor_safe_tts_unavailable() -> Dict[str, Optional[str]]:
+def _visitor_safe_tts_unavailable(provider: str = "qwen") -> Dict[str, Optional[str]]:
     return {
         "tts_audio_url": None,
-        "tts_provider": "qwen",
-        "tts_voice": settings.ORB_TTS_QWEN_VOICE,
-        "tts_error": "Qwen TTS is temporarily unavailable; no alternate voice engine was used.",
+        "tts_provider": provider,
+        "tts_voice": settings.ORB_TTS_KOKORO_VOICE if provider == "kokoro" else settings.ORB_TTS_QWEN_VOICE,
+        "tts_error": f"{provider.title()} TTS is temporarily unavailable; no alternate voice engine was used.",
     }
 
 
@@ -3458,8 +3487,58 @@ async def _call_tts_provider(
 
 def _cached_tts_result(digest: str, provider: str, voice: Optional[str] = None) -> Optional[Dict[str, Optional[str]]]:
     cached_matches = sorted(ORB_TTS_CACHE_ROOT.glob(f"{digest}.*"))
-    if not cached_matches:
-        return None
+    for candidate in cached_matches:
+        if candidate.name.endswith(".BAD") or candidate.name.endswith(".meta.json"):
+            continue
+        try:
+            _validate_tts_audio(candidate.read_bytes(), candidate.suffix, provider)
+        except Exception as exc:
+            logger.warning("Rejecting invalid cached TTS audio %s: %s", candidate, exc)
+            bad_path = candidate.with_name(candidate.name + ".BAD")
+            candidate.replace(bad_path)
+            continue
+        return {
+            "tts_audio_url": f"/api/orb/tts/{candidate.name}",
+            "tts_provider": provider,
+            "tts_voice": voice,
+            "tts_error": None,
+        }
+    return None
+
+
+def _validate_tts_audio(audio: bytes, extension: str, provider: str) -> Dict[str, Any]:
+    """Reject provider errors and malformed audio before it reaches the cache."""
+    if not audio:
+        raise ValueError("empty audio response")
+    normalized = extension.lower().strip(".")
+    if normalized != "wav":
+        raise ValueError(f"unsupported cached audio format: {normalized}")
+    try:
+        with wave.open(BytesIO(audio), "rb") as wav:
+            channels = wav.getnchannels()
+            sample_width = wav.getsampwidth()
+            sample_rate = wav.getframerate()
+            frames = wav.getnframes()
+            duration = frames / float(sample_rate or 1)
+    except (wave.Error, EOFError) as exc:
+        raise ValueError(f"invalid WAV: {exc}") from exc
+    if channels not in {1, 2}:
+        raise ValueError(f"unsupported channel count: {channels}")
+    if sample_width not in {1, 2, 3, 4}:
+        raise ValueError(f"unsupported sample width: {sample_width}")
+    if not 8000 <= sample_rate <= 96000:
+        raise ValueError(f"invalid sample rate: {sample_rate}")
+    if frames <= 0 or not 0.05 <= duration <= 180:
+        raise ValueError(f"invalid audio duration: {duration:.3f}s")
+    return {
+        "provider": provider,
+        "format": "wav",
+        "sample_rate": sample_rate,
+        "channels": channels,
+        "sample_width": sample_width,
+        "duration_ms": round(duration * 1000),
+        "validation_status": "passed",
+    }
     return {
         "tts_audio_url": f"/api/orb/tts/{cached_matches[0].name}",
         "tts_provider": provider,
@@ -3472,15 +3551,12 @@ def _tts_cache_probe(text: str) -> Dict[str, Any]:
     clean_text = text.strip()
     probes = []
     for provider, url, _api_key, _payload_mode, model, voice, _audio_format in [
-        (
-            "qwen",
-            settings.ORB_TTS_QWEN_URL,
-            settings.ORB_TTS_QWEN_API_KEY,
-            settings.ORB_TTS_QWEN_PAYLOAD_MODE,
-            settings.ORB_TTS_QWEN_MODEL,
-            settings.ORB_TTS_QWEN_VOICE,
-            settings.ORB_TTS_QWEN_FORMAT,
-        ),
+        ("kokoro", settings.ORB_TTS_KOKORO_URL, settings.ORB_TTS_KOKORO_API_KEY,
+         settings.ORB_TTS_KOKORO_PAYLOAD_MODE, settings.ORB_TTS_KOKORO_MODEL,
+         settings.ORB_TTS_KOKORO_VOICE, settings.ORB_TTS_KOKORO_FORMAT),
+        ("qwen", settings.ORB_TTS_QWEN_URL, settings.ORB_TTS_QWEN_API_KEY,
+         settings.ORB_TTS_QWEN_PAYLOAD_MODE, settings.ORB_TTS_QWEN_MODEL,
+         settings.ORB_TTS_QWEN_VOICE, settings.ORB_TTS_QWEN_FORMAT),
     ]:
         if not url or not clean_text:
             continue
@@ -3504,6 +3580,7 @@ async def _synthesize_orb_tts_uncached(
     model: str,
     voice: str,
     audio_format: str,
+    governance_trace_id: Optional[str] = None,
 ) -> Dict[str, Optional[str]]:
     cached = _cached_tts_result(digest, provider, voice)
     if cached:
@@ -3522,7 +3599,31 @@ async def _synthesize_orb_tts_uncached(
     extension = result["extension"] or "wav"
     audio_id = f"{digest}.{extension}"
     audio_path = ORB_TTS_CACHE_ROOT / audio_id
-    audio_path.write_bytes(result["audio"])
+    metadata = _validate_tts_audio(result["audio"], f".{extension}", provider)
+    temp_file = tempfile.NamedTemporaryFile(
+        dir=ORB_TTS_CACHE_ROOT, prefix=f".{audio_id}.", suffix=".tmp", delete=False
+    )
+    temp_path = Path(temp_file.name)
+    try:
+        temp_file.write(result["audio"])
+        temp_file.flush()
+        temp_file.close()
+        os.replace(temp_path, audio_path)
+        audio_path.with_name(f"{audio_id}.meta.json").write_text(
+            json.dumps({"audio_sha256": hashlib.sha256(result["audio"]).hexdigest(), **metadata}, indent=2),
+            encoding="utf-8",
+        )
+        record_vault_object(
+            object_id=audio_id,
+            object_type="validated_tts_audio",
+            vault_partition="runtime/tts_cache",
+            content={"audio_sha256": hashlib.sha256(result["audio"]).hexdigest(), **metadata},
+            governance_trace_id=governance_trace_id,
+            source_ids=[provider, voice],
+            verification_state="VERIFIED",
+        )
+    finally:
+        temp_path.unlink(missing_ok=True)
     return {
         "tts_audio_url": f"/api/orb/tts/{audio_id}",
         "tts_provider": provider,
@@ -3546,23 +3647,24 @@ async def _run_tts_singleflight(key: str, factory) -> Dict[str, Optional[str]]:
                 ORB_TTS_INFLIGHT.pop(key, None)
 
 
-async def _synthesize_orb_tts(text: str, voice_override: Optional[str] = None) -> Dict[str, Optional[str]]:
+async def _synthesize_orb_tts(
+    text: str,
+    voice_override: Optional[str] = None,
+    provider_override: Optional[str] = None,
+    governance_trace_id: Optional[str] = None,
+) -> Dict[str, Optional[str]]:
     clean_text = text.strip()
     if not clean_text:
         return _visitor_safe_tts_unavailable()
-    qwen_voice = (voice_override or settings.ORB_TTS_QWEN_VOICE).strip()
-
-    providers = [
-        (
-            "qwen",
-            settings.ORB_TTS_QWEN_URL,
-            settings.ORB_TTS_QWEN_API_KEY,
-            settings.ORB_TTS_QWEN_PAYLOAD_MODE,
-            settings.ORB_TTS_QWEN_MODEL,
-            qwen_voice,
-            settings.ORB_TTS_QWEN_FORMAT,
-        ),
-    ]
+    provider_name = (provider_override or "kokoro").strip().lower()
+    if provider_name == "kokoro":
+        providers = [("kokoro", settings.ORB_TTS_KOKORO_URL, settings.ORB_TTS_KOKORO_API_KEY,
+                      settings.ORB_TTS_KOKORO_PAYLOAD_MODE, settings.ORB_TTS_KOKORO_MODEL,
+                      (voice_override or settings.ORB_TTS_KOKORO_VOICE).strip(), settings.ORB_TTS_KOKORO_FORMAT)]
+    else:
+        providers = [("qwen", settings.ORB_TTS_QWEN_URL, settings.ORB_TTS_QWEN_API_KEY,
+                      settings.ORB_TTS_QWEN_PAYLOAD_MODE, settings.ORB_TTS_QWEN_MODEL,
+                      (voice_override or settings.ORB_TTS_QWEN_VOICE).strip(), settings.ORB_TTS_QWEN_FORMAT)]
 
     errors: List[str] = []
     for provider, url, api_key, payload_mode, model, voice, audio_format in providers:
@@ -3602,6 +3704,7 @@ async def _synthesize_orb_tts(text: str, voice_override: Optional[str] = None) -
                     model=model,
                     voice=voice,
                     audio_format=audio_format,
+                    governance_trace_id=governance_trace_id,
                 ),
             )
             ORB_TTS_WARM_STATUS.update({
@@ -3623,7 +3726,93 @@ async def _synthesize_orb_tts(text: str, voice_override: Optional[str] = None) -
         "provider": None,
         "errors": errors,
     })
-    return _visitor_safe_tts_unavailable()
+    return _visitor_safe_tts_unavailable(provider_name)
+
+
+def _apriori_speech_asset(text: str) -> Optional[Dict[str, Optional[str]]]:
+    content_hash = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()[:24]
+    audio_id = f"{content_hash}.wav"
+    audio_path = APRIORI_ROOT / "speech_assets" / audio_id
+    metadata_path = audio_path.with_suffix(".meta.json")
+    if not audio_path.is_file() or not metadata_path.is_file():
+        return None
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if metadata.get("generated_from_content_hash") != content_hash:
+            return None
+        if metadata.get("provider") != "kokoro" or metadata.get("voice") != settings.ORB_TTS_KOKORO_VOICE:
+            return None
+        _validate_tts_audio(audio_path.read_bytes(), ".wav", "kokoro")
+    except Exception as exc:
+        logger.warning("Rejecting stale A Priori speech asset %s: %s", audio_path, exc)
+        return None
+    return {
+        "tts_audio_url": f"/api/orb/tts/{audio_id}",
+        "tts_provider": "kokoro",
+        "tts_voice": settings.ORB_TTS_KOKORO_VOICE,
+        "tts_error": None,
+        "tts_cache_class": "apriori_persistent",
+    }
+
+
+async def _synthesize_website_orb_speech(semantic_result: Dict[str, Any]) -> Dict[str, Optional[str]]:
+    text = str(semantic_result.get("spoken_output") or "").strip()
+    lane = str(semantic_result.get("source_lane") or "")
+    governance_trace_id = (semantic_result.get("governance_trace") or {}).get("governance_trace_id")
+    governance_trace = semantic_result.get("governance_trace") or {}
+    correspondence_verified = semantic_result.get("query_correspondence_verified") is True
+    source_truth_verified = float(semantic_result.get("source_truth_confidence") or 0) >= 0.99
+    governance_verified = (
+        governance_trace.get("status") == "approved"
+        and governance_trace.get("tpc_state") == "passed"
+        and governance_trace.get("doctrine_checksum") is True
+    )
+    reusable = (
+        lane in {"catalog", "apriori"}
+        and correspondence_verified
+        and source_truth_verified
+        and governance_verified
+        and bool(semantic_result.get("evidence_ids"))
+    )
+    if reusable:
+        cached = _apriori_speech_asset(text)
+        if cached:
+            return cached
+    result = await _synthesize_orb_tts(text, governance_trace_id=governance_trace_id)
+    if reusable and result.get("tts_audio_url") and result.get("tts_provider") == "kokoro":
+        audio_id = Path(str(result["tts_audio_url"])).name
+        source_path = ORB_TTS_CACHE_ROOT / audio_id
+        content_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()[:24]
+        target_dir = APRIORI_ROOT / "speech_assets"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_path = target_dir / f"{content_hash}.wav"
+        if source_path.is_file():
+            audio_bytes = source_path.read_bytes()
+            validation = _validate_tts_audio(audio_bytes, ".wav", "kokoro")
+            target_path.write_bytes(audio_bytes)
+            target_path.with_suffix(".meta.json").write_text(
+                json.dumps({
+                    **validation,
+                    "voice": settings.ORB_TTS_KOKORO_VOICE,
+                    "generated_from_content_hash": content_hash,
+                    "source_audio_hash": hashlib.sha256(audio_bytes).hexdigest(),
+                    "source_lane": lane,
+                    "governance_trace_id": governance_trace_id,
+                    "version": 1,
+                }, indent=2),
+                encoding="utf-8",
+            )
+            record_vault_object(
+                object_id=f"{content_hash}.wav",
+                object_type="apriori_speech_asset",
+                vault_partition="apriori/speech_assets",
+                content={"content_hash": content_hash, **validation},
+                governance_trace_id=governance_trace_id,
+                source_ids=semantic_result.get("evidence_ids") or [],
+                verification_state="VERIFIED",
+            )
+            result["tts_cache_class"] = "apriori_persistent"
+    return result
 
 
 def _chrome_devtools_runner() -> ChromeDevToolsReviewRunner:
@@ -4091,7 +4280,9 @@ def _load_domain_website_context(target_url: Optional[str]) -> Optional[Dict[str
 
     root = _website_context_root(domain)
     if root:
-        for filename in ("orb_runtime_context.json", "latest_context.json"):
+        # The completed crawl is the complete operational Site World. The
+        # owner-seeded runtime file remains a fallback, never a replacement.
+        for filename in ("latest_context.json", "orb_runtime_context.json"):
             payload = _load_json_if_present(root / filename)
             if payload:
                 payload.setdefault("domain", domain)
@@ -4168,9 +4359,12 @@ def _record_site_learning_interaction(
     evidence_refs: Optional[List[str]] = None,
     retrieval_failure: Optional[str] = None,
     operating_policy: Optional[Dict[str, Any]] = None,
+    learning_allowed: bool = False,
 ) -> Dict[str, Optional[str]]:
     domain = _domain_from_url(context_target_url or target_url)
     if not domain:
+        return {"answer_state": answer_state, "learning_record_id": None}
+    if not learning_allowed:
         return {"answer_state": answer_state, "learning_record_id": None}
     state = answer_state or classify_answer_state(
         source=llm_source,
@@ -7602,6 +7796,15 @@ async def _canonical_website_orb_turn(
     pointer_matches = _lookup_pointer_context(website_context, transcript)
     _queue_pointer_lock(pointer_matches, transcript)
     cognitive_pulse = _orb_cognitive_pulse(transcript)
+    governance_context = compile_website_orb_governance(
+        website_context=artifacts["site_world"],
+        page_capsule=page_capsule,
+        operating_policy=operating_policy,
+        memory_context=memory_context,
+        transcript=transcript,
+        pointer_matches=pointer_matches,
+        experience_context=experience_context,
+    )
 
     async def local_model(query: str, _context: Dict[str, Any]) -> Dict[str, Any]:
         local_policy = dict(operating_policy or {})
@@ -7617,6 +7820,7 @@ async def _canonical_website_orb_turn(
             page_capsule,
             local_policy,
             experience_context,
+            governance_context,
         )
         source = str(result.get("llm_source") or "")
         return {
@@ -7650,8 +7854,14 @@ async def _canonical_website_orb_turn(
 
     spoken_output = resolved["spoken_output"]
     llm_source = resolved["source_lane"]
+    # A response is not an outcome. Only resolver-approved, valid visitor turns
+    # may create posteriori evidence or affect reinforcement statistics.
+    # STT text alone is not proof of a successful visitor interaction. A later
+    # verified outcome may explicitly promote it; passive runtime turns never do.
+    transcript_quality = "UNCERTAIN"
+    learning_allowed = False
     skg_learning = None
-    if skg_adapter and resolved["source_lane"] != "control":
+    if skg_adapter and learning_allowed:
         try:
             skg_learning = skg_adapter.report_outcome(
                 query=transcript,
@@ -7673,6 +7883,7 @@ async def _canonical_website_orb_turn(
         evidence_refs=resolved["evidence_ids"],
         retrieval_failure="canonical_resolver_exhausted" if resolved["source_lane"] == "unknown" else None,
         operating_policy=operating_policy,
+        learning_allowed=learning_allowed,
     )
     _update_orb_recent_context(customer, transcript, spoken_output, db)
     cco_trace = _cco_trace_for_answer(
@@ -7687,6 +7898,16 @@ async def _canonical_website_orb_turn(
         operating_policy=operating_policy,
         learning_meta=learning_meta,
         retrieved_ids=resolved["evidence_ids"],
+    )
+    governance_trace = finalize_governance_trace(
+        governance_context,
+        resolved=resolved,
+        doctrine_trace=(resolved.get("trace") or {}).get("articulation"),
+    )
+    governance_trace["glyph_trace_refs"] = persist_governance_artifacts(
+        governance_context,
+        governance_trace,
+        session_key=(f"customer:{customer.id}" if customer else f"anonymous:{domain}"),
     )
     resolution_source = {
         "catalog": "catalog",
@@ -7712,15 +7933,23 @@ async def _canonical_website_orb_turn(
         "escalation_used": resolved["escalation_used"],
         "learning_eligible": resolved["learning_eligible"],
         "resolution_trace": resolved["trace"],
+        "governance_trace": governance_trace,
         "resolution_diagnostics": {
             "resolution_source": resolution_source,
             "fact_record_id": (resolved["evidence_ids"] or [None])[0],
             "confidence": resolved["confidence"],
             "qwen_bypassed": resolved["source_lane"] != "local_model",
             "cached_speech": None,
-            "learning_candidate_eligible": resolved["source_lane"] not in {"control", "unknown"},
+            "source_truth_confidence": resolved.get("source_truth_confidence"),
+            "query_correspondence_confidence": resolved.get("query_correspondence_confidence"),
+            "query_correspondence_verified": resolved.get("query_correspondence_verified"),
+            "transcript_quality": transcript_quality,
+            "learning_candidate_eligible": learning_allowed,
             "learning_candidate_id": (skg_learning or {}).get("candidate_id"),
             "learning_candidate_state": (skg_learning or {}).get("candidate_state"),
+            "governance_status": governance_trace["status"],
+            "tpc_state": governance_trace["tpc_state"],
+            "doctrine_checksum": governance_trace["doctrine_checksum"],
         },
         "skg_learning": skg_learning,
         "control_action": resolved.get("control_action"),
@@ -7830,7 +8059,7 @@ async def website_orb_voice(
     mark("answer_selection", started)
     tts_cache_before = _tts_cache_probe(semantic_result["spoken_output"])
     started = time.perf_counter()
-    tts_result = await _synthesize_orb_tts(semantic_result["spoken_output"])
+    tts_result = await _synthesize_website_orb_speech(semantic_result)
     mark("tts", started)
     semantic_result["resolution_diagnostics"]["cached_speech"] = bool(tts_cache_before.get("hit"))
     timings["total"] = round((time.perf_counter() - route_started) * 1000, 1)
@@ -8112,7 +8341,7 @@ async def website_orb_text(
     )
     tts_cache_before = _tts_cache_probe(semantic_result["spoken_output"])
     tts_result = (
-        await _synthesize_orb_tts(semantic_result["spoken_output"])
+        await _synthesize_website_orb_speech(semantic_result)
         if payload.synthesize_tts
         else {"tts_audio_url": None, "tts_provider": None, "tts_error": None}
     )
@@ -8569,6 +8798,133 @@ async def website_orb_capabilities():
     return _orb_capabilities()
 
 
+@app.post("/api/orb/startup-readiness")
+async def website_orb_startup_readiness(
+    payload: WebsiteOrbStartupReadinessRequest,
+    db: Session = Depends(get_db),
+):
+    """Exercise the governed live path used after the prerecorded showroom."""
+    started = time.perf_counter()
+    context_url = _orb_context_target_url(payload.target_url, payload.site_id) or payload.target_url
+    domain = _domain_from_url(context_url)
+    route = _route_from_url(payload.target_url)
+    proofs: Dict[str, Dict[str, Any]] = {}
+
+    await _warm_local_llm()
+    proofs["COGNITION_READY"] = {
+        "ready": bool(LLM_WARM_STATUS.get("ready")),
+        "runtime": LLM_WARM_STATUS.get("provider"),
+        "model": LLM_WARM_STATUS.get("model"),
+        "error": LLM_WARM_STATUS.get("error"),
+    }
+
+    probe_audio: Optional[bytes] = None
+    try:
+        tts_probe = await _call_tts_provider(
+            provider="kokoro",
+            url=settings.ORB_TTS_KOKORO_URL,
+            api_key=settings.ORB_TTS_KOKORO_API_KEY,
+            payload_mode=settings.ORB_TTS_KOKORO_PAYLOAD_MODE,
+            text="Weaver readiness probe.",
+            model=settings.ORB_TTS_KOKORO_MODEL,
+            voice=settings.ORB_TTS_KOKORO_VOICE,
+            audio_format=settings.ORB_TTS_KOKORO_FORMAT,
+        )
+        probe_audio = bytes(tts_probe["audio"])
+        validation = _validate_tts_audio(probe_audio, f".{tts_probe['extension']}", "kokoro")
+        proofs["KOKORO_READY"] = {
+            "ready": True,
+            "provider": "kokoro",
+            "voice": settings.ORB_TTS_KOKORO_VOICE,
+            "validation": validation,
+        }
+    except Exception as exc:
+        proofs["KOKORO_READY"] = {"ready": False, "error": str(exc)[:240]}
+
+    try:
+        if not probe_audio:
+            raise RuntimeError("Kokoro probe audio is unavailable")
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            response = await client.post(
+                settings.FASTER_WHISPER_STT_URL,
+                files={"file": ("weaver-readiness.wav", probe_audio, "audio/wav")},
+            )
+            response.raise_for_status()
+        transcript = str(response.json().get("text") or "").strip()
+        if not transcript:
+            raise RuntimeError("Faster-Whisper returned no probe transcript")
+        proofs["STT_READY"] = {"ready": True, "engine": "faster_whisper", "probe_transcript": transcript}
+    except Exception as exc:
+        proofs["STT_READY"] = {"ready": False, "error": str(exc)[:240]}
+
+    website_context = _fresh_runtime_website_context(context_url, db) or {}
+    page_capsule = _build_page_capsule(payload.target_url, website_context)
+    site_world_version = str(
+        website_context.get("version")
+        or website_context.get("source_version")
+        or website_context.get("source_crawl_job_id")
+        or website_context.get("generated_at")
+        or hashlib.sha256(json.dumps(website_context, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:24]
+    )
+    proofs["SITE_WORLD_READY"] = {
+        "ready": bool(
+            website_context.get("schema")
+            and website_context.get("source") == "completed_crawl_artifacts"
+            and website_context.get("page_knowledge")
+            and site_world_version
+            and page_capsule.get("route") == route
+        ),
+        "version": site_world_version or None,
+        "route": page_capsule.get("route"),
+        "fresh_crawl_provenance": website_context.get("fresh_crawl_provenance"),
+    }
+
+    pointer_map = _runtime_pointer_map(domain, db)
+    route_targets = [
+        record for record in pointer_map.get("records") or []
+        if isinstance(record, dict)
+        and _route_from_url(str(record.get("page_route") or "/")) == route
+        and str(record.get("pointer_class") or "") == "live_guidance"
+        and str(record.get("confidence_class") or "").upper() in {"VERIFIED", "STABLE"}
+        and bool((record.get("runtime_policy") or {}).get("may_point"))
+        and bool(record.get("semantic_locator"))
+    ]
+    proofs["POINTER_READY"] = {
+        "ready": bool(route_targets),
+        "route": route,
+        "target_ids": [str(record.get("target_id")) for record in route_targets[:8]],
+        "pointer_map_version": pointer_map.get("source_crawl_job_id") or pointer_map.get("recovered_from_crawl_id"),
+    }
+
+    try:
+        governance = compile_website_orb_governance(
+            website_context=website_context,
+            page_capsule=page_capsule,
+            operating_policy=None,
+            memory_context={},
+            transcript="Weaver startup readiness probe.",
+            pointer_matches=route_targets[:3],
+        )
+        trace = initial_governance_trace(governance)
+        proofs["GOVERNANCE_READY"] = {
+            "ready": bool(trace.get("inculcation_version") and trace.get("site_world_version") and trace.get("tool_manifest_version")),
+            "trace": trace,
+        }
+    except Exception as exc:
+        proofs["GOVERNANCE_READY"] = {"ready": False, "error": str(exc)[:240]}
+
+    required = ("STT_READY", "COGNITION_READY", "KOKORO_READY", "SITE_WORLD_READY", "POINTER_READY", "GOVERNANCE_READY")
+    all_ready = all(bool(proofs.get(name, {}).get("ready")) for name in required)
+    return {
+        "schema": "orb_weaver.website_orb_startup_readiness.v1",
+        "state": "READY" if all_ready else "WARMING",
+        "ready": all_ready,
+        "required": list(required),
+        "proofs": proofs,
+        "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),
+    }
+
+
 @app.get("/api/orb/pointer-map", response_model=WebsiteOrbPointerMapResponse)
 async def website_orb_pointer_map(
     domain: Optional[str] = Query(default=None, max_length=255),
@@ -8656,7 +9012,7 @@ async def orb_tool_run(
 @app.post("/api/orb/tts", response_model=WebsiteOrbTtsResponse)
 async def website_orb_tts(payload: WebsiteOrbTtsRequest):
     text = payload.text.strip()
-    tts_result = await _synthesize_orb_tts(text)
+    tts_result = await _synthesize_orb_tts(text, provider_override=payload.provider)
     return {"text": text, **tts_result}
 
 
@@ -8727,6 +9083,8 @@ async def website_orb_tts_audio(audio_id: str):
     if not re.fullmatch(r"[a-f0-9]{24}\.(wav|mp3|ogg|webm|flac)", audio_id):
         raise HTTPException(status_code=404, detail="TTS audio not found")
     audio_path = ORB_TTS_CACHE_ROOT / audio_id
+    if not audio_path.exists():
+        audio_path = APRIORI_ROOT / "speech_assets" / audio_id
     if not audio_path.exists():
         raise HTTPException(status_code=404, detail="TTS audio not found")
     return FileResponse(

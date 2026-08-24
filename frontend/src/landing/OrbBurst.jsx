@@ -11,19 +11,29 @@ const COLORS = {
 // Replays every time `trigger` changes. direction: "out" (arrive) | "in" (leave).
 // Arrival timing is intentionally stretched without changing the visual path so
 // ORB cold-start work can run underneath the splash instead of after it.
-export const OrbBurst = ({ trigger = 0, size = 200, color = "blue", direction = "out", onComplete }) => {
+export const OrbBurst = ({ trigger = 0, size = 200, color = "blue", direction = "out", completionDelayMs = 0, onComplete }) => {
   const rgb = COLORS[color] || COLORS.blue;
   const out = direction === "out";
   const finalRingIndex = 4;
   const completionFiredRef = useRef(false);
+  const completionTimerRef = useRef(null);
 
   useEffect(() => {
     completionFiredRef.current = false;
+    if (completionTimerRef.current) window.clearTimeout(completionTimerRef.current);
   }, [trigger]);
+
+  useEffect(() => () => {
+    if (completionTimerRef.current) window.clearTimeout(completionTimerRef.current);
+  }, []);
 
   const completeOnce = () => {
     if (completionFiredRef.current) return;
     completionFiredRef.current = true;
+    if (completionDelayMs > 0) {
+      completionTimerRef.current = window.setTimeout(() => onComplete?.(), completionDelayMs);
+      return;
+    }
     onComplete?.();
   };
 

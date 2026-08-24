@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import PublicHeader from "../components/PublicHeader";
 import PublicFooter from "../components/PublicFooter";
 import OrbBurst from "./OrbBurst";
-import { authStore } from "../services/api";
+import { api, authStore } from "../services/api";
 import { trackOnboardingEvent } from "../services/analytics";
 import { createIntentGuestSession, LandingIntent } from "../onboarding/guestOnboarding";
 import "./Landing.css";
@@ -11,13 +11,28 @@ const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
 const LANDING_SPLASH_COMPLETE_SESSION_KEY = "orbweaver-landing-splash-complete";
 const STARTUP_GREETING_SESSION_KEY = "orbweaver-startup-greeting-played";
 const FIRST_ENCOUNTER_STORAGE_KEY = "orbweaver-first-encounter-state";
+const SHOWROOM_INTRO_AUDIO_URL = "/orb/voice/weaver-showroom-intro-am-michael.wav";
+const POST_INTRO_READINESS_ATTEMPTS = 4;
+const POST_INTRO_READINESS_RETRY_MS = 2000;
+const INTRO_CAPTION_CUES = [
+  { start: 0, end: 1.325, text: "Hello." },
+  { start: 2.075, end: 5.8, text: "I am Weaver, the Orb Weaver Website Assistant." },
+  { start: 6.55, end: 10.75, text: "I can help you with anything you need. I am not a chatbot." },
+  { start: 11.5, end: 21.45, text: "I make this website intelligent, so you can find things easier, navigate faster, process your orders quicker, and resolve issues seamlessly." },
+  { start: 22.2, end: 27.925, text: "Just call me Weaver. Feel free to ask a question in your normal way and I will answer." },
+  { start: 28.675, end: 30.575, text: "Let's get started." },
+];
+
+type IntroAudioState = "preloading" | "playing" | "autoplay_blocked" | "error" | "warming" | "blocked";
 
 const LandingPage: React.FC = () => {
   const [pendingTarget, setPendingTarget] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [visibleBeats, setVisibleBeats] = useState<Record<string, boolean>>({ beat1: true });
   const [splashTrigger, setSplashTrigger] = useState(0);
-  const [splashReady, setSplashReady] = useState(false);
+  const [introBeat, setIntroBeat] = useState<number | null>(null);
+  const [introAudioState, setIntroAudioState] = useState<IntroAudioState>("preloading");
+  const introAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -41,18 +56,124 @@ const LandingPage: React.FC = () => {
 
   useEffect(() => {
     if (!splashTrigger) return;
+    let cancelled = false;
+
+    const emitIntro = (phase: string, detail: Record<string, unknown> = {}) => {
+      window.dispatchEvent(new CustomEvent("orbweaver:startup-intro", { detail: { phase, ...detail } }));
+    };
+
+    const audio = new Audio(SHOWROOM_INTRO_AUDIO_URL);
+    let playbackRequested = false;
+    audio.preload = "auto";
+    introAudioRef.current = audio;
+    setIntroAudioState("preloading");
+    setIntroBeat(null);
+    emitIntro("INTRO_AUDIO_REQUESTED", {
+      provider: "kokoro",
+      voice: "am_michael",
+      asset: SHOWROOM_INTRO_AUDIO_URL,
+    });
+
+    const syncCaption = () => {
+      if (cancelled) return;
+      const cueIndex = INTRO_CAPTION_CUES.findIndex(
+        (cue) => audio.currentTime >= cue.start && audio.currentTime < cue.end,
+      );
+      const nextCue = cueIndex >= 0 ? cueIndex : null;
+      setIntroBeat((current) => (current === nextCue ? current : nextCue));
+    };
+
+    const fail = (phase: "INTRO_AUTOPLAY_BLOCKED" | "INTRO_AUDIO_ERROR", detail: Record<string, unknown> = {}) => {
+      if (cancelled) return;
+      setIntroBeat(null);
+      setIntroAudioState(phase === "INTRO_AUTOPLAY_BLOCKED" ? "autoplay_blocked" : "error");
+      emitIntro(phase, { asset: SHOWROOM_INTRO_AUDIO_URL, ...detail });
+    };
+
+    const startPlayback = () => {
+      if (cancelled || playbackRequested) return;
+      playbackRequested = true;
+      void audio.play().then(() => {
+        if (cancelled) return;
+        setIntroAudioState("playing");
+        syncCaption();
+        emitIntro("INTRO_AUDIO_PLAYING", {
+          provider: "kokoro",
+          voice: "am_michael",
+          asset: SHOWROOM_INTRO_AUDIO_URL,
+          duration: Number.isFinite(audio.duration) ? audio.duration : null,
+          playResolved: true,
+        });
+      }).catch((error) => {
+        const name = (error as Error)?.name;
+        fail(name === "NotAllowedError" ? "INTRO_AUTOPLAY_BLOCKED" : "INTRO_AUDIO_ERROR", {
+          error: name || "AudioPlaybackError",
+        });
+      });
+    };
+
+    audio.oncanplay = startPlayback;
+    audio.ontimeupdate = syncCaption;
+    audio.onerror = () => fail("INTRO_AUDIO_ERROR", { error: "MediaError" });
+    audio.onabort = () => {
+      if (!cancelled) fail("INTRO_AUDIO_ERROR", { error: "MediaAbort" });
+    };
+    audio.onended = () => {
+      if (cancelled) return;
+      setIntroBeat(null);
+      emitIntro("INTRO_AUDIO_ENDED", { asset: SHOWROOM_INTRO_AUDIO_URL, duration: audio.duration });
+      window.sessionStorage.setItem(STARTUP_GREETING_SESSION_KEY, "1");
+      void completeStartupGate();
+    };
+    audio.load();
+    if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) startPlayback();
+
+    return () => {
+      cancelled = true;
+      introAudioRef.current?.pause();
+      introAudioRef.current = null;
+    };
+  }, [splashTrigger]);
+
+  useEffect(() => {
+    if (!splashTrigger) return;
     window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-started", {
       detail: { splash_state: "playing" },
     }));
   }, [splashTrigger]);
 
-  const completeStartupGate = () => {
-    window.sessionStorage.setItem(LANDING_SPLASH_SESSION_KEY, "1");
-    window.sessionStorage.setItem(LANDING_SPLASH_COMPLETE_SESSION_KEY, "1");
-    setSplashTrigger(0);
-    setSplashReady(false);
+  const completeStartupGate = async () => {
+    let readinessError: unknown = null;
+    for (let attempt = 1; attempt <= POST_INTRO_READINESS_ATTEMPTS; attempt += 1) {
+      setIntroAudioState("warming");
+      window.dispatchEvent(new CustomEvent("orbweaver:startup-intro", {
+        detail: { phase: "STARTUP_READINESS_CHECK", attempt },
+      }));
+      try {
+        const readiness = await api.websiteOrbStartupReadiness(
+          new URL(`${window.location.pathname}${window.location.search}`, "https://orbweaver.spruked.com").toString(),
+        );
+        if (readiness.ready) {
+          window.sessionStorage.setItem(LANDING_SPLASH_SESSION_KEY, "1");
+          window.sessionStorage.setItem(LANDING_SPLASH_COMPLETE_SESSION_KEY, "1");
+          setSplashTrigger(0);
+          window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-complete", {
+            detail: { splash_state: "complete", readiness_state: "READY", readiness },
+          }));
+          return;
+        }
+        readinessError = readiness;
+      } catch (error) {
+        readinessError = error;
+      }
+      if (attempt < POST_INTRO_READINESS_ATTEMPTS) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, POST_INTRO_READINESS_RETRY_MS));
+      }
+    }
+
+    setIntroAudioState("blocked");
     window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-complete", {
-      detail: { splash_state: "complete", permission_state: "user_activated" },
+      detail: { splash_state: "complete", readiness_state: "BLOCKED", readiness_error: String(readinessError || "readiness_timeout") },
     }));
   };
 
@@ -103,32 +224,32 @@ const LandingPage: React.FC = () => {
     <main className="ow-cut-page">
       {splashTrigger > 0 && (
         <div
-          className={`ow-cut-startup-gate ${splashReady ? "is-ready" : ""}`}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Start ORB Weaver"
-          onClick={splashReady ? completeStartupGate : undefined}
+          className="ow-cut-startup-gate"
+          aria-live="polite"
         >
+          {introBeat !== null && (
+            <div className="ow-cut-startup-caption" key={INTRO_CAPTION_CUES[introBeat].text}>
+              {INTRO_CAPTION_CUES[introBeat].text}
+            </div>
+          )}
           <div className="ow-cut-startup-burst" aria-hidden="true">
             <OrbBurst
               trigger={splashTrigger}
               size={260}
               color="blue"
               direction="out"
-              onComplete={() => setSplashReady(true)}
+              onComplete={() => undefined}
             />
           </div>
-          <button
-            type="button"
-            className="ow-cut-startup-button"
-            onClick={(event) => {
-              event.stopPropagation();
-              completeStartupGate();
-            }}
-            disabled={!splashReady}
-          >
-            {splashReady ? "Start ORB" : "Opening ORB"}
-          </button>
+          {(introAudioState === "autoplay_blocked" || introAudioState === "error" || introAudioState === "warming" || introAudioState === "blocked") && (
+            <p className="ow-cut-startup-audio-status" role="status">
+              {introAudioState === "warming"
+                ? "Weaver is getting ready..."
+                : introAudioState === "blocked"
+                  ? "Voice temporarily unavailable."
+                  : "Audio presentation unavailable."}
+            </p>
+          )}
         </div>
       )}
 

@@ -1,4 +1,12 @@
 # ORB Robotics Architecture — Build Summary
+
+> **SUPERSEDED MOVEMENT DOCTRINE:** Earlier text in this document describing
+> five-minute inactivity, `UPPER_RIGHT_REST`, or automatic corner parking is
+> historical and no longer authoritative. The current contract is enforced by
+> `frontend/src/orb/robotics/movementPolicy.ts`: less than 15 minutes is
+> ambient presence, 15 minutes of genuine inactivity is warm dormant state,
+> there is no fixed parking zone, and audible speech locks translational
+> movement. Missing movement authorization denies actuation.
 The three-module split is sound. The first thing to build is **not one of the three modules themselves**; it is the strict protocol they all share.
 
 ## First build artifact: the ORB command-and-telemetry contract

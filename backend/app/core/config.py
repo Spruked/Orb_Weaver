@@ -84,7 +84,7 @@ class Settings(BaseSettings):
     ORB_TTS_KOKORO_URL: Optional[str] = "http://127.0.0.1:8880/speak"
     ORB_TTS_KOKORO_API_KEY: Optional[str] = None
     ORB_TTS_KOKORO_MODEL: str = "kokoro"
-    ORB_TTS_KOKORO_VOICE: str = "am_echo"
+    ORB_TTS_KOKORO_VOICE: str = "am_michael"
     ORB_TTS_KOKORO_FORMAT: str = "wav"
     ORB_TTS_KOKORO_PAYLOAD_MODE: str = "kokoro-direct"
     ORB_WEAVER_SITE_ORB_SOURCE_CRAWL_ID: Optional[int] = 59

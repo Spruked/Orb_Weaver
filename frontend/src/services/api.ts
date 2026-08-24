@@ -1089,6 +1089,15 @@ export interface WebsiteOrbTtsVoices {
   voices: string[];
 }
 
+export interface WebsiteOrbStartupReadiness {
+  schema: string;
+  state: 'READY' | 'WARMING' | 'DEGRADED' | 'BLOCKED';
+  ready: boolean;
+  required: string[];
+  proofs: Record<string, { ready: boolean; [key: string]: unknown }>;
+  elapsed_ms: number;
+}
+
 export interface WebsiteOrbManufacturingStatus {
   schema: 'orb_weaver.website_orb_manufacturing_status.v1';
   project_id: string;
@@ -1380,10 +1389,16 @@ export const api = {
       body: JSON.stringify({ transcript, synthesize_tts: synthesizeTts, ...(context || {}) }),
       signal
     }),
-  websiteOrbTts: (text: string, signal?: AbortSignal) =>
+  websiteOrbTts: (text: string, signal?: AbortSignal, provider?: 'qwen' | 'kokoro') =>
     request<WebsiteOrbTtsResponse>('/api/orb/tts', {
       method: 'POST',
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, ...(provider ? { provider } : {}) }),
+      signal
+    }),
+  websiteOrbStartupReadiness: (targetUrl: string, signal?: AbortSignal) =>
+    request<WebsiteOrbStartupReadiness>('/api/orb/startup-readiness', {
+      method: 'POST',
+      body: JSON.stringify({ site_id: 'orb-weaver', target_url: targetUrl }),
       signal
     }),
   getWebsiteOrbTtsVoices: () =>

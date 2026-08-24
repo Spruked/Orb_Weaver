@@ -61,7 +61,7 @@ export const runBackendRecovery = async <T extends { tts_audio_url?: string | nu
 
 export const shouldRearmVoice = (state: {
   handsFree: boolean;
-  voiceState: "idle" | "listening" | "speaking";
+  voiceState: "idle" | "listening" | "thinking" | "speaking";
   onboardingSafeMode: boolean;
   requestInFlight: boolean;
   recording: boolean;

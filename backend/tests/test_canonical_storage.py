@@ -40,6 +40,13 @@ def test_legacy_sqlite_url_is_rewritten_into_vault_databases():
     assert database_url.endswith("/orb_weaver.db")
 
 
+def test_development_sqlite_url_remains_inside_the_canonical_vault():
+    development_database = VAULT_ROOT / "development" / "orb_weaver.db"
+    database_url = canonical_database_url(f"sqlite:///{development_database}")
+
+    assert database_url == f"sqlite:///{development_database.resolve().as_posix()}"
+
+
 def test_client_domains_resolve_to_one_vault_tree():
     path = client_root("https://OrbWeaver.Spruked.com/some/path")
     assert path.parent == CLIENTS_ROOT

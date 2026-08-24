@@ -25,6 +25,14 @@ const MarketplaceHome: React.FC = () => {
     return source.slice(0, 3);
   }, [items]);
   const shelfByCategory = (category: string) => items.filter((item) => item.category === category);
+  const randomizedMorbs = React.useMemo(() => {
+    const ordered = [...shelfByCategory('morbs')];
+    for (let index = ordered.length - 1; index > 0; index -= 1) {
+      const nextIndex = Math.floor(Math.random() * (index + 1));
+      [ordered[index], ordered[nextIndex]] = [ordered[nextIndex], ordered[index]];
+    }
+    return ordered;
+  }, [items]);
 
   const onSearchSubmit: React.FormEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
@@ -36,7 +44,7 @@ const MarketplaceHome: React.FC = () => {
   return (
     <MarketLayout
       title="ORB Marketplace Library"
-      subtitle="Browse ORBs, skins, docks, diagnostics, scan bundles, and future collector assets."
+      subtitle="Browse Website ORBs, MORBs, intelligence packs, skins, diagnostics, and collector assets."
     >
       <section className="ow-market-toolbar">
         <form className="ow-market-search-index" onSubmit={onSearchSubmit}>
@@ -81,6 +89,46 @@ const MarketplaceHome: React.FC = () => {
 
           <section className="ow-market-section">
             <div className="ow-market-section-head">
+              <h2>MORBs</h2>
+              <p>Micro ORBs a Prime ORB deploys for focused visitor guidance.</p>
+            </div>
+            <MarketShelf items={randomizedMorbs} emptyCopy="No MORBs available." onAddToCart={addToCart} />
+          </section>
+
+          <section className="ow-market-section">
+            <div className="ow-market-section-head">
+              <h2>Website Weave Packs</h2>
+              <p>Structure, meaning, design, commerce, workflows, and documents.</p>
+            </div>
+            <MarketShelf items={shelfByCategory('website-weave')} emptyCopy="No Website Weave Packs available." onAddToCart={addToCart} />
+          </section>
+
+          <section className="ow-market-section">
+            <div className="ow-market-section-head">
+              <h2>Navigation Intelligence</h2>
+              <p>Governed LiDAR and pointer intelligence for verified guidance.</p>
+            </div>
+            <MarketShelf items={shelfByCategory('navigation-intelligence')} emptyCopy="No navigation intelligence packs available." onAddToCart={addToCart} />
+          </section>
+
+          <section className="ow-market-section">
+            <div className="ow-market-section-head">
+              <h2>ORB Intelligence</h2>
+              <p>Site World and Vault intelligence for the ORB cognitive model.</p>
+            </div>
+            <MarketShelf items={shelfByCategory('orb-intelligence')} emptyCopy="No ORB intelligence packs available." onAddToCart={addToCart} />
+          </section>
+
+          <section className="ow-market-section">
+            <div className="ow-market-section-head">
+              <h2>Integrity & Maintenance</h2>
+              <p>Diagnostics, refresh, and ongoing monitoring for correct live behavior.</p>
+            </div>
+            <MarketShelf items={shelfByCategory('integrity-maintenance')} emptyCopy="No integrity packs available." onAddToCart={addToCart} />
+          </section>
+
+          <section className="ow-market-section">
+            <div className="ow-market-section-head">
               <h2>Dock & Diagnostics</h2>
               <p>Desktop pairing, health checks, and runtime controls.</p>
             </div>
@@ -94,18 +142,11 @@ const MarketplaceHome: React.FC = () => {
           <section className="ow-market-section">
             <div className="ow-market-section-head">
               <h2>Skins & Behavior Packs</h2>
-              <p>Style packs and behavior upgrades for ORB experiences.</p>
+              <p>Ready-to-install ORB looks and behavior upgrades.</p>
             </div>
             <MarketShelf items={[...shelfByCategory('skins'), ...shelfByCategory('packs')]} emptyCopy="No skins or behavior packs found." onAddToCart={addToCart} />
           </section>
 
-          <section className="ow-market-section">
-            <div className="ow-market-section-head">
-              <h2>Scan Bundles</h2>
-              <p>Credits for maintenance, preflight checks, and report refreshes.</p>
-            </div>
-            <MarketShelf items={shelfByCategory('credits')} emptyCopy="No scan bundles available." onAddToCart={addToCart} />
-          </section>
         </>
       )}
     </MarketLayout>

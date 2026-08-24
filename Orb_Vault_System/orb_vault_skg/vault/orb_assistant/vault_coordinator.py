@@ -23,6 +23,7 @@ Expected package structure:
 
 from __future__ import annotations
 import os
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 from ..shared.types import ResolutionResult, IntentType
@@ -42,16 +43,12 @@ class VaultCoordinator:
     4. TPC/LLM fallback (generative)
     """
 
-    # Default paths relative to this file: vault/orb_assistant/vault_coordinator.py
-    # Goes up two levels to Orb_Vault_System/, then into vaults/
-    DEFAULT_PRIORI_DIR = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "vaults", "A_Priori_Vault"
-    )
-    DEFAULT_POSTERIORI_DIR = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "vaults", "A_Posteriori_Vault"
-    )
+    # The package is a logic library. Its default data authority is the one
+    # repository Vault, never the historical package-local ``vaults/`` tree.
+    _repo_root = Path(__file__).resolve().parents[4]
+    _canonical_root = Path(os.environ.get("ORB_WEAVER_VAULT_ROOT") or (_repo_root / "vault_system"))
+    DEFAULT_PRIORI_DIR = str(_canonical_root / "apriori")
+    DEFAULT_POSTERIORI_DIR = str(_canonical_root / "posteriori")
 
     def __init__(
         self,

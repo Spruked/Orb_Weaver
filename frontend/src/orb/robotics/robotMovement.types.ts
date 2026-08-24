@@ -3,7 +3,8 @@
 
 export type MovementIntent =
   | "Present" | "Listen" | "Guide" | "Inspect"
-  | "Avoid" | "Transition" | "Rest" | "Summon";
+  | "Avoid" | "Transition" | "Rest" | "Summon"
+  | "Ambient" | "Dormant" | "Awaken";
 
 export type Urgency = "calm" | "normal" | "immediate";
 

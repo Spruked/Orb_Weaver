@@ -134,6 +134,18 @@ def canonical_database_url(configured_url: str | None) -> str:
     if value in {"sqlite:///:memory:", "sqlite+pysqlite:///:memory:"}:
         raise ValueError("In-memory application databases violate the immutable Vault storage law")
 
+    # Development can isolate its SQLite database under vault_system/development
+    # while continuing to read the single canonical client/Site World tree.
+    # Any path outside that Vault is still rewritten below.
+    if value.startswith("sqlite:///"):
+        explicit_path = Path(value.removeprefix("sqlite:///"))
+        if explicit_path.is_absolute():
+            resolved_path = explicit_path.resolve()
+            vault_path = VAULT_ROOT.resolve()
+            if resolved_path == vault_path or vault_path in resolved_path.parents:
+                resolved_path.parent.mkdir(parents=True, exist_ok=True)
+                return f"sqlite:///{resolved_path.as_posix()}"
+
     database_name = "orb_weaver.db"
     if value and "/" in value:
         candidate = value.rsplit("/", 1)[-1].split("?", 1)[0].strip()

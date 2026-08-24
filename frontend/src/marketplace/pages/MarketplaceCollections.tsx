@@ -10,7 +10,10 @@ const collectionToCategories: Record<string, string[]> = {
   'website-orbs': ['orbs'],
   'dock-and-diagnostics': ['dock', 'diagnostics'],
   'skins-and-behaviors': ['skins', 'packs'],
-  'scan-bundles': ['credits'],
+  'website-weave-packs': ['website-weave'],
+  'navigation-intelligence': ['navigation-intelligence'],
+  'orb-intelligence': ['orb-intelligence'],
+  'integrity-maintenance': ['integrity-maintenance'],
 };
 
 const MarketplaceCollections: React.FC = () => {

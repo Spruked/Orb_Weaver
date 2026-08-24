@@ -78,6 +78,31 @@ async def test_site_world_identity_summary_bypasses_local_model():
 
 
 @pytest.mark.asyncio
+async def test_site_world_identity_summary_is_not_overridden_by_raw_crawl_chunk():
+    summary = "ORB Weaver scans sites and builds Website ORBs."
+    result = await CanonicalTurnResolver().resolve(
+        "What does ORB Weaver do?",
+        domain="orbweaver.spruked.com",
+        site_world={
+            "site_name": "ORB Weaver",
+            "site_summary": summary,
+            "knowledge_chunks": {
+                "chunks": [{
+                    "route": "/",
+                    "title": "ORB Weaver",
+                    "text": "ORB Weaver | Website Intelligence You need to enable JavaScript to run this app. " * 12,
+                    "chunk_id": "raw-home-page",
+                }],
+            },
+        },
+    )
+
+    assert result["source_lane"] == "site_world"
+    assert result["spoken_output"] == summary
+    assert result["evidence_ids"] == ["site_world:site_summary"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("utterance", [
     "Weaver, move out of the way.", "move out of the way", "Move over.", "Scoot over.", "Move up.",
     "Move down.", "Move left.", "Move right.", "Come back.", "Come here.",
@@ -95,6 +120,51 @@ async def test_move_out_of_way_acknowledgement_is_brief_and_conversational():
     result = await CanonicalTurnResolver().resolve("Weaver, move out of the way.", domain="example.com")
     assert result["spoken_output"] == "Oh, excuse me."
     assert result["control_action"] == {"type": "orb_motion", "command": "move_out_of_way"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transcript", [
+    "Closing arguments are expected to begin on Fox News.",
+    "Bigfoot aliens and federal government documents.",
+])
+async def test_unrelated_ambient_transcript_cannot_admit_an_apriori_skg_match(transcript):
+    def skg_lookup(lane, query):
+        if lane != "apriori":
+            return None
+        return {
+            "answer": "I can help compare pricing and point you to the right plan.",
+            "evidence_ids": ["pricing_overview"],
+            "confidence": 1.0,
+            "data": {"title": "Pricing overview", "keywords": ["pricing", "plans", "cost"]},
+        }
+
+    result = await CanonicalTurnResolver(vault_skg_lookup=skg_lookup).resolve(transcript, domain="example.com")
+
+    assert result["source_lane"] != "apriori"
+    assert result["answer_state"] != "known"
+    assert result["confidence"] != 1.0
+    attempt = next(item for item in result["trace"]["attempts"] if item["lane"] == "apriori_skg")
+    assert attempt["matched"] is False
+    assert attempt["query_correspondence"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_strong_apriori_skg_correspondence_remains_fast_path():
+    def skg_lookup(lane, query):
+        return {
+            "answer": "Basic plan pricing is available on the pricing page.",
+            "evidence_ids": ["pricing_overview"],
+            "confidence": 1.0,
+            "data": {"title": "Pricing overview", "keywords": ["pricing", "plans", "cost"]},
+        } if lane == "apriori" else None
+
+    result = await CanonicalTurnResolver(vault_skg_lookup=skg_lookup).resolve(
+        "What are the pricing plans?", domain="example.com"
+    )
+
+    assert result["source_lane"] == "apriori"
+    assert result["query_correspondence_verified"] is True
+    assert result["source_truth_confidence"] == 1.0
 
 
 @pytest.mark.asyncio

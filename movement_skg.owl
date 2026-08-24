@@ -23,6 +23,14 @@
     <owl:Class rdf:about="#Zone"/>
     <owl:Class rdf:about="#ViewportCenter"><rdfs:subClassOf rdf:resource="#Zone"/></owl:Class>
     <owl:Class rdf:about="#UpperRightRest"><rdfs:subClassOf rdf:resource="#Zone"/></owl:Class>
+    <!-- Weaver uses the whole usable viewport; these regions are calculated
+         from live geometry rather than fixed screen coordinates. -->
+    <owl:Class rdf:about="#MovementField"/>
+    <owl:Class rdf:about="#FullViewport"><rdfs:subClassOf rdf:resource="#MovementField"/></owl:Class>
+    <owl:Class rdf:about="#SpeechSafeZone"><rdfs:subClassOf rdf:resource="#MovementField"/></owl:Class>
+    <owl:Class rdf:about="#DynamicOccupiedRegion"><rdfs:subClassOf rdf:resource="#MovementField"/></owl:Class>
+    <owl:Class rdf:about="#ActiveControlRegion"><rdfs:subClassOf rdf:resource="#DynamicOccupiedRegion"/></owl:Class>
+    <owl:Class rdf:about="#TargetPresentationRegion"><rdfs:subClassOf rdf:resource="#DynamicOccupiedRegion"/></owl:Class>
     <owl:Class rdf:about="#ContentLeft"><rdfs:subClassOf rdf:resource="#Zone"/></owl:Class>
     <owl:Class rdf:about="#ContentRight"><rdfs:subClassOf rdf:resource="#Zone"/></owl:Class>
     <owl:Class rdf:about="#BottomRightRestZone"><rdfs:subClassOf rdf:resource="#Zone"/></owl:Class>
@@ -32,6 +40,9 @@
     </owl:Class>
 
     <owl:Class rdf:about="#PointOfInterest"/>
+    <owl:Class rdf:about="#Ambient"><rdfs:subClassOf rdf:resource="#MovementIntent"/></owl:Class>
+    <owl:Class rdf:about="#Dormant"><rdfs:subClassOf rdf:resource="#MovementIntent"/></owl:Class>
+    <owl:Class rdf:about="#Awaken"><rdfs:subClassOf rdf:resource="#MovementIntent"/></owl:Class>
 
     <owl:Class rdf:about="#Urgency">
         <owl:equivalentClass>
@@ -93,6 +104,10 @@
             precompiled map before executing physical motion.</rdfs:comment>
         <rdfs:range rdf:resource="http://www.w3.org/2001/XMLSchema#integer"/>
     </owl:DatatypeProperty>
+
+    <owl:DatatypeProperty rdf:about="#speechPresentationFullyVisible"/>
+    <owl:DatatypeProperty rdf:about="#orbFullyVisible"/>
+    <owl:DatatypeProperty rdf:about="#visitorInactivitySeconds"/>
 
     <!-- ===================== Hard constraint: never rest bottom-right ===================== -->
     <owl:Class rdf:about="#Rest">

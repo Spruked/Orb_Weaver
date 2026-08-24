@@ -4,17 +4,15 @@ type RuntimeGuardOptions = {
   authenticated: boolean;
 };
 
-const STARTUP_GATE_SELECTOR = '.ow-cut-startup-gate.is-ready';
-const STARTUP_BUTTON_SELECTOR = '.ow-cut-startup-button:not(:disabled)';
 const ORB_POSITION_SELECTOR = '.ow-v2-orb-position';
 const ORB_SPEECH_SELECTOR = '.ow-v2-orb-speech';
 
 const runtimeWindow = window as any;
 
 function preferControlledOrbStt(): void {
-  const controlledRecorderAvailable = Boolean(
-    navigator.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined'
-  );
+  const controlledRecorderAvailable =
+    typeof navigator.mediaDevices?.getUserMedia === 'function' &&
+    typeof MediaRecorder !== 'undefined';
   if (!controlledRecorderAvailable) return;
 
   for (const key of ['SpeechRecognition', 'webkitSpeechRecognition'] as const) {
@@ -37,33 +35,6 @@ function preferControlledOrbStt(): void {
       }
     }
   }
-}
-
-function installAutomaticStartupHandoff(): void {
-  const completeReadyGate = (): boolean => {
-    const gate = document.querySelector<HTMLElement>(STARTUP_GATE_SELECTOR);
-    const button = gate?.querySelector<HTMLButtonElement>(STARTUP_BUTTON_SELECTOR);
-    if (!gate || !button) return false;
-
-    // Product doctrine: the splash hands off automatically. A synthetic
-    // click invokes the existing React gate-completion path without exposing
-    // a mandatory Start ORB control to the visitor.
-    button.click();
-    return true;
-  };
-
-  if (completeReadyGate()) return;
-
-  const observer = new MutationObserver(() => {
-    if (!completeReadyGate()) return;
-    observer.disconnect();
-  });
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class', 'disabled'],
-  });
 }
 
 function installSpeechBubbleViewportGuard(): void {
@@ -134,6 +105,5 @@ export function installWebsiteOrbRuntimeGuards(options: RuntimeGuardOptions): vo
   preferControlledOrbStt();
 
   // Restore splash -> ORB automatic handoff and keep response text on-screen.
-  installAutomaticStartupHandoff();
   installSpeechBubbleViewportGuard();
 }
