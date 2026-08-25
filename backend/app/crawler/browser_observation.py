@@ -4,7 +4,8 @@ A successful HTTP crawl proves source availability, not the visitor-visible
 runtime. Every manageable customer scan therefore receives two independent
 rendered observations. Injected chat widgets, overlays, iframes and controls are
 recorded separately from ordinary JavaScript-shell recovery so absence is never
-claimed from static HTML alone.
+claimed from static HTML alone. The same two passes independently verify and
+reverify pointer candidates before any point authority is granted.
 """
 
 from __future__ import annotations
@@ -13,11 +14,14 @@ import asyncio
 import hashlib
 import os
 import re
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
+
+from .pointer_browser_verification import verify_pointer_records
 
 
 VENDOR_MARKERS = {
@@ -161,23 +165,26 @@ def install_browser_observation_support(crawler_type) -> None:
                     first_html = None
                     second_html = None
             if not first_html or not second_html:
-                return url, None
+                return url, None, None
+
             first = inspect_rendered_html(first_html, url, len(static_records))
             second = inspect_rendered_html(second_html, url, len(static_records))
             consistency = _rescan_consistency(first, second)
+            pointer_verification = verify_pointer_records(static_records, first_html, second_html, url)
             combined = {
                 **second,
                 "verification_passes": 2,
                 "first_pass": first,
                 "rescan_consistency": consistency,
+                "pointer_verification": pointer_verification.get("summary") or {},
                 "verification_state": "VERIFIED" if consistency["verified"] else "REQUIRES_VERIFICATION",
             }
-            return url, combined
+            return url, combined, pointer_verification.get("records") or static_records
 
         if browser:
             results = await asyncio.gather(*(observe_page(page) for page in planned))
             by_url = {str(getattr(page, "url", "") or ""): page for page in pages}
-            for url, observation in results:
+            for url, observation, verified_records in results:
                 if not observation:
                     failures.append(url)
                     continue
@@ -188,6 +195,7 @@ def install_browser_observation_support(crawler_type) -> None:
                 if page is not None:
                     page.semantic_analysis = {
                         **(getattr(page, "semantic_analysis", None) or {}),
+                        "pointer_plot_records": verified_records,
                         "browser_observation": observation,
                     }
 
@@ -196,6 +204,13 @@ def install_browser_observation_support(crawler_type) -> None:
         vendors = sorted({vendor for row in observations for vendor in row.get("assistant_vendors", [])})
         conversational_routes = [row["url"] for row in observations if row.get("conversational_interface_detected")]
         dynamic_signal = sum(int(row.get("additional_runtime_control_signal") or 0) for row in observations)
+
+        pointer_candidate_count = sum(int((row.get("pointer_verification") or {}).get("candidate_count") or 0) for row in observations)
+        pointer_verified_count = sum(int((row.get("pointer_verification") or {}).get("verified_and_reverified_count") or 0) for row in observations)
+        pointer_quarantined_count = sum(int((row.get("pointer_verification") or {}).get("quarantined_count") or 0) for row in observations)
+        pointer_failure_reasons = Counter()
+        for row in observations:
+            pointer_failure_reasons.update((row.get("pointer_verification") or {}).get("failure_reasons") or {})
 
         if not browser:
             status = "BLOCKED_BROWSER_UNAVAILABLE"
@@ -208,8 +223,13 @@ def install_browser_observation_support(crawler_type) -> None:
         else:
             status = "PARTIAL"
 
+        pointer_status = (
+            "VERIFIED_SUBSET" if pointer_verified_count > 0
+            else "NO_GUIDANCE_CANDIDATES" if pointer_candidate_count == 0
+            else "NO_VERIFIED_GUIDANCE"
+        )
         self._orb_browser_observation = {
-            "schema": "orb_weaver.browser_observation.v2",
+            "schema": "orb_weaver.browser_observation.v3",
             "status": status,
             "evidence_state": "VERIFIED" if status == "VERIFIED_FULL" else "REQUIRES_VERIFICATION",
             "browser_available": bool(browser),
@@ -227,6 +247,14 @@ def install_browser_observation_support(crawler_type) -> None:
             "assistant_vendors": vendors,
             "conversational_interface_detected": bool(conversational_routes),
             "conversational_routes": conversational_routes,
+            "pointer_verification": {
+                "status": pointer_status,
+                "candidate_count": pointer_candidate_count,
+                "verified_and_reverified_count": pointer_verified_count,
+                "quarantined_count": pointer_quarantined_count,
+                "failure_reasons": dict(pointer_failure_reasons),
+                "guidance_policy": "only_verified_subset_may_point",
+            },
             "runtime_rescan": {
                 "status": "VERIFIED" if status == "VERIFIED_FULL" else "REQUIRES_VERIFICATION",
                 "routes_rescanned": len(observations),
@@ -239,7 +267,7 @@ def install_browser_observation_support(crawler_type) -> None:
     def browser_observed_stats(self):
         stats = original_get_stats(self)
         stats["browser_observation"] = getattr(self, "_orb_browser_observation", {
-            "schema": "orb_weaver.browser_observation.v2",
+            "schema": "orb_weaver.browser_observation.v3",
             "status": "NOT_RUN",
             "evidence_state": "REQUIRES_VERIFICATION",
             "routes_total": 0,
@@ -247,6 +275,7 @@ def install_browser_observation_support(crawler_type) -> None:
             "verification_passes_per_route": 2,
             "assistant_vendors": [],
             "conversational_interface_detected": False,
+            "pointer_verification": {"status": "NOT_RUN", "candidate_count": 0, "verified_and_reverified_count": 0, "quarantined_count": 0},
             "runtime_rescan": {"status": "NOT_RUN", "routes_rescanned": 0},
             "observations": [],
         })
