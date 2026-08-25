@@ -1,14 +1,15 @@
 """Mandatory rendered-browser observation for Website ORB truth assurance.
 
 A successful HTTP crawl proves source availability, not the visitor-visible
-runtime. Every manageable customer scan therefore receives a second rendered
-observation pass. Injected chat widgets, overlays, iframes and controls are
+runtime. Every manageable customer scan therefore receives two independent
+rendered observations. Injected chat widgets, overlays, iframes and controls are
 recorded separately from ordinary JavaScript-shell recovery so absence is never
 claimed from static HTML alone.
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import os
 import re
@@ -106,6 +107,26 @@ def inspect_rendered_html(html: str, url: str, static_pointer_count: int = 0) ->
     }
 
 
+def _rescan_consistency(first: Dict[str, Any], second: Dict[str, Any]) -> Dict[str, Any]:
+    first_vendors = set(first.get("assistant_vendors") or [])
+    second_vendors = set(second.get("assistant_vendors") or [])
+    assistant_consistent = (
+        bool(first.get("conversational_interface_detected")) == bool(second.get("conversational_interface_detected"))
+        and first_vendors == second_vendors
+    )
+    c1 = int(first.get("rendered_control_count") or 0)
+    c2 = int(second.get("rendered_control_count") or 0)
+    control_delta = abs(c1 - c2)
+    tolerance = max(2, round(max(c1, c2) * 0.10))
+    return {
+        "assistant_state_consistent": assistant_consistent,
+        "control_count_delta": control_delta,
+        "control_count_within_tolerance": control_delta <= tolerance,
+        "dom_identical": first.get("dom_sha256") == second.get("dom_sha256"),
+        "verified": assistant_consistent and control_delta <= tolerance,
+    }
+
+
 def install_browser_observation_support(crawler_type) -> None:
     if getattr(crawler_type, "_orb_browser_observation_installed", False):
         return
@@ -121,28 +142,54 @@ def install_browser_observation_support(crawler_type) -> None:
             and int(getattr(page, "status_code", 0) or 0) < 400
         ]
         cap = max(1, int(os.environ.get("ORB_BROWSER_OBSERVATION_MAX_ROUTES", "50") or 50))
+        concurrency = max(1, min(6, int(os.environ.get("ORB_BROWSER_OBSERVATION_CONCURRENCY", "3") or 3)))
         planned = html_pages[:cap]
         observations: List[Dict[str, Any]] = []
         failures: List[str] = []
+        inconsistent: List[str] = []
         browser = self._chrome_executable()
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def observe_page(page):
+            url = str(getattr(page, "url", "") or "")
+            static_records = (getattr(page, "semantic_analysis", None) or {}).get("pointer_plot_records") or []
+            async with semaphore:
+                try:
+                    first_html = await self._render_page_dom(url)
+                    second_html = await self._render_page_dom(url) if first_html else None
+                except Exception:
+                    first_html = None
+                    second_html = None
+            if not first_html or not second_html:
+                return url, None
+            first = inspect_rendered_html(first_html, url, len(static_records))
+            second = inspect_rendered_html(second_html, url, len(static_records))
+            consistency = _rescan_consistency(first, second)
+            combined = {
+                **second,
+                "verification_passes": 2,
+                "first_pass": first,
+                "rescan_consistency": consistency,
+                "verification_state": "VERIFIED" if consistency["verified"] else "REQUIRES_VERIFICATION",
+            }
+            return url, combined
 
         if browser:
-            for page in planned:
-                url = str(getattr(page, "url", "") or "")
-                try:
-                    rendered = await self._render_page_dom(url)
-                except Exception:
-                    rendered = None
-                if not rendered:
+            results = await asyncio.gather(*(observe_page(page) for page in planned))
+            by_url = {str(getattr(page, "url", "") or ""): page for page in pages}
+            for url, observation in results:
+                if not observation:
                     failures.append(url)
                     continue
-                static_records = (getattr(page, "semantic_analysis", None) or {}).get("pointer_plot_records") or []
-                observation = inspect_rendered_html(rendered, url, len(static_records))
                 observations.append(observation)
-                page.semantic_analysis = {
-                    **(getattr(page, "semantic_analysis", None) or {}),
-                    "browser_observation": observation,
-                }
+                if not (observation.get("rescan_consistency") or {}).get("verified"):
+                    inconsistent.append(url)
+                page = by_url.get(url)
+                if page is not None:
+                    page.semantic_analysis = {
+                        **(getattr(page, "semantic_analysis", None) or {}),
+                        "browser_observation": observation,
+                    }
 
         observed_urls = {row["url"] for row in observations}
         unobserved = [str(getattr(page, "url", "") or "") for page in html_pages if str(getattr(page, "url", "") or "") not in observed_urls]
@@ -152,7 +199,7 @@ def install_browser_observation_support(crawler_type) -> None:
 
         if not browser:
             status = "BLOCKED_BROWSER_UNAVAILABLE"
-        elif failures:
+        elif failures or inconsistent:
             status = "PARTIAL"
         elif len(html_pages) > cap:
             status = "PARTIAL_ROUTE_CAP"
@@ -162,21 +209,29 @@ def install_browser_observation_support(crawler_type) -> None:
             status = "PARTIAL"
 
         self._orb_browser_observation = {
-            "schema": "orb_weaver.browser_observation.v1",
+            "schema": "orb_weaver.browser_observation.v2",
             "status": status,
             "evidence_state": "VERIFIED" if status == "VERIFIED_FULL" else "REQUIRES_VERIFICATION",
             "browser_available": bool(browser),
             "browser_executable": browser,
+            "verification_passes_per_route": 2,
             "route_cap": cap,
+            "concurrency": concurrency,
             "routes_total": len(html_pages),
             "routes_planned": len(planned),
             "routes_observed": len(observations),
             "failed_routes": failures,
+            "inconsistent_routes": inconsistent,
             "unobserved_routes": unobserved,
             "dynamic_control_signal_count": dynamic_signal,
             "assistant_vendors": vendors,
             "conversational_interface_detected": bool(conversational_routes),
             "conversational_routes": conversational_routes,
+            "runtime_rescan": {
+                "status": "VERIFIED" if status == "VERIFIED_FULL" else "REQUIRES_VERIFICATION",
+                "routes_rescanned": len(observations),
+                "inconsistent_routes": inconsistent,
+            },
             "observations": observations,
         }
         return pages
@@ -184,13 +239,15 @@ def install_browser_observation_support(crawler_type) -> None:
     def browser_observed_stats(self):
         stats = original_get_stats(self)
         stats["browser_observation"] = getattr(self, "_orb_browser_observation", {
-            "schema": "orb_weaver.browser_observation.v1",
+            "schema": "orb_weaver.browser_observation.v2",
             "status": "NOT_RUN",
             "evidence_state": "REQUIRES_VERIFICATION",
             "routes_total": 0,
             "routes_observed": 0,
+            "verification_passes_per_route": 2,
             "assistant_vendors": [],
             "conversational_interface_detected": False,
+            "runtime_rescan": {"status": "NOT_RUN", "routes_rescanned": 0},
             "observations": [],
         })
         return stats
