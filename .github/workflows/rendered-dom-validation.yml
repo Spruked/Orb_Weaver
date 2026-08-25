@@ -1,30 +1,46 @@
-name: Rendered DOM Validation
+name: Website Intelligence Truth Validation
 
 on:
   pull_request:
     paths:
-      - "backend/app/crawler/rendered_dom.py"
-      - "backend/app/crawler/__init__.py"
+      - "backend/app/crawler/**"
+      - "backend/app/orb/pointer_truth.py"
+      - "backend/app/orb/__init__.py"
+      - "backend/app/catalog/**"
+      - "backend/app/audit/**"
+      - "backend/app/analytics/search_console.py"
       - "backend/tests/test_rendered_dom.py"
+      - "backend/tests/test_truth_first_intelligence.py"
+      - "backend/tests/test_search_console_summary.py"
+      - "backend/tests/test_commercial_catalog.py"
       - "backend/Dockerfile"
       - "frontend/src/components/OrbAssemblyStatus.tsx"
+      - "frontend/src/pages/AuditReport.tsx"
       - ".github/workflows/rendered-dom-validation.yml"
   push:
     paths:
-      - "backend/app/crawler/rendered_dom.py"
-      - "backend/app/crawler/__init__.py"
+      - "backend/app/crawler/**"
+      - "backend/app/orb/pointer_truth.py"
+      - "backend/app/orb/__init__.py"
+      - "backend/app/catalog/**"
+      - "backend/app/audit/**"
+      - "backend/app/analytics/search_console.py"
       - "backend/tests/test_rendered_dom.py"
+      - "backend/tests/test_truth_first_intelligence.py"
+      - "backend/tests/test_search_console_summary.py"
+      - "backend/tests/test_commercial_catalog.py"
       - "backend/Dockerfile"
       - "frontend/src/components/OrbAssemblyStatus.tsx"
+      - "frontend/src/pages/AuditReport.tsx"
       - ".github/workflows/rendered-dom-validation.yml"
 
 permissions:
   contents: read
 
 jobs:
-  rendered-dom-tests:
+  website-intelligence-truth-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
@@ -40,13 +56,26 @@ jobs:
       - name: Install backend dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r backend/requirements.txt
 
-      - name: Compile rendered DOM module
-        run: python -m py_compile backend/app/crawler/rendered_dom.py backend/tests/test_rendered_dom.py
+      - name: Compile truth and intelligence modules
+        run: >-
+          python -m py_compile
+          backend/app/crawler/rendered_dom.py
+          backend/app/crawler/browser_observation.py
+          backend/app/crawler/site_intelligence.py
+          backend/app/orb/pointer_truth.py
+          backend/app/catalog/compiler_v2.py
+          backend/app/audit/intelligence_enrichment.py
+          backend/app/analytics/search_console.py
 
-      - name: Run rendered DOM tests
+      - name: Run truth-first backend regression tests
         env:
           PYTHONPATH: backend
-        run: python -m pytest -q backend/tests/test_rendered_dom.py
+        run: >-
+          python -m pytest -q
+          backend/tests/test_rendered_dom.py
+          backend/tests/test_truth_first_intelligence.py
+          backend/tests/test_search_console_summary.py
+          backend/tests/test_commercial_catalog.py
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -58,5 +87,5 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci --prefix frontend
 
-      - name: Type-check assembly status UI
+      - name: Type-check Website Intelligence UI
         run: npm run typecheck --prefix frontend
