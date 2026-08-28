@@ -1,0 +1,19 @@
+[Unit]
+Description=Orb Weaver Kokoro TTS
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/Orb_Weaver/Orb_Assistant/user_dock_station
+Environment=KOKORO_DEVICE=cuda
+Environment=KOKORO_DEFAULT_VOICE=am_michael
+Environment=KOKORO_DEFAULT_SPEED=1.05
+ExecStart=%h/py312/bin/python -m uvicorn kokoro_openai_tts_server:app --host 127.0.0.1 --port 8880
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

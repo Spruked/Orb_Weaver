@@ -478,6 +478,13 @@ export const AutonomousOrb: React.FC<Props> = ({
     };
   }, [bounds]);
 
+  const splashAlignedPosition = useCallback(() => (
+    clampPosition(
+      window.innerWidth * 0.66 - size / 2,
+      window.innerHeight * 0.37 - size / 2,
+    )
+  ), [clampPosition, size]);
+
   const bumpWorldStateSequence = useCallback(() => {
     worldStateSequenceRef.current += 1;
   }, []);
@@ -2617,7 +2624,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       "(prefers-reduced-motion: reduce)"
     ).matches;
 
-    const start = nextDestination();
+    const start = isPublicLandingExperience() ? splashAlignedPosition() : nextDestination();
 
     positionRef.current = start;
     move.set(start);
@@ -2742,6 +2749,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     authorizeMotion,
     clampPosition,
     glow,
+    splashAlignedPosition,
     move,
     nextDestination,
     playLocalPresence,

@@ -15,6 +15,12 @@ export type RouteContextResponse = {
   source: string;
 };
 
+export type VoiceResponse = AnswerResponse & {
+  transcript: string;
+  spoken_output: string;
+  tts_audio_url?: string | null;
+};
+
 export class WebsiteOrbApi {
   constructor(private apiBase = "") {}
 
@@ -33,5 +39,13 @@ export class WebsiteOrbApi {
     if (!response.ok) throw new Error(`answer failed: ${response.status}`);
     return response.json();
   }
-}
 
+  async answerVoice(audio: Blob, route: string, filename: string): Promise<VoiceResponse> {
+    const form = new FormData();
+    form.append("audio", audio, filename);
+    form.append("route", route);
+    const response = await fetch(`${this.apiBase}/orb/website-voice`, { method: "POST", body: form });
+    if (!response.ok) throw new Error(`voice failed: ${response.status}`);
+    return response.json();
+  }
+}

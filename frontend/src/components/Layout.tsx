@@ -20,6 +20,7 @@ import {
   ScanLine,
 } from 'lucide-react';
 import { Customer } from '../services/api';
+import { marketplaceUrl } from '../services/marketplaceUrl';
 
 const bannerLogo = '/orbweaver1600.png';
 const squareLogo = '/orbweaverlogo1024.png';
@@ -40,7 +41,7 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
     { path: '/crawl', icon: Search, label: 'Crawl Jobs', hover: 'hover:border-violet-400/60 hover:bg-violet-400/15 hover:text-violet-100' },
     { path: '/ga4', icon: BarChart3, label: 'GA4 Analytics', hover: 'hover:border-sky-400/60 hover:bg-sky-400/15 hover:text-sky-100' },
     { path: '/reports', icon: FileText, label: 'Reports', hover: 'hover:border-amber-400/60 hover:bg-amber-400/15 hover:text-amber-100' },
-    { path: '/marketplace', icon: Store, label: 'Marketplace', reload: true, hover: 'hover:border-orange-400/60 hover:bg-orange-400/15 hover:text-orange-100' },
+    { path: marketplaceUrl, icon: Store, label: 'Marketplace', reload: true, hover: 'hover:border-orange-400/60 hover:bg-orange-400/15 hover:text-orange-100' },
     { path: '/web-weave', icon: BrainCircuit, label: 'Site Update', hover: 'hover:border-fuchsia-400/60 hover:bg-fuchsia-400/15 hover:text-fuchsia-100' },
     { path: '/now/desktop-orb', icon: Monitor, label: 'Desktop ORB Now', reload: true, hover: 'hover:border-indigo-400/60 hover:bg-indigo-400/15 hover:text-indigo-100' },
     { path: '/diagnostics', icon: Activity, label: 'Diagnostics', reload: true, hover: 'hover:border-rose-400/60 hover:bg-rose-400/15 hover:text-rose-100' },

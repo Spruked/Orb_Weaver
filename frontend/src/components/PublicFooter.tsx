@@ -1,4 +1,5 @@
 import React from 'react';
+import { marketplaceUrl } from '../services/marketplaceUrl';
 
 const PublicFooter: React.FC = () => {
   return (
@@ -34,7 +35,7 @@ const PublicFooter: React.FC = () => {
             <a href="/how-it-works" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>How It Works</a>
             <a href="/security" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Security</a>
             <a href="/now/desktop-orb" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Desktop ORB</a>
-            <a href="/marketplace" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Marketplace</a>
+            <a href={marketplaceUrl} style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Marketplace</a>
           </nav>
         </div>
 

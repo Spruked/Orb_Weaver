@@ -1,0 +1,17 @@
+[Unit]
+Description=Orb Weaver llama.cpp Qwen 2.5 1.5B Instruct
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/Orb_Weaver
+Environment=ORB_INFERENCE_ENV_FILE=%h/.config/orb-weaver/inference.env
+ExecStart=%h/projects/Orb_Weaver/deploy/inference/llama_cpp/run.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

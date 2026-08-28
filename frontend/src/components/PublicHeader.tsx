@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { marketplaceUrl } from '../services/marketplaceUrl';
 
 type PublicHeaderProps = {
   theme?: 'dark' | 'light';
@@ -16,7 +17,7 @@ const publicNavItems = [
   { href: '/preflight', label: 'Preflight' },
   { href: '/founding-beta', label: 'Beta' },
   { href: '/investor-contact', label: 'Investors' },
-  { href: '/marketplace', label: 'Marketplace' },
+  { href: marketplaceUrl, label: 'Marketplace', external: true },
   { href: '/login', label: 'Login' },
 ];
 

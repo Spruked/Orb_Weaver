@@ -1,6 +1,7 @@
 import React, { FormEvent, useMemo, useState } from 'react';
 import PublicHeader from '../components/PublicHeader';
 import { api, PublicPreflightReport } from '../services/api';
+import { marketplaceUrl } from '../services/marketplaceUrl';
 
 const publicScanAreas = [
   ['Website structure', 'Public pages, navigation, links, sitemap signals, robots rules, and visible website patterns.'],
@@ -342,7 +343,7 @@ const PublicPreflight: React.FC = () => {
                     </a>
 
                     <a
-                      href="/marketplace"
+                      href={marketplaceUrl}
                       className="rounded-lg border border-cyan-200/30 px-5 py-3 text-center text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/10"
                     >
                       Explore ORB packages
@@ -498,7 +499,7 @@ const PublicPreflight: React.FC = () => {
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
                     <a href="/signup?intent=site_review" className="rounded-lg bg-cyan-300 px-5 py-3 text-center text-sm font-bold text-slate-950 transition hover:bg-cyan-200">Proceed to Site Review</a>
                     <a href="/signup?intent=site_update" className="rounded-lg border border-cyan-200/30 px-5 py-3 text-center text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/10">Request a Site Update</a>
-                    <a href="/marketplace" className="rounded-lg border border-cyan-200/30 px-5 py-3 text-center text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/10">Explore ORB Packages</a>
+                    <a href={marketplaceUrl} className="rounded-lg border border-cyan-200/30 px-5 py-3 text-center text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/10">Explore ORB Packages</a>
                     <a href="/signup" className="rounded-lg border border-white/15 px-5 py-3 text-center text-sm font-bold text-slate-200 transition hover:bg-white/10">Create an Account</a>
                   </div>
                 </div>

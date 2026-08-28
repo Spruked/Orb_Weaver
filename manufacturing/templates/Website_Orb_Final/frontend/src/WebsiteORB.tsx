@@ -17,6 +17,12 @@ type Position = {
 
 const EDGE = 8;
 const CURSOR_SAFE_RADIUS = 180;
+const RECORDING_MAX_MS = 14000;
+const RECORDING_MIN_MS = 650;
+const SILENCE_AFTER_SPEECH_MS = 850;
+const SILENCE_SAMPLE_MS = 120;
+const SPEECH_RMS_THRESHOLD = 0.025;
+const SILENCE_RMS_THRESHOLD = 0.018;
 
 export const WebsiteORB: React.FC<Props> = ({ apiBase = "", size = 164 }) => {
   const api = useMemo(() => new WebsiteOrbApi(apiBase), [apiBase]);
@@ -31,6 +37,9 @@ export const WebsiteORB: React.FC<Props> = ({ apiBase = "", size = 164 }) => {
   const [answer, setAnswer] = useState("Tap or ask. I know where I am on Orb Weaver.");
   const [state, setState] = useState<"idle" | "listening" | "speaking">("idle");
   const [resolvedTarget, setResolvedTarget] = useState<Element | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const monitorRef = useRef<number>(0);
 
   const clamp = useCallback(
     (next: Position): Position => ({
@@ -138,6 +147,64 @@ export const WebsiteORB: React.FC<Props> = ({ apiBase = "", size = 164 }) => {
     }
   }, [api, message]);
 
+  const startVoice = useCallback(async () => {
+    if (recorderRef.current?.state === "recording") { recorderRef.current.stop(); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const context = new AudioContext();
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 1024;
+      context.createMediaStreamSource(stream).connect(analyser);
+      const types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/ogg;codecs=opus", "audio/ogg"];
+      const mimeType = types.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      recorderRef.current = recorder;
+      const chunks: BlobPart[] = [];
+      let speechDetected = false;
+      let silenceAt: number | null = null;
+      const startedAt = Date.now();
+      const release = () => {
+        window.clearTimeout(monitorRef.current);
+        stream.getTracks().forEach((track) => track.stop());
+        void context.close().catch(() => undefined);
+        recorderRef.current = null;
+      };
+      const monitor = () => {
+        if (recorder.state !== "recording") return;
+        const samples = new Uint8Array(analyser.fftSize);
+        analyser.getByteTimeDomainData(samples);
+        const rms = Math.sqrt(samples.reduce((sum, value) => sum + (((value - 128) / 128) ** 2), 0) / samples.length);
+        const now = Date.now();
+        if (rms >= SPEECH_RMS_THRESHOLD) { speechDetected = true; silenceAt = null; }
+        else if (speechDetected && rms <= SILENCE_RMS_THRESHOLD) {
+          silenceAt ??= now;
+          if (now - startedAt >= RECORDING_MIN_MS && now - silenceAt >= SILENCE_AFTER_SPEECH_MS) { recorder.stop(); return; }
+        } else silenceAt = null;
+        if (now - startedAt >= RECORDING_MAX_MS) { recorder.stop(); return; }
+        monitorRef.current = window.setTimeout(monitor, SILENCE_SAMPLE_MS);
+      };
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      recorder.onstop = async () => {
+        const recordedType = recorder.mimeType || "audio/webm";
+        release();
+        setState("speaking");
+        try {
+          const extension = recordedType.includes("mp4") ? "m4a" : recordedType.includes("ogg") ? "ogg" : "webm";
+          const response = await api.answerVoice(new Blob(chunks, { type: recordedType }), routeRef.current, `website-orb.${extension}`);
+          setAnswer(response.spoken_output);
+          if (response.tts_audio_url) void new Audio(`${apiBase}${response.tts_audio_url}`).play().catch(() => undefined);
+          await resolveBestPointer(response);
+        } catch { setAnswer("I could not complete that voice request."); }
+        finally { window.setTimeout(() => setState("idle"), 1200); }
+      };
+      recorder.start();
+      setState("listening");
+      setAnswer("I am listening.");
+      monitor();
+    } catch { setAnswer("Microphone permission was not granted."); }
+  }, [api, apiBase]);
+
   const resolveBestPointer = async (response: AnswerResponse) => {
     const record = response.pointer_targets[0] as unknown as PlotRecord | undefined;
     if (!record) return;
@@ -179,6 +246,7 @@ export const WebsiteORB: React.FC<Props> = ({ apiBase = "", size = 164 }) => {
             aria-label="Ask Weaver"
           />
           <button type="submit">Ask</button>
+          <button type="button" onClick={() => void startVoice()}>{state === "listening" ? "Stop" : "Voice"}</button>
         </div>
       </form>
     </div>
@@ -186,4 +254,3 @@ export const WebsiteORB: React.FC<Props> = ({ apiBase = "", size = 164 }) => {
 };
 
 export default WebsiteORB;
-

@@ -1,0 +1,9 @@
+[Unit]
+Description=Start Orb Weaver llama.cpp when the Qwen model is available
+
+[Path]
+PathExists=%h/models/Qwen2.5-1.5B-Instruct-Q4_K_M.gguf
+Unit=orb-llamacpp.service
+
+[Install]
+WantedBy=default.target

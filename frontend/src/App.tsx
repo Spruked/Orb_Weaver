@@ -30,9 +30,20 @@ import PublicHowItWorks from './pages/PublicHowItWorks';
 import PublicFeatures from './pages/PublicFeatures';
 import PublicSecurity from './pages/PublicSecurity';
 import LidarGuidance from './pages/LidarGuidance';
-import MarketplaceRoutes from './marketplace/MarketplaceRoutes';
 import { api, authStore, Customer } from './services/api';
+import { marketplaceUrl } from './services/marketplaceUrl';
 import './index.css';
+
+const MarketplaceRedirect: React.FC = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    const remainingPath = location.pathname.replace(/^\/marketplace/, '');
+    window.location.replace(`${marketplaceUrl}/marketplace${remainingPath}${location.search}${location.hash}`);
+  }, [location]);
+
+  return <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-300">Opening ORB Marketplace…</div>;
+};
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -144,7 +155,7 @@ function App() {
     return renderPublicPage(<PublicPreflight />);
   }
   if (publicPath === '/marketplace' || publicPath.startsWith('/marketplace/')) {
-    return renderPublicPage(<MarketplaceRoutes />);
+    return renderPublicPage(<MarketplaceRedirect />);
   }
   if (!customer && publicPath === '/diagnostics') {
     return renderPublicPage(<AuthPage onAuthenticated={handleAuthenticated} />);

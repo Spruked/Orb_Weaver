@@ -1,0 +1,21 @@
+[Unit]
+Description=Orb Weaver API
+After=network-online.target orb-inference-gateway.service orb-kokoro-tts.service
+Wants=network-online.target orb-inference-gateway.service orb-kokoro-tts.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/Orb_Weaver/backend
+EnvironmentFile=-%h/.config/orb-weaver/runtime.env
+Environment=ORB_TTS_KOKORO_URL=http://127.0.0.1:8880/speak
+Environment=ORB_TTS_KOKORO_VOICE=am_michael
+Environment=LOCAL_LLM_URL=http://127.0.0.1:16520/api/generate
+Environment=LOCAL_LLM_MODEL=orb-auto
+ExecStart=%h/projects/Orb_Weaver/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 16600
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

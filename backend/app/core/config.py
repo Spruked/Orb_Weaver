@@ -72,11 +72,14 @@ class Settings(BaseSettings):
     FASTER_WHISPER_STT_URL: str = "http://127.0.0.1:9000/stt"
     ORB_ASSISTANT_ROOT: str = "../Orb_Assistant"
     ORB_TTS_CACHE_DIR: str = "../vault_system/runtime/tts_cache"
-    ORB_TTS_TIMEOUT_SECONDS: float = 180.0
+    # CALI's working voice budgets: short primary-path failure and a longer
+    # Qwen3 voice-clone fallback budget.
+    ORB_TTS_TIMEOUT_SECONDS: float = 45.0
+    ORB_TTS_QWEN_TIMEOUT_SECONDS: float = 220.0
     ORB_TTS_QWEN_URL: Optional[str] = "http://127.0.0.1:9880/speak"
     ORB_TTS_QWEN_API_KEY: Optional[str] = None
     ORB_TTS_QWEN_MODEL: str = "qwen-tts"
-    ORB_TTS_QWEN_VOICE: str = "OrbWeaver"
+    ORB_TTS_QWEN_VOICE: str = "cali_voice_profile"
     ORB_TTS_QWEN_LANGUAGE: str = "English"
     ORB_TTS_QWEN_INSTRUCT: str = "A warm, confident adult male assistant voice. Clear, calm, lightly theatrical, friendly, and concise."
     ORB_TTS_QWEN_FORMAT: str = "wav"
@@ -86,6 +89,7 @@ class Settings(BaseSettings):
     ORB_TTS_KOKORO_MODEL: str = "kokoro"
     ORB_TTS_KOKORO_VOICE: str = "am_michael"
     ORB_TTS_KOKORO_FORMAT: str = "wav"
+    ORB_TTS_KOKORO_SPEED: float = 1.05
     ORB_TTS_KOKORO_PAYLOAD_MODE: str = "kokoro-direct"
     ORB_WEAVER_SITE_ORB_SOURCE_CRAWL_ID: Optional[int] = 59
 

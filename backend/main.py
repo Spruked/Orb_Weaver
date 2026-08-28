@@ -464,6 +464,8 @@ class WebsiteOrbVoiceResponse(BaseModel):
     tts_voice: Optional[str] = None
     tts_error: Optional[str] = None
     tts_cache_class: Optional[str] = None
+    tts_fallback_used: Optional[bool] = None
+    primary_tts_error: Optional[str] = None
     source_lane: Optional[str] = None
     evidence_ids: List[str] = Field(default_factory=list)
     confidence: Optional[float] = None
@@ -476,6 +478,7 @@ class WebsiteOrbVoiceResponse(BaseModel):
     resolution_diagnostics: Optional[Dict[str, Any]] = None
     skg_learning: Optional[Dict[str, Any]] = None
     control_action: Optional[Dict[str, Any]] = None
+    timing_ms: Optional[Dict[str, float]] = None
 
 
 class WebsiteOrbExperienceContext(BaseModel):
@@ -2303,26 +2306,18 @@ async def _transcribe_with_faster_whisper(audio: UploadFile) -> str:
 
     filename = audio.filename or "website-orb.webm"
     content_type = audio.content_type or "application/octet-stream"
-    stt_urls = [settings.FASTER_WHISPER_STT_URL]
-    if settings.FASTER_WHISPER_STT_URL == "http://127.0.0.1:9000/stt":
-        stt_urls.append("http://127.0.0.1:9880/stt")
-
-    last_error = None
-    payload: Dict[str, Any] = {}
-    for stt_url in stt_urls:
-        try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                response = await client.post(
-                    stt_url,
-                    files={"file": (filename, content, content_type)},
-                )
-                response.raise_for_status()
-                payload = response.json()
-                break
-        except httpx.HTTPError as exc:
-            last_error = exc
-    else:
-        raise HTTPException(status_code=502, detail=f"Faster-whisper STT failed: {last_error}")
+    # CALI's live path has one authoritative Faster-Whisper endpoint.  Do not
+    # silently send microphone audio to an unrelated legacy endpoint.
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                settings.FASTER_WHISPER_STT_URL,
+                files={"file": (filename, content, content_type)},
+            )
+            response.raise_for_status()
+            payload: Dict[str, Any] = response.json()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Faster-whisper STT failed: {exc}") from exc
 
     transcript = str(payload.get("text") or "").strip()
     if not transcript:
@@ -3353,10 +3348,12 @@ def _tts_payload(mode: str, text: str, model: str, voice: str, audio_format: str
     normalized_mode = (mode or "openai").lower()
     if normalized_mode in {"kokoro-direct", "kokoro_direct", "kokoro"}:
         return {
+            "input": text,
             "text": text,
+            "model": model,
             "voice": voice,
-            "format": audio_format,
-            "speed": 1.05,
+            "response_format": audio_format,
+            "speed": settings.ORB_TTS_KOKORO_SPEED,
         }
     if normalized_mode in {"qwen-custom", "qwen_custom", "custom"}:
         return {
@@ -3446,7 +3443,8 @@ async def _call_tts_provider(
 
     payload = _tts_payload(payload_mode, text, model, voice, audio_format)
     provider_lock = ORB_TTS_PROVIDER_LOCKS.setdefault(provider, asyncio.Lock())
-    async with httpx.AsyncClient(timeout=settings.ORB_TTS_TIMEOUT_SECONDS) as client:
+    timeout_seconds = settings.ORB_TTS_QWEN_TIMEOUT_SECONDS if provider == "qwen" else settings.ORB_TTS_TIMEOUT_SECONDS
+    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
         async with provider_lock:
             response = await client.post(url, json=payload, headers=headers)
         response.raise_for_status()
@@ -3560,11 +3558,11 @@ def _tts_cache_probe(text: str) -> Dict[str, Any]:
     ]:
         if not url or not clean_text:
             continue
-        digest = hashlib.sha256(f"{provider}:{model}:{voice}:{clean_text}".encode("utf-8")).hexdigest()[:24]
+        digest = hashlib.sha256(f"{provider}{voice}{clean_text}".encode("utf-8")).hexdigest()[:24]
         probes.append({
             "provider": provider,
             "digest": digest,
-            "hit": bool(_cached_tts_result(digest, provider, voice)),
+            "hit": provider == "qwen" and bool(_cached_tts_result(digest, provider, voice)),
             "voice": voice,
         })
     return {"hit": any(probe["hit"] for probe in probes), "probes": probes}
@@ -3582,7 +3580,9 @@ async def _synthesize_orb_tts_uncached(
     audio_format: str,
     governance_trace_id: Optional[str] = None,
 ) -> Dict[str, Optional[str]]:
-    cached = _cached_tts_result(digest, provider, voice)
+    # CALI only reads through an existing Qwen voice-clone cache entry.
+    # Kokoro's stable cache path is overwritten by a fresh synthesis.
+    cached = _cached_tts_result(digest, provider, voice) if provider == "qwen" else None
     if cached:
         return cached
 
@@ -3658,9 +3658,16 @@ async def _synthesize_orb_tts(
         return _visitor_safe_tts_unavailable()
     provider_name = (provider_override or "kokoro").strip().lower()
     if provider_name == "kokoro":
-        providers = [("kokoro", settings.ORB_TTS_KOKORO_URL, settings.ORB_TTS_KOKORO_API_KEY,
-                      settings.ORB_TTS_KOKORO_PAYLOAD_MODE, settings.ORB_TTS_KOKORO_MODEL,
-                      (voice_override or settings.ORB_TTS_KOKORO_VOICE).strip(), settings.ORB_TTS_KOKORO_FORMAT)]
+        # Mirror CALI: Kokoro am_michael is primary; Qwen3 voice-clone is the
+        # only fallback and is attempted only after the primary fails.
+        providers = [
+            ("kokoro", settings.ORB_TTS_KOKORO_URL, settings.ORB_TTS_KOKORO_API_KEY,
+             settings.ORB_TTS_KOKORO_PAYLOAD_MODE, settings.ORB_TTS_KOKORO_MODEL,
+             (voice_override or settings.ORB_TTS_KOKORO_VOICE).strip(), settings.ORB_TTS_KOKORO_FORMAT),
+            ("qwen", settings.ORB_TTS_QWEN_URL, settings.ORB_TTS_QWEN_API_KEY,
+             settings.ORB_TTS_QWEN_PAYLOAD_MODE, settings.ORB_TTS_QWEN_MODEL,
+             settings.ORB_TTS_QWEN_VOICE.strip(), settings.ORB_TTS_QWEN_FORMAT),
+        ]
     else:
         providers = [("qwen", settings.ORB_TTS_QWEN_URL, settings.ORB_TTS_QWEN_API_KEY,
                       settings.ORB_TTS_QWEN_PAYLOAD_MODE, settings.ORB_TTS_QWEN_MODEL,
@@ -3670,10 +3677,8 @@ async def _synthesize_orb_tts(
     for provider, url, api_key, payload_mode, model, voice, audio_format in providers:
         if not url:
             continue
-        digest = hashlib.sha256(
-            f"{provider}:{model}:{voice}:{clean_text}".encode("utf-8")
-        ).hexdigest()[:24]
-        cached = _cached_tts_result(digest, provider, voice)
+        digest = hashlib.sha256(f"{provider}{voice}{clean_text}".encode("utf-8")).hexdigest()[:24]
+        cached = _cached_tts_result(digest, provider, voice) if provider == "qwen" else None
         if cached:
             ORB_TTS_WARM_STATUS.update({
                 "ready": True,
@@ -3682,6 +3687,9 @@ async def _synthesize_orb_tts(
                 "voice": voice,
                 "errors": [],
             })
+            cached["tts_fallback_used"] = provider == "qwen" and provider_name == "kokoro"
+            if cached["tts_fallback_used"]:
+                cached["primary_tts_error"] = errors[0] if errors else "kokoro tts unavailable"
             return cached
 
         try:
@@ -3714,6 +3722,11 @@ async def _synthesize_orb_tts(
                 "voice": voice,
                 "errors": [],
             })
+            if provider == "qwen" and provider_name == "kokoro":
+                result["tts_fallback_used"] = True
+                result["primary_tts_error"] = errors[0] if errors else "kokoro tts unavailable"
+            else:
+                result["tts_fallback_used"] = False
             return result
         except Exception as exc:
             message = str(exc) or exc.__class__.__name__
@@ -8073,7 +8086,7 @@ async def website_orb_voice(
         "tts_provider": tts_result.get("tts_provider"),
         "timings_ms": timings,
     }, sort_keys=True))
-    return {**semantic_result, **tts_result}
+    return {**semantic_result, **tts_result, "timing_ms": timings}
 
     if experience_phase and experience_objective:
         experience_context = WebsiteOrbExperienceContext(

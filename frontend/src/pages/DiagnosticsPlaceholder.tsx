@@ -1,6 +1,7 @@
 import React from 'react';
 import { Activity, ArrowRight, Monitor, ShieldCheck, Store } from 'lucide-react';
 import { Customer } from '../services/api';
+import { marketplaceUrl } from '../services/marketplaceUrl';
 
 interface DiagnosticsPlaceholderProps {
   customer: Customer;
@@ -33,7 +34,7 @@ const DiagnosticsPlaceholder: React.FC<DiagnosticsPlaceholderProps> = ({ custome
             <a className="btn-secondary inline-flex items-center gap-2" href="/scan-center">
               Scan Center <ArrowRight className="h-4 w-4" />
             </a>
-            <a className="btn-secondary inline-flex items-center gap-2" href="/marketplace">
+            <a className="btn-secondary inline-flex items-center gap-2" href={marketplaceUrl}>
               Marketplace <Store className="h-4 w-4" />
             </a>
           </div>

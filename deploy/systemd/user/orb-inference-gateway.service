@@ -1,0 +1,17 @@
+[Unit]
+Description=Orb Weaver local inference gateway
+After=network-online.target orb-llamacpp.service
+Wants=network-online.target orb-llamacpp.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/Orb_Weaver
+EnvironmentFile=-%h/.config/orb-weaver/inference.env
+ExecStart=%h/projects/Orb_Weaver/.venv/bin/python -m uvicorn inference_gateway:app --app-dir backend --host 127.0.0.1 --port 16520
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

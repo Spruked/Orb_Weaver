@@ -6,6 +6,17 @@ import type { OrbConnectionState, OrbLoaderConfig, OrbMountHandle, OrbPointerRec
 const HOST_ID = 'orb-weaver-universal-root';
 const STARTUP_SESSION_KEY = 'orbweaver-loader-startup-complete';
 const STARTUP_GREETING = 'Hi, I am Weaver. I am here on this site, ready to listen and guide you to verified targets.';
+const RECORDING_MAX_MS = 14000;
+const RECORDING_MIN_MS = 650;
+const SILENCE_AFTER_SPEECH_MS = 850;
+const SILENCE_SAMPLE_MS = 120;
+const SPEECH_RMS_THRESHOLD = 0.025;
+const SILENCE_RMS_THRESHOLD = 0.018;
+const recorderMimeType = () => {
+  const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/ogg'];
+  return types.find((type) => MediaRecorder.isTypeSupported(type)) || '';
+};
+const recordingFileName = (type: string) => type.includes('mp4') ? 'orb-question.m4a' : type.includes('ogg') ? 'orb-question.ogg' : 'orb-question.webm';
 const routeOf = (value?: string) => {
   try { return new URL(value || '/', window.location.href).pathname.replace(/\/+$/, '') || '/'; }
   catch { return '/'; }
@@ -66,6 +77,12 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
   let abortController: AbortController | undefined;
   let recorder: MediaRecorder | undefined;
   let mediaStream: MediaStream | undefined;
+  let audioContext: AudioContext | undefined;
+  let analyser: AnalyserNode | undefined;
+  let recordingStartedAt = 0;
+  let silenceStartedAt: number | undefined;
+  let speechDetected = false;
+  let recordingMonitor = 0;
   let chunks: BlobPart[] = [];
   let pointerTimer = 0;
   let travelTimer = 0;
@@ -132,6 +149,30 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
     open = next;
     element('[data-panel]').hidden = !open;
     element('[data-toggle]').setAttribute('aria-expanded', String(open));
+  };
+  const stopRecordingMonitor = () => { window.clearTimeout(recordingMonitor); recordingMonitor = 0; };
+  const releaseMicrophone = () => {
+    stopRecordingMonitor();
+    mediaStream?.getTracks().forEach((track) => track.stop());
+    mediaStream = undefined;
+    if (audioContext && audioContext.state !== 'closed') void audioContext.close().catch(() => undefined);
+    audioContext = undefined;
+    analyser = undefined;
+  };
+  const monitorSilence = () => {
+    if (!recorder || recorder.state !== 'recording' || !analyser) return;
+    const samples = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(samples);
+    const rms = Math.sqrt(samples.reduce((sum, value) => sum + (((value - 128) / 128) ** 2), 0) / samples.length);
+    const now = Date.now();
+    const elapsed = now - recordingStartedAt;
+    if (rms >= SPEECH_RMS_THRESHOLD) { speechDetected = true; silenceStartedAt = undefined; }
+    else if (speechDetected && rms <= SILENCE_RMS_THRESHOLD) {
+      silenceStartedAt ??= now;
+      if (elapsed >= RECORDING_MIN_MS && now - silenceStartedAt >= SILENCE_AFTER_SPEECH_MS) { recorder.stop(); return; }
+    } else silenceStartedAt = undefined;
+    if (elapsed >= RECORDING_MAX_MS) { recorder.stop(); return; }
+    recordingMonitor = window.setTimeout(monitorSilence, SILENCE_SAMPLE_MS);
   };
   const aliases = (record: OrbPointerRecord) => [
     (record.meaning || '').replace(/^[^:]+:\s*/, ''),
@@ -278,16 +319,27 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
     }
     try {
       mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioContext = new AudioContext();
+      const sourceNode = audioContext.createMediaStreamSource(mediaStream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 1024;
+      sourceNode.connect(analyser);
       chunks = [];
-      recorder = new MediaRecorder(mediaStream);
+      const mimeType = recorderMimeType();
+      recorder = mimeType ? new MediaRecorder(mediaStream, { mimeType }) : new MediaRecorder(mediaStream);
+      recordingStartedAt = Date.now();
+      silenceStartedAt = undefined;
+      speechDetected = false;
       recorder.addEventListener('dataavailable', (event) => { if (event.data.size) chunks.push(event.data); });
       recorder.addEventListener('stop', async () => {
         button.textContent = 'Start voice question';
-        mediaStream?.getTracks().forEach((track) => track.stop());
-        mediaStream = undefined;
+        stopRecordingMonitor();
+        const firstChunk = chunks[0];
+        const recordedType = recorder?.mimeType || (firstChunk instanceof Blob ? firstChunk.type : '') || 'audio/webm';
+        releaseMicrophone();
         setStatus('loading', 'Understanding');
         try {
-          const response = await client.askVoice(new Blob(chunks, { type: recorder?.mimeType || 'audio/webm' }));
+          const response = await client.askVoice(new Blob(chunks, { type: recordedType }), recordingFileName(recordedType));
           handleResponse(response, response.transcript || '');
         } catch (error) {
           setStatus('offline', 'Voice unavailable');
@@ -302,7 +354,7 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
         ? 'I am listening. Speak naturally, then pause when your question is complete.'
         : 'I am listening. Choose Finish when your question is complete.');
       log('Voice initialization available', { available: true, permissionRequested: true, source });
-      window.setTimeout(() => { if (recorder?.state === 'recording') recorder.stop(); }, 12000);
+      monitorSilence();
       return true;
     } catch {
       setMessage('Microphone permission was not granted. You can still type a question.');
@@ -404,7 +456,7 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
     stopObserving();
     client.destroy();
     if (recorder?.state === 'recording') recorder.stop();
-    mediaStream?.getTracks().forEach((track) => track.stop());
+    releaseMicrophone();
     disposeCustomAsset?.();
     window.clearTimeout(pointerTimer);
     window.clearTimeout(travelTimer);

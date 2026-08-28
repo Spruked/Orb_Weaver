@@ -61,9 +61,9 @@ export class OrbRuntimeClient {
     });
   }
 
-  askVoice(audio: Blob) {
+  askVoice(audio: Blob, filename = 'orb-question.webm') {
     const form = new FormData();
-    form.append('audio', audio, 'orb-question.webm');
+    form.append('audio', audio, filename);
     form.append('target_url', window.location.href);
     form.append('site_id', this.config.siteId);
     return this.json<OrbRuntimeResponse>(this.endpoint('/website-voice'), { method: 'POST', body: form });
