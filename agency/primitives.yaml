@@ -1,0 +1,79 @@
+# Canonical expressive vocabulary. Kernel owns meaning. Skin owns look.
+registry_version: "1.0.0"
+schema: tti.primitives.v1
+
+motion:
+  - id: idle_in_region
+    meaning: Remain present in a bounded region without advancing the task.
+    args: [style, region]
+  - id: focus_on
+    meaning: Orient attention/body toward a named observable.
+    args: [target, style]
+  - id: approach
+    meaning: Reduce distance to a named observable without contacting it.
+    args: [target, standoff]
+  - id: point
+    meaning: Indicate a named observable.
+    args: [target]
+  - id: servo_orbit
+    meaning: Orbit a target while remaining oriented toward it. Alias of an older ORB primitive.
+    args: [target, radius]
+    alias_of: null
+  - id: smooth_glide
+    meaning: Translate without a task-specific target (transition).
+    args: [destination, duration]
+  - id: twist_base
+    meaning: Instantaneous base twist (robot). Not a skin performance.
+    args: [linear, angular]
+    habitats: [robot]
+  - id: nav_to_pose
+    meaning: Navigate base to a pose (robot).
+    args: [pose]
+    habitats: [robot]
+  - id: arm_follow
+    meaning: Follow a joint trajectory (robot).
+    args: [trajectory]
+    habitats: [robot]
+  - id: gripper_set
+    meaning: Set gripper command (robot).
+    args: [position]
+    habitats: [robot]
+  - id: estop
+    meaning: Software mirror of stop. Does not replace PLC STO.
+    args: []
+
+speech:
+  - id: speak
+    meaning: Normal address to the user.
+  - id: whisper
+    meaning: Low-salience hint. Alias: whisper_hint.
+    aliases: [whisper_hint]
+  - id: announce
+    meaning: High-salience status, including safety speech.
+  - id: silent
+    meaning: No vocalization this cycle.
+
+# Semantic affect. Skin maps these onto motion+speech. Not a third authority lane.
+expression:
+  - id: acknowledge
+    default_motion: idle_in_region
+    default_speech: speak
+    params: [valence]
+  - id: listen
+    default_motion: idle_in_region
+    default_speech: silent
+  - id: think
+    default_motion: servo_orbit
+    default_speech: silent
+  - id: celebrate
+    default_motion: smooth_glide
+    default_speech: announce
+  - id: reassure
+    default_motion: idle_in_region
+    default_speech: speak
+  - id: confused
+    default_motion: idle_in_region
+    default_speech: whisper
+  - id: approach_user
+    default_motion: approach
+    default_speech: silent
