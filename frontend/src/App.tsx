@@ -58,7 +58,7 @@ function App() {
   const location = useLocation();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [authenticationOutcome, setAuthenticationOutcome] = useState<AuthenticationOutcome | null>(null);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(() => Boolean(authStore.getToken()));
 
   useEffect(() => {
     const loadCustomer = async () => {

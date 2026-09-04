@@ -31,7 +31,13 @@ export const Orb: React.FC<{
       onClick={onClick}
     >
       <img className="ow-v2-orb-skin-image" src={skinSrc} alt="Website ORB visual representation" draggable={false} />
-      <div className="ow-v2-orb-core-pulse" />
+      <div className="ow-v2-orb-core-pulse" aria-hidden="true">
+        <span className="ow-v2-orb-core-recess" />
+        <span className="ow-v2-orb-core-fold ow-v2-orb-core-fold-one" />
+        <span className="ow-v2-orb-core-fold ow-v2-orb-core-fold-two" />
+        <span className="ow-v2-orb-core-fold ow-v2-orb-core-fold-three" />
+        <span className="ow-v2-orb-core-nucleus" />
+      </div>
     </button>
   );
 };

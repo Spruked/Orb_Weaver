@@ -273,7 +273,7 @@ const readAmbientVantagePreference = (): AmbientVantagePreference | null => {
 };
 
 const startupGreetingText = (): string => {
-  return "Hi, I'm Weaver. Welcome to ORB Weaver. I'm going to show you how I listen, understand this site, and guide with verified targets.";
+  return "Hello. I am Weaver, the Orb Weaver Website Assistant. I can help you with anything you need. I am not a chatbot. I make this website intelligent, so you can find things easier, navigate faster, process your orders quicker, and resolve issues seamlessly. Just call me Weaver. Feel free to ask a question in your normal way and I will answer. Let's get started.";
 };
 
 const initialStartupDiagnostics = (): StartupDiagnostics => ({
@@ -1156,9 +1156,11 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const playLocalPresence = useCallback(async () => {
     await presence.start({
-      x: [0, 3, -2, 1, 0],
-      y: [0, -4, 2, -1, 0],
-      rotate: [0, 1.2, -0.8, 0],
+      // Keep the shell anchored to its guided path. The core has its own
+      // living current; translating this whole layer makes the orb visibly
+      // tick down-left each time the ambient loop restarts it.
+      scale: [1, 1.008, 0.997, 1.004, 1],
+      rotate: [0, 0.35, -0.2, 0],
       transition: {
         duration: 5 + Math.random() * 4,
         ease: "easeInOut",

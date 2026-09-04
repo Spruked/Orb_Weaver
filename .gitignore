@@ -91,6 +91,7 @@ data/tts_cache/
 
 # Audio cache/content generated locally.
 *.wav
+!frontend/public/orb/voice/weaver-showroom-intro-am-michael.wav
 
 # Legacy Orb Assistant learned-memory locations. These paths must not be
 # recreated; the migration tool moves their contents into the one root vault.

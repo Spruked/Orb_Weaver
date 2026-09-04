@@ -6,6 +6,8 @@ function defaultApiBaseUrl() {
   const pairedApiPorts: Record<string, string> = {
     '16510': '16500',
     '16610': '16600',
+    '16666': '19667',
+    '16667': '19667',
     '16777': '16776',
   };
   const isLocalOrPrivateHost =
@@ -25,10 +27,29 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || defaultApiBaseUrl();
 const TOKEN_KEY = 'orb_weaver_customer_token';
 const ORB_RECONNECT_MESSAGE = 'I am reconnecting to my response service. Please try again in a moment.';
 
+// A Website ORB workspace is intentionally not a remembered browser login.
+// Keep the token only for the active in-page session and remove the legacy
+// persistent token as soon as the application loads.
+let activeCustomerToken: string | null = null;
+if (typeof window !== 'undefined') {
+  try {
+    window.localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // Storage can be unavailable in hardened or private browser contexts.
+  }
+}
+
 export const authStore = {
-  getToken: () => localStorage.getItem(TOKEN_KEY),
-  setToken: (token: string) => localStorage.setItem(TOKEN_KEY, token),
-  clearToken: () => localStorage.removeItem(TOKEN_KEY)
+  getToken: () => activeCustomerToken,
+  setToken: (token: string) => { activeCustomerToken = token; },
+  clearToken: () => {
+    activeCustomerToken = null;
+    try {
+      window.localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      // The in-memory session is already cleared.
+    }
+  }
 };
 
 export class ApiError extends Error {

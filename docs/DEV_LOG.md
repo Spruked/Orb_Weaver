@@ -6,6 +6,70 @@ Update this file after meaningful code, configuration, runtime, testing, or doct
 
 ---
 
+## 2026-09-03 — Website ORB Startup Splash / Voice Regression (in progress)
+
+### Development-port directive
+
+* The isolated development port pair used before this note was frontend `16610` and API `16600`.
+* The requested frontend development port was subsequently updated to `16667`; use `16667` for the isolated frontend and `19667` for the isolated API from now on.
+* Do not use or disrupt the reviewed runtime on frontend `16510` and API `16500`.
+
+### Follow-up — splash observation and login persistence
+
+* Screenshot evidence from the reviewed site shows the older `Audio presentation unavailable.` splash state. That exact text is from the pre-repair bundle; the current source's audio-error path releases the gate and the autoplay-blocked path offers `Start with Weaver`.
+* The observed `Loading account...` flash and automatic account restoration came from `authStore` persisting `orb_weaver_customer_token` in browser `localStorage` and `App.tsx` checking it at every load.
+* Changed `frontend/src/services/api.ts` to clear the legacy stored token on application load and retain a token only in module memory for the active page session. A reload, new tab, or browser restart now requires an explicit login.
+* Changed `frontend/src/App.tsx` so an unauthenticated visitor does not render the `Loading account...` screen while no active in-memory token exists.
+* Added the mandated local port pairing `16666` frontend -> `19667` API in the development API resolver.
+* Restarted the isolated source frontend successfully at `http://127.0.0.1:16667`, configured for API `http://127.0.0.1:19667`. Frontend tests remain 20/20 passing.
+* Clarified the first-visit autoplay-blocked message and separated the `Start with Weaver` control from the status text. Audible startup must be visitor-initiated when the browser rejects automatic playback.
+* Measured the intro WAV at 23.225 seconds. The prior caption cues ended at 30.575 seconds, making the final captions substantially late. Replaced the cue boundaries with measured speech/silence boundaries; `Just call me Weaver` now begins at 16.374s and `Let's get started` at 21.632s.
+* Updated the active ORB skin's inner core: its blue/white current now drifts while idle and becomes a brighter moving/pulsing blue-white bloom during actual voice playback. The speaking animation is gated by the existing `speaking` voice state.
+* Removed the whole-orb `x`/`y` oscillation from the ambient presence layer. It was launched before and after each ambient glide and caused the reported periodic down-left tick. Ambient presence is now centered scale/rotation only; guided travel remains the only source of ORB position changes.
+* The first core-motion pass was too subtle over the image skin. Reworked it into three high-contrast, clipped blue/white current layers that visibly rotate and contract/expand toward the center, producing the requested alive, folding-in-on-itself motion while the outer shell stays anchored.
+* Follow-up visual correction: the layered current still read as a surface reflection. Rebuilt the center as an opaque, recessed blue cavity with internal rotating currents and a separately moving white nucleus; the motion now has a foreground, middle current, and visibly deeper center rather than an overlay-only sheen.
+
+### Context reviewed
+
+* Reviewed the current Website ORB architecture, runtime topology, gold-master migration source, voice replication report, pointer runtime model, live-pointer validation doctrine, current handoff notes, and the active frontend/backend startup path.
+* The root-mounted public runtime remains `frontend/src/index.tsx` -> `frontend/src/landing/AutonomousOrb.tsx`; `WebsiteFloatingOrb.tsx` and `orb-client/orb-mount.ts` are not the live Website ORB path.
+
+### Diagnosis
+
+* `LandingPage.tsx` still contained the intended first-encounter splash and prerecorded Kokoro `am_michael` introduction asset.
+* The regression was browser audible-autoplay policy: an automatic `HTMLAudioElement.play()` rejection either left the old gate open forever or, in the pre-existing uncommitted recovery change, immediately dismissed the splash without speaking the scripted introduction.
+* Startup readiness previously started only after the intro audio ended, reducing the splash's ability to hide runtime warmup.
+
+### Implemented so far
+
+* Preserved the existing first-encounter storage keys and deterministic `?orbStartupReset=1` reset method.
+* Changed the autoplay-blocked state into an explicit `Start with Weaver` visitor gesture, which retries the same scripted audio rather than silently skipping speech.
+* Kept hard media failures non-blocking so a missing/corrupt asset cannot trap the visitor on the cover.
+* Started the governed `/api/orb/startup-readiness` warmup concurrently with the splash and made the transition await its already-running result.
+* Added `STARTUP_WARMUP_STARTED`, `STARTUP_WARMUP_READY`, and `STARTUP_WARMUP_BLOCKED` runtime events for acceptance evidence.
+
+### Verification in progress
+
+* `git diff --check` passed after the startup changes.
+* An initial dev-log read was accidentally issued from `frontend/`; no test executed in that command. Corrected to repository-root paths before continuing.
+* `npm run typecheck` passed.
+* The first production build reached the optimized compilation stage, then found a `WebsiteOrbStartupReadiness` TypeScript index-signature mismatch in the new warmup ref. The result is normalized at the API boundary now; the build is being rerun.
+* Playwright's browser acceptance is host-blocked: no system Chromium is installed, and the installed Playwright release will not download Chromium for Ubuntu 26.04. No browser pass will be claimed until a compatible browser is available.
+* The corrected source build passed (only pre-existing `AutonomousOrb`/LiDAR lint warnings remain). `npm run typecheck` and all 20 frontend Jest tests passed.
+* The active local service's `POST /api/orb/startup-readiness` returned `WARMING`: Kokoro / `am_michael` synthesis works; local LLM and Faster Whisper are unreachable; Site World readiness is false; governance fails because its image lacks `/app/artifacts/inculcation.md`.
+* The active local service's `POST /api/orb/website-text` returns HTTP 500 for the same missing foundational-standard file. Docker logs supply the traceback. Source repair: `Dockerfile` now copies `artifacts/` to `/app/artifacts`; the running reviewed container was not rebuilt or restarted.
+* The live API returns a six-record, root-only owner-approved map with `POINTER_RECOVERY_REQUIRED` (`stable_pointer_floor_not_met`). It covers the suite logo, voice-orientation text, Preflight, and Dashboard only; map provenance fields are null. Marketplace, Diagnostics, Dock Station, Download, and Reports have no resolvable PlotRecord.
+* The final production source build passed; the new landing startup warning is gone. Existing `AutonomousOrb`/LiDAR lint warnings remain unchanged.
+* Pointer inspection confirms the public mount fetches `/api/orb/pointer-map`, but the returned map is not a fresh crawler artifact: `backend/main.py` merges the manual `ORB_WEAVER_SHOWCASE_POINTERS` overrides into any stored map. The current response is therefore manually authored owner-approved showcase data, not a current full Orb Weaver crawl map.
+* Current runtime resolution is same-route only (`findPointerRecordForIntent` and `findPointerRecordById` reject another `page_route`). It uses a scoped semantic locator and text/tag identity check, plus final live verification before motion and Ping; content-fingerprint, accessibility-role/name, and localized visual recovery are not runtime fallback tiers. Cross-page travel, clicking, and action execution are not implemented by this mount.
+* The existing target-validation suite protects the working semantic path: 8 tests cover identity match, stale/mismatched locator rejection, policy rejection, competing selector identity resolution, and scoped-locator containment. The full frontend suite is 20/20 passing.
+* Aligned `AutonomousOrb`'s backend-TTS recovery script with the canonical Landing splash copy, so a genuine prerecorded-audio failure uses the same existing Kokoro route and does not change Weaver's startup message. TypeScript and `git diff --check` pass after this alignment.
+* The isolated source frontend serves the checked-in intro asset at `/orb/voice/weaver-showroom-intro-am-michael.wav` with HTTP 200 / `audio/wav` (1,114,844 bytes). This confirms the source server can load the intended prerecorded voice asset; audible playback/caption sequencing still requires a compatible browser acceptance environment.
+* All seven requested visitor-style text questions were sent to the active local `/api/orb/website-text` endpoint with TTS disabled. Each returned HTTP 500 / `Internal Server Error`, caused by the same missing `/app/artifacts/inculcation.md` image file. Therefore none can be counted as an answer, guide, Point/Ping, travel, navigation, or action pass.
+* Next: deployment of the source Dockerfile repair and restoration of the required local LLM/STT/site-world services are needed before a full browser acceptance can pass. No reviewed service was restarted, rebuilt, committed, pushed, or deployed.
+
+---
+
 ## 2026-07-30 — Website ORB CCO Runtime Trace and Site Learning Loop
 
 ### Commercial stance
