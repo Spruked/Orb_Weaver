@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field, ValidationError
 
+from app.agency import agency_contract_status
+
 logger = logging.getLogger('orb.telemetry')
 
 router = APIRouter(prefix='/ws', tags=['orb-telemetry'])
@@ -84,6 +86,12 @@ class OrbTelemetryManager:
 
 
 telemetry_manager = OrbTelemetryManager()
+
+
+@router.get('/agency-status')
+async def agency_status_endpoint():
+  """Read-only agency-contract and ORB telemetry health for the owner dashboard."""
+  return agency_contract_status(telemetry_manager.get_connection_count())
 
 
 @router.websocket('/orb-pointer')
