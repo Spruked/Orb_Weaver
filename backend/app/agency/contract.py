@@ -60,10 +60,10 @@ def load_primitive_registry(path: Path = PRIMITIVES_PATH) -> Dict[str, Any]:
         if not line or line.startswith("#"):
             continue
         if line.startswith("registry_version:"):
-            registry["registry_version"] = line.split(":", 1)[1].strip().strip('"\'')
+            registry["registry_version"] = line.split(":", 1)[1].strip().strip("\"'")
             continue
         if line.startswith("schema:"):
-            registry["schema"] = line.split(":", 1)[1].strip().strip('"\'')
+            registry["schema"] = line.split(":", 1)[1].strip().strip("\"'")
             continue
         if line in {"motion:", "speech:", "expression:"}:
             section = line[:-1]
