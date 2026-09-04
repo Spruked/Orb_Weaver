@@ -14,13 +14,23 @@ services:
     environment:
       - DATABASE_URL=sqlite:////app/vault_system/databases/orb_weaver.db
       - REDIS_URL=redis://redis:6379/0
-      - LOCAL_LLM_URL=${LOCAL_LLM_URL:-http://host.docker.internal:16520/api/generate}
+      # The backend calls the in-container gateway. The gateway alone reaches
+      # host/WSL model providers through the explicit provider URLs below.
+      - LOCAL_LLM_URL=${LOCAL_LLM_URL:-http://127.0.0.1:16520/api/generate}
       - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-orb-auto}
       - LOCAL_LLM_TIMEOUT_SECONDS=${LOCAL_LLM_TIMEOUT_SECONDS:-60}
       - LOCAL_LLM_KEEP_ALIVE=${LOCAL_LLM_KEEP_ALIVE:-30m}
       - LOCAL_LLM_NUM_CTX=${LOCAL_LLM_NUM_CTX:-512}
       - LOCAL_LLM_NUM_PREDICT=${LOCAL_LLM_NUM_PREDICT:-32}
       - LOCAL_LLM_TEMPERATURE=${LOCAL_LLM_TEMPERATURE:-0.35}
+      - LLAMACPP_BASE_URL=${LLAMACPP_BASE_URL:-http://host.docker.internal:8080/v1}
+      - LLAMACPP_MODEL=${LLAMACPP_MODEL:-auto}
+      - APHRODITE_BASE_URL=${APHRODITE_BASE_URL:-http://host.docker.internal:2242/v1}
+      - APHRODITE_MODEL=${APHRODITE_MODEL:-auto}
+      - TENSORRT_LLM_BASE_URL=${TENSORRT_LLM_BASE_URL:-http://host.docker.internal:8000/v1}
+      - TENSORRT_LLM_MODEL=${TENSORRT_LLM_MODEL:-auto}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:1.5b}
       # Development-only frontier ORB observer. Replace this placeholder with the direct Google AI Studio key before rebuilding locally.
       - GEMINI_API_KEY=REPLACE_WITH_YOUR_GEMINI_API_KEY
       - ORB_WEAVER_VAULT_ROOT=/app/vault_system

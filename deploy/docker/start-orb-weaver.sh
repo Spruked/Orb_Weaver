@@ -6,12 +6,16 @@ set -eu
 : "${DATABASE_URL:=sqlite:////app/vault_system/databases/orb_weaver.db}"
 : "${ORB_TTS_CACHE_DIR:=$ORB_WEAVER_VAULT_ROOT/runtime/tts_cache}"
 : "${CHROME_DEVTOOLS_OUTPUT_ROOT:=$ORB_WEAVER_VAULT_ROOT/runtime/browser_reviews}"
+: "${ORB_INFERENCE_GATEWAY_HOST:=127.0.0.1}"
+: "${ORB_INFERENCE_GATEWAY_PORT:=16520}"
 
 export ORB_WEAVER_VAULT_ROOT
 export ORB_WEAVER_SUBSTRATE_ROOT
 export DATABASE_URL
 export ORB_TTS_CACHE_DIR
 export CHROME_DEVTOOLS_OUTPUT_ROOT
+export ORB_INFERENCE_GATEWAY_HOST
+export ORB_INFERENCE_GATEWAY_PORT
 
 mkdir -p \
     "$ORB_WEAVER_VAULT_ROOT/clients" \
@@ -23,6 +27,7 @@ mkdir -p \
     "$ORB_WEAVER_VAULT_ROOT/schemas" \
     "$ORB_WEAVER_VAULT_ROOT/runtime/tts_cache" \
     "$ORB_WEAVER_VAULT_ROOT/runtime/browser_reviews" \
+    "$ORB_WEAVER_VAULT_ROOT/runtime/inference_gateway" \
     "$ORB_WEAVER_VAULT_ROOT/runtime/state" \
     "$ORB_WEAVER_VAULT_ROOT/runtime/logs" \
     "$ORB_WEAVER_VAULT_ROOT/runtime/backend_data_compat"
@@ -35,16 +40,23 @@ ln -s "$ORB_WEAVER_VAULT_ROOT/reports" /app/backend/report_compiler
 
 cd /app/backend
 
+# The Website ORB calls this local boundary.  Its providers remain host/WSL
+# services and are configured through host.docker.internal in Compose.
+uvicorn inference_gateway:app --host "$ORB_INFERENCE_GATEWAY_HOST" --port "$ORB_INFERENCE_GATEWAY_PORT" &
+GATEWAY_PID="$!"
+
 uvicorn main:app --host 0.0.0.0 --port 16500 &
 BACKEND_PID="$!"
 
 nginx -g "daemon off;" &
 FRONTEND_PID="$!"
 
-trap 'kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true' INT TERM
+trap 'kill "$GATEWAY_PID" "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true' INT TERM
 
-while kill -0 "$BACKEND_PID" 2>/dev/null && kill -0 "$FRONTEND_PID" 2>/dev/null; do
+while kill -0 "$GATEWAY_PID" 2>/dev/null \
+   && kill -0 "$BACKEND_PID" 2>/dev/null \
+   && kill -0 "$FRONTEND_PID" 2>/dev/null; do
     sleep 1
 done
 
-kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
+kill "$GATEWAY_PID" "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
