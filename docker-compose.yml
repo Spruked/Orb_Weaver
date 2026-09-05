@@ -23,7 +23,10 @@ services:
       - LOCAL_LLM_NUM_CTX=${LOCAL_LLM_NUM_CTX:-512}
       - LOCAL_LLM_NUM_PREDICT=${LOCAL_LLM_NUM_PREDICT:-32}
       - LOCAL_LLM_TEMPERATURE=${LOCAL_LLM_TEMPERATURE:-0.35}
-      - LLAMACPP_BASE_URL=${LLAMACPP_BASE_URL:-http://host.docker.internal:8080/v1}
+      - ORB_INFERENCE_MAX_PROMPT_CHARS=${ORB_INFERENCE_MAX_PROMPT_CHARS:-100000}
+      # The installed Windows LlamaServer is exposed to WSL/Docker on port
+      # 8009. Override WINDOWS_WSL_HOST_IP after a WSL network reset.
+      - LLAMACPP_BASE_URL=${LLAMACPP_BASE_URL:-http://${WINDOWS_WSL_HOST_IP:-172.18.176.1}:8009/v1}
       - LLAMACPP_MODEL=${LLAMACPP_MODEL:-auto}
       - APHRODITE_BASE_URL=${APHRODITE_BASE_URL:-http://host.docker.internal:2242/v1}
       - APHRODITE_MODEL=${APHRODITE_MODEL:-auto}

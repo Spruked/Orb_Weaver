@@ -14,6 +14,19 @@ Update this file after meaningful code, configuration, runtime, testing, or doct
 * The requested frontend development port was subsequently updated to `16667`; use `16667` for the isolated frontend and `19667` for the isolated API from now on.
 * Do not use or disrupt the reviewed runtime on frontend `16510` and API `16500`.
 
+### 2026-09-04 — Persistent Landing Tour development (in progress)
+
+* Do all remaining journey iteration in the isolated runtime: source frontend `http://127.0.0.1:16667` -> dev API `http://127.0.0.1:19667`. Do not rebuild or restart reviewed `16510/16500` while iterating.
+* Restored the isolated runtime with a hot-reload React source server on `16667`, a dev-only API container on `19667` with `/app/backend` mounted from source, and a dev-only inference gateway on `19620`. The dev gateway reaches the already-working Windows Qwen service at `172.18.176.1:8009`; dev API startup readiness proves Faster Whisper, governed cognition, Kokoro, pointer mapping, and governance. `SITE_WORLD_READY` remains false only because a fresh customer crawl belongs to the forthcoming Preflight step.
+* Verified the source frontend bundle resolves API traffic to `http://127.0.0.1:19667`; it does not target reviewed `16500`.
+* In `frontend/src/landing/AutonomousOrb.tsx`, replaced the post-introduction idle first-encounter ending with persisted `WebsiteJourneyState`: `LANDING_TOUR`, `PREFLIGHT_PENDING`, and `PREFLIGHT`. State is stored under `orbweaver-website-journey`, survives reload/route handoff, resets only through the existing startup reset, and marks `/preflight` only after the route has actually mounted.
+* The landing tour is a live generated conversation, not fixed narration. It live-verifies and scrolls the actual landing sections, asks the existing governed Website ORB path to explain each section conversationally, and permits relevant page copy to be quoted or read when useful. The current Site World remains the answer authority for the whole site; the current DOM section is only what Weaver is showing.
+* Reused existing `guideToPointerRecord` rather than a slideshow. It verifies the live DOM target, scrolls as necessary, glides Weaver, and Point/Pings the verified `watch_weaver_guide` and `run-free-preflight` targets. The final target leads through real `window.location.assign('/preflight')`, not timed/fake navigation.
+* A visitor interruption aborts only the active landing-tour segment, retains its persisted index, sends the visitor's normal recorded-audio turn through Faster Whisper -> governed resolver -> Kokoro, then schedules the saved tour segment to resume. No microphone button was added or changed. The existing lower-right `Volume2`/`VolumeX` speaker/audio-unlock control remains intact and is still separate from recording.
+* `npm run typecheck` and `git diff --check` pass after the landing-tour changes.
+* Dev Chromium evidence: the page loaded from `16667`, mounted Weaver and the speaker control, and all observed API requests went to `19667` (`startup-readiness`, capabilities, pointer map, page capsule, and TTS). The headless run did not have a real user gesture/microphone permission, so the splash stayed at the expected startup gate (`permission_state: blocked`); no landing-tour, interruption/resumption, browser-audible, or Preflight completion may be claimed yet.
+* One production rebuild was performed before this development-port directive was recovered. Do not repeat it during this packet. Reviewed `16510/16500` are now left running and untouched.
+
 ### Follow-up — splash observation and login persistence
 
 * Screenshot evidence from the reviewed site shows the older `Audio presentation unavailable.` splash state. That exact text is from the pre-repair bundle; the current source's audio-error path releases the gate and the autoplay-blocked path offers `Start with Weaver`.

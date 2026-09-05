@@ -26,7 +26,10 @@ class ChatCompletionRequest(BaseModel):
 
 class OllamaGenerateRequest(BaseModel):
     model: str = "orb-auto"
-    prompt: str = Field(default="", max_length=50000)
+    # Website ORB turns carry governed Site World and page-capsule context.
+    # This remains below the configured provider budget while preventing
+    # FastAPI from rejecting a valid governed turn before routing it.
+    prompt: str = Field(default="", max_length=100000)
     system: Optional[str] = Field(default=None, max_length=20000)
     stream: bool = False
     keep_alive: Optional[Any] = None

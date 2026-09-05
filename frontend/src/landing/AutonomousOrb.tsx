@@ -71,6 +71,14 @@ type FirstEncounterFlag =
   | "relevant_continuation_complete"
   | "controller_handoff_complete";
 type FirstEncounterState = Record<FirstEncounterFlag, boolean>;
+type WebsiteJourneyStage = "LANDING_TOUR" | "PREFLIGHT_PENDING" | "PREFLIGHT";
+type LandingTourSegmentId = "opening" | "host_proof" | "relationships" | "website_orb" | "weave" | "preflight";
+type WebsiteJourneyState = {
+  version: 1;
+  stage: WebsiteJourneyStage;
+  nextSegmentIndex: number;
+  currentSegment: LandingTourSegmentId | null;
+};
 type PointerWaltzPhase = "ACQUIRE" | "LAUNCH" | "TRAVEL" | "APPROACH" | "STANCE" | "POINT" | "PING" | "COMPLETE" | "DISSOLVE" | "RECOVERY";
 type MorbWorkRole = "target" | "path" | "comparison" | "sequence" | "alternative" | "relationship";
 type MorbPointerState = {
@@ -117,6 +125,7 @@ const REST_AFTER_INACTIVITY_MS = 15 * 60 * 1000;
 const ACTIVE_ORB_OPACITY = 0.9;
 const REST_ORB_OPACITY = 0.55;
 const FIRST_ENCOUNTER_STORAGE_KEY = "orbweaver-first-encounter-state";
+const WEBSITE_JOURNEY_STORAGE_KEY = "orbweaver-website-journey";
 const STARTUP_GREETING_SESSION_KEY = "orbweaver-startup-greeting-played";
 const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
 const LANDING_SPLASH_COMPLETE_SESSION_KEY = "orbweaver-landing-splash-complete";
@@ -159,6 +168,12 @@ const EMPTY_FIRST_ENCOUNTER_STATE: FirstEncounterState = {
   responsive_guidance_complete: false,
   relevant_continuation_complete: false,
   controller_handoff_complete: false,
+};
+const INITIAL_WEBSITE_JOURNEY_STATE: WebsiteJourneyState = {
+  version: 1,
+  stage: "LANDING_TOUR",
+  nextSegmentIndex: 0,
+  currentSegment: null,
 };
 const MORB_SIZE = 35;
 const MORB_HALF = MORB_SIZE / 2;
@@ -211,6 +226,25 @@ const readFirstEncounterState = (): FirstEncounterState => {
     return { ...EMPTY_FIRST_ENCOUNTER_STATE, ...JSON.parse(stored) };
   } catch {
     return { ...EMPTY_FIRST_ENCOUNTER_STATE };
+  }
+};
+
+const readWebsiteJourneyState = (): WebsiteJourneyState => {
+  try {
+    const stored = window.sessionStorage.getItem(WEBSITE_JOURNEY_STORAGE_KEY);
+    if (!stored) return { ...INITIAL_WEBSITE_JOURNEY_STATE };
+    const parsed = JSON.parse(stored) as Partial<WebsiteJourneyState>;
+    if (parsed.version !== 1 || !["LANDING_TOUR", "PREFLIGHT_PENDING", "PREFLIGHT"].includes(parsed.stage || "")) {
+      return { ...INITIAL_WEBSITE_JOURNEY_STATE };
+    }
+    return {
+      version: 1,
+      stage: parsed.stage,
+      nextSegmentIndex: Math.max(0, Number(parsed.nextSegmentIndex) || 0),
+      currentSegment: parsed.currentSegment || null,
+    };
+  } catch {
+    return { ...INITIAL_WEBSITE_JOURNEY_STATE };
   }
 };
 
@@ -373,6 +407,9 @@ export const AutonomousOrb: React.FC<Props> = ({
   const firstEncounterStateRef = useRef<FirstEncounterState>(readFirstEncounterState());
   const firstEncounterVisitorTurnRef = useRef(0);
   const firstEncounterRunningRef = useRef(false);
+  const websiteJourneyRef = useRef<WebsiteJourneyState>(readWebsiteJourneyState());
+  const landingTourRunningRef = useRef(false);
+  const landingTourAbortControllerRef = useRef<AbortController | null>(null);
   const handsFreeEnabledRef = useRef(false);
   const [pulse, setPulse] = useState<PulseState>(null);
   const [voiceState, setVoiceState] = useState<OrbVoiceState>("idle");
@@ -421,6 +458,14 @@ export const AutonomousOrb: React.FC<Props> = ({
     const next = { ...firstEncounterStateRef.current, [flag]: true };
     firstEncounterStateRef.current = next;
     window.sessionStorage.setItem(FIRST_ENCOUNTER_STORAGE_KEY, JSON.stringify(next));
+  }, []);
+
+  const saveWebsiteJourney = useCallback((patch: Partial<WebsiteJourneyState>) => {
+    const next = { ...websiteJourneyRef.current, ...patch };
+    websiteJourneyRef.current = next;
+    window.sessionStorage.setItem(WEBSITE_JOURNEY_STORAGE_KEY, JSON.stringify(next));
+    emitOrbRuntimeEvent("website_journey_state", next);
+    return next;
   }, []);
 
   const firstEncounterComplete = useCallback(() => {
@@ -1550,91 +1595,145 @@ export const AutonomousOrb: React.FC<Props> = ({
     return result;
   }, [activeOrbContext?.project_id, contextTargetUrl, speakWithGeneratedAudio]);
 
-  const runFirstEncounterChoreography = useCallback(async () => {
-    if (
-      !isPublicLandingExperience() ||
-      firstEncounterRunningRef.current ||
-      firstEncounterComplete() ||
-      onboardingSafeMode
-    ) {
-      return;
+  const scrollToLandingTourSection = useCallback(async (sectionId: string) => {
+    const section = document.getElementById(sectionId);
+    if (!section) {
+      emitOrbRuntimeEvent("LANDING_TOUR_BLOCKED", { reason: "section_missing", sectionId });
+      return false;
     }
-    firstEncounterRunningRef.current = true;
+    section.scrollIntoView({ behavior: "smooth", block: "center" });
+    await wait(720);
+    const rect = section.getBoundingClientRect();
+    const visible = rect.bottom > HEADER_SAFE && rect.top < window.innerHeight - 24;
+    if (!visible) {
+      section.scrollIntoView({ behavior: "auto", block: "center" });
+      await wait(90);
+    }
+    const verifiedRect = section.getBoundingClientRect();
+    const verified = verifiedRect.bottom > HEADER_SAFE && verifiedRect.top < window.innerHeight - 24;
+    emitOrbRuntimeEvent(verified ? "landing_tour_section_verified" : "LANDING_TOUR_BLOCKED", {
+      sectionId,
+      reason: verified ? undefined : "section_not_visible_after_scroll",
+    });
+    if (verified) bumpWorldStateSequence();
+    return verified;
+  }, [bumpWorldStateSequence]);
+
+  const runLandingTour = useCallback(async () => {
+    const journey = websiteJourneyRef.current;
+    if (!isPublicLandingExperience() || landingTourRunningRef.current || onboardingSafeMode || journey.stage !== "LANDING_TOUR") return;
+
+    const segments: Array<{
+      id: LandingTourSegmentId;
+      sectionId: string;
+      phase: WebsiteOrbExperienceContext["phase"];
+      sectionContext: string;
+      targetId?: string;
+      intent?: string;
+    }> = [
+      {
+        id: "opening",
+        sectionId: "beat-1",
+        phase: "orientation",
+        sectionContext: "The visitor is at the opening statement that website intelligence is woven, not merely added. Explain the opening in a natural, welcoming way. State clearly that the visitor may interrupt Weaver at any time, ask a question in normal language, and Weaver will answer before returning to this tour position. Do not read the visible words aloud or ask the visitor to choose a tour.",
+      },
+      {
+        id: "host_proof",
+        sectionId: "weaver-first-encounter",
+        targetId: "watch_weaver_guide",
+        intent: "Demonstrate Weaver's verified visual guidance",
+        phase: "agency",
+        sectionContext: "The visitor is at the live Weaver guidance explanation. Explain that Weaver verifies a live target before moving, pointing, and Pinging it, and is demonstrating that behavior now. Keep the explanation conversational rather than reading this section verbatim.",
+      },
+      {
+        id: "relationships",
+        sectionId: "beat-3",
+        phase: "understanding",
+        sectionContext: "The visitor is at the section about websites being relationships, including products, services, policies, questions, customer journeys, and decisions. Explain why relationship-aware knowledge helps a visitor move forward. Do not recite the page copy.",
+      },
+      {
+        id: "website_orb",
+        sectionId: "beat-6",
+        phase: "understanding",
+        sectionContext: "The visitor has reached the Website ORB reveal. Explain, in plain language, that a Website ORB is site-specific intelligence that can explain, navigate, and guide from verified knowledge about the customer's own business. Do not make unsupported claims or read the heading aloud.",
+      },
+      {
+        id: "weave",
+        sectionId: "beat-9",
+        phase: "relevant_continuation",
+        sectionContext: "The visitor is at the 28-Weave assembly explanation. Explain that the process examines actual site structure, routes, content, accessibility, search, and customer paths to produce usable intelligence, not a disconnected audit. Keep it concise and conversational, not a reading of this dense section.",
+      },
+      {
+        id: "preflight",
+        sectionId: "beat-10",
+        targetId: "run-free-preflight",
+        intent: "Begin the real free Preflight route",
+        phase: "agency",
+        sectionContext: "The visitor has reached the real Free Preflight action. Explain that before any purchase, Orb Weaver will examine their current website with them and use that evidence to explain what their Website ORB could know. Tell them Weaver is taking them into Preflight now. Do not offer a choice or pretend this is a simulated route.",
+      },
+    ];
+
+    landingTourRunningRef.current = true;
+    const controller = new AbortController();
+    landingTourAbortControllerRef.current = controller;
+    emitOrbRuntimeEvent("landing_tour_started", { nextSegmentIndex: journey.nextSegmentIndex });
     try {
-      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-      await wait(80);
-      if (window.scrollY > 2) {
-        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-        await wait(80);
-      }
-      if (window.scrollY > 2) throw new Error("Walkthrough top-of-page position was not confirmed");
-      emitOrbRuntimeEvent("WALKTHROUGH_TOP_CONFIRMED");
-      bumpWorldStateSequence();
+      for (let index = journey.nextSegmentIndex; index < segments.length; index += 1) {
+        if (controller.signal.aborted) return;
+        const segment = segments[index];
+        saveWebsiteJourney({ currentSegment: segment.id, nextSegmentIndex: index });
+        const sectionVerified = await scrollToLandingTourSection(segment.sectionId);
+        if (!sectionVerified) throw new Error(`Landing tour could not verify ${segment.sectionId}`);
 
-      await runGeneratedAct(
-        "A first-time visitor has arrived and has not spoken yet.",
-        {
-          phase: "orientation",
-          objective: "Orient the visitor to natural voice turn-taking: they can speak normally, finish the thought, and pause so Weaver can respond.",
-          verification_state: "not_applicable",
-          demonstrated_capabilities: ["Kokoro voice is playing", "Faster Whisper microphone path is ready"],
-        },
-      );
-      markFirstEncounter("communication_orientation_complete");
-      await runGeneratedAct(
-        "The visitor is viewing the Orb Weaver home page before their first voice turn.",
-        {
-          phase: "understanding",
-          objective: "Demonstrate that Weaver understands this specific page and its useful visitor paths using live Site World and page context.",
-          verification_state: "not_applicable",
-          demonstrated_capabilities: ["current page context loaded", "Site World available"],
-        },
-      );
-      markFirstEncounter("understanding_complete");
+        const narration = async () => {
+          const result = await runGeneratedAct(
+            `Landing tour section reached: ${segment.sectionContext}`,
+            {
+              phase: segment.phase,
+              objective: "Give one short, natural spoken tour segment for this verified landing-page section. Explain rather than read it aloud. Maintain the host role and preserve the visitor's ability to interrupt with a question.",
+              verification_state: "verified",
+              demonstrated_capabilities: ["live landing-page section verification", "governed Website ORB reasoning", "Kokoro voice"],
+            },
+            controller,
+          );
+          const played = Boolean(result.spoken_output);
+          if (!played) throw new Error("Landing tour voice playback failed");
+        };
 
-      const hasPointerMap = await waitForPointerRecords();
-      const proofTarget = hasPointerMap ? findPointerRecordById("watch_weaver_guide") : null;
-      if (!proofTarget) {
-        emitOrbRuntimeEvent("WALKTHROUGH_BLOCKED", { reason: hasPointerMap ? "target_missing_on_route" : "pointer_map_unavailable" });
-        throw new Error("Walkthrough pointer target is not ready");
-      }
-      emitOrbRuntimeEvent("WALKTHROUGH_POINTER_READY", { targetId: proofTarget.target_id });
-      const guided = await guideToPointerRecord(proofTarget, "Demonstrate verified visual guidance");
-      if (!guided) {
-        emitOrbRuntimeEvent("WALKTHROUGH_BLOCKED", { reason: "live_target_verification_failed", targetId: proofTarget.target_id });
-        throw new Error("Walkthrough pointer target could not be verified");
-      }
-      markFirstEncounter("orientation_pointer_proof_complete");
+        if (segment.targetId) {
+          const hasPointerMap = await waitForPointerRecords();
+          const target = hasPointerMap ? findPointerRecordById(segment.targetId) : null;
+          if (!target) throw new Error(`Landing tour target ${segment.targetId} is unavailable`);
+          const [, guided] = await Promise.all([
+            narration(),
+            guideToPointerRecord(target, segment.intent || segment.sectionContext),
+          ]);
+          if (!guided) throw new Error(`Landing tour target ${segment.targetId} could not be verified`);
+        } else {
+          await narration();
+        }
 
-      await runGeneratedAct(
-        proofTarget
-          ? "The visual-guidance demo completed with a verified target."
-          : "The visual-guidance demo is waiting for its verified target.",
-        {
-          phase: "agency",
-          objective: "Establish agency after the startup introduction and invite a useful next action without making pointer readiness a prerequisite.",
-          verified_target_id: proofTarget?.target_id,
-          verified_target_label: proofTarget?.meaning,
-          verification_state: proofTarget ? "verified" : "not_applicable",
-          demonstrated_capabilities: proofTarget
-            ? ["optional live DOM target verification", "movement", "point", "ping", "neural voice"]
-            : ["neural voice", "startup readiness", "Site World explanation"],
-        },
-      );
-      markFirstEncounter("agency_complete");
-      setStatusTitle("Listening");
-      setStatusLine("Speak naturally, then pause.");
-      showStatus();
+        saveWebsiteJourney({ currentSegment: null, nextSegmentIndex: index + 1 });
+        emitOrbRuntimeEvent("landing_tour_segment_complete", { segmentId: segment.id, index });
+      }
+
+      saveWebsiteJourney({ stage: "PREFLIGHT_PENDING", currentSegment: "preflight", nextSegmentIndex: segments.length });
+      emitOrbRuntimeEvent("landing_tour_preflight_navigation", { route: "/preflight", targetId: "run-free-preflight" });
+      window.location.assign("/preflight");
     } catch (error) {
-      emitOrbRuntimeEvent("WALKTHROUGH_BLOCKED", { reason: error instanceof Error ? error.message : "unknown" });
-      setStatusTitle("First encounter paused");
-      setStatusLine(error instanceof Error ? error.message : "A required live proof is unavailable.");
+      if ((error as Error)?.name === "AbortError" || controller.signal.aborted) {
+        emitOrbRuntimeEvent("landing_tour_interrupted", { nextSegmentIndex: websiteJourneyRef.current.nextSegmentIndex });
+        return;
+      }
+      emitOrbRuntimeEvent("LANDING_TOUR_BLOCKED", { reason: error instanceof Error ? error.message : "unknown" });
+      setStatusTitle("Tour paused");
+      setStatusLine(error instanceof Error ? error.message : "A required live tour proof is unavailable.");
       showStatus(5200);
-      throw error;
     } finally {
-      firstEncounterRunningRef.current = false;
+      if (landingTourAbortControllerRef.current === controller) landingTourAbortControllerRef.current = null;
+      landingTourRunningRef.current = false;
     }
-  }, [bumpWorldStateSequence, findPointerRecordById, firstEncounterComplete, guideToPointerRecord, markFirstEncounter, onboardingSafeMode, runGeneratedAct, showStatus, waitForPointerRecords]);
+  }, [findPointerRecordById, guideToPointerRecord, onboardingSafeMode, runGeneratedAct, saveWebsiteJourney, scrollToLandingTourSection, showStatus, waitForPointerRecords]);
 
   const processRecordedOrbAudio = useCallback(async (audio: Blob) => {
     markVisitorActivity();
@@ -1718,6 +1817,9 @@ export const AutonomousOrb: React.FC<Props> = ({
           markFirstEncounter("controller_handoff_complete");
         }
       }
+      if (websiteJourneyRef.current.stage === "LANDING_TOUR") {
+        window.setTimeout(() => void runLandingTour(), 360);
+      }
     } catch (error) {
       if ((error as Error)?.name === "AbortError") return;
       setStatusTitle("Voice reconnecting");
@@ -1733,7 +1835,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       }
       logVoice("finalized", turnId);
     }
-  }, [activeOrbContext?.project_id, contextTargetUrl, executeOrbControlAction, firstEncounterComplete, freezeOrbInPlace, guideFromRuntimeResult, logVoice, markFirstEncounter, markVisitorActivity, showStatus, speakRecovery, speakWithGeneratedAudio]);
+  }, [activeOrbContext?.project_id, contextTargetUrl, executeOrbControlAction, firstEncounterComplete, freezeOrbInPlace, guideFromRuntimeResult, logVoice, markFirstEncounter, markVisitorActivity, runLandingTour, showStatus, speakRecovery, speakWithGeneratedAudio]);
 
   const processRecognizedOrbText = useCallback(async (transcript: string) => {
     markVisitorActivity();
@@ -2026,7 +2128,11 @@ export const AutonomousOrb: React.FC<Props> = ({
     unlockAudio();
     if (voiceRequestInFlightRef.current || voiceState === "speaking") return;
 
-    if (startBrowserSpeechRecognition()) return;
+    // Website ORB voice is a single verifiable path: browser MediaRecorder →
+    // Faster Whisper → governed response → Kokoro WAV.  Browser speech
+    // recognition would bypass the recorded-audio proof and must not win the
+    // microphone turn merely because a browser exposes that API.
+    emitOrbRuntimeEvent("recorded_audio_stt_selected", { engine: "faster_whisper" });
 
     if (recorderRef.current) {
       stopOrbRecording(true);
@@ -2133,9 +2239,13 @@ export const AutonomousOrb: React.FC<Props> = ({
       setVoiceState("idle");
       showStatus(3600);
     }
-  }, [freezeOrbInPlace, logVoice, monitorRecordingSilence, playPulse, processRecordedOrbAudio, showStatus, startBrowserSpeechRecognition, stopOrbRecording, unlockAudio, voiceState]);
+  }, [freezeOrbInPlace, logVoice, monitorRecordingSilence, playPulse, processRecordedOrbAudio, showStatus, stopOrbRecording, unlockAudio, voiceState]);
 
   const interruptOrbSpeech = useCallback(() => {
+    // Keep the exact tour position in session state while the visitor takes
+    // the floor. The recorded-audio answer resumes it after this turn.
+    landingTourAbortControllerRef.current?.abort();
+    landingTourAbortControllerRef.current = null;
     activeVoiceAbortControllerRef.current?.abort();
     activeVoiceAbortControllerRef.current = null;
     voiceRequestInFlightRef.current = false;
@@ -2364,12 +2474,9 @@ export const AutonomousOrb: React.FC<Props> = ({
 
       if (!introAudioPlayed) return;
 
-      // Choreography is enrichment, never a gate on conversation.
-      try {
-        await runFirstEncounterChoreography();
-      } catch {
-        // The choreography reports its own status. Weaver must still listen.
-      }
+      // The introduction hands directly into the persistent Website ORB tour.
+      // Conversation remains available throughout; the tour is never an idle gate.
+      void runLandingTour();
     } else {
       updateStartupDiagnostics({ greeting_state: splashHandledGreeting || greetingAlreadyPlayed ? "skipped_session_once" : "waiting" });
       micReady = await requestStartupMicrophonePermission();
@@ -2377,13 +2484,9 @@ export const AutonomousOrb: React.FC<Props> = ({
       updateStartupDiagnostics({ orb_readiness_state: "ready" });
       emitOrbRuntimeEvent("orb_ready");
       if (onLanding && splashHandledGreeting && !greetingAlreadyPlayed) {
-        // Orb Weaver's showroom intro is owned by the splash, then flows
-        // directly into the existing first-encounter walkthrough.
-        try {
-          await runFirstEncounterChoreography();
-        } catch {
-          // Walkthrough enrichment must not prevent normal visitor mode.
-        }
+        // The splash owns the introduction, then the mounted ORB continues
+        // directly into the persistent landing tour.
+        void runLandingTour();
       }
     }
 
@@ -2394,7 +2497,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         void startOrbRecording();
       }, 420);
     }
-  }, [guideToPointerRecord, markFirstEncounter, onboardingSafeMode, prepareStartupVoice, requestStartupMicrophonePermission, runFirstEncounterChoreography, setGreetingActive, speak, speakRecovery, startOrbRecording, updateStartupDiagnostics, waitForStartupGate]);
+  }, [guideToPointerRecord, markFirstEncounter, onboardingSafeMode, prepareStartupVoice, requestStartupMicrophonePermission, runLandingTour, setGreetingActive, speak, speakRecovery, startOrbRecording, updateStartupDiagnostics, waitForStartupGate]);
 
   // Keep the mounted startup path pointed at the live sequence before mount
   // effects can call it.
@@ -2421,7 +2524,9 @@ export const AutonomousOrb: React.FC<Props> = ({
     window.sessionStorage.removeItem(LANDING_SPLASH_COMPLETE_SESSION_KEY);
     window.sessionStorage.removeItem(STARTUP_GREETING_SESSION_KEY);
     window.sessionStorage.removeItem(FIRST_ENCOUNTER_STORAGE_KEY);
+    window.sessionStorage.removeItem(WEBSITE_JOURNEY_STORAGE_KEY);
     firstEncounterStateRef.current = { ...EMPTY_FIRST_ENCOUNTER_STATE };
+    websiteJourneyRef.current = { ...INITIAL_WEBSITE_JOURNEY_STATE };
     startupVoicePreparationRef.current = null;
     startupAutoStartedRef.current = false;
     updateStartupDiagnostics(initialStartupDiagnostics());
@@ -2587,6 +2692,26 @@ export const AutonomousOrb: React.FC<Props> = ({
     }, 120);
     return () => window.clearTimeout(rebuild);
   }, [bumpWorldStateSequence, location.pathname]);
+
+  useEffect(() => {
+    const journey = websiteJourneyRef.current;
+    if (journey.stage === "PREFLIGHT_PENDING" && location.pathname === "/preflight") {
+      saveWebsiteJourney({ stage: "PREFLIGHT", currentSegment: null });
+      emitOrbRuntimeEvent("landing_tour_preflight_verified", { route: location.pathname });
+      return;
+    }
+    // A reload must not turn an already-started tour into an idle orb. Wait
+    // for the existing introduction ownership marker so this never races it.
+    if (
+      journey.stage === "LANDING_TOUR" &&
+      isPublicLandingExperience() &&
+      !onboardingSafeMode &&
+      window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1"
+    ) {
+      const resumeTimer = window.setTimeout(() => void runLandingTour(), 180);
+      return () => window.clearTimeout(resumeTimer);
+    }
+  }, [location.pathname, onboardingSafeMode, runLandingTour, saveWebsiteJourney]);
 
   useEffect(() => {
     let cancelled = false;

@@ -117,7 +117,7 @@ class GatewayConfig:
             scale_threshold=max(1, _env_int("ORB_INFERENCE_SCALE_THRESHOLD", 3)),
             health_ttl_seconds=max(0.5, _env_float("ORB_INFERENCE_HEALTH_TTL_SECONDS", 5.0)),
             allow_model_override=_env_bool("ORB_INFERENCE_ALLOW_MODEL_OVERRIDE", False),
-            max_prompt_chars=max(1000, _env_int("ORB_INFERENCE_MAX_PROMPT_CHARS", 24000)),
+            max_prompt_chars=max(1000, _env_int("ORB_INFERENCE_MAX_PROMPT_CHARS", 100000)),
             telemetry_path=telemetry_path,
             providers=providers,
         )

@@ -26,6 +26,17 @@ const INTRO_CAPTION_CUES = [
 type IntroAudioState = "preloading" | "playing" | "autoplay_blocked" | "error" | "warming" | "blocked";
 type StartupReadinessResult = { ready: boolean; error?: string; [key: string]: unknown };
 
+// A fresh customer crawl is not a prerequisite for Weaver to host Orb
+// Weaver's own landing page.  The opening only needs the proven live voice
+// path and the landing page's verified guidance map; Preflight later obtains
+// the visitor's site intelligence.
+const landingTourRuntimeReady = (readiness: StartupReadinessResult): boolean => {
+  if (readiness.ready) return true;
+  const proofs = readiness.proofs as Record<string, { ready?: boolean }> | undefined;
+  return ["STT_READY", "COGNITION_READY", "KOKORO_READY", "POINTER_READY", "GOVERNANCE_READY"]
+    .every((proof) => proofs?.[proof]?.ready === true);
+};
+
 const LandingPage: React.FC = () => {
   const [pendingTarget, setPendingTarget] = useState<string | null>(null);
   const [error, setError] = useState('');
@@ -57,11 +68,14 @@ const LandingPage: React.FC = () => {
             new URL(`${window.location.pathname}${window.location.search}`, "https://orbweaver.spruked.com").toString(),
           )) };
           lastResult = readiness;
-          if (readiness.ready) {
+          if (landingTourRuntimeReady(readiness)) {
+            const readyForLandingTour = readiness.ready
+              ? readiness
+              : { ...readiness, ready: true, state: "LANDING_TOUR_READY" };
             window.dispatchEvent(new CustomEvent("orbweaver:startup-intro", {
-              detail: { phase: "STARTUP_WARMUP_READY", readiness },
+              detail: { phase: "STARTUP_WARMUP_READY", readiness: readyForLandingTour },
             }));
-            return readiness;
+            return readyForLandingTour;
           }
         } catch (error) {
           lastError = error;
