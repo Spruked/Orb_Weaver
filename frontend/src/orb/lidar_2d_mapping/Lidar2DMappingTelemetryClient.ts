@@ -13,12 +13,46 @@ import type {
   LidarTelemetryFrame,
 } from './Lidar2DMapping.types';
 
+const LOCAL_API_PORT_PAIRS: Record<string, string> = {
+  '16510': '16500',
+  '16610': '16600',
+  '16666': '19667',
+  '16667': '19667',
+  '16777': '16776',
+};
+
+export function defaultLidarTelemetryUrl(): string {
+  if (typeof window === 'undefined') {
+    return 'ws://127.0.0.1:16500/ws/lidar-2d-mapping';
+  }
+
+  const { hostname, port, protocol } = window.location;
+  const websocketProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+  const websocketHostname = hostname === '0.0.0.0' ? '127.0.0.1' : hostname;
+  const localOrPrivateHost =
+    port === '16510' ||
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname === '::1' ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+
+  if (localOrPrivateHost) {
+    const backendPort = LOCAL_API_PORT_PAIRS[port] || '16500';
+    return `${websocketProtocol}//${websocketHostname}:${backendPort}/ws/lidar-2d-mapping`;
+  }
+
+  return `${websocketProtocol}//${window.location.host}/ws/lidar-2d-mapping`;
+}
+
 /** Bidirectional telemetry lane for the LiDAR 2D Mapping package. */
 export class Lidar2DMappingTelemetryClient {
   private readonly state: Lidar2DMappingTelemetryState;
   private readonly lidar = Lidar2DMappingCoordinateCache.getInstance();
 
-  constructor(wsUrl = 'ws://localhost:8000/ws/lidar-2d-mapping') {
+  constructor(wsUrl = defaultLidarTelemetryUrl()) {
     this.state = createLidar2DMappingTelemetryState(wsUrl);
   }
 
