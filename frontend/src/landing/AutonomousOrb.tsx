@@ -234,12 +234,13 @@ const readWebsiteJourneyState = (): WebsiteJourneyState => {
     const stored = window.sessionStorage.getItem(WEBSITE_JOURNEY_STORAGE_KEY);
     if (!stored) return { ...INITIAL_WEBSITE_JOURNEY_STATE };
     const parsed = JSON.parse(stored) as Partial<WebsiteJourneyState>;
-    if (parsed.version !== 1 || !["LANDING_TOUR", "PREFLIGHT_PENDING", "PREFLIGHT"].includes(parsed.stage || "")) {
+    const stage = parsed.stage;
+    if (parsed.version !== 1 || !stage || !["LANDING_TOUR", "PREFLIGHT_PENDING", "PREFLIGHT"].includes(stage)) {
       return { ...INITIAL_WEBSITE_JOURNEY_STATE };
     }
     return {
       version: 1,
-      stage: parsed.stage,
+      stage,
       nextSegmentIndex: Math.max(0, Number(parsed.nextSegmentIndex) || 0),
       currentSegment: parsed.currentSegment || null,
     };
