@@ -1,0 +1,53 @@
+name: One-time AutonomousOrb State Repair
+
+on:
+  push:
+    branches:
+      - fix/lidar-evidence-runtime-completion-2026-09-06
+    paths:
+      - ".github/workflows/one-time-autonomous-state-repair.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  repair-state-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Narrow persisted journey stage before state assignment
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("frontend/src/landing/AutonomousOrb.tsx")
+          text = path.read_text()
+          old = '''    const parsed = JSON.parse(stored) as Partial<WebsiteJourneyState>;
+              if (parsed.version !== 1 || !["LANDING_TOUR", "PREFLIGHT_PENDING", "PREFLIGHT"].includes(parsed.stage || "")) {
+                return { ...INITIAL_WEBSITE_JOURNEY_STATE };
+              }
+              return {
+                version: 1,
+                stage: parsed.stage,
+          '''
+          new = '''    const parsed = JSON.parse(stored) as Partial<WebsiteJourneyState>;
+              const stage = parsed.stage;
+              if (parsed.version !== 1 || !stage || !["LANDING_TOUR", "PREFLIGHT_PENDING", "PREFLIGHT"].includes(stage)) {
+                return { ...INITIAL_WEBSITE_JOURNEY_STATE };
+              }
+              return {
+                version: 1,
+                stage,
+          '''
+          if old not in text:
+              raise SystemExit("Expected journey-state validation block was not found; refusing a broad edit")
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git diff --check
+      - name: Commit targeted repair
+        run: |
+          git config user.name "Spruked"
+          git config user.email "bryanspruk7@outlook.com"
+          git add frontend/src/landing/AutonomousOrb.tsx
+          git commit -m "Validate persisted Website ORB journey stage"
+          git push
