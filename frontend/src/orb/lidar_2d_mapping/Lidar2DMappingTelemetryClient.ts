@@ -28,13 +28,17 @@ export function defaultLidarTelemetryUrl(): string {
 
   const { hostname, port, protocol } = window.location;
   const websocketProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
-  const websocketHostname = hostname === '0.0.0.0' ? '127.0.0.1' : hostname;
+  const normalizedHostname = hostname === '0.0.0.0' ? '127.0.0.1' : hostname;
+  const websocketHostname = normalizedHostname.includes(':') && !normalizedHostname.startsWith('[')
+    ? `[${normalizedHostname}]`
+    : normalizedHostname;
   const localOrPrivateHost =
     port === '16510' ||
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||
     hostname === '0.0.0.0' ||
     hostname === '::1' ||
+    hostname === '[::1]' ||
     hostname.startsWith('192.168.') ||
     hostname.startsWith('10.') ||
     /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
