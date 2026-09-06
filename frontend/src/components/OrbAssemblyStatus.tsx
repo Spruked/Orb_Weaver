@@ -101,6 +101,8 @@ const OrbAssemblyStatus: React.FC<{ assembly?: ScanAssemblyStatus | null; compac
   const assemblyIsCurrentCrawl = Boolean(
     currentCrawl?.id && String(displayedAssembly.crawl_job_id) === String(currentCrawl.id)
   );
+  const hasConfiguredScanPause = displayedAssembly.crawl_delay_seconds !== null
+    && displayedAssembly.crawl_delay_seconds !== undefined;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -123,7 +125,7 @@ const OrbAssemblyStatus: React.FC<{ assembly?: ScanAssemblyStatus | null; compac
           )}
         </div>
         <span className="rounded-full border border-slate-200 px-3 py-1 text-xs font-bold text-slate-600">
-          {displayedAssembly.crawl_delay_seconds ? `${displayedAssembly.crawl_delay_seconds}s scan pause` : 'scan pause unset'}
+          {hasConfiguredScanPause ? `${displayedAssembly.crawl_delay_seconds}s scan pause` : 'scan pause unset'}
         </span>
       </div>
 
