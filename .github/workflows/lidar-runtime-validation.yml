@@ -1,0 +1,80 @@
+name: LiDAR Runtime Validation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "backend/app/crawler/**"
+      - "backend/app/routers/orb_telemetry.py"
+      - "backend/app/routers/lidar_2d_mapping_telemetry.py"
+      - "backend/tests/test_lidar_2d_mapping_runtime.py"
+      - "backend/tests/test_tesseract_lidar_weaves.py"
+      - "frontend/src/components/OrbAssemblyStatus.tsx"
+      - "frontend/src/landing/AutonomousOrb.tsx"
+      - "frontend/src/orb/lidar_2d_mapping/**"
+      - ".github/workflows/lidar-runtime-validation.yml"
+  pull_request:
+    paths:
+      - "backend/app/crawler/**"
+      - "backend/app/routers/orb_telemetry.py"
+      - "backend/app/routers/lidar_2d_mapping_telemetry.py"
+      - "backend/tests/test_lidar_2d_mapping_runtime.py"
+      - "backend/tests/test_tesseract_lidar_weaves.py"
+      - "frontend/src/components/OrbAssemblyStatus.tsx"
+      - "frontend/src/landing/AutonomousOrb.tsx"
+      - "frontend/src/orb/lidar_2d_mapping/**"
+      - ".github/workflows/lidar-runtime-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  backend-lidar-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r backend/requirements.txt
+      - name: Compile crawler and telemetry modules
+        run: |
+          python -m py_compile \
+            backend/app/crawler/__init__.py \
+            backend/app/crawler/scoped.py \
+            backend/app/crawler/tesseract_weave.py \
+            backend/app/routers/orb_telemetry.py \
+            backend/app/routers/lidar_2d_mapping_telemetry.py
+      - name: Run crawler-to-LiDAR and WebSocket regressions
+        env:
+          PYTHONPATH: backend
+        run: |
+          python -m pytest -q \
+            backend/tests/test_tesseract_lidar_weaves.py \
+            backend/tests/test_lidar_2d_mapping_runtime.py
+
+  frontend-lidar-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Typecheck runtime and dashboard contracts
+        run: npm run typecheck
+      - name: Build production frontend
+        env:
+          CI: "false"
+        run: npm run build

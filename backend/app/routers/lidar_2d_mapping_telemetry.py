@@ -75,8 +75,9 @@ class Lidar2DMappingTelemetryManager:
 lidar_2d_mapping_telemetry = Lidar2DMappingTelemetryManager()
 
 
-@router.websocket("/ws/lidar-2d-mapping")
+@router.websocket("/lidar-2d-mapping")
 async def lidar_2d_mapping_endpoint(websocket: WebSocket) -> None:
+    """Serve the LiDAR lane under the parent `/ws` telemetry namespace."""
     await lidar_2d_mapping_telemetry.connect(websocket)
     try:
         while True:
@@ -111,6 +112,7 @@ async def lidar_2d_mapping_endpoint(websocket: WebSocket) -> None:
                     inbound.scroll_x,
                     inbound.scroll_y,
                 )
+
     except WebSocketDisconnect:
         await lidar_2d_mapping_telemetry.disconnect(websocket)
     except Exception:
