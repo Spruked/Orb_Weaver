@@ -52,6 +52,7 @@ from app.core.storage import (
     require_vault_path,
 )
 from app.crawler.engine import OrbWeaverCrawler, PageData
+from app.crawler.tesseract_weave import summarize_weaves
 from app.catalog.compiler import compile_commercial_catalog
 from app.reporting.audit_reporting import build_audit_pdf, enrich_audit_report
 from app.lifecycle import (
@@ -6601,7 +6602,7 @@ def _serialize_crawl_job(crawl_job: CrawlJob, db: Session, include_pages: bool =
     pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl_job.id).all()
     project = db.query(Project).filter(Project.id == crawl_job.project_id).first()
     config = crawl_job.config or {}
-    stats = {**_compute_stats(pages), **(config.get("stats") or {})}
+    stats = {**_compute_stats(pages), **(config.get("stats") or {}), **summarize_weaves(pages)}
     pointer_summary = _pointer_summary_with_execution(_pointer_summary_from_pages(pages), config)
 
     payload = {
@@ -11808,6 +11809,12 @@ async def get_combined_dashboard(project_id: str, db: Session = Depends(get_db),
         .order_by(CrawlJob.id.desc())
         .first()
     )
+    current_crawl = (
+        db.query(CrawlJob)
+        .filter(CrawlJob.project_id == project.id)
+        .order_by(CrawlJob.id.desc())
+        .first()
+    )
     latest_audit = (
         db.query(AuditReport)
         .filter(AuditReport.project_id == project.id)
@@ -11831,6 +11838,7 @@ async def get_combined_dashboard(project_id: str, db: Session = Depends(get_db),
         "project": _serialize_project(project, db),
         "crawl_summary": crawl_summary,
         "latest_crawl": latest_crawl_payload,
+        "current_crawl": _serialize_crawl_job(current_crawl, db) if current_crawl and current_crawl != latest_crawl else latest_crawl_payload,
         "latest_audit": _serialize_audit_report(latest_audit) if audit_payload else None,
         "audit_delta": _audit_delta(latest_audit, db) if latest_audit else None,
         "audit_scores": audit_payload.get("scores") if audit_payload else None,

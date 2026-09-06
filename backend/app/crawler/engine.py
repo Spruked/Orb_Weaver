@@ -16,6 +16,7 @@ import re
 from collections import Counter
 from xml.etree import ElementTree as ET
 
+from app.crawler.tesseract_weave import collect_tesseract_candidates, build_lidar_candidate_inventory, summarize_weaves
 from app.core.config import settings
 from app.orb.pointer_plot import extract_pointer_plot_records
 
@@ -866,6 +867,8 @@ class OrbWeaverCrawler:
             **semantic_analysis,
             "pointer_plot_records": pointer_plot_records,
             "pointer_plot_record_count": len(pointer_plot_records),
+            "tesseract_weave": collect_tesseract_candidates(soup, url),
+            "lidar_weave": build_lidar_candidate_inventory(url, pointer_plot_records),
             "discovery_provenance": self.discovery_provenance.get(normalized_url, []),
             "admin_awareness": {
                 "is_admin_section": self._is_admin_section_url(normalized_url),
@@ -1095,6 +1098,7 @@ class OrbWeaverCrawler:
         visited_count = len(self.visited_urls)
         skipped_estimate = max(discovered_count - visited_count, 0)
         return {
+            **summarize_weaves(self.crawled_data),
             'total_pages': len(self.crawled_data),
             'tier': self.tier,
             'total_pages_scraped': self.total_pages_scraped,

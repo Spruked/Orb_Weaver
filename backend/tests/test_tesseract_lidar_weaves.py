@@ -101,3 +101,34 @@ def test_weave_summary_aggregates_measured_page_outputs():
     assert summary["tesseract_weave"]["visual_surface_count"] == 1
     assert summary["lidar_weave"]["pointer_candidate_count"] == 3
     assert summary["lidar_weave"]["persistent_target_count"] == 3
+
+
+def test_unscanned_historical_pages_are_not_reported_as_complete():
+    from app.crawler.engine import PageData
+    result = summarize_weaves([PageData(url="https://example.com/")])
+    assert result["lidar_weave"]["status"] == "not_scanned"
+    assert result["tesseract_weave"]["pages_scanned"] == 0
+    assert result["tesseract_weave"]["status"] == "not_scanned"
+
+
+def test_crawler_emits_mapping_evidence_from_fetched_html():
+    import asyncio
+    from app.crawler.engine import OrbWeaverCrawler
+
+    crawler = OrbWeaverCrawler(delay=0)
+    crawler.domain = crawler.domain_key = "example.com"
+
+    async def fetch(*args):
+        return ('<html><body><h1>Contact us</h1><a href="/contact">Contact our team</a>'
+                '<img src="/hero.png" alt="Our team"></body></html>', 200, 10, [])
+
+    crawler._fetch_page = fetch
+    page = asyncio.run(crawler._crawl_page(None, "https://example.com/"))
+    assert page is not None
+    semantic = page.semantic_analysis
+    assert semantic["lidar_weave"]["pointer_candidate_count"] > 0
+    assert semantic["tesseract_weave"]["resource_count"] == 1
+    crawler.crawled_data = [page]
+    summary = crawler.get_crawl_stats()
+    assert summary["lidar_weave"]["routes_with_targets"] == 1
+    assert summary["lidar_weave"]["geometry_status"] == "runtime_measurement_required"

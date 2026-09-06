@@ -167,6 +167,8 @@ def build_lidar_candidate_inventory(page_url: str, pointer_records: List[Dict]) 
 def summarize_weaves(pages: Iterable) -> Dict:
     """Aggregate measured Tesseract and LiDAR outputs into crawl statistics."""
     page_rows = list(pages)
+    measured_pages = sum(1 for page in page_rows if "tesseract_weave" in (getattr(page, "semantic_analysis", {}) or {}))
+    lidar_measured_pages = sum(1 for page in page_rows if "lidar_weave" in (getattr(page, "semantic_analysis", {}) or {}))
     tesseract_urls = set()
     pages_with_candidates = 0
     inline_surfaces = 0
@@ -198,16 +200,17 @@ def summarize_weaves(pages: Iterable) -> Dict:
 
     return {
         "tesseract_weave": {
-            "status": "complete",
-            "pages_scanned": len(page_rows),
+            "status": "complete" if measured_pages == len(page_rows) and measured_pages else "partial" if measured_pages else "not_scanned",
+            "pages_scanned": measured_pages,
             "pages_with_candidates": pages_with_candidates,
             "unique_resource_count": len(tesseract_urls),
             "visual_surface_count": inline_surfaces,
             "resource_classes": dict(sorted(tesseract_classes.items())),
-            "ocr_execution_status": "candidate_inventory_complete",
+            "ocr_execution_status": "not_run_during_discovery",
         },
         "lidar_weave": {
-            "status": "candidate_inventory_complete" if lidar_candidates else "no_pointer_candidates",
+            "status": "not_scanned" if not lidar_measured_pages else "partial" if lidar_measured_pages < len(page_rows) else "candidate_inventory_complete" if lidar_candidates else "no_pointer_candidates",
+            "pages_scanned": lidar_measured_pages,
             "routes_with_targets": len(lidar_routes),
             "pointer_candidate_count": lidar_candidates,
             "persistent_target_count": len(lidar_persistent_targets),

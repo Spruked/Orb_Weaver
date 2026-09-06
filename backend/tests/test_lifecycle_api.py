@@ -116,6 +116,15 @@ def test_combined_dashboard_uses_latest_completed_crawl_for_summary(tmp_path, mo
     assert payload["latest_crawl"]["status"] == "completed"
     assert payload["crawl_summary"]["custom_dashboard_marker"] == 1
 
+    with main.SessionLocal() as db:
+        db.add(main.CrawlJob(project_id=project_id, status="running", pages_crawled=1, config={}))
+        db.commit()
+    payload = client.get(f"/api/combined/{project_id}/dashboard", headers=auth(token)).json()
+    assert payload["latest_crawl"]["status"] == "completed"
+    assert payload["current_crawl"]["status"] == "running"
+    assert payload["current_crawl"]["pages_crawled"] == 1
+    assert payload["current_crawl"]["stats"]["lidar_weave"]["status"] == "not_scanned"
+
 
 def test_lifecycle_jobs_and_review_decisions_are_owner_scoped(tmp_path, monkeypatch):
     main, client = load_app(tmp_path, monkeypatch)

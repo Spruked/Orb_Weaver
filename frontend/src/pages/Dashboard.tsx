@@ -42,6 +42,7 @@ type DashboardPayload = {
   project: Project;
   crawl_summary?: Record<string, number | boolean> | null;
   latest_crawl?: CrawlJob | null;
+  current_crawl?: CrawlJob | null;
   audit_delta?: AuditDelta | null;
   latest_audit?: AuditReportResponse | null;
   audit_scores?: Record<string, number> | null;
@@ -226,7 +227,22 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
       active_customer_route: '/',
     });
   }, [dashboardData?.latest_crawl?.id, project]);
-  const assemblyStatus = dashboardData?.latest_crawl?.assembly_status || null;
+  const currentCrawl = dashboardData?.current_crawl || dashboardData?.latest_crawl;
+  const assemblyStatus = currentCrawl?.assembly_status || null;
+  const lidarEvidence = currentCrawl?.stats?.lidar_weave;
+  const lidarSummary = typeof lidarEvidence === "object" ? lidarEvidence : null;
+  const mappingEvidence = currentCrawl ? (
+    <section className="card" aria-label="Current scan mapping evidence">
+      <h2 className="text-lg font-bold">Current scan · Pointer and LiDAR 2D Mapping</h2>
+      <p className="mt-2 text-sm">Scan #{currentCrawl.id} · {currentCrawl.status} · {currentCrawl.pages_crawled ?? 0} pages</p>
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        <DataTile label="Pointer records" value={currentCrawl.pointer_summary?.record_count ?? 0} />
+        <DataTile label="LiDAR candidates" value={Number(lidarSummary?.pointer_candidate_count ?? 0)} />
+        <DataTile label="Mapped routes" value={Number(lidarSummary?.routes_with_targets ?? 0)} />
+      </div>
+      <p className="mt-3 text-sm text-slate-600">LiDAR inventory: {String(lidarSummary?.status || "not_scanned").replace(/_/g, " ")}. Live geometry, occlusion, and drift require browser verification; scan candidates do not establish runtime readiness.</p>
+    </section>
+  ) : null;
   const auditDelta = dashboardData?.audit_delta || null;
 
   useEffect(() => {
@@ -318,6 +334,7 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
             </div>
           </div>
         )}
+        {mappingEvidence}
         <OrbAssemblyStatus assembly={assemblyStatus} />
         <EmptyDashboard
           domain={domain}
@@ -411,7 +428,8 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
 
       {error && <div className="card border-red-200 bg-red-50 text-sm font-semibold text-red-700">{error}</div>}
 
-      <OrbAssemblyStatus assembly={assemblyStatus} />
+      {mappingEvidence}
+        <OrbAssemblyStatus assembly={assemblyStatus} />
       <AuditChangeSummary delta={auditDelta} />
 
       <section className="card">
