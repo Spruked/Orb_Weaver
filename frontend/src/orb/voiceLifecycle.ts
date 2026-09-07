@@ -88,3 +88,18 @@ export const shouldRunMountedStartupVoiceSequence = (state: {
   !state.onboardingSafeMode &&
   state.onLanding
 );
+
+
+/** Abort an operation's wait without treating cancellation as successful completion. */
+export function awaitAbortable<T>(operation: PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return Promise.resolve(operation);
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(abortError());
+    signal.addEventListener('abort', abort, { once: true });
+    Promise.resolve(operation).then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+    if (signal.aborted) {
+      signal.removeEventListener('abort', abort);
+      abort();
+    }
+  });
+}

@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     LOCAL_LLM_NUM_PREDICT: int = 32
     LOCAL_LLM_TEMPERATURE: float = 0.35
     FASTER_WHISPER_STT_URL: str = "http://127.0.0.1:9000/stt"
+    FASTER_WHISPER_STT_TIMEOUT_SECONDS: float = 60.0
     ORB_ASSISTANT_ROOT: str = "../Orb_Assistant"
     ORB_TTS_CACHE_DIR: str = "../vault_system/runtime/tts_cache"
     # CALI's working voice budgets: short primary-path failure and a longer

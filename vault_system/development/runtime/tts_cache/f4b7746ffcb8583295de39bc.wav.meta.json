@@ -1,0 +1,10 @@
+{
+  "audio_sha256": "d32d4024c5f7e7f241bb68bc338b66d9fafae597305a74fe2ee7d085922c61ff",
+  "provider": "kokoro",
+  "format": "wav",
+  "sample_rate": 24000,
+  "channels": 1,
+  "sample_width": 2,
+  "duration_ms": 12100,
+  "validation_status": "passed"
+}

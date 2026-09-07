@@ -6,6 +6,16 @@ Update this file after meaningful code, configuration, runtime, testing, or doct
 
 ---
 
+## 2026-09-07 — Target One runtime fixes and presentation boundary
+
+- Kept the existing five-chapter, nine-stop landing walkthrough as Target One. Froze future page targets as Features, LiDAR Guidance, How It Works, and Preflight; no cross-page controller was added.
+- Normalized fenced cognition JSON and the observed `id` claim alias while preserving exact spoken-excerpt and canonical-concept checks. Strengthened the prompt so every required concept must be spoken and evidenced.
+- Made Pointer/LiDAR and section waits abortable, preserved the active controller until it settles, and prevented microphone rearming after a manual tour interruption.
+- Updated the stale `watch_weaver_guide` pointer identity to match the live landing paragraph. Development-browser proof reached live Kokoro playback, advanced beyond the first stop, paused in 477 ms, resumed from the saved stop, and completed the corrected pointer demonstration.
+- Replaced the hardcoded 20-second Faster-Whisper request timeout with a bounded configurable 60-second setting after live logs showed several recordings timing out at 20 seconds.
+- Focused checks passed: seven backend tour-evidence tests and 21 frontend evaluator, voice-lifecycle, and pointer-validation tests. A long full-tour run was stopped by user direction to prioritize construction. Physical microphone acceptance remains outstanding.
+- No commit or push was made. The reviewed `16500`/`16510` runtime was not touched.
+
 ## 2026-09-06 — Target One curriculum alignment and GitHub handoff
 
 - Aligned the active landing tour to the supplied five chapters, nine stops and twelve canonical concept IDs. Trust is separate; removed the four-chapter taxonomy and extra beat-by-beat lessons.

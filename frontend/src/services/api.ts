@@ -1151,6 +1151,7 @@ export interface WebsiteOrbExperienceContext {
     avoid: string[];
     presentation_guidance: string[];
     visible_section_text: string;
+    evidence_attempt: number;
   };
   phase: WebsiteOrbExperiencePhase;
   objective: string;

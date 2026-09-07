@@ -26,7 +26,6 @@ import { authorizeMovement, assertMovementAuthorization } from "../orb/robotics/
 import type { RobotCommand } from "../orb/robotics/robotMovement.types";
 import { buildLidarGuidanceMap, Lidar2DMappingCoordinateCache } from "../orb/lidar_2d_mapping";
 import {
-  awaitAbortable,
   createPlaybackSettlement,
   type PlaybackSettlement,
   runBackendRecovery,
@@ -347,7 +346,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const speechAnalyserRef = useRef<AnalyserNode | null>(null);
   const speechVisualizerFrameRef = useRef<number | null>(null);
   const speechVisualizerActiveRef = useRef(false);
-  const mediaSpeechSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const mediaSpeechSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
   const mediaSpeechElementRef = useRef<HTMLAudioElement | null>(null);
   const speechPlaybackSettlementRef = useRef<PlaybackSettlement | null>(null);
   const speechPlaybackRef = useRef(false);
@@ -1002,7 +1001,7 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     if (!targetAlreadyVisible) {
       movement.targetElement.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-      await awaitAbortable(wait(650), options.signal);
+      await wait(650);
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
       bumpWorldStateSequence();
       const refreshed = movement.refreshTarget();
@@ -1046,14 +1045,14 @@ export const AutonomousOrb: React.FC<Props> = ({
       }
       setPointerWaltzPhase("APPROACH");
       assertMovementAuthorization(authorization);
-      await awaitAbortable(move.start({
+      await move.start({
         x: destination.x,
         y: destination.y,
         transition: {
           duration: Math.max(5.5, Math.min(12, distance / 75)),
           ease: [0.37, 0, 0.22, 1],
         },
-      }), options.signal);
+      });
     }
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
     positionRef.current = destination;
@@ -1077,7 +1076,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     if (morbPointer) {
       setPointerWaltzPhase("DISSOLVE");
       setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "DISSOLVE", dissolving: true } : null);
-      await awaitAbortable(wait(420), options.signal);
+      await wait(420);
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
       setMorbPointer(null);
     }
@@ -1094,7 +1093,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       dissolving: false,
       phase: "LAUNCH",
     });
-    await awaitAbortable(wait(60), options.signal);
+    await wait(60);
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
     setPointerWaltzPhase("TRAVEL");
     startMorbTravelSound();
@@ -1106,12 +1105,12 @@ export const AutonomousOrb: React.FC<Props> = ({
       phase: "TRAVEL",
     } : null);
 
-    await awaitAbortable(wait(640), options.signal);
+    await wait(640);
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
     stopMorbTravelSound();
     setPointerWaltzPhase("STANCE");
     setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "STANCE" } : null);
-    await awaitAbortable(wait(180), options.signal);
+    await wait(180);
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
 
     const pingRect = movement.refreshTarget();
@@ -1144,11 +1143,11 @@ export const AutonomousOrb: React.FC<Props> = ({
       setPointerBloom(null);
       setPointerWaltzPhase("COMPLETE");
     }, 2600);
-    await awaitAbortable(wait(1200), options.signal);
+    await wait(1200);
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
     setPointerWaltzPhase("DISSOLVE");
     setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "DISSOLVE", dissolving: true } : null);
-    await awaitAbortable(wait(420), options.signal);
+    await wait(420);
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
     setMorbPointer(null);
     setPointerWaltzPhase("COMPLETE");
@@ -1319,32 +1318,17 @@ export const AutonomousOrb: React.FC<Props> = ({
     const context: AudioContext = audioContextRef.current || new AudioContextCtor();
     audioContextRef.current = context;
     await context.resume?.();
-    if (context.state !== "running") return null;
-
-    // Observe a captured copy. createMediaElementSource() takes over the
-    // element's audible output and can make real speech silent when the Web
-    // Audio graph is suspended even though HTMLMediaElement.play() succeeds.
-    const captureStream = (audio as HTMLAudioElement & {
-      captureStream?: () => MediaStream;
-      mozCaptureStream?: () => MediaStream;
-    }).captureStream || (audio as HTMLAudioElement & { mozCaptureStream?: () => MediaStream }).mozCaptureStream;
-    if (!captureStream) return null;
-    const stream = captureStream.call(audio);
-    if (!stream.getAudioTracks().some(track => track.readyState === "live")) return null;
 
     const source = mediaSpeechElementRef.current === audio && mediaSpeechSourceRef.current
       ? mediaSpeechSourceRef.current
-      : context.createMediaStreamSource(stream);
+      : context.createMediaElementSource(audio);
     mediaSpeechElementRef.current = audio;
     mediaSpeechSourceRef.current = source;
 
     const analyser = context.createAnalyser();
     source.disconnect();
     source.connect(analyser);
-    const silentSink = context.createGain();
-    silentSink.gain.value = 0;
-    analyser.connect(silentSink);
-    silentSink.connect(context.destination);
+    analyser.connect(context.destination);
     return analyser;
   }, []);
 
@@ -1474,17 +1458,22 @@ export const AutonomousOrb: React.FC<Props> = ({
         showVisitorUtterance("", 1);
         return true;
       }
-      // Always use a fresh media element. A previous element may have been
-      // routed through an older Web Audio graph before hot reload or browser
-      // suspension; reusing it can resolve play() while producing no sound.
-      speechAudioRef.current?.pause();
-      const audio = new Audio();
+      const audio = speechAudioRef.current || new Audio();
+      audio.pause();
       audio.muted = false;
       audio.volume = speakerBoostRef.current ? 1 : 0.86;
       audio.playbackRate = ORB_SPEECH_PLAYBACK_RATE;
       audio.preservesPitch = true;
       audio.src = api.orbMediaUrl(audioUrl);
       speechAudioRef.current = audio;
+      // The analyser only observes the real TTS signal. If a browser declines
+      // the graph connection, playback still proceeds through the media element.
+      let speechAnalyser: AnalyserNode | null = null;
+      try {
+        speechAnalyser = await connectSpeechMediaVisualizer(audio);
+      } catch {
+        speechAnalyser = null;
+      }
       const settlement = createPlaybackSettlement();
       speechPlaybackSettlementRef.current = settlement;
       audio.onended = () => {
@@ -1504,14 +1493,6 @@ export const AutonomousOrb: React.FC<Props> = ({
       try {
         try {
           await audio.play();
-          // Connect only after direct media playback begins. The captured copy
-          // drives visuals without owning or muting the audible output.
-          let speechAnalyser: AnalyserNode | null = null;
-          try {
-            speechAnalyser = await connectSpeechMediaVisualizer(audio);
-          } catch {
-            speechAnalyser = null;
-          }
           if (speechAnalyser) startSpeechVisualizer(speechAnalyser);
         } catch (error) {
           settlement.reject(error as Error);
@@ -1524,11 +1505,6 @@ export const AutonomousOrb: React.FC<Props> = ({
     } catch (error) {
       speechPlaybackRef.current = false;
       stopSpeechVisualizer();
-      emitOrbRuntimeEvent("playback_failed", {
-        provider: provider || null,
-        error: error instanceof Error ? error.message : "unknown_playback_error",
-        audioContextState: audioContextRef.current?.state || null,
-      });
       if ((error as Error)?.name === "AbortError") throw error;
       setStatusTitle("Voice unavailable");
       setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
@@ -1615,27 +1591,19 @@ export const AutonomousOrb: React.FC<Props> = ({
     return window.location.href;
   }, [activeOrbContext]);
 
-  const scrollToLandingTourSection = useCallback(async (sectionId: string, signal?: AbortSignal) => {
+  const scrollToLandingTourSection = useCallback(async (sectionId: string) => {
     const section = document.getElementById(sectionId);
     if (!section) {
       emitOrbRuntimeEvent("LANDING_TOUR_BLOCKED", { reason: "section_missing", sectionId });
       return false;
     }
     section.scrollIntoView({ behavior: "smooth", block: "center" });
-    await awaitAbortable(wait(720), signal);
+    await wait(720);
     const rect = section.getBoundingClientRect();
     const visible = rect.bottom > HEADER_SAFE && rect.top < window.innerHeight - 24;
     if (!visible) {
-      // `behavior: auto` inherits the page's smooth-scroll CSS. On distant
-      // sections that leaves the target thousands of pixels away when the
-      // verifier runs. Temporarily disable it and land on measured geometry.
-      const root = document.documentElement;
-      const previousScrollBehavior = root.style.scrollBehavior;
-      root.style.scrollBehavior = "auto";
-      const currentRect = section.getBoundingClientRect();
-      window.scrollTo(0, Math.max(0, window.scrollY + currentRect.top - HEADER_SAFE - 24));
-      root.style.scrollBehavior = previousScrollBehavior;
-      await awaitAbortable(wait(90), signal);
+      section.scrollIntoView({ behavior: "auto", block: "center" });
+      await wait(90);
     }
     const verifiedRect = section.getBoundingClientRect();
     const verified = verifiedRect.bottom > HEADER_SAFE && verifiedRect.top < window.innerHeight - 24;
@@ -1670,13 +1638,13 @@ export const AutonomousOrb: React.FC<Props> = ({
             const rect = section.getBoundingClientRect();
             return rect.width > 0 && rect.height > 0 && rect.bottom > HEADER_SAFE && rect.top < window.innerHeight - 24;
           }
-          const visible = await scrollToLandingTourSection(section.id, signal);
+          const visible = await scrollToLandingTourSection(section.id);
           return visible && !signal.aborted;
         },
         demonstrate: async (chapter, stop, signal) => {
           const targetId = TOUR_POINTER_TARGETS[`${chapter.id}/${stop.id}`];
           if (!targetId) return true;
-          const ready = await awaitAbortable(waitForPointerRecords(), signal);
+          const ready = await waitForPointerRecords();
           if (signal.aborted) return false;
           const target = ready ? findPointerRecordById(targetId) : null;
           if (!target) return false;
@@ -1684,7 +1652,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           const guided = await guideToPointerRecord(target, "Demonstrate verified visual guidance without activating the target", { signal });
           return Boolean(guided) && !signal.aborted;
         },
-        converse: async (chapter, stop, missing, signal, attempt) => {
+        converse: async (chapter, stop, missing, signal) => {
           const section = document.querySelector<HTMLElement>(stop.sectionDomSelector);
           if (!section || signal.aborted) throw new DOMException("Tour interrupted", "AbortError");
           const sourceSelectors = TOUR_STOP_SOURCE_SELECTORS[stop.id] || [stop.sectionDomSelector];
@@ -1692,10 +1660,6 @@ export const AutonomousOrb: React.FC<Props> = ({
             const element = document.querySelector<HTMLElement>(selector);
             return element ? `[Page source ${selector}]\n${element.innerText}` : '';
           }).filter(Boolean).join('\n\n');
-          setStatusTitle("Preparing voice");
-          setStatusLine("Weaver is preparing this tour stop.");
-          showStatus();
-          emitOrbRuntimeEvent('tour_converse_started', { stopId: stop.id, evidenceAttempt: attempt });
           const result = await api.websiteOrbText(`Explain the current landing tour stop: ${stop.id}.`, true, signal, {
             project_id: activeOrbContext?.project_id,
             target_url: contextTargetUrl(),
@@ -1708,12 +1672,10 @@ export const AutonomousOrb: React.FC<Props> = ({
                 required_concepts: missing, avoid: [...chapter.avoid, ...(stop.avoid || [])],
                 presentation_guidance: [...(chapter.presentationGuidance || []), ...(stop.presentationGuidance ? [stop.presentationGuidance] : [])],
                 visible_section_text: sourceText.slice(0, 8000),
-                evidence_attempt: attempt,
               },
             },
           });
           if (signal.aborted) throw new DOMException("Tour interrupted", "AbortError");
-          emitOrbRuntimeEvent('tour_converse_received', { stopId: stop.id, hasAudio: Boolean(result.tts_audio_url), hasEvidence: Boolean(result.chapter_evaluation) });
           const evaluation = parseChapterEvaluation(result.chapter_evaluation, result.spoken_output);
           const cancelPlayback = () => {
             speechPlaybackSettlementRef.current?.cancel();
@@ -1738,16 +1700,12 @@ export const AutonomousOrb: React.FC<Props> = ({
       landingTourRunningRef.current = false;
       settleTour();
     }
-  }, [activeOrbContext?.project_id, contextTargetUrl, findPointerRecordById, guideToPointerRecord, onboardingSafeMode, saveWebsiteJourney, scrollToLandingTourSection, showStatus, speakWithGeneratedAudio, waitForPointerRecords]);
+  }, [activeOrbContext?.project_id, contextTargetUrl, findPointerRecordById, guideToPointerRecord, onboardingSafeMode, saveWebsiteJourney, scrollToLandingTourSection, speakWithGeneratedAudio, waitForPointerRecords]);
 
   const resumeLandingTour = useCallback(async () => {
     await landingTourSettledRef.current;
     const state = websiteJourneyRef.current;
     if (!state || state.stage !== 'LANDING_TOUR' || state.preflightStatus === 'DEFERRED') return;
-    if (voiceRequestInFlightRef.current || recorderRef.current) {
-      setTourNotice('Finish speaking or click Weaver to cancel recording, then continue the tour.');
-      return;
-    }
     try {
       saveWebsiteJourney({ ...state,
         interruptionState: { isInterrupted: false, interruptedAtChapterId: null, interruptedAtStopId: null } });
@@ -2283,9 +2241,8 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, [freezeOrbInPlace, logVoice, monitorRecordingSilence, playPulse, processRecordedOrbAudio, showStatus, stopOrbRecording, unlockAudio, voiceState]);
 
   const interruptOrbSpeech = useCallback(() => {
-    handsFreeEnabledRef.current = false;
     const journey = websiteJourneyRef.current;
-    if (journey?.stage === 'LANDING_TOUR' && !journey.interruptionState.isInterrupted) {
+    if (journey?.stage === 'LANDING_TOUR' && landingTourRunningRef.current) {
       try {
         saveWebsiteJourney({ ...journey, interruptionState: {
           isInterrupted: true, interruptedAtChapterId: journey.currentChapterId, interruptedAtStopId: journey.currentStopId,
@@ -2295,6 +2252,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     // Keep the exact tour position in session state while the visitor takes
     // the floor. The recorded-audio answer resumes it after this turn.
     landingTourAbortControllerRef.current?.abort();
+    landingTourAbortControllerRef.current = null;
     activeVoiceAbortControllerRef.current?.abort();
     activeVoiceAbortControllerRef.current = null;
     voiceRequestInFlightRef.current = false;
@@ -2474,13 +2432,12 @@ export const AutonomousOrb: React.FC<Props> = ({
     updateStartupDiagnostics({ orb_readiness_state: onLanding ? "waiting_for_gate" : "mounting" });
     const startupReadiness = await waitForStartupGate();
     if (startupReadiness === "BLOCKED") {
-      // The splash has completed. Do not strand the visitor between the
-      // introduction and Target One because startup readiness timed out.
-      // The tour's own live calls remain responsible for surfacing an
-      // unavailable dependency at the exact operation that requires it.
-      emitOrbRuntimeEvent("startup_readiness_timeout_continuing_to_tour", {
-        reason: "startup_readiness_timeout",
-      });
+      updateStartupDiagnostics({ orb_readiness_state: "voice_ready" });
+      setStatusTitle("Voice temporarily unavailable");
+      setStatusLine("Weaver is waiting for the live runtime to recover.");
+      showStatus();
+      emitOrbRuntimeEvent("WALKTHROUGH_BLOCKED", { reason: "startup_readiness_timeout" });
+      return;
     }
 
     // LandingPage owns the scripted splash introduction. Re-check after the

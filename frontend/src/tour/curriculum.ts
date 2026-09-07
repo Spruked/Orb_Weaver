@@ -68,7 +68,7 @@ export const LANDING_TOUR_CHAPTERS: TourChapter[] = [
       {
         "id": "stop-crawl-vs-weave",
         "purpose": "Contrast crawl vs weave using the page’s own language.",
-        "presentationGuidance": "ANCHOR the two short sentences about crawl and weave. Do not paraphrase them.",
+        "presentationGuidance": "ANCHOR the two short sentences about crawl and weave. Do not paraphrase them. The page says we have accepted crawling for thirty years; do not turn that into a claim that Weaver or Orb Weaver has existed for thirty years.",
         "sectionDomSelector": "#beat-2",
         "mustUnderstand": [
           {

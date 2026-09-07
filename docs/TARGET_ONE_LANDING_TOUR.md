@@ -1,10 +1,12 @@
 # Target One — Landing-page tour
 
-Source status: built and aligned to the approved curriculum on 2026-09-06. Integrated validation is deferred by user instruction. This is not a deployment or runtime-verification claim.
+Source status: Target One is built and aligned to the approved curriculum. Focused development-runtime debugging is in progress; Targets Two through Five are future work.
 
 ## Scope and sequence
 
 Existing introduction → five-chapter landing tour → explicit visitor decision → stop.
+
+Target One remains the complete Home / Landing Page walkthrough. Its internal five chapters are not separate presentation targets. The frozen later presentation spine is: Target One `/` → Target Two `/features` → Target Three `/lidar-guidance` → Target Four `/how-it-works` → Target Five `/preflight` → authentication → purchase/onboarding → a short post-purchase Marketplace introduction. Security, Desktop ORB, Campaign, Investor, Beta, and the pre-purchase Marketplace remain normal site pages outside the forced sequence. No cross-page presentation controller is part of the current Target One scope.
 
 | Chapter / ID | Ordered stops | Required concept IDs |
 | --- | --- | --- |
@@ -42,6 +44,4 @@ The “Weave Assembly Status” display in LandingPage is static illustration, n
 
 Retain the existing voice, cognition, Pointer/LiDAR and migration infrastructure. Compatible account/production-stage fields and the existing derived gate helper are not permission to expand Target One. Full Preflight results/review, account creation, production scans and later onboarding chapters remain out of scope.
 
-No tests, type checks, browser proof, builds, service restarts or deployment changes were performed for this integrated construction/alignment phase. Earlier isolated test results do not validate the current slice. Existing migration tests still reflect the earlier unmapped-position construction and need updating before the dedicated validation pass.
-
-Next work, when authorized: update those expectations and validate the integrated introduction → nine stops → interruption/resume → visitor-choice path, including blocked evidence, migration, voice and pointer behavior. Do not resume the superseded automatic-Preflight sequence described in older handoffs.
+Focused development proof has confirmed live cognition, Kokoro playback, first-stop advancement, prompt interruption, saved-position resume, and the corrected `watch_weaver_guide` Pointer/LiDAR target. Target One construction remains the immediate job. A physical visitor microphone turn and the complete nine-stop run remain final acceptance work; keep validation brief during construction.

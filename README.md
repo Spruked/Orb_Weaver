@@ -9,7 +9,7 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 
 [Target One](docs/TARGET_ONE_LANDING_TOUR.md) is the approved five-chapter, nine-stop landing-page tour: Meet Weaver → Why Weaving Exists → Trust → How Orb Weaver Builds Intelligence → Preflight Decision. It retains the existing introduction, cognition, TTS, Pointer/LiDAR and interruption/resume paths. The controller waits for an explicit visitor choice; it never automatically starts Preflight or continues into later workflows.
 
-The source is built; integrated validation is deferred. This does not claim a tested or updated deployment. See the [development log](docs/DEV_LOG.md) for the current handoff and validation boundary.
+Target One is the full Home / Landing Page walkthrough. Future targets are Features, LiDAR Guidance, How It Works, and Preflight, followed by authentication and the customer purchase/onboarding flow. They are not part of the current landing controller. See the [development log](docs/DEV_LOG.md) for the current handoff and validation boundary.
 
 ## Features
 

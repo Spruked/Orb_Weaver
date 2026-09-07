@@ -21,7 +21,7 @@ interface TourRuntime {
   verifySection(stop: TourStop, signal: AbortSignal): Promise<boolean>;
   demonstrate(chapter: TourChapter, stop: TourStop, signal: AbortSignal): Promise<boolean>;
   // Must resolve only after the same spoken_output finished playing.
-  converse(chapter: TourChapter, stop: TourStop, missing: TourConcept[], signal: AbortSignal): Promise<ChapterEvaluation>;
+  converse(chapter: TourChapter, stop: TourStop, missing: TourConcept[], signal: AbortSignal, attempt: number): Promise<ChapterEvaluation>;
 }
 
 const checkAbort = (signal: AbortSignal) => {
@@ -43,7 +43,7 @@ export async function runTourController(runtime: TourRuntime, signal: AbortSigna
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const missing = requiredConcepts(chapter, stop, state);
       if (!missing.length) break;
-      const evaluation = await runtime.converse(chapter, stop, missing, signal);
+      const evaluation = await runtime.converse(chapter, stop, missing, signal, attempt + 1);
       checkAbort(signal);
       const current = runtime.read();
       if (!current || current.stage !== state.stage || current.currentChapterId !== chapter.id || current.currentStopId !== stop.id || current.interruptionState.isInterrupted) return 'inactive';

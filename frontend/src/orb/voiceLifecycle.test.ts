@@ -1,4 +1,5 @@
 import {
+  awaitAbortable,
   createPlaybackSettlement,
   runBackendRecovery,
   shouldRearmVoice,
@@ -104,5 +105,24 @@ describe('Website ORB voice lifecycle', () => {
       greetingAlreadyPlayed: true,
       voiceReady: true,
     })).toBe(false);
+  });
+});
+
+
+describe('abortable tour operations', () => {
+  test('abort settles even when stopped animation never resolves', async () => {
+    const controller = new AbortController();
+    const result = awaitAbortable(new Promise<void>(() => undefined), controller.signal);
+    controller.abort();
+    await expect(result).rejects.toMatchObject({ name: 'AbortError' });
+  });
+  test('real completion is preserved and a late failure after abort is handled', async () => {
+    await expect(awaitAbortable(Promise.resolve(42))).resolves.toBe(42);
+    const controller = new AbortController();
+    let fail: (error: Error) => void = () => undefined;
+    const result = awaitAbortable(new Promise<void>((_resolve, reject) => { fail = reject; }), controller.signal);
+    controller.abort();
+    await expect(result).rejects.toMatchObject({ name: 'AbortError' });
+    fail(new Error('cancelled underlying operation'));
   });
 });

@@ -53,7 +53,7 @@ from app.core.storage import (
 )
 from app.crawler.engine import OrbWeaverCrawler, PageData
 from app.crawler.tesseract_weave import summarize_weaves
-from app.orb.tour_evaluation import TourActContext, TourChapterEvaluation, tour_prompt
+from app.orb.tour_evaluation import TourActContext, TourChapterEvaluation, tour_prompt, parse_tour_evaluation
 from app.catalog.compiler import compile_commercial_catalog
 from app.reporting.audit_reporting import build_audit_pdf, enrich_audit_report
 from app.lifecycle import (
@@ -2313,7 +2313,8 @@ async def _transcribe_with_faster_whisper(audio: UploadFile) -> str:
     # CALI's live path has one authoritative Faster-Whisper endpoint.  Do not
     # silently send microphone audio to an unrelated legacy endpoint.
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
+        timeout_seconds = min(120.0, max(5.0, float(settings.FASTER_WHISPER_STT_TIMEOUT_SECONDS or 60.0)))
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             response = await client.post(
                 settings.FASTER_WHISPER_STT_URL,
                 files={"file": (filename, content, content_type)},
@@ -3219,10 +3220,7 @@ async def _llm_orb_spoken_output(
         )
     tour_context = (experience_context or {}).get("tour")
     if tour_context:
-        prompt = (
-            f"{prompt_layers(governance_context) if governance_context else ''}\n"
-            + tour_prompt(tour_context)
-        )
+        prompt = tour_prompt(tour_context)
     try:
         timeout_seconds = min(120.0, max(5.0, float(settings.LOCAL_LLM_TIMEOUT_SECONDS or 60.0)))
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
@@ -3234,9 +3232,10 @@ async def _llm_orb_spoken_output(
                     "stream": False,
                     "keep_alive": settings.LOCAL_LLM_KEEP_ALIVE,
                     "options": {
-                        "num_ctx": 8192 if tour_context else min(4096, max(512, int(settings.LOCAL_LLM_NUM_CTX or 1024))),
-                        "num_predict": 1600 if tour_context else min(160, max(16, int(settings.LOCAL_LLM_NUM_PREDICT or 64))),
-                        "temperature": min(1.0, max(0.0, float(settings.LOCAL_LLM_TEMPERATURE or 0.35))),
+                        "num_ctx": 4096 if tour_context else min(4096, max(512, int(settings.LOCAL_LLM_NUM_CTX or 1024))),
+                        "num_predict": 800 if tour_context else min(160, max(16, int(settings.LOCAL_LLM_NUM_PREDICT or 64))),
+                        "temperature": 0.0 if tour_context else min(1.0, max(0.0, float(settings.LOCAL_LLM_TEMPERATURE or 0.35))),
+                        **({"seed": 41 + max(1, int(tour_context.get("evidence_attempt") or 1))} if tour_context else {}),
                     },
                 },
             )
@@ -3244,10 +3243,8 @@ async def _llm_orb_spoken_output(
             payload = response.json()
         raw_output = str(payload.get("response") or payload.get("text") or "")
         if tour_context:
-            evaluation = TourChapterEvaluation.model_validate_json(raw_output)
-            allowed_ids = {item["id"] for item in tour_context["required_concepts"]}
-            evaluation.covered_concepts = [claim for claim in evaluation.covered_concepts
-                if claim.concept_id in allowed_ids and claim.supporting_excerpt in evaluation.spoken_output]
+            allowed_ids = [item["id"] for item in tour_context["required_concepts"]]
+            evaluation = parse_tour_evaluation(raw_output, allowed_ids)
             return {"spoken_output": evaluation.spoken_output, "chapter_evaluation": evaluation.model_dump(),
                     "llm_source": "llamacpp-tour"}
         spoken = _clean_spoken_output(raw_output)
@@ -3256,7 +3253,10 @@ async def _llm_orb_spoken_output(
             "llm_source": "llamacpp-qwen2.5-1.5b-instruct-q4_k_m",
             "governance_trace": initial_governance_trace(governance_context) if governance_context else None,
         }
-    except Exception:
+    except Exception as exc:
+        if tour_context:
+            logger.warning("Tour cognition failed stop=%s error_type=%s detail=%s",
+                           tour_context.get("stop_id"), type(exc).__name__, str(exc)[:180])
         return {
             "spoken_output": fallback,
             "llm_source": "local-fallback",
@@ -4652,9 +4652,9 @@ ORB_WEAVER_SHOWCASE_POINTERS: List[Dict[str, Any]] = [
     },
     {
         "target_id": "watch_weaver_guide", "page_route": "/", "target_type": "paragraph",
-        "meaning": "Watch the page. When showing is clearer, Weaver moves and points to the verified target.",
-        "intent_aliases": ["watch weaver guide", "verified target"], "direct_aliases": ["Watch the page"],
-        "topic_aliases": ["visual guidance"], "content_fingerprint": "owner-watch-weaver-guide-v1",
+        "meaning": "Watch Weaver guide. When pointing is useful, Weaver guides only to a verified target and pings the exact place it can prove is live.",
+        "intent_aliases": ["watch weaver guide", "verified target"], "direct_aliases": ["Watch Weaver guide"],
+        "topic_aliases": ["visual guidance"], "content_fingerprint": "owner-watch-weaver-guide-v2",
         "semantic_locator": '[data-orb-target="watch_weaver_guide"]', "structural_context": {"tag": "p"},
     },
     {
