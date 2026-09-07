@@ -1020,7 +1020,9 @@ export const AutonomousOrb: React.FC<Props> = ({
     const targetCenterX = latestGoal.normalizedX * window.innerWidth;
     const targetCenterY = latestGoal.normalizedY * window.innerHeight;
     const preferredSide = targetCenterX < window.innerWidth / 2 ? 1 : -1;
-    const requiredCenterOffset = size / 2 + MORB_HALF + ORB_TARGET_CLEARANCE_PX;
+    // Clear the full live target rectangle, not only its center point. Wide
+    // cards otherwise leave the ORB visually sitting on top of their copy.
+    const requiredCenterOffset = activeRect.width / 2 + size / 2 + ORB_TARGET_CLEARANCE_PX;
     const guidedDestination = [preferredSide, -preferredSide]
       .map((candidateSide) => clampPosition(
         targetCenterX + candidateSide * requiredCenterOffset - size / 2,
