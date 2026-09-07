@@ -2175,20 +2175,30 @@ def _load_preflight_scanner():
         raise RuntimeError(f"Preflight scanner not found: {PREFLIGHT_SCANNER_MODULE}")
 
     module_name = "orb_weaver_preflight_site_scan"
-    if module_name in sys.modules:
-        module = sys.modules[module_name]
-    else:
-        sys.path.insert(0, str(PREFLIGHT_SCANNER_ROOT))
+    sys.path.insert(0, str(PREFLIGHT_SCANNER_ROOT))
+    module = sys.modules.get(module_name)
+    scanner_cls = getattr(module, "PreflightScanner", None) if module else None
+
+    # A development reload or an older packaged worker can leave an invalid
+    # module object in sys.modules. Do not keep trusting that stale object.
+    if scanner_cls is None or getattr(module, "__file__", None) != str(PREFLIGHT_SCANNER_MODULE):
+        sys.modules.pop(module_name, None)
+        importlib.invalidate_caches()
         spec = importlib.util.spec_from_file_location(module_name, PREFLIGHT_SCANNER_MODULE)
         if spec is None or spec.loader is None:
-            raise RuntimeError("Unable to load preflight scanner module")
+            raise RuntimeError(f"Unable to load preflight scanner module: {PREFLIGHT_SCANNER_MODULE}")
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
-        spec.loader.exec_module(module)
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(module_name, None)
+            raise
+        scanner_cls = getattr(module, "PreflightScanner", None)
 
-    scanner_cls = getattr(module, "PreflightScanner", None)
     if scanner_cls is None:
-        raise RuntimeError("PreflightScanner class not found in preflight scanner module")
+        loaded_from = getattr(module, "__file__", PREFLIGHT_SCANNER_MODULE)
+        raise RuntimeError(f"PreflightScanner class not found in preflight scanner module: {loaded_from}")
     return scanner_cls
 
 

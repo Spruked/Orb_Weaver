@@ -1,10 +1,26 @@
 # Orb Weaver Development Log
 
+## 2026-09-07 — Dynamic Preflight result walkthrough
+
+- Connected the public Preflight completion event to the live `AutonomousOrb` runtime after the result DOM renders.
+- Weaver now derives its explanation from the persisted report, discovers only the result sections actually rendered, resolves their live geometry, and guides through them with the existing verified pointer path.
+- Added the three explicit next-step offers: onboarding, full scans/data for $49.95, or ORB production. No offer starts automatically.
+- Added a narration fallback when a result page exposes no guideable sections.
+- Tesseract remains supplemental OCR capability for visual/image/canvas surfaces; it does not replace the persisted Preflight report as factual authority.
+
 Purpose: preserve implementation context, decisions, verification results, and next steps between development sessions.
 
 Update this file after meaningful code, configuration, runtime, testing, or doctrine changes. Keep entries concise and newest-first. Never record credentials or secrets.
 
 ---
+
+## 2026-09-07 — Target One visual pass: ORB core and MORB readability
+
+- Strengthened the active `AutonomousOrb` presentation after deployment screenshots showed a translucent main ORB and an under-rendered first MORB.
+- Increased active/resting opacity, enlarged the MORB, added an opaque fallback surface and border, and made the launch phase visibly resolve before travel.
+- Reworked the speaking white-core animation into a layered rotating/swirl motion with changing cloud contours.
+- Added the current five-symbol two-color tool-center language: question mark, smile, dollar sign, check mark, and exclamation mark. Later versions may expand the set and semantics.
+- Preserved the current Preflight boundary: after the user runs Preflight, Weaver explains the resulting Preflight evidence and answers Preflight-related questions only at this stage.
 
 ## 2026-09-07 — Target One runtime fixes and presentation boundary
 

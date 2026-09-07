@@ -8,6 +8,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field, ValidationError
 
 from app.routers.lidar_2d_mapping_telemetry import router as lidar_2d_mapping_router
+from app.routers.lidar_2d_mapping_telemetry import trigger_lidar_2d_mapping_target_lock
 
 logger = logging.getLogger('orb.telemetry')
 
@@ -158,3 +159,13 @@ async def trigger_pointer_lock(
     timestamp_iso=datetime.utcnow().isoformat(),
   )
   await telemetry_manager.broadcast_frame(frame)
+  # Pointer lock is the shared runtime truth for both guidance lanes. Keep
+  # the dedicated LiDAR cache synchronized with the ORB telemetry channel;
+  # otherwise a successful pointer lock can leave LiDAR with stale geometry.
+  await trigger_lidar_2d_mapping_target_lock(
+    target_id=target_id,
+    element_data=element_data,
+    intent=intent,
+    movement_vector=movement_vector,
+    confidence=confidence,
+  )

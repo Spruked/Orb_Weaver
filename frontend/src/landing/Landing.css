@@ -760,6 +760,7 @@
   height: 35px;
   border-radius: 50%;
   pointer-events: none;
+  background-color: rgba(2, 12, 30, .98);
   background:
     var(--ow-morb-skin),
     radial-gradient(circle at 38% 24%, rgba(255, 255, 255, .96) 0 18%, rgba(232, 246, 255, .92) 29%, rgba(75, 178, 255, .92) 44%, rgba(5, 13, 28, .98) 76%),
@@ -771,6 +772,8 @@
     0 0 48px var(--ow-morb-glow, rgba(91, 200, 230, .32)),
     inset -9px -12px 17px rgba(0, 0, 0, .62),
     inset 8px 8px 12px rgba(255, 255, 255, .32);
+  border: 2px solid var(--ow-morb-primary, rgba(91, 200, 230, .96));
+  isolation: isolate;
   opacity: 0;
   transform: translate3d(0, 0, 0) scale(.78);
   transition:
@@ -831,8 +834,8 @@
 }
 
 .ow-v2-morb-pointer[data-orb-pointer-phase="LAUNCH"] {
-  transform: translate3d(0, 0, 0) scale(.18);
-  filter: brightness(1.55);
+  transform: translate3d(0, 0, 0) scale(.46);
+  filter: brightness(1.7) saturate(1.2);
 }
 
 .ow-v2-morb-pointer[data-orb-pointer-phase="TRAVEL"] {
@@ -1110,6 +1113,42 @@
   animation: ow-v2-core-nucleus-depth 2.65s cubic-bezier(.42, 0, .24, 1) infinite;
 }
 
+.ow-v2-orb-tool-symbols {
+  position: absolute;
+  inset: 18%;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: rgba(245, 254, 255, .96);
+  text-shadow: 0 0 8px rgba(215, 250, 255, .92), 0 0 20px rgba(64, 174, 255, .8);
+  filter: drop-shadow(0 0 8px rgba(114, 219, 255, .62));
+}
+
+.ow-v2-orb-tool-symbol {
+  grid-area: 1 / 1;
+  font-family: Arial, sans-serif;
+  font-size: clamp(13px, 2.5vw, 26px);
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0;
+  transform: translate3d(0, 8px, 0) scale(.48) rotate(-12deg);
+  animation: none;
+  animation-delay: calc(var(--ow-symbol-index) * 2s);
+}
+
+.ow-v2-orb-body.speaking .ow-v2-orb-tool-symbol,
+.ow-v2-orb-body.thinking .ow-v2-orb-tool-symbol {
+  animation: ow-v2-tool-symbol-cycle 10s ease-in-out infinite;
+}
+
+.ow-v2-orb-body.speaking .ow-v2-orb-tool-symbols,
+.ow-v2-orb-body.listening .ow-v2-orb-tool-symbols,
+.ow-v2-orb-body.thinking .ow-v2-orb-tool-symbols {
+  color: rgba(255, 255, 255, 1);
+  filter: drop-shadow(0 0 10px rgba(178, 239, 255, .92));
+}
+
 .ow-v2-orb-core-pulse::before,
 .ow-v2-orb-core-pulse::after {
   content: "";
@@ -1262,15 +1301,60 @@
 }
 
 @keyframes ow-v2-speaking-current {
-  from { transform: rotate(0deg) scale(.82); opacity: .68; }
-  50% { transform: rotate(180deg) scale(1.13); opacity: 1; }
-  to { transform: rotate(360deg) scale(.82); opacity: .68; }
+  0% {
+    transform: rotate(0deg) translate(-2%, 1%) scale(.78) skewX(-8deg);
+    border-radius: 48% 52% 58% 42% / 56% 44% 54% 46%;
+    opacity: .68;
+  }
+  24% {
+    transform: rotate(124deg) translate(5%, -4%) scale(1.08) skewX(7deg);
+    border-radius: 63% 37% 42% 58% / 39% 61% 45% 55%;
+    opacity: .98;
+  }
+  50% {
+    transform: rotate(228deg) translate(-4%, 5%) scale(1.16) skewX(-5deg);
+    border-radius: 38% 62% 57% 43% / 61% 39% 58% 42%;
+    opacity: 1;
+  }
+  76% {
+    transform: rotate(314deg) translate(4%, 2%) scale(.9) skewX(8deg);
+    border-radius: 56% 44% 39% 61% / 46% 54% 63% 37%;
+    opacity: .82;
+  }
+  100% {
+    transform: rotate(360deg) translate(-2%, 1%) scale(.78) skewX(-8deg);
+    border-radius: 48% 52% 58% 42% / 56% 44% 54% 46%;
+    opacity: .68;
+  }
 }
 
 @keyframes ow-v2-speaking-white-bloom {
-  0%, 100% { transform: scale(.72); opacity: .58; }
-  46% { transform: scale(1.34); opacity: 1; }
-  68% { transform: scale(.94); opacity: .78; }
+  0%, 100% {
+    transform: rotate(0deg) translate(-3%, 2%) scale(.68) skewY(-5deg);
+    border-radius: 46% 54% 61% 39% / 58% 42% 47% 53%;
+    opacity: .58;
+  }
+  32% {
+    transform: rotate(-92deg) translate(5%, -4%) scale(1.08) skewY(8deg);
+    border-radius: 62% 38% 43% 57% / 39% 61% 56% 44%;
+    opacity: .92;
+  }
+  56% {
+    transform: rotate(-188deg) translate(-4%, 5%) scale(1.34) skewY(-6deg);
+    border-radius: 39% 61% 56% 44% / 63% 37% 42% 58%;
+    opacity: 1;
+  }
+  78% {
+    transform: rotate(-278deg) translate(3%, 1%) scale(.9) skewY(5deg);
+    border-radius: 55% 45% 38% 62% / 45% 55% 64% 36%;
+    opacity: .78;
+  }
+}
+
+@keyframes ow-v2-tool-symbol-cycle {
+  0%, 14% { opacity: 0; transform: translate3d(0, 8px, 0) scale(.48) rotate(-12deg); }
+  18%, 27% { opacity: .96; transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+  33%, 100% { opacity: 0; transform: translate3d(0, -7px, 0) scale(.72) rotate(12deg); }
 }
 
 .ow-v2-orb-body.has-image-skin.thinking::after {

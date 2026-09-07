@@ -1,4 +1,4 @@
-import React, { FormEvent, useMemo, useState } from 'react';
+import React, { FormEvent, useEffect, useMemo, useState } from 'react';
 import PublicHeader from '../components/PublicHeader';
 import { api, PublicPreflightReport } from '../services/api';
 import { marketplaceUrl } from '../services/marketplaceUrl';
@@ -78,13 +78,21 @@ const PublicPreflight: React.FC = () => {
     setIsRunning(true);
 
     try {
-      setReport(await api.publicPreflight(websiteUrl));
+      const nextReport = await api.publicPreflight(websiteUrl);
+      setReport(nextReport);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Preflight scan failed');
     } finally {
       setIsRunning(false);
     }
   };
+
+  useEffect(() => {
+    if (!report) return;
+    // Emit after React has rendered the report so the live ORB can resolve
+    // the actual result sections and guide to their current geometry.
+    window.dispatchEvent(new CustomEvent('orbweaver:preflight-complete', { detail: report }));
+  }, [report]);
 
   return (
     <main className="min-h-screen overflow-hidden bg-slate-950 text-white">
@@ -158,8 +166,8 @@ const PublicPreflight: React.FC = () => {
           )}
 
           {report && (
-            <section className="mt-10 space-y-6">
-              <div className="grid gap-5 rounded-xl border border-cyan-300/25 bg-white/[0.045] p-6 shadow-2xl shadow-cyan-950/40 md:grid-cols-[1fr_250px]">
+            <section className="mt-10 space-y-6" data-preflight-result="true">
+              <div data-preflight-finding="overview" className="grid gap-5 rounded-xl border border-cyan-300/25 bg-white/[0.045] p-6 shadow-2xl shadow-cyan-950/40 md:grid-cols-[1fr_250px]">
                 <div>
                   <p className="text-sm font-semibold text-cyan-200">{report.outcome_title}</p>
                   <h2 className="mt-2 break-all text-2xl font-bold text-white">{report.site_url}</h2>
@@ -175,7 +183,7 @@ const PublicPreflight: React.FC = () => {
 
                   <div className="mt-5">
                     <p className="text-sm font-bold text-white">What Orb Weaver found</p>
-                    <ul className="mt-3 space-y-2 text-sm leading-relaxed text-slate-200">
+                    <ul data-preflight-finding="reasons" className="mt-3 space-y-2 text-sm leading-relaxed text-slate-200">
                       {report.reasons.slice(0, 5).map((reason) => (
                         <li key={reason} className="flex gap-2">
                           <span className="text-cyan-300">•</span>
@@ -262,7 +270,7 @@ const PublicPreflight: React.FC = () => {
               </section>
 
               {(scanSignals.hasAuth || scanSignals.hasCheckout || scanSignals.hasIncompletePages) && (
-                <section className="rounded-xl border border-amber-300/20 bg-amber-400/[0.06] p-6">
+                <section data-preflight-finding="boundaries" className="rounded-xl border border-amber-300/20 bg-amber-400/[0.06] p-6">
                   <p className="text-sm font-bold uppercase tracking-[0.18em] text-amber-200">
                     Important boundaries found during this scan
                   </p>
@@ -318,35 +326,34 @@ const PublicPreflight: React.FC = () => {
                   </p>
 
                   <h3 className="mt-3 text-2xl font-bold text-white">
-                    Move from a fit check to a complete ORB plan.
+                    Choose what happens after Preflight.
                   </h3>
 
                   <p className="mt-3 max-w-2xl leading-relaxed text-slate-200">
-                    This free preflight confirms whether the public site appears to be a fit. The next
-                    step is a deeper readiness review that maps visitor routes, visible targets, page
-                    context, and installation boundaries before an ORB is configured.
+                    Preflight is complete. Choose whether to continue into onboarding, purchase the
+                    full scan and data package by itself, or proceed toward ORB production.
                   </p>
 
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  <div data-preflight-finding="offers" className="mt-5 grid gap-3 lg:grid-cols-3">
                     <a
-                      href="/signup?intent=site_review"
+                      href="/signup?intent=site_onboarding"
                       className="rounded-lg bg-cyan-300 px-5 py-3 text-center text-sm font-bold text-slate-950 transition hover:bg-cyan-200"
                     >
-                      Proceed to Site Review
+                      Continue to onboarding
                     </a>
 
                     <a
-                      href="/signup?intent=site_update"
+                      href="/signup?intent=full_scan_data"
                       className="rounded-lg border border-cyan-200/30 px-5 py-3 text-center text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/10"
                     >
-                      Request a Site Update
+                      Full scans + data · $49.95
                     </a>
 
                     <a
-                      href={marketplaceUrl}
+                      href={`${marketplaceUrl}/?intent=orb-production`}
                       className="rounded-lg border border-cyan-200/30 px-5 py-3 text-center text-sm font-bold text-cyan-100 transition hover:border-cyan-200 hover:bg-cyan-300/10"
                     >
-                      Explore ORB packages
+                      Proceed to ORB production
                     </a>
                   </div>
 

@@ -12,6 +12,7 @@ import {
   api,
   type WebsiteOrbExperienceContext,
   type WebsiteOrbPointerRecord,
+  type PublicPreflightReport,
   type WebsiteOrbTtsResponse,
   type WebsiteOrbVoiceResponse,
 } from "../services/api";
@@ -120,8 +121,8 @@ const AMBIENT_TRAVEL_PX_PER_SECOND = 54;
 const AMBIENT_SETTLE_MS = 1900;
 const CURSOR_EVASION_COOLDOWN_MS = 850;
 const REST_AFTER_INACTIVITY_MS = 15 * 60 * 1000;
-const ACTIVE_ORB_OPACITY = 0.9;
-const REST_ORB_OPACITY = 0.55;
+const ACTIVE_ORB_OPACITY = 1;
+const REST_ORB_OPACITY = 0.78;
 const FIRST_ENCOUNTER_STORAGE_KEY = "orbweaver-first-encounter-state";
 const STARTUP_GREETING_SESSION_KEY = "orbweaver-startup-greeting-played";
 const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
@@ -166,7 +167,7 @@ const EMPTY_FIRST_ENCOUNTER_STATE: FirstEncounterState = {
   relevant_continuation_complete: false,
   controller_handoff_complete: false,
 };
-const MORB_SIZE = 35;
+const MORB_SIZE = 48;
 const MORB_HALF = MORB_SIZE / 2;
 const ORB_TARGET_CLEARANCE_PX = 56;
 const MORB_ROLE_STYLES: Record<MorbWorkRole, { primary: string; glow: string; shadow: string; skin: string }> = {
@@ -418,6 +419,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const [showStartupDiagnosticsPanel] = useState(() => startupDiagnosticsPanelEnabled());
   const [startupDiagnostics, setStartupDiagnostics] = useState<StartupDiagnostics>(() => initialStartupDiagnostics());
   const [runtimeAnswerDiagnostics, setRuntimeAnswerDiagnostics] = useState<RuntimeAnswerDiagnostics | null>(null);
+  const preflightNarratedReportRef = useRef<string | null>(null);
 
   const updateStartupDiagnostics = useCallback((patch: Partial<StartupDiagnostics>) => {
     setStartupDiagnostics((current) => {
@@ -1228,6 +1230,31 @@ export const AutonomousOrb: React.FC<Props> = ({
     });
   }, [presence]);
 
+  useEffect(() => {
+    // Let Weaver remain gently peripatetic while speaking. This is a local
+    // presentation drift on the inner visual layer; guided target movement
+    // still belongs to `move` and remains authoritative for Point/Ping.
+    if (voiceState !== "speaking" || guidanceActiveRef.current || !activeRef.current) {
+      presence.stop();
+      return;
+    }
+
+    void presence.start({
+      x: [0, 5, -4, 3, 0],
+      y: [0, -3, 4, -2, 0],
+      rotate: [0, 1.2, -1, .8, 0],
+      scale: [1, 1.018, .994, 1.012, 1],
+      transition: {
+        duration: 9.5,
+        ease: "easeInOut",
+        repeat: Infinity,
+        repeatType: "loop",
+      },
+    });
+
+    return () => presence.stop();
+  }, [presence, voiceState]);
+
   const showStatus = useCallback((hideAfterMs?: number) => {
     setStatusVisible(true);
     if (statusTimerRef.current) {
@@ -1426,8 +1453,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     motionInterruptionSequenceRef.current += 1;
     autonomousResumeActiveRef.current = false;
     move.stop();
-    presence.stop();
-  }, [move, presence]);
+  }, [move]);
 
   const speak = useCallback(async (
     text: string,
@@ -2673,6 +2699,76 @@ export const AutonomousOrb: React.FC<Props> = ({
       window.removeEventListener("hashchange", sequenceHandler);
     };
   }, [bumpWorldStateSequence, markVisitorActivity]);
+
+  useEffect(() => {
+    const handlePreflightComplete = (event: Event) => {
+      const detail = (event as CustomEvent<PublicPreflightReport>).detail;
+      if (!detail?.generated_at || preflightNarratedReportRef.current === detail.generated_at) return;
+      preflightNarratedReportRef.current = detail.generated_at;
+
+      const reasons = (detail.reasons || []).slice(0, 3).join(' ');
+      const renderedResultText = document.querySelector<HTMLElement>('[data-preflight-result]')?.innerText
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 700) || '';
+      const narration = [
+        `Your Preflight result is ${detail.outcome_title}.`,
+        `The fit score is ${detail.fit_score} out of 100, after reading ${detail.basic_checks?.pages_read ?? detail.basic_checks?.sample_pages_read ?? 0} public pages.`,
+        detail.summary,
+        reasons ? `The main findings were: ${reasons}` : '',
+        renderedResultText ? `The result page also shows: ${renderedResultText}` : '',
+        'You have three choices now: continue to onboarding for the full customer setup, purchase the full site scans and data by themselves for $49.95, or proceed toward ORB production.',
+        'I will not begin any of those next steps until you choose one.',
+      ].filter(Boolean).join(' ');
+
+      const findingSequence = ['overview', 'reasons', 'boundaries', 'offers']
+        .map((kind) => document.querySelector<HTMLElement>(`[data-preflight-finding="${kind}"]`))
+        .filter((element): element is HTMLElement => Boolean(element));
+      const resultRecord = (element: HTMLElement, index: number): WebsiteOrbPointerRecord => ({
+        target_id: `preflight-result-${detail.generated_at}-${index}`,
+        page_route: window.location.pathname,
+        target_type: 'preflight_result',
+        meaning: element.innerText.replace(/\s+/g, ' ').trim().slice(0, 220),
+        content_fingerprint: `preflight:${detail.generated_at}:${index}`,
+        semantic_locator: `[data-preflight-finding="${element.dataset.preflightFinding}"]`,
+        confidence: 1,
+        confidence_class: 'VERIFIED',
+        finding_class: 'CONFIRMED',
+        pointer_health: 'OWNER_VERIFIED',
+        runtime_policy: { may_point: true, requires_live_verification: true },
+      });
+
+      const walkRenderedResults = async () => {
+        if (findingSequence.length === 0) {
+          const tts = await api.websiteOrbTts(narration);
+          await speakWithGeneratedAudio(narration, tts.tts_audio_url, tts.tts_provider);
+          return;
+        }
+        for (const [index, element] of findingSequence.entries()) {
+          const liveText = element.innerText.replace(/\s+/g, ' ').trim();
+          if (!liveText) continue;
+          const record = resultRecord(element, index);
+          const guided = await guideToPointerRecord(record, `Explain this Preflight result: ${liveText.slice(0, 220)}`);
+          if (!guided) continue;
+          const explanation = index === 0
+            ? narration
+            : `This is the next part of your actual Preflight result: ${liveText.slice(0, 650)}.`;
+          const tts = await api.websiteOrbTts(explanation);
+          await speakWithGeneratedAudio(explanation, tts.tts_audio_url, tts.tts_provider);
+        }
+      };
+
+      void walkRenderedResults()
+        .catch(() => {
+          setStatusTitle('Preflight result ready');
+          setStatusLine(narration);
+          showStatus(7000);
+        });
+    };
+
+    window.addEventListener('orbweaver:preflight-complete', handlePreflightComplete);
+    return () => window.removeEventListener('orbweaver:preflight-complete', handlePreflightComplete);
+  }, [guideToPointerRecord, showStatus, speakWithGeneratedAudio]);
 
   useEffect(() => {
     api.websiteOrbCapabilities()

@@ -9,12 +9,45 @@ import {
 } from './OrbTelemetryClient.state';
 import type { ClientInboundMessage, TelemetryFrame } from './types';
 
+const LOCAL_API_PORT_PAIRS: Record<string, string> = {
+  '16510': '16500',
+  '16610': '16600',
+  '16666': '19667',
+  '16667': '19667',
+  '16777': '16776',
+};
+
+export function defaultOrbTelemetryUrl(): string {
+  if (typeof window === 'undefined') return 'ws://127.0.0.1:16500/ws/orb-pointer';
+
+  const { hostname, port, protocol } = window.location;
+  const websocketProtocol = protocol === 'https:' ? 'wss:' : 'ws:';
+  const normalizedHostname = hostname === '0.0.0.0' ? '127.0.0.1' : hostname;
+  const localOrPrivateHost =
+    port === '16510' ||
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '0.0.0.0' ||
+    hostname === '::1' ||
+    hostname === '[::1]' ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.') ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+
+  if (localOrPrivateHost) {
+    const backendPort = LOCAL_API_PORT_PAIRS[port] || '16500';
+    return `${websocketProtocol}//${normalizedHostname}:${backendPort}/ws/orb-pointer`;
+  }
+
+  return `${websocketProtocol}//${window.location.host}/ws/orb-pointer`;
+}
+
 export class OrbTelemetryClient {
   private state: TelemetryClientState;
 
   private lidar: LidarCoordinateCache;
 
-  constructor(wsUrl: string = 'ws://localhost:8000/ws/orb-pointer') {
+  constructor(wsUrl: string = defaultOrbTelemetryUrl()) {
     this.state = createTelemetryState(wsUrl);
     this.lidar = LidarCoordinateCache.getInstance();
   }

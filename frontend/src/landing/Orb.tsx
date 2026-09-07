@@ -3,6 +3,10 @@ import "./Landing.css";
 
 type OrbState = "idle" | "listening" | "thinking" | "speaking";
 
+// Current five-symbol tool language. Later versions may add symbols, but the
+// first public system intentionally stays limited to this deterministic set.
+const TOOL_SYMBOLS = ["?", "☺", "$", "✓", "!"];
+
 export const Orb: React.FC<{
   size?: number;
   state?: OrbState;
@@ -36,6 +40,13 @@ export const Orb: React.FC<{
         <span className="ow-v2-orb-core-fold ow-v2-orb-core-fold-one" />
         <span className="ow-v2-orb-core-fold ow-v2-orb-core-fold-two" />
         <span className="ow-v2-orb-core-fold ow-v2-orb-core-fold-three" />
+        <span className="ow-v2-orb-tool-symbols" aria-hidden="true">
+          {TOOL_SYMBOLS.map((symbol, index) => (
+            <span className="ow-v2-orb-tool-symbol" key={symbol} style={{ "--ow-symbol-index": index } as React.CSSProperties}>
+              {symbol}
+            </span>
+          ))}
+        </span>
         <span className="ow-v2-orb-core-nucleus" />
       </div>
     </button>

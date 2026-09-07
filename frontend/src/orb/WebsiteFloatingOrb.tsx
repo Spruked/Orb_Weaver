@@ -3,6 +3,7 @@ import { api, type WebsiteOrbPointerRecord } from '../services/api';
 import { LidarCoordinateCache } from './LidarCoordinateCache';
 import { validateOrbPointerTarget } from './targetValidation';
 import { useOrbTelemetry } from './useOrbTelemetry';
+import { defaultOrbTelemetryUrl } from './OrbTelemetryClient';
 import type { TelemetryFrame, ViewportCoordinate } from './types';
 import './WebsiteFloatingOrb.css';
 
@@ -283,7 +284,7 @@ const WebsiteFloatingOrb: React.FC = () => {
     }, 1800);
   }, [deployMicroOrb, pointNearRect]);
 
-  const telemetryUrl = 'ws://localhost:8000/ws/orb-pointer';
+  const telemetryUrl = defaultOrbTelemetryUrl();
   const handleTelemetryTargetLock = useCallback((viewportCoord: ViewportCoordinate, frame: TelemetryFrame) => {
     applyTargetLock(
       viewportCoord,
