@@ -1,5 +1,7 @@
 # ORB Pointer Runtime Model
 
+> 2026-09-06 source update: [Target One landing tour](TARGET_ONE_LANDING_TOUR.md) reuses the existing cognition, TTS and verified Pointer/LiDAR paths with controller-owned concept progression and an explicit terminal visitor choice. Integrated validation is deferred; historical verification below does not cover this new slice.
+
 This document locks the runtime boundary between full scan intelligence and the lightweight Website ORB installed on a customer site.
 
 Pointer guidance is a baseline ORB capability. Every ORB gets a Pointer Plot Map, runtime pointer resolution, and verified visual guidance. This includes Orb Weaver's demo ORB, Basic customer Website ORBs, Enhanced/Premium Website ORBs, Desktop ORBs, and future branded or industry ORBs.

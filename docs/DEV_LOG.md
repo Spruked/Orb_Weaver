@@ -6,6 +6,18 @@ Update this file after meaningful code, configuration, runtime, testing, or doct
 
 ---
 
+## 2026-09-06 — Target One curriculum alignment and GitHub handoff
+
+- Aligned the active landing tour to the supplied five chapters, nine stops and twelve canonical concept IDs. Trust is separate; removed the four-chapter taxonomy and extra beat-by-beat lessons.
+- Retained V2 state/migration, cognition and concept-evidence transport, controller progression, TTS, DOM extraction, Pointer/LiDAR and interruption/resume. Mapped legacy positions without inventing Target One concept completion.
+- Terminal choice: Run a Free Preflight Scan or Continue Exploring / Onboarding. Only the visitor's explicit Run action routes to Preflight; deferral leaves the visitor on the page. No later workflow was added.
+- Native DOM IDs replace browser-tool selectors. Grouped evidence supports the narrative stops; the hero does not initiate scrolling. Static assembly-status illustration is not represented as live scan evidence.
+- Updated the root/documentation READMEs, current Target One reference, and relevant voice/pointer/LiDAR and historical tour handoff notices.
+- Validation intentionally deferred: no integrated tests, TypeScript checks, browser proof, builds, service restarts or deployment changes. Earlier isolated checks are not acceptance of this slice. Existing migration-test expectations need updating in the dedicated validation pass.
+- User authorized committing and pushing this source/documentation handoff to GitHub, then standing by. No further architecture expansion is authorized by this handoff.
+- Canonical scope, exact IDs, files and next steps: [TARGET_ONE_LANDING_TOUR.md](TARGET_ONE_LANDING_TOUR.md).
+
+
 ## 2026-09-03 — Website ORB Startup Splash / Voice Regression (in progress)
 
 ### Development-port directive

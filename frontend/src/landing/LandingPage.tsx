@@ -355,10 +355,10 @@ const LandingPage: React.FC = () => {
           <div className="ow-cut-copy ow-cut-first-encounter">
             <h2>Meet Weaver.</h2>
             <div className="ow-cut-encounter-steps" aria-label="Weaver communication orientation">
-              <p data-orb-target="what_weaver_does"><strong>What does Weaver do?</strong> It understands this website, answers from its verified knowledge, and guides you to the right place when showing is faster than explaining.</p>
+              <p data-orb-target="what_weaver_does"><strong>What does Weaver do?</strong> He understands this website, answers from its verified knowledge, and guides you to the right place when showing is faster than explaining.</p>
               <p data-orb-target="what_to_say"><strong>What do I say?</strong> Anything you would ask a person who knows the site. Click Weaver, speak naturally, finish your thought, and pause.</p>
               <p id="watch-weaver-guide" data-orb-target="watch_weaver_guide"><strong>Watch Weaver guide.</strong> When pointing is useful, Weaver guides only to a verified target and pings the exact place it can prove is live.</p>
-              <p data-orb-target="interrupt_or_guide"><strong>You stay in control.</strong> Click Weaver while it is talking to stop it. Click again when you want help.</p>
+              <p data-orb-target="interrupt_or_guide"><strong>You stay in control.</strong> Click Weaver while he is talking to pause him. Click again to ask your question, or choose Continue tour to resume.</p>
             </div>
           </div>
         </div>
@@ -504,7 +504,7 @@ const LandingPage: React.FC = () => {
             <p>Not the web you already know. A new one — built from your own pages, products, and knowledge. Stronger every day, in the hands of ORB Weaver.</p>
             
             <h2 className="ow-cut-pause">Here's what that strength looks like:</h2>
-            <ul className="ow-cut-list" aria-label="Commercial value outcomes">
+            <ul id="weave-business-outcomes" className="ow-cut-list" aria-label="Commercial value outcomes">
               <li>Reduce visitor confusion — Help people understand where to go and what to do next.</li>
               <li>Increase completed journeys — Guide users from intent to completion across forms, checkout, and service workflows.</li>
               <li>Reduce abandonment — Support visitors at hesitation points before they drop out.</li>

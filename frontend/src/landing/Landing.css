@@ -1784,3 +1784,32 @@
 }
 
 /* === end Weaver Living Core v2 === */
+
+.ow-tour-controls {
+  position: fixed;
+  left: 16px;
+  bottom: 20px;
+  z-index: 2147483638;
+  width: min(360px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid rgba(108, 215, 238, .45);
+  border-radius: 16px;
+  background: #071824;
+  color: #eefaff;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, .3);
+}
+.ow-tour-controls p { margin: 8px 0 12px; font-size: 14px; line-height: 1.5; }
+.ow-tour-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ow-tour-actions button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid #6cd7ee;
+  border-radius: 8px;
+  background: #123b4d;
+  color: #fff;
+  cursor: pointer;
+}
+.ow-tour-actions button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+@media (max-width: 600px) {
+  .ow-tour-controls { bottom: 12px; width: min(300px, calc(100vw - 104px)); }
+}

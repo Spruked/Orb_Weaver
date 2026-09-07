@@ -2,6 +2,8 @@
 
 Date: 2026-09-04
 
+> Superseded on 2026-09-06 by [Target One](../TARGET_ONE_LANDING_TOUR.md). This file is historical context, not current execution instructions. The active tour has five chapters and nine stops and waits for a visitor choice before any Preflight navigation. Automatic Preflight entry and the runtime/proof commands below must not be resumed during the current build hold; validation remains deferred.
+
 ## Resume from here
 
 Work in `/home/bryan/projects/Orb_Weaver`.

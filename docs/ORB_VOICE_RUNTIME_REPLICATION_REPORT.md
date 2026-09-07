@@ -1,5 +1,7 @@
 # ORB Voice Runtime Replication Report
 
+> 2026-09-06 source update: [Target One landing tour](TARGET_ONE_LANDING_TOUR.md) reuses the existing cognition, TTS and verified Pointer/LiDAR paths with controller-owned concept progression and an explicit terminal visitor choice. Integrated validation is deferred; historical verification below does not cover this new slice.
+
 This is the gold-master implementation report for copying the repaired Orb Weaver Website ORB voice runtime into future ORBs. It documents the current live runtime, not older Desktop ORB experiments and not stale bundled code.
 
 Last verified: July 6, 2026.

@@ -1,5 +1,7 @@
 # LiDAR 2D Mapping Implementation
 
+> 2026-09-06 source update: [Target One landing tour](../../../../docs/TARGET_ONE_LANDING_TOUR.md) reuses the existing cognition, TTS and verified Pointer/LiDAR paths with controller-owned concept progression and an explicit terminal visitor choice. Integrated validation is deferred; historical verification below does not cover this new slice.
+
 This directory is the canonical, visibly named Website ORB **LiDAR 2D Mapping / Coordinate Cache** package.
 
 It was recovered from the August 4, 2026 implementation artifact and renamed so it cannot disappear behind generic names such as `pointer map`, `geometry cache`, `telemetry`, or `spatial runtime`.

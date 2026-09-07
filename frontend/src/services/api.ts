@@ -1,3 +1,5 @@
+import type { ChapterEvaluation, TourConcept } from "../types/tour";
+
 function defaultApiBaseUrl() {
   if (typeof window === 'undefined') return '';
 
@@ -1072,6 +1074,7 @@ export interface BrowserLabResult {
 }
 
 export interface WebsiteOrbVoiceResponse {
+  chapter_evaluation?: ChapterEvaluation | null;
   transcript: string;
   spoken_output: string;
   cognitive_pulse?: Record<string, unknown> | null;
@@ -1140,6 +1143,15 @@ export type WebsiteOrbExperiencePhase =
   | 'relevant_continuation';
 
 export interface WebsiteOrbExperienceContext {
+  tour?: {
+    chapter_id: string;
+    stop_id: string;
+    purpose: string;
+    required_concepts: TourConcept[];
+    avoid: string[];
+    presentation_guidance: string[];
+    visible_section_text: string;
+  };
   phase: WebsiteOrbExperiencePhase;
   objective: string;
   visitor_turn?: number;

@@ -53,6 +53,7 @@ from app.core.storage import (
 )
 from app.crawler.engine import OrbWeaverCrawler, PageData
 from app.crawler.tesseract_weave import summarize_weaves
+from app.orb.tour_evaluation import TourActContext, TourChapterEvaluation, tour_prompt
 from app.catalog.compiler import compile_commercial_catalog
 from app.reporting.audit_reporting import build_audit_pdf, enrich_audit_report
 from app.lifecycle import (
@@ -452,6 +453,7 @@ class CustomerLogin(BaseModel):
 
 
 class WebsiteOrbVoiceResponse(BaseModel):
+    chapter_evaluation: Optional[TourChapterEvaluation] = None
     transcript: str
     spoken_output: str
     cognitive_pulse: Optional[Dict[str, Any]] = None
@@ -483,6 +485,7 @@ class WebsiteOrbVoiceResponse(BaseModel):
 
 
 class WebsiteOrbExperienceContext(BaseModel):
+    tour: Optional[TourActContext] = None
     phase: str = Field(..., pattern="^(orientation|understanding|agency|make_it_personal|relevant_continuation)$")
     objective: str = Field(..., min_length=8, max_length=600)
     visitor_turn: int = Field(default=0, ge=0, le=20)
@@ -3214,6 +3217,12 @@ async def _llm_orb_spoken_output(
             "Sound warm and patient, never angry, annoyed, sarcastic, or rushed. Follow tool availability and confirmation rules, "
             "never claim an action ran, and use no markdown or chat-UI language."
         )
+    tour_context = (experience_context or {}).get("tour")
+    if tour_context:
+        prompt = (
+            f"{prompt_layers(governance_context) if governance_context else ''}\n"
+            + tour_prompt(tour_context)
+        )
     try:
         timeout_seconds = min(120.0, max(5.0, float(settings.LOCAL_LLM_TIMEOUT_SECONDS or 60.0)))
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
@@ -3225,15 +3234,23 @@ async def _llm_orb_spoken_output(
                     "stream": False,
                     "keep_alive": settings.LOCAL_LLM_KEEP_ALIVE,
                     "options": {
-                        "num_ctx": min(4096, max(512, int(settings.LOCAL_LLM_NUM_CTX or 1024))),
-                        "num_predict": min(160, max(16, int(settings.LOCAL_LLM_NUM_PREDICT or 64))),
+                        "num_ctx": 8192 if tour_context else min(4096, max(512, int(settings.LOCAL_LLM_NUM_CTX or 1024))),
+                        "num_predict": 1600 if tour_context else min(160, max(16, int(settings.LOCAL_LLM_NUM_PREDICT or 64))),
                         "temperature": min(1.0, max(0.0, float(settings.LOCAL_LLM_TEMPERATURE or 0.35))),
                     },
                 },
             )
             response.raise_for_status()
             payload = response.json()
-        spoken = _clean_spoken_output(str(payload.get("response") or payload.get("text") or ""))
+        raw_output = str(payload.get("response") or payload.get("text") or "")
+        if tour_context:
+            evaluation = TourChapterEvaluation.model_validate_json(raw_output)
+            allowed_ids = {item["id"] for item in tour_context["required_concepts"]}
+            evaluation.covered_concepts = [claim for claim in evaluation.covered_concepts
+                if claim.concept_id in allowed_ids and claim.supporting_excerpt in evaluation.spoken_output]
+            return {"spoken_output": evaluation.spoken_output, "chapter_evaluation": evaluation.model_dump(),
+                    "llm_source": "llamacpp-tour"}
+        spoken = _clean_spoken_output(raw_output)
         return {
             "spoken_output": spoken or fallback,
             "llm_source": "llamacpp-qwen2.5-1.5b-instruct-q4_k_m",
@@ -7807,8 +7824,9 @@ async def _canonical_website_orb_turn(
     domain = _domain_from_url(context_target_url or target_url)
     route = _route_from_url(target_url or context_target_url)
     artifacts = _canonical_runtime_artifacts(domain, website_context)
-    pointer_matches = _lookup_pointer_context(website_context, transcript)
-    _queue_pointer_lock(pointer_matches, transcript)
+    pointer_matches = [] if (experience_context or {}).get("tour") else _lookup_pointer_context(website_context, transcript)
+    if pointer_matches:
+        _queue_pointer_lock(pointer_matches, transcript)
     cognitive_pulse = _orb_cognitive_pulse(transcript)
     governance_context = compile_website_orb_governance(
         website_context=artifacts["site_world"],
@@ -7819,6 +7837,27 @@ async def _canonical_website_orb_turn(
         pointer_matches=pointer_matches,
         experience_context=experience_context,
     )
+
+    if (experience_context or {}).get("tour"):
+        # One turn on the existing cognition path; no second evaluator/model call.
+        generated = await _llm_orb_spoken_output(
+            transcript, cognitive_pulse, memory_context, artifacts["site_world"],
+            page_capsule, operating_policy, experience_context, governance_context,
+        )
+        evaluation = generated.get("chapter_evaluation")
+        if not evaluation:
+            raise HTTPException(status_code=503, detail="Tour cognition did not return concept evidence; the stop was not advanced")
+        _update_orb_recent_context(customer, transcript, generated["spoken_output"], db)
+        return {
+            "transcript": transcript, "spoken_output": generated["spoken_output"],
+            "chapter_evaluation": evaluation, "llm_source": generated["llm_source"],
+            "source_lane": "local_model", "answer_state": "unknown", "confidence": 0.55,
+            "cognitive_pulse": cognitive_pulse, "memory_context": memory_context,
+            "control_action": None, "guidance": None, "evidence_ids": [],
+            "governance_trace": initial_governance_trace(governance_context),
+            "resolution_diagnostics": {"resolution_source": "tour_cognition", "confidence": 0.55,
+                "qwen_bypassed": False, "cached_speech": False},
+        }
 
     async def local_model(query: str, _context: Dict[str, Any]) -> Dict[str, Any]:
         local_policy = dict(operating_policy or {})

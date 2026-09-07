@@ -5,6 +5,12 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 > [!IMPORTANT]
 > **IMMUTABLE STORAGE LAW:** `vault_system/` is the sole authoritative data system. Every persisted scan, raw-data artifact, customer record, authentication session, project, checkout order, verified payment, entitlement, workflow state, report, cache, and learned observation must be written into and read back from the canonical Vault. Component-local or parallel stores are prohibited. See [IMMUTABLE_VAULT_STORAGE_LAW.md](./IMMUTABLE_VAULT_STORAGE_LAW.md).
 
+## Current landing-tour target
+
+[Target One](docs/TARGET_ONE_LANDING_TOUR.md) is the approved five-chapter, nine-stop landing-page tour: Meet Weaver → Why Weaving Exists → Trust → How Orb Weaver Builds Intelligence → Preflight Decision. It retains the existing introduction, cognition, TTS, Pointer/LiDAR and interruption/resume paths. The controller waits for an explicit visitor choice; it never automatically starts Preflight or continues into later workflows.
+
+The source is built; integrated validation is deferred. This does not claim a tested or updated deployment. See the [development log](docs/DEV_LOG.md) for the current handoff and validation boundary.
+
 ## Features
 
 ### Website ORB Crawler Engine

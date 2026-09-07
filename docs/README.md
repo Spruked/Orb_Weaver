@@ -4,6 +4,8 @@ This directory is the central home for authored Orb Weaver documentation.
 
 ## Architecture
 
+- [Target One landing-page tour — current scope and handoff](TARGET_ONE_LANDING_TOUR.md)
+
 - [Factory ORB identity](architecture/FACTORY_ORB_IDENTITY.md)
 - [Universal loader installation](architecture/ORB_LOADER_INSTALLATION.md)
 - [ORB robotics architecture](architecture/ORB_Robotics_Architecture_Build_Summary.md)
