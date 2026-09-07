@@ -2457,7 +2457,10 @@ export const AutonomousOrb: React.FC<Props> = ({
     const greeting = startupGreetingText();
     const preparation: StartupVoicePreparation = {
       greeting,
-      micReady: requestStartupMicrophonePermission(),
+      // Mobile browsers require microphone permission to follow a user
+      // gesture. The Pause/Continue control is the explicit permission gate;
+      // never prompt during automatic landing startup.
+      micReady: Promise.resolve(false),
       tts: api.websiteOrbTts(greeting)
         .then((tts) => {
           updateStartupDiagnostics({ audio_tts_state: tts.tts_audio_url ? "ready" : "failed" });
@@ -2471,7 +2474,15 @@ export const AutonomousOrb: React.FC<Props> = ({
     };
     startupVoicePreparationRef.current = preparation;
     return preparation;
-  }, [requestStartupMicrophonePermission, showStatus, unlockAudio, updateStartupDiagnostics]);
+  }, [showStatus, unlockAudio, updateStartupDiagnostics]);
+
+  const continueLandingTour = useCallback(async () => {
+    unlockAudio();
+    if (!recordingStreamRef.current?.active) {
+      await requestStartupMicrophonePermission();
+    }
+    await resumeLandingTour();
+  }, [requestStartupMicrophonePermission, resumeLandingTour, unlockAudio]);
 
   const runStartupVoiceSequence = useCallback(async () => {
     const onLanding = isPublicLandingExperience();
@@ -3138,7 +3149,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         ) : tourState && journeyReadyRef.current && (
           <div className="ow-tour-actions">
             {(tourNotice || tourState.interruptionState.isInterrupted) ?
-              <button type="button" disabled={voiceState === "listening" || voiceRequestInFlightRef.current} onClick={() => void resumeLandingTour()}>Continue tour</button> :
+              <button type="button" disabled={voiceState === "listening" || voiceRequestInFlightRef.current} onClick={() => void continueLandingTour()}>Continue tour</button> :
               <button type="button" onClick={interruptOrbSpeech}>Pause tour</button>}
           </div>
         )}
