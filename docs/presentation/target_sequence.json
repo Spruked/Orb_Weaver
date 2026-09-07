@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "status": "scaffold_only_not_runtime_wired",
+  "controller_contract": {
+    "sequence_owner": "controller",
+    "conversation_owner": "llm",
+    "route_transition_requires_observation": true,
+    "live_pointer_verification_required": true,
+    "synthetic_completion_evidence_allowed": false,
+    "reuse_existing_website_orb_cognition": true,
+    "reuse_existing_tts": true,
+    "reuse_existing_site_world": true,
+    "reuse_existing_pointer_lidar": true,
+    "second_tour_llm_allowed": false
+  },
+  "targets": [
+    {
+      "target_id": "TARGET_ONE",
+      "route": "/",
+      "label": "Home / Landing",
+      "implementation_state": "active_current_build",
+      "authoritative_curriculum": "frontend/src/tour/curriculum.ts",
+      "notes": "Keep the current five-chapter landing walkthrough intact. Do not convert it into the cross-page controller while Target One is being completed."
+    },
+    {
+      "target_id": "TARGET_TWO",
+      "route": "/features",
+      "label": "Features",
+      "implementation_state": "future",
+      "proposed_stop_groups": [
+        "features-overview",
+        "features-site-intelligence",
+        "features-live-assistance",
+        "features-transition-to-lidar"
+      ],
+      "next_target": "TARGET_THREE"
+    },
+    {
+      "target_id": "TARGET_THREE",
+      "route": "/lidar-guidance",
+      "label": "LiDAR Guidance",
+      "implementation_state": "future",
+      "proposed_stop_groups": [
+        "lidar-what-it-is",
+        "lidar-acquire-target",
+        "lidar-point-and-ping",
+        "lidar-recovery",
+        "lidar-transition-to-how-it-works"
+      ],
+      "acceptance_requires_verified_live_demo": true,
+      "next_target": "TARGET_FOUR"
+    },
+    {
+      "target_id": "TARGET_FOUR",
+      "route": "/how-it-works",
+      "label": "How It Works",
+      "implementation_state": "future",
+      "proposed_stop_groups": [
+        "how-it-works-input",
+        "how-it-works-discovery",
+        "how-it-works-weave",
+        "how-it-works-operation",
+        "how-it-works-transition-to-preflight"
+      ],
+      "next_target": "TARGET_FIVE"
+    },
+    {
+      "target_id": "TARGET_FIVE",
+      "route": "/preflight",
+      "label": "Preflight",
+      "implementation_state": "future",
+      "proposed_stop_groups": [
+        "preflight-purpose",
+        "preflight-input",
+        "preflight-run",
+        "preflight-review",
+        "preflight-auth-handoff"
+      ],
+      "auth_choices": [
+        "/login",
+        "/signup"
+      ],
+      "preflight_requires_explicit_user_start": true,
+      "next_phase": "AUTH_PURCHASE_ONBOARDING"
+    }
+  ],
+  "excluded_from_required_preflight_walkthrough": [
+    "security",
+    "desktop-orb",
+    "campaign",
+    "investor",
+    "beta",
+    "marketplace-before-purchase"
+  ],
+  "post_purchase": {
+    "marketplace_intro": true,
+    "marketplace_intro_length": "short",
+    "automatic_marketplace_purchase": false,
+    "customer_may_continue_onboarding_instead": true
+  },
+  "future_sequence": [
+    "TARGET_ONE",
+    "TARGET_TWO",
+    "TARGET_THREE",
+    "TARGET_FOUR",
+    "TARGET_FIVE",
+    "LOGIN_OR_SIGNUP",
+    "PURCHASE_ONBOARDING",
+    "SHORT_MARKETPLACE_INTRO"
+  ]
+}
