@@ -16,6 +16,7 @@ import {
   type WebsiteOrbTtsResponse,
   type WebsiteOrbVoiceResponse,
 } from "../services/api";
+import travelMorbAsset from "../assets/sound_files/travelmorb.mp3";
 import {
   ACTIVE_ORB_PROJECT_CONTEXT_EVENT,
   ActiveOrbProjectContext,
@@ -40,7 +41,11 @@ const wait = (ms: number) =>
 
 const VOICE_UNAVAILABLE_MESSAGE = "Voice unavailable";
 const POINTER_PING_AUDIO_PATH = "/orb/voice/pointer-ping.mp3";
-const MORB_TRAVEL_AUDIO_PATH = "/orb/voice/travel-morb.mp3";
+const MORB_TRAVEL_AUDIO_PATHS = [
+  "/orb/voice/travel-morb.mp3",
+  "/orb/voice/travel_morb2.mp3",
+  travelMorbAsset,
+];
 const MIN_RECORDING_MS = 700;
 const END_SILENCE_MS = 2200;
 const ABSOLUTE_RECORDING_LIMIT_MS = 22000;
@@ -343,6 +348,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const latencyAudioRef = useRef<HTMLAudioElement | null>(null);
   const pointerPingAudioRef = useRef<HTMLAudioElement | null>(null);
   const morbTravelAudioRef = useRef<HTMLAudioElement | null>(null);
+  const morbTravelAudioIndexRef = useRef(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const speechSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const speechAnalyserRef = useRef<AnalyserNode | null>(null);
@@ -600,11 +606,14 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const startMorbTravelSound = useCallback(() => {
     if (!audioUnlockedRef.current) return;
-    const audio = morbTravelAudioRef.current || new Audio(MORB_TRAVEL_AUDIO_PATH);
+    const path = MORB_TRAVEL_AUDIO_PATHS[morbTravelAudioIndexRef.current % MORB_TRAVEL_AUDIO_PATHS.length];
+    morbTravelAudioIndexRef.current += 1;
+    const audio = morbTravelAudioRef.current || new Audio(path);
+    if (audio.src !== new URL(path, window.location.href).href) audio.src = path;
     audio.pause();
     audio.currentTime = 0;
     audio.loop = true;
-    audio.volume = speakerBoostRef.current ? 0.72 : 0.54;
+    audio.volume = speakerBoostRef.current ? 0.34 : 0.24;
     morbTravelAudioRef.current = audio;
     void audio.play().catch(() => undefined);
   }, []);
@@ -1102,6 +1111,9 @@ export const AutonomousOrb: React.FC<Props> = ({
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
     setPointerWaltzPhase("TRAVEL");
     startMorbTravelSound();
+    const morbTravelDuration = Math.max(760, Math.min(1500,
+      Math.round(Math.hypot(finalTargetX - orbCenterX, finalTargetY - orbCenterY) * 1.25),
+    ));
     setMorbPointer((currentMorb) => currentMorb ? {
       ...currentMorb,
       left: finalTargetX - MORB_HALF,
@@ -1110,7 +1122,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       phase: "TRAVEL",
     } : null);
 
-    await awaitAbortable(wait(640), options.signal);
+    await awaitAbortable(wait(morbTravelDuration), options.signal);
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
     stopMorbTravelSound();
     setPointerWaltzPhase("STANCE");
