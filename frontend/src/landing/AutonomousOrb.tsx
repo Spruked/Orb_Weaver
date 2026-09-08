@@ -1151,6 +1151,10 @@ export const AutonomousOrb: React.FC<Props> = ({
     setPointerWaltzPhase("PING");
     playPointerPing();
     setLastGuidedTarget(record.target_id);
+    emitOrbRuntimeEvent("guidance_point_ping", {
+      targetId: record.target_id,
+      geometrySource: "live_refresh",
+    });
 
     setPointerBloom({
       targetId: record.target_id,
@@ -1762,6 +1766,18 @@ export const AutonomousOrb: React.FC<Props> = ({
           });
           if (signal.aborted) throw new DOMException("Tour interrupted", "AbortError");
           emitOrbRuntimeEvent('tour_converse_received', { stopId: stop.id, hasAudio: Boolean(result.tts_audio_url), hasEvidence: Boolean(result.chapter_evaluation) });
+          emitOrbRuntimeEvent('tour_articulation_received', {
+            stopId: stop.id,
+            source_facts: sourceText.slice(0, 2500),
+            prompt_context: {
+              purpose: stop.purpose,
+              required_concepts: missing.map((concept) => ({ id: concept.id, description: concept.description })),
+            },
+            raw_spoken_output: result.spoken_output,
+            final_spoken_text: result.spoken_output,
+            llm_source: result.llm_source,
+            tts_provider: result.tts_provider || null,
+          });
           const evaluation = parseChapterEvaluation(result.chapter_evaluation, result.spoken_output);
           const cancelPlayback = () => {
             speechPlaybackSettlementRef.current?.cancel();
@@ -2739,42 +2755,56 @@ export const AutonomousOrb: React.FC<Props> = ({
       if (!detail?.generated_at || preflightNarratedReportRef.current === detail.generated_at) return;
       preflightNarratedReportRef.current = detail.generated_at;
 
-      const reasons = (detail.reasons || []).slice(0, 3).join(' ');
-      const renderedResultText = document.querySelector<HTMLElement>('[data-preflight-result]')?.innerText
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 700) || '';
-      const narration = [
-        `Your Preflight result is ${detail.outcome_title}.`,
-        `The fit score is ${detail.fit_score} out of 100, after reading ${detail.basic_checks?.pages_read ?? detail.basic_checks?.sample_pages_read ?? 0} public pages.`,
-        detail.summary,
-        reasons ? `The main findings were: ${reasons}` : '',
-        renderedResultText ? `The result page also shows: ${renderedResultText}` : '',
-        'You have three choices now: continue to onboarding for the full customer setup, purchase the full site scans and data by themselves for $49.95, or proceed toward ORB production.',
-        'I will not begin any of those next steps until you choose one.',
-      ].filter(Boolean).join(' ');
+      if (!detail.outcome || !detail.site_url) return;
 
       const findingSequence = ['overview', 'reasons', 'boundaries', 'offers']
         .map((kind) => document.querySelector<HTMLElement>(`[data-preflight-finding="${kind}"]`))
         .filter((element): element is HTMLElement => Boolean(element));
-      const resultRecord = (element: HTMLElement, index: number): WebsiteOrbPointerRecord => ({
-        target_id: `preflight-result-${detail.generated_at}-${index}`,
-        page_route: window.location.pathname,
-        target_type: 'preflight_result',
-        meaning: element.innerText.replace(/\s+/g, ' ').trim().slice(0, 220),
-        content_fingerprint: `preflight:${detail.generated_at}:${index}`,
-        semantic_locator: `[data-preflight-finding="${element.dataset.preflightFinding}"]`,
-        confidence: 1,
-        confidence_class: 'VERIFIED',
-        finding_class: 'CONFIRMED',
-        pointer_health: 'OWNER_VERIFIED',
-        runtime_policy: { may_point: true, requires_live_verification: true },
-      });
+      const resultRecord = (element: HTMLElement, index: number): WebsiteOrbPointerRecord => {
+        const findingKey = element.dataset.preflightFinding || `unclassified-${index}`;
+        const targetId = `preflight-result-${detail.generated_at}-${findingKey}`;
+        // The report is factual authority and this exact rendered card is its
+        // presentation surface. Bind a per-report identity before validation;
+        // a stale cache coordinate alone can never pass the later live check.
+        element.setAttribute('data-orb-target', targetId);
+        const rect = element.getBoundingClientRect();
+        lidarCacheRef.current.injectFrame({
+          event_type: 'pointer_target_lock',
+          target_id: targetId,
+          absolute_top: rect.top + window.scrollY,
+          absolute_left: rect.left + window.scrollX,
+          width: rect.width,
+          height: rect.height,
+          semantic_intent: 'rendered_preflight_finding',
+          movement_vector: 'glide',
+          confidence: 1,
+          metadata: { report_generated_at: detail.generated_at, finding: findingKey },
+          timestamp_iso: new Date().toISOString(),
+        });
+        emitOrbRuntimeEvent('preflight_lidar_target_mapped', {
+          targetId,
+          finding: findingKey,
+          source: 'rendered_preflight_dom',
+        });
+        return {
+          target_id: targetId,
+          page_route: window.location.pathname,
+          target_type: 'preflight_result',
+          content_fingerprint: `preflight:${detail.generated_at}:${findingKey}`,
+          semantic_locator: `[data-orb-target="${targetId}"]`,
+          confidence: 1,
+          confidence_class: 'VERIFIED',
+          finding_class: 'CONFIRMED',
+          pointer_health: 'OWNER_VERIFIED',
+          runtime_policy: { may_point: true, requires_live_verification: true },
+        };
+      };
 
       const walkRenderedResults = async () => {
         if (findingSequence.length === 0) {
-          const tts = await api.websiteOrbTts(narration);
-          await speakWithGeneratedAudio(narration, tts.tts_audio_url, tts.tts_provider);
+          setStatusTitle('Preflight result ready');
+          setStatusLine('I have the result, but I cannot prepare the explanation right now.');
+          showStatus(7000);
           return;
         }
         for (const [index, element] of findingSequence.entries()) {
@@ -2783,18 +2813,66 @@ export const AutonomousOrb: React.FC<Props> = ({
           const record = resultRecord(element, index);
           const guided = await guideToPointerRecord(record, `Explain this Preflight result: ${liveText.slice(0, 220)}`);
           if (!guided) continue;
-          const explanation = index === 0
-            ? narration
-            : `This is the next part of your actual Preflight result: ${liveText.slice(0, 650)}.`;
-          const tts = await api.websiteOrbTts(explanation);
-          await speakWithGeneratedAudio(explanation, tts.tts_audio_url, tts.tts_provider);
+          const findingFacts = index === 0
+            ? [detail.outcome_title, detail.summary, `Fit score: ${detail.fit_score}/100`, `Pages read: ${detail.basic_checks?.pages_read ?? detail.basic_checks?.sample_pages_read ?? 0}`]
+            : index === 1
+              ? detail.reasons
+              : index === 2
+                ? [detail.notice, detail.install_path, detail.premium_status]
+                : [
+                    'Offer 1: Continue to onboarding.',
+                    'Offer 2: Purchase complete full-site scans and data for $49.95.',
+                    'Offer 3: Proceed toward ORB production.',
+                    'The visitor must choose; do not initiate an offer automatically.',
+                  ];
+          const result = await api.websiteOrbText(
+            'Interpret this verified Preflight finding for the visitor in natural speech. Explain what it means and why it matters, then connect it to the next useful choice when appropriate.',
+            true,
+            undefined,
+            {
+              target_url: detail.site_url,
+              experience: {
+                phase: 'understanding',
+                objective: 'Explain one actual Preflight finding without reading the card mechanically.',
+                verification_state: 'verified',
+                tour: {
+                  chapter_id: 'preflight-results',
+                  stop_id: `finding-${index}`,
+                  purpose: 'Explain the current verified Preflight finding.',
+                  required_concepts: [{
+                    id: `preflight-finding-${index}`,
+                    description: findingFacts.filter(Boolean).join(' '),
+                  }],
+                  avoid: ['Do not invent findings.', 'Do not imply unknown or unevaluated items are absent.', 'Do not choose an offer for the visitor.'],
+                  presentation_guidance: ['Use the live DOM only to locate what the visitor is seeing; the persisted report is factual authority.'],
+                  visible_section_text: liveText.slice(0, 2500),
+                  evidence_attempt: 1,
+                },
+              },
+            },
+          );
+          emitOrbRuntimeEvent('preflight_articulation_received', {
+            finding_index: index,
+            source_facts: findingFacts,
+            raw_spoken_output: result.spoken_output,
+            final_spoken_text: result.spoken_output,
+            llm_source: result.llm_source,
+            tts_provider: result.tts_provider || null,
+          });
+          if (!result.chapter_evaluation || !result.spoken_output.trim()) {
+            setStatusTitle('Preflight explanation unavailable');
+            setStatusLine('I have your result, but I cannot prepare the explanation right now.');
+            showStatus(7000);
+            continue;
+          }
+          await speakWithGeneratedAudio(result.spoken_output, result.tts_audio_url, result.tts_provider);
         }
       };
 
       void walkRenderedResults()
         .catch(() => {
-          setStatusTitle('Preflight result ready');
-          setStatusLine(narration);
+          setStatusTitle('Preflight explanation unavailable');
+          setStatusLine('I have your result, but I cannot prepare the explanation right now.');
           showStatus(7000);
         });
     };

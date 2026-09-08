@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
-from app.orb.vault_skg_adapter import VaultSKGAdapter
 from manufacturing.website_orb.orchestrator import REQUIRED_PAYLOAD_FILES, manufacture_website_orb
 
 
@@ -63,16 +65,77 @@ def test_manufacturer_builds_complete_delivery_ready_package(tmp_path):
     orb_template = Path(result["package_paths"]["dock_station"]) / "app" / "orb" / "template"
     assert (orb_template / "backend" / "app.py").is_file()
     assert (orb_template / "frontend" / "src" / "WebsiteORB.tsx").is_file()
-    priori_dir = orb_template / "Orb_Vault_System" / "orb_vault_skg" / "vaults" / "A_Priori_Vault"
-    assert json.loads((priori_dir / "catalog.json").read_text())["entries"][0]["entity_id"] == "product-1"
-    skg_result = VaultSKGAdapter(priori_dir, tmp_path / "posteriori-proof").lookup("apriori", "How much is Known Product?")
-    assert skg_result and skg_result["source"] == "a_priori_catalog"
+    runtime_vault = orb_template / "runtime" / "vault_system"
+    assert json.loads((runtime_vault / "payload" / "apriori" / "catalog.json").read_text())["entries"][0]["entity_id"] == "product-1"
+    assert not (orb_template / "Orb_Vault_System" / "orb_vault_skg" / "vaults").exists()
+    assert not (orb_template / "vendor" / "TPC_Triple_Predicate_Cubed" / "results").exists()
+    assert not (orb_template / "vendor" / "TPC_Triple_Predicate_Cubed" / "vaults").exists()
+    assert not (orb_template / "vendor" / "TPC_Triple_Predicate_Cubed" / "api").exists()
+
+    package_env = {**os.environ, "PYTHONPATH": str(orb_template), "ORB_WEAVER_VAULT_ROOT": str(runtime_vault)}
+    package_probe = """
+import json
+from backend.cognition.answer_engine import _get_vault_coordinator, answer_from_world
+answer = answer_from_world('How much is Known Product?', '/', {'route': '/'}, {}, [])
+coordinator = _get_vault_coordinator()
+print(json.dumps({'answer': answer['answer'], 'priori': coordinator.priori_dir, 'posteriori': coordinator.posteriori_dir}))
+"""
+    first = subprocess.run([sys.executable, "-c", package_probe], env=package_env, text=True, capture_output=True, check=True)
+    first_payload = json.loads(first.stdout.strip().splitlines()[-1])
+    assert first_payload["answer"]
+    assert Path(first_payload["priori"]).is_relative_to(runtime_vault)
+    assert Path(first_payload["posteriori"]).is_relative_to(runtime_vault)
+    assert (runtime_vault / "posteriori" / "orb_vault_skg" / "ledger" / "ledger_00000.jsonl").is_file()
+    provenance = runtime_vault / "audit" / "glyph_trace" / "skg_runtime.jsonl"
+    assert provenance.is_file()
+    assert json.loads(provenance.read_text().splitlines()[-1])["event"] == "skg_resolution"
+
+    # A fresh process reloads the same canonical knowledge/learning namespace.
+    second = subprocess.run([sys.executable, "-c", package_probe], env=package_env, text=True, capture_output=True, check=True)
+    second_payload = json.loads(second.stdout.strip().splitlines()[-1])
+    assert second_payload["answer"] == first_payload["answer"]
+
+    fail_closed_env = {key: value for key, value in package_env.items() if key != "ORB_WEAVER_VAULT_ROOT"}
+    missing_root = subprocess.run([sys.executable, "-c", "from backend.cognition.answer_engine import answer_from_world; answer_from_world('How much is Known Product?', '/', {'route': '/'}, {}, [])"], env=fail_closed_env, text=True, capture_output=True)
+    assert missing_root.returncode != 0
+    assert "ORB_WEAVER_VAULT_ROOT is required" in missing_root.stderr
+    assert not (orb_template / "Orb_Vault_System" / "orb_vault_skg" / "vaults").exists()
+
+    answer_probe = "from backend.cognition.answer_engine import answer_from_world; answer_from_world('How much is Known Product?', '/', {'route': '/'}, {}, [])"
+    rejected_roots = (
+        tmp_path / "outside-vault",
+        orb_template / "Orb_Vault_System" / "orb_vault_skg" / "vaults",
+        orb_template / "vendor" / "TPC_Triple_Predicate_Cubed" / "results",
+        runtime_vault / ".." / ".." / "escaped-vault",
+    )
+    for rejected_root in rejected_roots:
+        rejected = subprocess.run(
+            [sys.executable, "-c", answer_probe],
+            env={**package_env, "ORB_WEAVER_VAULT_ROOT": str(rejected_root)},
+            text=True,
+            capture_output=True,
+        )
+        assert rejected.returncode != 0
+        assert "must reference the manufactured runtime/vault_system root" in rejected.stderr
+
+    # A correctly named canonical location may not escape by resolving to an
+    # external directory through a symlink.
+    external_vault = tmp_path / "external-symlink-vault"
+    runtime_vault.rename(external_vault)
+    runtime_vault.symlink_to(external_vault, target_is_directory=True)
+    symlinked_root = subprocess.run([sys.executable, "-c", answer_probe], env=package_env, text=True, capture_output=True)
+    assert symlinked_root.returncode != 0
+    assert "must not be a symbolic link" in symlinked_root.stderr
     with zipfile.ZipFile(result["package_paths"]["orbpack"]) as archive:
         names = archive.namelist()
     assert "dock-station/app/orb/template/runtime/vault_system/payload/catalog.db" in names
     assert "dock-station/app/orb/template/backend/app.py" in names
     assert "dock-station/app/orb/template/Orb_Vault_System/orb_vault_skg/vault/orb_assistant/vault_coordinator.py" in names
     assert sum(name.endswith("payload/payload_manifest.json") for name in names) == 1
+    assert not any("Orb_Vault_System/orb_vault_skg/vaults/" in name for name in names)
+    assert not any("vendor/TPC_Triple_Predicate_Cubed/results/" in name for name in names)
+    assert not any("vendor/TPC_Triple_Predicate_Cubed/vaults/" in name for name in names)
+    assert not any("vendor/TPC_Triple_Predicate_Cubed/api/" in name for name in names)
 
 
 def test_manufacturer_blocks_unverified_delivery(tmp_path):

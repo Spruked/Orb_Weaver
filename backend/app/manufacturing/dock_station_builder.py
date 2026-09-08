@@ -88,6 +88,23 @@ def _copy_website_orb_template(template_root: Path, destination: Path) -> Dict[s
         destination,
         ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*.pyo", "node_modules", ".venv", "venv", "dist"),
     )
+    # The SKG implementation is shipped as code, not as a second package-local
+    # persistence authority.  The manufactured runtime receives its one Vault
+    # below runtime/vault_system during payload injection.
+    legacy_skg_vaults = destination / "Orb_Vault_System" / "orb_vault_skg" / "vaults"
+    if legacy_skg_vaults.exists():
+        shutil.rmtree(legacy_skg_vaults)
+
+    # Website ORB uses only the vendored geometric primitives.  Do not ship the
+    # vendor API, its results vault, substrate tooling, or its own vault module
+    # as an accidentally runnable persistence surface.
+    vendor_root = destination / "vendor" / "TPC_Triple_Predicate_Cubed"
+    for relative in ("api", "results", "tools", "vaults", "results_vault.py", "start_tpc_api.bat"):
+        candidate = vendor_root / relative
+        if candidate.is_dir():
+            shutil.rmtree(candidate)
+        elif candidate.exists():
+            candidate.unlink()
     (destination / "deployment").mkdir(exist_ok=True)
     (destination / "assets").mkdir(exist_ok=True)
     return hash_package_tree(destination)
@@ -114,16 +131,8 @@ def _inject_website_orb_payload(payload_root: Path, orb_template: Path) -> None:
     for source_name, destination_name in compiled_mapping.items():
         shutil.copy2(payload_root / source_name, compiled_orb / destination_name)
 
-    skg_vaults = orb_template / "Orb_Vault_System" / "orb_vault_skg" / "vaults"
-    priori_destination = skg_vaults / "A_Priori_Vault"
-    posteriori_destination = skg_vaults / "A_Posteriori_Vault"
-    if priori_destination.exists():
-        shutil.rmtree(priori_destination)
-    shutil.copytree(payload_root / "payload" / "apriori", priori_destination)
-    if posteriori_destination.exists():
-        shutil.rmtree(posteriori_destination)
-    (posteriori_destination / "ledger").mkdir(parents=True, exist_ok=True)
-    shutil.copy2(payload_root / "posteriori" / "verified_cases.json", posteriori_destination / "verified_cases.json")
+    # Deliberately do not mirror A Priori or A Posteriori state into the copied
+    # SKG code tree.  runtime/vault_system is the package's sole authority.
 
 
 def _build_required_paths(required_paths: list[Any]) -> list[Any]:

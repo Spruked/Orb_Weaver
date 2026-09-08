@@ -18,7 +18,7 @@ export const LANDING_TOUR_CHAPTERS: TourChapter[] = [
           {
             "id": "WEAVER_IDENTITY",
             "label": "Weaver Identity",
-            "description": "Weaver is the male Website ORB host who understands this website, answers from verified knowledge, and guides to the right place when showing is faster than explaining."
+            "description": "Weaver is the Website ORB host who understands this website, answers from verified knowledge, and guides to the right place when showing is faster than explaining."
           }
         ],
         "avoid": [

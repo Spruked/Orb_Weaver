@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from .doctrine_gate import apply_doctrine_gate
 from .tpc_pipeline import run_tpc
+from ..storage import record_skg_provenance, skg_storage_paths
 from ..runtime.intent_router import classify_intent
 
 
@@ -29,7 +30,11 @@ def _get_vault_coordinator() -> VaultCoordinator:
     global _vault_coordinator
 
     if _vault_coordinator is None:
-        _vault_coordinator = VaultCoordinator()
+        priori_dir, posteriori_dir = skg_storage_paths()
+        _vault_coordinator = VaultCoordinator(
+            weaver_output_dir=str(priori_dir),
+            posteriori_data_dir=str(posteriori_dir),
+        )
 
     return _vault_coordinator
 
@@ -69,7 +74,7 @@ def _try_vault(message: str) -> Optional[Dict[str, Any]]:
         if not result.success:
             return None
 
-        return {
+        response = {
             "answer": result.answer,
             "intent": vault_intent.name,
             "source": result.source or "orb_vault",
@@ -79,7 +84,20 @@ def _try_vault(message: str) -> Optional[Dict[str, Any]]:
             "entity_id": getattr(result, "entity_id", None),
             "data": getattr(result, "data", None),
         }
+        record_skg_provenance("skg_resolution", {
+            "source": response["source"],
+            "resolution_path": response["resolution_path"],
+            "entity_id": response["entity_id"],
+            "priori_dir": str(coordinator.priori_dir),
+            "posteriori_dir": str(coordinator.posteriori_dir),
+        })
+        return response
 
+    except RuntimeError:
+        # Canonical Vault configuration is a package-integrity boundary, not
+        # a recoverable knowledge miss.  Do not fall through to another
+        # runtime when the manufactured package was not bound to its Vault.
+        raise
     except Exception:
         # Vault failure must never take the Website ORB offline.
         # Existing TPC/runtime path remains the deterministic fallback.

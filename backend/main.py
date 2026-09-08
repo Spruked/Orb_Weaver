@@ -3253,6 +3253,13 @@ async def _llm_orb_spoken_output(
             payload = response.json()
         raw_output = str(payload.get("response") or payload.get("text") or "")
         if tour_context:
+            if settings.DEBUG:
+                logger.warning(
+                    "orb_articulation_evidence stage=raw_model_result stop=%s prompt=%s raw=%s",
+                    tour_context.get("stop_id"),
+                    prompt[:4000],
+                    raw_output[:4000],
+                )
             allowed_ids = [item["id"] for item in tour_context["required_concepts"]]
             evaluation = parse_tour_evaluation(raw_output, allowed_ids)
             return {"spoken_output": evaluation.spoken_output, "chapter_evaluation": evaluation.model_dump(),

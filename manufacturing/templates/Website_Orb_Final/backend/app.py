@@ -12,12 +12,19 @@ from .models import AnswerRequest, AnswerResponse, DockActionRequest, RouteConte
 from .pointer.pointer_index import route_pointer_targets
 from .runtime.route_lookup import lookup_route
 from .runtime.site_world import SiteWorld
+from .storage import canonical_vault_root
 from .voice_runtime import VOICE_CACHE, speak, transcribe
 
 
 app = FastAPI(title="Website ORB Runtime", version="0.1.0")
 WORLD = SiteWorld.load(SITE_WORLD_PATH, POINTER_MAP_PATH, RUNTIME_LANGUAGE_PATH, TOOL_CACHE_PATH)
 DOCK = DockStationAdapter()
+
+
+@app.on_event("startup")
+def require_manufactured_canonical_vault() -> None:
+    """Fail closed instead of allowing SKG to create a package-local vault."""
+    canonical_vault_root()
 
 
 @app.get("/health")

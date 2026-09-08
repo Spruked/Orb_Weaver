@@ -42,17 +42,6 @@ class VaultCoordinator:
     4. TPC/LLM fallback (generative)
     """
 
-    # Default paths relative to this file: vault/orb_assistant/vault_coordinator.py
-    # Goes up two levels to Orb_Vault_System/, then into vaults/
-    DEFAULT_PRIORI_DIR = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "vaults", "A_Priori_Vault"
-    )
-    DEFAULT_POSTERIORI_DIR = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "vaults", "A_Posteriori_Vault"
-    )
-
     def __init__(
         self,
         weaver_output_dir: Optional[str] = None,
@@ -67,8 +56,13 @@ class VaultCoordinator:
             posteriori_data_dir: Path to A Posteriori learned data.
                 Defaults to ../vaults/A_Posteriori_Vault (relative to package root).
         """
-        self.priori_dir = weaver_output_dir or self.DEFAULT_PRIORI_DIR
-        self.posteriori_dir = posteriori_data_dir or self.DEFAULT_POSTERIORI_DIR
+        if not weaver_output_dir or not posteriori_data_dir:
+            raise RuntimeError(
+                "Manufactured VaultCoordinator requires injected canonical A Priori and A Posteriori paths; "
+                "package-relative vault fallback is prohibited."
+            )
+        self.priori_dir = weaver_output_dir
+        self.posteriori_dir = posteriori_data_dir
 
         # Ensure posteriori directory exists (creates ledger/ subfolder on first run)
         os.makedirs(self.posteriori_dir, exist_ok=True)

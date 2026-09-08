@@ -89,9 +89,13 @@ const PublicPreflight: React.FC = () => {
 
   useEffect(() => {
     if (!report) return;
-    // Emit after React has rendered the report so the live ORB can resolve
-    // the actual result sections and guide to their current geometry.
-    window.dispatchEvent(new CustomEvent('orbweaver:preflight-complete', { detail: report }));
+    // Both this page and the root-mounted ORB install effects during the same
+    // render. Deferring one task lets the ORB listener attach after the report
+    // DOM exists, so it can resolve the real sections and their live geometry.
+    const dispatchId = window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('orbweaver:preflight-complete', { detail: report }));
+    }, 0);
+    return () => window.clearTimeout(dispatchId);
   }, [report]);
 
   return (
