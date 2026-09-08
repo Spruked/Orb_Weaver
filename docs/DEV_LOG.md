@@ -33,6 +33,12 @@
 - Validation: `npm run typecheck`, production frontend build, `git diff
   --check`, and the browser continuity proof passed. The frontend build has
   pre-existing ESLint warnings; no new TypeScript error was introduced.
+- Deployment: rebuilt the authorized `orb-weaver` Compose service from commit
+  `9fd133d`. Local `16510` and the public Cloudflare hostname serve
+  `main.baa45f36.js`; local API startup-readiness returned HTTP 200. The same
+  real continuity Playwright proof passed against deployed `16510 → 16500`.
+  Readiness reports `WARMING` only because its contract includes Site World
+  prerequisites; it reports the llama.cpp cognition and Kokoro proofs ready.
 
 ## 2026-09-08 — Target One and manufactured single-Vault marker
 
