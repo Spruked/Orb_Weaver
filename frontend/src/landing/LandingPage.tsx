@@ -132,7 +132,7 @@ const LandingPage: React.FC = () => {
     setIntroBeat(null);
     emitIntro("INTRO_AUDIO_REQUESTED", {
       provider: "kokoro",
-      voice: "am_michael",
+      voice: "am_echo",
       asset: SHOWROOM_INTRO_AUDIO_URL,
     });
 
@@ -172,7 +172,7 @@ const LandingPage: React.FC = () => {
         syncCaption();
         emitIntro("INTRO_AUDIO_PLAYING", {
           provider: "kokoro",
-          voice: "am_michael",
+          voice: "am_echo",
           asset: audio.currentSrc,
           duration: Number.isFinite(audio.duration) ? audio.duration : null,
           playResolved: true,

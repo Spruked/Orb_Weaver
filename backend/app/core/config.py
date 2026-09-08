@@ -88,7 +88,8 @@ class Settings(BaseSettings):
     ORB_TTS_KOKORO_URL: Optional[str] = "http://127.0.0.1:8880/speak"
     ORB_TTS_KOKORO_API_KEY: Optional[str] = None
     ORB_TTS_KOKORO_MODEL: str = "kokoro"
-    ORB_TTS_KOKORO_VOICE: str = "am_michael"
+    # Weaver uses a distinct male profile from the Phil/Jim Dandy runtime.
+    ORB_TTS_KOKORO_VOICE: str = "am_echo"
     ORB_TTS_KOKORO_FORMAT: str = "wav"
     ORB_TTS_KOKORO_SPEED: float = 1.05
     ORB_TTS_KOKORO_PAYLOAD_MODE: str = "kokoro-direct"

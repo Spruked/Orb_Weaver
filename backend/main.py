@@ -3681,7 +3681,15 @@ async def _synthesize_orb_tts(
     provider_override: Optional[str] = None,
     governance_trace_id: Optional[str] = None,
 ) -> Dict[str, Optional[str]]:
-    clean_text = text.strip()
+    clean_text = re.sub(r"\*", "", text).strip()
+    clean_text = re.sub(
+        r"\bI am Weaver(?:,? the)? (?:male )?(?:Orb Weaver )?Website Assistant\.?",
+        "I am Weaver.",
+        clean_text,
+        flags=re.IGNORECASE,
+    )
+    clean_text = re.sub(r"\s+([,.!?])", r"\1", clean_text)
+    clean_text = re.sub(r"\s{2,}", " ", clean_text)
     if not clean_text:
         return _visitor_safe_tts_unavailable()
     provider_name = (provider_override or "kokoro").strip().lower()

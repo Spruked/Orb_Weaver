@@ -285,8 +285,15 @@ const readAmbientVantagePreference = (): AmbientVantagePreference | null => {
 };
 
 const startupGreetingText = (): string => {
-  return "Hello. I am Weaver, the Orb Weaver Website Assistant. I can help you with anything you need. I am not a chatbot. I make this website intelligent, so you can find things easier, navigate faster, process your orders quicker, and resolve issues seamlessly. Just call me Weaver. Feel free to ask a question in your normal way and I will answer. Let's get started.";
+  return "Hello. I am Weaver. I can help you with anything you need. I am not a chatbot. I make this website intelligent, so you can find things easier, navigate faster, process your orders quicker, and resolve issues seamlessly. Feel free to ask a question in your normal way and I will answer. Let's get started.";
 };
+
+const normalizeOrbDialogue = (text: string): string => text
+  .replace(/\*/g, "")
+  .replace(/\bI am Weaver(?:,? the)? (?:male )?(?:Orb Weaver )?Website Assistant\.?/gi, "I am Weaver.")
+  .replace(/\s+([,.!?])/g, "$1")
+  .replace(/\s{2,}/g, " ")
+  .trim();
 
 const initialStartupDiagnostics = (): StartupDiagnostics => ({
   splash_state: window.sessionStorage.getItem(LANDING_SPLASH_COMPLETE_SESSION_KEY) === "1" ? "skipped_session_once" : "waiting",
@@ -1580,13 +1587,14 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, [connectSpeechMediaVisualizer, freezeOrbInPlace, playDecodedSpeech, showStatus, showVisitorUtterance, stopSpeechVisualizer]);
 
   const speakWithGeneratedAudio = useCallback(async (text: string, audioUrl?: string | null, provider?: string | null) => {
+    const normalizedText = normalizeOrbDialogue(text);
     setStatusTitle("Preparing voice");
-    setStatusLine(text);
+    setStatusLine(normalizedText);
     setVoiceState("thinking");
     showStatus();
     freezeOrbInPlace(4200);
 
-    return speak(text, audioUrl, provider);
+    return speak(normalizedText, audioUrl, provider);
   }, [freezeOrbInPlace, showStatus, speak]);
 
   const diagnosticNarrationText = useCallback(() => {
