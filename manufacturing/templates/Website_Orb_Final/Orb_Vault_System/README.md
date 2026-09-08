@@ -1,5 +1,11 @@
 # ORB Vault SKG System
 
+> Manufactured-package boundary: this tree supplies SKG implementation code,
+> not a second persistence authority. The assembler strips its legacy
+> `orb_vault_skg/vaults/` fixture tree. Runtime callers must pass explicit
+> paths beneath `<installed-orb-root>/runtime/vault_system/`; package-local,
+> arbitrary, and fallback storage paths are invalid.
+
 ## Architecture
 
 ```
@@ -123,8 +129,8 @@ from vault.shared.types import IntentType
 
 # Initialize
 coordinator = VaultCoordinator(
-    weaver_output_dir="/path/to/orb_weaver/output",
-    posteriori_data_dir="/path/to/posteriori/data"
+    weaver_output_dir="<installed-orb-root>/runtime/vault_system/payload/apriori",
+    posteriori_data_dir="<installed-orb-root>/runtime/vault_system/posteriori/orb_vault_skg"
 )
 
 # Route a query
@@ -244,8 +250,8 @@ mkdir -p /path/to/weaver_output
 # Initialize
 from vault.orb_assistant import VaultCoordinator
 coordinator = VaultCoordinator(
-    weaver_output_dir="/path/to/weaver_output",
-    posteriori_data_dir="/path/to/posteriori_data"
+    weaver_output_dir="<installed-orb-root>/runtime/vault_system/payload/apriori",
+    posteriori_data_dir="<installed-orb-root>/runtime/vault_system/posteriori/orb_vault_skg"
 )
 ```
 

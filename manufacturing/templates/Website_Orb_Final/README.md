@@ -4,18 +4,18 @@
 
 ## Current Runtime Architecture
 
-The active answer path is **vault-first with TPC fallback**.
+The active answer path is **canonical-Vault-first with TPC fallback for a knowledge miss**.
 
 1. A visitor speaks or submits a message.
 2. The Website ORB runtime attempts a fast deterministic vault resolution.
 3. `QueryRouter` classifies the vault intent and extracts known catalog entities.
-4. `VaultCoordinator` resolves through the A Priori and A Posteriori vault stack.
+4. `VaultCoordinator` resolves through A Priori and A Posteriori namespaces injected beneath `runtime/vault_system/`.
 5. A successful vault result returns immediately without invoking TPC.
-6. A vault miss or vault failure falls through to the existing Website intent -> TPC -> doctrine-gate path.
+6. A genuine vault knowledge miss falls through to the existing Website intent -> TPC -> doctrine-gate path. A missing, substituted, or invalid canonical Vault is a fail-closed package-integrity error and never falls through.
 7. Pointer guidance remains governed by the pointer subsystem and live DOM verification. Knowledge resolution does not independently authorize pointing, clicking, or navigation.
 8. Voice, motion, and pointer behavior remain runtime presentation/action layers around the resolved knowledge and verified site state.
 
-The vault integration is intentionally fail-open to the existing runtime: a vault exception must not take the Website ORB offline.
+Operational knowledge misses can use the existing governed runtime. Storage-root integrity failures cannot: they must stop rather than create or consult a second authority.
 
 ## ORB Vault System
 
@@ -27,9 +27,11 @@ Its runtime code is under:
 
 `Orb_Vault_System/orb_vault_skg/vault/`
 
-The physical site-knowledge containers are under:
+The source template retains legacy SKG fixture material for source maintenance,
+but a manufactured package strips `Orb_Vault_System/orb_vault_skg/vaults/`.
+The physical site-knowledge containers in an installed package are only under:
 
-`Orb_Vault_System/orb_vault_skg/vaults/`
+`runtime/vault_system/`
 
 ### A Priori Vault
 
@@ -40,11 +42,11 @@ The physical site-knowledge containers are under:
 - `qa.json` - verified question/answer correspondences.
 - `policies.json` - site and business policy knowledge.
 
-The A Priori path is intended for fast deterministic resolution before heavier cognition.
+The A Priori path is `runtime/vault_system/payload/apriori/` and is intended for fast deterministic resolution before heavier cognition.
 
 ### A Posteriori Vault
 
-`A_Posteriori_Vault` is the learned-experience layer. It captures successful interaction patterns as candidates and provides verification, reinforcement, promotion, contradiction handling, merging, and utility/validity-based pruning. A newly manufactured customer ORB should begin with a clean site-specific A Posteriori state rather than inheriting another site's learned history.
+A Posteriori state lives at `runtime/vault_system/posteriori/orb_vault_skg/`. It captures successful interaction patterns as candidates and provides verification, reinforcement, promotion, contradiction handling, merging, and utility/validity-based pruning. A newly manufactured customer ORB begins with clean site-specific state rather than inheriting another customer's learned history.
 
 ## Site Payload
 
@@ -66,7 +68,7 @@ The A Priori vault files form the semantic knowledge portion of the site payload
 - `backend/` - Website ORB backend, answer engine, TPC fallback, doctrine gate, runtime routing, pointer services, and DockStation adapter boundary.
 - `frontend/` - embeddable Website ORB UI, visual/motion behavior, pointer runtime, and Dock bridge.
 - `compiled_orb/` - resident site-world, pointer, runtime-language, tool-cache, and scan-derived payload data.
-- `Orb_Vault_System/orb_vault_skg/` - deterministic A Priori/A Posteriori vault runtime and physical vault containers.
+- `Orb_Vault_System/orb_vault_skg/` - deterministic SKG implementation code. It has no package-local durable store after manufacture.
 - `tools/` - build-time compilation and package validation utilities.
 - `tests/` - runtime/static validation tests.
 - `architecture/` and `docs/` - architecture and deployment/reference material.
@@ -92,8 +94,8 @@ site-specific payload
 clone Website_Orb_Final
         |
         +--> inject compiled_orb data
-        +--> inject A_Priori_Vault data
-        +--> initialize clean A_Posteriori_Vault
+        +--> inject A Priori data into runtime/vault_system/payload/apriori
+        +--> initialize clean A Posteriori state in runtime/vault_system/posteriori/orb_vault_skg
         |
         v
 validate manufactured instance
@@ -118,7 +120,7 @@ This separation preserves deterministic knowledge retrieval without bypassing po
 
 ## Current Development Status
 
-The vault-first answer path is present in `backend/cognition/answer_engine.py`: it loads the integrated ORB vault package, attempts `QueryRouter` + `VaultCoordinator` resolution first, and retains the existing TPC path as fallback.
+The vault-first answer path is present in `backend/cognition/answer_engine.py`: it loads the integrated SKG code, passes explicit canonical paths from `backend/storage.py` to `QueryRouter` + `VaultCoordinator`, and retains the existing TPC path only for a valid knowledge miss. SKG resolution provenance is appended under `runtime/vault_system/audit/glyph_trace/`.
 
 The remaining manufacturing work is primarily on the Orb Weaver side. Before the next authoritative full-site rescan, Orb Weaver must be able to generate and inject the new site payload contracts, including catalog data and the required A Priori knowledge artifacts, and preserve semantic correspondence to routes/pointer targets where applicable.
 

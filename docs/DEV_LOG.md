@@ -1,5 +1,100 @@
 # Orb Weaver Development Log
 
+## 2026-09-08 — Cross-page Weaver continuity and MORB trajectories
+
+- Root cause of the missing onboarding Weaver was twofold: the single global
+  `AutonomousOrb` mount survived inside `BrowserRouter`, but an
+  `onboarding-safe-mode` CSS rule hid it on `/signup` and the Preflight offer
+  used a document-loading anchor instead of a React route transition.
+- The approved onboarding offer now records a session-scoped destination and
+  journey state, then uses a React `Link`. The one mounted Weaver stays
+  visible, preserves its session without replaying a greeting, waits for
+  signup hydration, refreshes the route Pointer/LiDAR state, and guides only
+  to the live `[data-orb-target="full-name-field"]` locator.
+- That route-local locator is not a crawl-map mutation or action authority.
+  It enters the existing LiDAR channel as ephemeral geometry and is still
+  required to pass the existing live identity, visibility, current-geometry,
+  arrival, and final-before-Ping checks.
+- Route-transition cleanup now completes before continuation guidance begins;
+  ambient movement cannot interrupt that verified handoff. An approved
+  navigation also aborts the former Preflight walkthrough so removed report
+  cards cannot continue producing guidance attempts after leaving the page.
+- Added a real Playwright acceptance script:
+  `frontend/scripts/orb-onboarding-continuity-e2e-proof.js`. It submits a
+  Preflight, chooses onboarding, verifies one visible Weaver and preserved
+  `ONBOARDING` session state, observes the live onboarding LiDAR map and
+  authorized final `guidance_point_ping`, and verifies back/forward does not
+  duplicate the ORB. Result: `ORB_ONBOARDING_CONTINUITY_E2E_PROOF_OK`.
+- MORB travel now has three deterministic visual patterns: direct, broad
+  S-curve swirl, and dart-with-target-relative orbit. The visual path never
+  alters Pointer/LiDAR authority; every pattern keeps the existing fresh final
+  target recheck before Point/Ping. Reduced-motion users retain a static
+  travel surface.
+- Validation: `npm run typecheck`, production frontend build, `git diff
+  --check`, and the browser continuity proof passed. The frontend build has
+  pre-existing ESLint warnings; no new TypeScript error was introduced.
+
+## 2026-09-08 — Target One and manufactured single-Vault marker
+
+- Committed and pushed marker `d9e4387` on `checkpoint/target-one-working-2026-09-07`: `Complete Target One vault and guidance integration`.
+- The live public `AutonomousOrb` now consumes report-scoped rendered Preflight cards through the existing Pointer/LiDAR path. `data-orb-target` locates a card; it does not grant authority. The runtime resolves current DOM geometry, uses ephemeral LiDAR evidence, rechecks at arrival, and only then allows Point/Ping.
+- Browser acceptance evidence covered the positive path (real form/report card → live target verification → `website-text` → `llamacpp-tour` response → Kokoro → verified Point/Ping), reflow/resize reacquisition, and the negative target-loss path (removed card → no stale movement, speech, Point, or Ping).
+- Landing articulation now strips markdown/private controller language, avoids repeated “I am Weaver”/gender wording outside the identity stop, and avoids presenting intended outcomes as customer-measured results.
+- Repaired the confirmed manufactured-package dual-store defect. New packages retain one physical runtime store at `runtime/vault_system`; the builder strips copied SKG `vaults/` and inactive vendor TPC persistence/API surfaces. SKG receives explicit paths beneath the package Vault; A Priori, A Posteriori, ledger, and glyph/provenance writes remain there.
+- The manufactured resolver rejects missing, alternate, legacy, vendor, parent-escape, and symlinked roots. Package relocation remains valid as long as its internal `runtime/vault_system` remains the one root.
+- Verification: focused manufactured-storage, canonical-storage, and tour suite: **25 passed**; Python compilation and `git diff --check` passed. The manufacture test builds a temporary package, performs deterministic cognition, creates posteriori/ledger/provenance state, restarts against that same Vault, and proves prohibited roots fail closed.
+- No source legacy/template data was migrated or deleted. The repair governs newly manufactured packages only.
+- Preserved the Phase-A pre-repair failure: `pending`, `rejected`, and
+  `errored` tour traces formerly returned HTTP 200 and invoked mocked TTS.
+  Repaired the live `experience.tour` path to run its factual/TPC lane,
+  llama.cpp articulation, Doctrine V1 evaluation, and final governance trace
+  before returning delivery. Only final `approved` reaches TTS.
+- Added a canonical-Vault `TTS_WITHHELD` audit event for live non-approved
+  delivery, containing correlation ID, final state, and reason without
+  retaining unnecessary visitor content. Automated negative coverage now
+  proves `pending`, `rejected`, and `errored` return HTTP 409, invoke no TTS,
+  and record the event; the approved companion proves TTS is reached only after
+  final approval.
+- The manufactured Website ORB is an independent answer runtime, not a copied
+  `experience.tour` controller. Its answer engine and text/voice endpoints now
+  finalize and require their own approval trace and record `tts_withheld` in
+  the package's canonical Vault. A temporary manufactured-package endpoint
+  test proves a pending voice response returns HTTP 409, makes no `speak` call,
+  and writes the diagnostic audit event. This is package-level automated proof,
+  not commercial-environment or live-browser acceptance.
+- Post-repair verification: **22 focused live governance/tour tests passed**;
+  **1 manufactured-package endpoint test passed**; Python compilation and
+  `git diff --check` passed.
+- Repaired the public Preflight Vault write regression without moving storage:
+  the root-owned canonical client report subtree for `www.spruked.com` was
+  narrowly reassigned to the service UID/GID (`1000:1000`). A `bryan` process
+  performed an atomic replacement write, then the real dev public Preflight
+  returned HTTP 200 and wrote the canonical report as `bryan:bryan` mode `600`.
+- Rebuilt the public Docker Compose stack from the current working tree. The
+  new `orb-weaver` container runs as UID/GID `1000:1000`; Redis was retained.
+  Local public ports `16510` and `16500` return HTTP 200, Docker's real public
+  Preflight returned HTTP 200 and replaced the canonical report, and the
+  Cloudflare hostname plus public `startup-readiness` endpoint each returned
+  HTTP 200. This is deployment smoke evidence, not complete visitor-journey
+  acceptance.
+- Removed an unsolicited microphone-permission request from the generic
+  Website ORB loader; voice recording now begins only from its explicit button.
+  Rebuilt `public/orb-loader.js`. Its Playwright proof now passes a real
+  `website-text` request → live geometry → ORB travel → Point/Ping path and
+  the removed-target no-Ping path; loader smoke passed 35 checks with no console
+  errors.
+
+### Outstanding evidence / next work
+
+1. Prove the corrected real browser Preflight path under one correlation identity, then if practical force a controlled rejection and prove no Kokoro/no delivery plus a withholding audit event. In a separate post-repair browser pass, measure Glide timing: acquire → glide → cognition → TTS prep → final refresh → Point/Ping → speech.
+2. Determine which process created the former root-owned
+   `vault_system/clients/www.spruked.com/preflight/` subtree and prevent a
+   recurrence. Ownership is currently repaired; do not use `chmod -R 777` or
+   redirect the Vault.
+3. Treat Outcomes factual elevation, `You're at the outcomes status stop.` leakage, and public rendering of internal `stop.purpose` as known open defects. Repair and recheck Why Weaving Exists, Trust, 28-Weave, Outcomes, and Preflight Decision individually.
+4. Then run the complete fresh-start nine-stop Target One acceptance, including interruption/resume, mobile permission gate, microphone/audio, explicit decision, actual Preflight/dynamic result explanation, and governance-approved speech.
+5. After Target One acceptance but before commercial installer/productization acceptance, continue the Vault audit and neutralize remaining manufactured vendor TPC persistence capability. Do not rebuild Docker or alter the established Windows llama.cpp service during isolated development acceptance.
+
 ## 2026-09-07 — Dynamic Preflight result walkthrough
 
 - Connected the public Preflight completion event to the live `AutonomousOrb` runtime after the result DOM renders.

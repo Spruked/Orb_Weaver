@@ -18,7 +18,7 @@ Target One remains the complete Home / Landing Page walkthrough. Its internal fi
 
 The terminal choices are **Run a Free Preflight Scan** and **Continue Exploring / Onboarding**. The first routes to `/preflight` only on an explicit visitor click; it does not execute or complete a scan. The second records deferral and leaves the visitor exploring the existing page. There is no automatic next chapter or onboarding execution.
 
-Intermediate DOM beats are visual transitions, not additional instructional stops. Trust remains an independent chapter. Weaver remains male and speaks naturally: quote → interpret → connect. Strong branded copy may be quoted verbatim; conviction scales to evidence without fabricated results or mechanical page reading.
+Intermediate DOM beats are visual transitions, not additional instructional stops. Trust remains an independent chapter. Weaver speaks naturally: quote → interpret → connect. Strong branded copy may be quoted verbatim; conviction scales to evidence without fabricated results or mechanical page reading. He introduces himself naturally only at the identity stop; later speech does not repeat an identity or gender label.
 
 ## Implementation ownership
 
@@ -44,4 +44,4 @@ The “Weave Assembly Status” display in LandingPage is static illustration, n
 
 Retain the existing voice, cognition, Pointer/LiDAR and migration infrastructure. Compatible account/production-stage fields and the existing derived gate helper are not permission to expand Target One. Full Preflight results/review, account creation, production scans and later onboarding chapters remain out of scope.
 
-Focused development proof has confirmed live cognition, Kokoro playback, first-stop advancement, prompt interruption, saved-position resume, and the corrected `watch_weaver_guide` Pointer/LiDAR target. Target One construction remains the immediate job. A physical visitor microphone turn and the complete nine-stop run remain final acceptance work; keep validation brief during construction.
+Focused development proof has confirmed live cognition, Kokoro playback, first-stop advancement, prompt interruption, saved-position resume, and the corrected `watch_weaver_guide` Pointer/LiDAR target. The public Preflight handoff also binds rendered report cards to report-scoped `data-orb-target` identities, uses the existing LiDAR/runtime verifier, rechecks at arrival, and blocks Point/Ping on target loss. Target One is not yet acceptance-complete: the `experience.tour` path must be brought through finalized TPC/Doctrine approval before any visitor delivery, and the known Outcomes/private-authoring UI and speech leaks require repair. A physical visitor microphone turn and a clean complete nine-stop run remain final visual acceptance work. Repeat the real Preflight form run after the development Vault ownership repair, including success and target-loss traces plus Glide/cognition timing.

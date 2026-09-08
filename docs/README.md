@@ -5,6 +5,8 @@ This directory is the central home for authored Orb Weaver documentation.
 ## Architecture
 
 - [Target One landing-page tour — current scope and handoff](TARGET_ONE_LANDING_TOUR.md)
+- [Immutable Vault Storage Law](../IMMUTABLE_VAULT_STORAGE_LAW.md)
+- [Current repository structure map](../structure_tree.txt)
 
 - [Factory ORB identity](architecture/FACTORY_ORB_IDENTITY.md)
 - [Universal loader installation](architecture/ORB_LOADER_INSTALLATION.md)
@@ -37,6 +39,7 @@ This directory is the central home for authored Orb Weaver documentation.
 - [Product-plan handoff](handoffs/HANDOFF_PRODUCT_PLAN.md)
 - [Brand World handoff](handoffs/HANDOFF_BRAND_WORLD.md)
 - [Live route and voice handoff](handoffs/ORB_WEAVER_HANDOFF_LIVE_ORB_ROUTE_AND_VOICE.md)
+- [Target One and manufactured-Vault marker handoff](handoffs/HANDOFF_2026-09-08_TARGET_ONE_VAULT_MARKER.md)
 - [Website ORB CCO and learning-loop handoff](handoffs/HANDOFF_2026-07-30_WEBSITE_ORB_CCO_LEARNING.md)
 - [Product-plan development notes](planning/DEV_NOTES_PRODUCT_PLAN.md)
 - [Feature board](planning/Orb_Weaver_feature_board_v2.md)

@@ -76,13 +76,39 @@ def test_manufacturer_builds_complete_delivery_ready_package(tmp_path):
     package_probe = """
 import json
 from backend.cognition.answer_engine import _get_vault_coordinator, answer_from_world
+from backend import app as runtime
+from backend.models import AnswerResponse
+from fastapi.testclient import TestClient
 answer = answer_from_world('How much is Known Product?', '/', {'route': '/'}, {}, [])
 coordinator = _get_vault_coordinator()
-print(json.dumps({'answer': answer['answer'], 'priori': coordinator.priori_dir, 'posteriori': coordinator.posteriori_dir}))
+tts_calls = []
+async def fake_transcribe(*_args, **_kwargs):
+    return 'unapproved manufactured voice test'
+async def fake_speak(text):
+    tts_calls.append(text)
+    return {'tts_audio_url': '/orb/audio/test.wav', 'tts_provider': 'kokoro'}
+def unapproved_answer(_payload):
+    return AnswerResponse(answer='unapproved', route='/', intent='test', action_class='voice_only', pointer_targets=[], requires_confirmation=False, governance_trace={'status': 'pending', 'tpc_state': 'pending', 'doctrine_checksum': False})
+runtime.transcribe = fake_transcribe
+runtime.speak = fake_speak
+runtime.answer_text = unapproved_answer
+client = TestClient(runtime.app)
+blocked = client.post('/orb/website-voice', files={'audio': ('test.webm', b'audio', 'audio/webm')})
+print(json.dumps({'answer': answer['answer'], 'priori': coordinator.priori_dir, 'posteriori': coordinator.posteriori_dir, 'governance': answer['governance_trace'], 'blocked_status': blocked.status_code, 'tts_calls': tts_calls}))
 """
     first = subprocess.run([sys.executable, "-c", package_probe], env=package_env, text=True, capture_output=True, check=True)
     first_payload = json.loads(first.stdout.strip().splitlines()[-1])
     assert first_payload["answer"]
+    assert first_payload["governance"]["status"] == "approved"
+    assert first_payload["governance"]["tpc_state"] == "passed"
+    assert first_payload["governance"]["doctrine_checksum"] is True
+    assert first_payload["blocked_status"] == 409
+    assert first_payload["tts_calls"] == []
+    delivery_audit = runtime_vault / "audit" / "glyph_trace" / "website_orb_runtime.jsonl"
+    assert delivery_audit.is_file()
+    withheld_event = json.loads(delivery_audit.read_text().splitlines()[-1])
+    assert withheld_event["event"] == "tts_withheld"
+    assert withheld_event["governance_status"] == "pending"
     assert Path(first_payload["priori"]).is_relative_to(runtime_vault)
     assert Path(first_payload["posteriori"]).is_relative_to(runtime_vault)
     assert (runtime_vault / "posteriori" / "orb_vault_skg" / "ledger" / "ledger_00000.jsonl").is_file()

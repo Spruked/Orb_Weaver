@@ -71,3 +71,21 @@ def record_skg_provenance(event: str, payload: dict[str, Any]) -> Path:
         handle.flush()
         os.fsync(handle.fileno())
     return trace
+
+
+def record_runtime_audit(event: str, payload: dict[str, Any]) -> Path:
+    """Append a minimal runtime-delivery audit record in the package Vault."""
+    root = canonical_vault_root()
+    trace = require_vault_path(root / "audit" / "glyph_trace" / "website_orb_runtime.jsonl", "Website ORB runtime audit")
+    trace.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "schema": "orb_weaver.manufactured_runtime_audit.v1",
+        "event": event,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        **payload,
+    }
+    with trace.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    return trace

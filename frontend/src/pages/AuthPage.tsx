@@ -173,7 +173,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
               {isSignup && (
                 <>
                   <label htmlFor="onboarding-full-name">Full name</label>
-                  <input id="onboarding-full-name" data-orb-target="full-name-field" autoComplete="name" value={form.full_name} onChange={(event) => update('full_name', event.target.value)} />
+                  <input id="onboarding-full-name" data-orb-target="full-name-field" aria-label="Full name" autoComplete="name" value={form.full_name} onChange={(event) => update('full_name', event.target.value)} />
                   <label htmlFor="onboarding-business-name">Business name</label>
                   <input id="onboarding-business-name" data-orb-target="business-name-field" autoComplete="organization" value={form.business_name} onChange={(event) => update('business_name', event.target.value)} />
                 </>

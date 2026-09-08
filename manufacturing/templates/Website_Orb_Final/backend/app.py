@@ -12,7 +12,7 @@ from .models import AnswerRequest, AnswerResponse, DockActionRequest, RouteConte
 from .pointer.pointer_index import route_pointer_targets
 from .runtime.route_lookup import lookup_route
 from .runtime.site_world import SiteWorld
-from .storage import canonical_vault_root
+from .storage import canonical_vault_root, record_runtime_audit
 from .voice_runtime import VOICE_CACHE, speak, transcribe
 
 
@@ -67,7 +67,27 @@ def answer_text(payload: AnswerRequest) -> AnswerResponse:
     matched_route, route_record = lookup_route(WORLD, payload.route)
     targets = route_pointer_targets(WORLD, matched_route, payload.message, limit=5) if payload.want_pointer else []
     result = answer_from_world(payload.message, matched_route, route_record, WORLD.runtime_language, targets)
-    return AnswerResponse(**result)
+    response = AnswerResponse(**result)
+    _require_delivery_approval(response)
+    return response
+
+
+def _require_delivery_approval(answer: AnswerResponse) -> None:
+    trace = answer.governance_trace or {}
+    approved = (
+        trace.get("status") == "approved"
+        and trace.get("tpc_state") == "passed"
+        and trace.get("doctrine_checksum") is True
+    )
+    if approved:
+        return
+    record_runtime_audit("tts_withheld", {
+        "governance_status": trace.get("status") or "missing",
+        "tpc_state": trace.get("tpc_state") or "missing",
+        "doctrine_checksum": trace.get("doctrine_checksum"),
+        "reason": "final_governance_not_approved",
+    })
+    raise HTTPException(status_code=409, detail="Visitor speech was withheld because governance approval is incomplete.")
 
 
 @app.post("/orb/website-voice")
@@ -78,6 +98,7 @@ async def website_voice(audio: UploadFile = File(...), route: str = "/") -> dict
     try:
         transcript = await transcribe(audio.filename or "website-orb.webm", audio.content_type or "application/octet-stream", content)
         answer = answer_text(AnswerRequest(message=transcript, route=route, want_pointer=True))
+        _require_delivery_approval(answer)
         tts = await speak(answer.answer)
         return {"transcript": transcript, "spoken_output": answer.answer, **answer.model_dump(), **tts}
     except httpx.HTTPError as exc:

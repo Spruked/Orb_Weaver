@@ -7,7 +7,7 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 
 ## Current landing-tour target
 
-[Target One](docs/TARGET_ONE_LANDING_TOUR.md) is the approved five-chapter, nine-stop landing-page tour: Meet Weaver → Why Weaving Exists → Trust → How Orb Weaver Builds Intelligence → Preflight Decision. It retains the existing introduction, cognition, TTS, Pointer/LiDAR and interruption/resume paths. The controller waits for an explicit visitor choice; it never automatically starts Preflight or continues into later workflows.
+[Target One](docs/TARGET_ONE_LANDING_TOUR.md) is the approved five-chapter, nine-stop landing-page tour: Meet Weaver → Why Weaving Exists → Trust → How Orb Weaver Builds Intelligence → Preflight Decision. The Target One marker is implemented: it retains the existing introduction, cognition, TTS, verified Pointer/LiDAR, and interruption/resume paths. The controller waits for an explicit visitor choice; it never automatically starts Preflight or continues into later workflows.
 
 Target One is the full Home / Landing Page walkthrough. Future targets are Features, LiDAR Guidance, How It Works, and Preflight, followed by authentication and the customer purchase/onboarding flow. They are not part of the current landing controller. See the [development log](docs/DEV_LOG.md) for the current handoff and validation boundary.
 
@@ -214,15 +214,15 @@ vault_system/
   backups/migration_conflicts/
 ```
 
-Component folders such as `backend/`, `Orb_Assistant/`, and legacy `substrate/` paths may contain source code or compatibility links, but they must not own independent data stores.
+Component folders such as `backend/`, `Orb_Assistant/`, and legacy `substrate/` paths may contain source code or compatibility links, but they must not own independent data stores. A newly manufactured Website ORB likewise has exactly one allowed package Vault: `<installed-orb-root>/runtime/vault_system/`; its internal SKG code receives explicit namespaces beneath that root and fails closed on a substituted, missing, or symlinked root.
 
 ## Current Implementation Checkpoint
 
-Checkpoint commit: `7f65f5a`
+Current integration marker: [`d9e4387`](https://github.com/Spruked/Orb_Weaver/commit/d9e4387) (`Complete Target One vault and guidance integration`)
 
 Orb Weaver now includes:
 
-- Immutable single-Vault enforcement for authoritative and persistent data.
+- Immutable single-Vault enforcement for authoritative and persistent data, including newly manufactured Website ORB packages.
 - Routed SF-ORB cognition with Vault-supported fast, ordinary reasoning, and full escalation lanes.
 - Fault-isolated asynchronous cognitive usage recording.
 - ORBS Stage Governor contracts and deterministic allowed-action handling.
@@ -233,6 +233,8 @@ Orb Weaver now includes:
 - Dock Station owner policy controls for behavior, greeting, voice posture, model/provider selection, job description, and must-follow/must-not rules.
 - Website ORB site-learning loop with posteriori interaction records, Stump Ledger, verified-case reuse, and clean-slate pack templates.
 - CCO runtime trace active in the Website ORB answer path.
+- Dynamic Preflight presentation binds report-scoped rendered cards to the existing live DOM/LiDAR verification path. A cached scan coordinate never authorizes a Point/Ping.
+- Manufacture no longer duplicates A Priori/A Posteriori data into `Orb_Vault_System`; it ships SKG implementation code only, strips inactive vendored TPC persistence surfaces, and records SKG lineage in the package canonical Vault.
 
 The implemented onboarding path is:
 
@@ -252,7 +254,7 @@ The broader ORBS customer path is:
 
 ### Verification status
 
-The historical checkpoint is preserved in commit `7f65f5a`. Since then, the local working tree has advanced with Dock Station behavior controls, Website ORB learning-loop records, CCO renaming, and live CCO tracing.
+The historical checkpoint is preserved in commit `7f65f5a`. The current integrated Target One and manufactured-Vault marker is `d9e4387`; see the development log for later acceptance work that remains intentionally unclaimed.
 
 Current commercial stance as of 2026-07-30:
 

@@ -4,7 +4,7 @@ This directory contains **manufacturing code and contracts only**. It is not a s
 
 Orb Weaver remains the manufacturer. `Website_Orb_Final` remains the golden runtime template. A customer ORB is created only after a fresh site scan has been compiled, owner-verified, injected into a clean runtime clone, validated, and packaged.
 
-The canonical local gold source is `manufacturing/templates/Website_Orb_Final`. Its upstream commit is recorded in `manufacturing/templates/Website_Orb_Final.source.json`. The builder copies this source into the Dock Station assembly, injects the canonical payload, mirrors A Priori data into `Orb_Vault_System/orb_vault_skg`, and initializes a clean A Posteriori vault.
+The canonical local gold source is `manufacturing/templates/Website_Orb_Final`. Its upstream commit is recorded in `manufacturing/templates/Website_Orb_Final.source.json`. The builder copies this source into the Dock Station assembly, injects the canonical payload only into `runtime/vault_system`, keeps the SKG implementation as code, and initializes clean A Posteriori state beneath that same package Vault.
 
 ## Storage boundary
 
@@ -43,7 +43,7 @@ vault_system/clients/<domain>/manufacturing/
 7. Write `verification_manifest.json` recording approvals/rejections.
 8. Clone the clean `Website_Orb_Final` golden template.
 9. Inject the approved compiled artifacts.
-10. Initialize a clean A Posteriori Vault for that customer.
+10. Initialize a clean A Posteriori namespace for that customer beneath `runtime/vault_system/posteriori/orb_vault_skg/`.
 11. Validate the package and run acceptance tests.
 12. Only then expose download/deployment.
 
@@ -85,3 +85,20 @@ The ORB may guide or point only to targets allowed by the target's action policy
 ## A Posteriori rule
 
 Every newly manufactured customer ORB starts with a clean A Posteriori Vault. Learned experience is site-specific and must never be inherited from Orb Weaver or another customer deployment.
+
+## Manufactured package storage invariant
+
+The assembled package has one and only one durable store:
+
+```text
+<installed-orb-root>/runtime/vault_system/
+```
+
+The builder does not copy payload data into
+`Orb_Vault_System/orb_vault_skg/vaults/`. That directory is removed from the
+assembled package. The vendored TPC API, `results/`, `vaults/`, and substrate
+tooling are also excluded because only the geometric primitives are needed by
+the Website ORB runtime. SKG A Priori reads, A Posteriori learning, ledger
+entries, and glyph/provenance traces all resolve below the package Vault. A
+missing, substitute, escaped, or symlinked root is a fail-closed package
+integrity error, not a fallback condition.

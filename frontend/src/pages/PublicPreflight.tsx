@@ -1,4 +1,5 @@
 import React, { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import PublicHeader from '../components/PublicHeader';
 import { api, PublicPreflightReport } from '../services/api';
 import { marketplaceUrl } from '../services/marketplaceUrl';
@@ -37,6 +38,18 @@ const PublicPreflight: React.FC = () => {
   const [report, setReport] = useState<PublicPreflightReport | null>(null);
   const [error, setError] = useState('');
   const [isRunning, setIsRunning] = useState(false);
+
+  const approveOnboardingContinuation = () => {
+    // The mounted Weaver is the only runtime allowed to turn this explicit
+    // visitor choice into a journey transition. The Link preserves that same
+    // React session instead of forcing a document reload.
+    window.dispatchEvent(new CustomEvent('orbweaver:onboarding-approved', {
+      detail: {
+        destination: '/signup?intent=site_onboarding',
+        first_target_id: 'full-name-field',
+      },
+    }));
+  };
 
   const scanSignals = useMemo(() => {
     if (!report) {
@@ -339,12 +352,13 @@ const PublicPreflight: React.FC = () => {
                   </p>
 
                   <div data-preflight-finding="offers" className="mt-5 grid gap-3 lg:grid-cols-3">
-                    <a
-                      href="/signup?intent=site_onboarding"
+                    <Link
+                      to="/signup?intent=site_onboarding"
+                      onClick={approveOnboardingContinuation}
                       className="rounded-lg bg-cyan-300 px-5 py-3 text-center text-sm font-bold text-slate-950 transition hover:bg-cyan-200"
                     >
                       Continue to onboarding
-                    </a>
+                    </Link>
 
                     <a
                       href="/signup?intent=full_scan_data"

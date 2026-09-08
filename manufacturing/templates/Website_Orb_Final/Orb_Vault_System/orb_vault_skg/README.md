@@ -1,5 +1,10 @@
 # ORB Vault SKG System
 
+> Manufactured-package boundary: `vaults/` below is retained only as a source
+> fixture and is stripped from a newly assembled Website ORB. The runtime must
+> receive explicit canonical namespaces beneath
+> `<installed-orb-root>/runtime/vault_system/`; it has no default local Vault.
+
 ## Architecture
 
 ```
@@ -11,7 +16,7 @@ Orb_Vault_System/
 │   ├── orb_assistant/          ← VaultCoordinator + QueryRouter
 │   └── shared/                 ← Types, confidence, constants
 │
-└── vaults/                     ← PERSISTENT DATA (auto-created)
+└── vaults/                     ← SOURCE FIXTURES ONLY (not shipped in a package)
     ├── A_Priori_Vault/         ← Compiled data from Orb Weaver
     │   ├── catalog.json
     │   ├── ontology.json
@@ -122,10 +127,12 @@ poor outcomes     ─┘
 from vault.orb_assistant import VaultCoordinator, QueryRouter
 from vault.shared.types import IntentType
 
-# Initialize — defaults automatically point to ../vaults/
-coordinator = VaultCoordinator()
-#   weaver_output_dir defaults to:  ../vaults/A_Priori_Vault
-#   posteriori_data_dir defaults to: ../vaults/A_Posteriori_Vault
+# Initialize — manufactured runtime requires explicit canonical paths.
+# Calling VaultCoordinator() without these paths intentionally raises.
+coordinator = VaultCoordinator(
+    weaver_output_dir="<installed-orb-root>/runtime/vault_system/payload/apriori",
+    posteriori_data_dir="<installed-orb-root>/runtime/vault_system/posteriori/orb_vault_skg",
+)
 
 # Route a query
 intent, entities, conf = QueryRouter.route(
@@ -166,8 +173,8 @@ coordinator.run_maintenance()
 ```python
 # If your vaults live elsewhere:
 coordinator = VaultCoordinator(
-    weaver_output_dir="/custom/path/to/priori_data",
-    posteriori_data_dir="/custom/path/to/posteriori_data"
+    weaver_output_dir="<installed-orb-root>/runtime/vault_system/payload/apriori",
+    posteriori_data_dir="<installed-orb-root>/runtime/vault_system/posteriori/orb_vault_skg"
 )
 ```
 

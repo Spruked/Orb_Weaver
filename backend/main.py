@@ -81,6 +81,7 @@ from app.orb.pointer_recovery import (
 )
 from app.orb.site_learning import classify_answer_state, lookup_verified_case, record_interaction
 from app.orb.cco_runtime import build_runtime_trace
+from app.orb.articulation import articulate
 from app.orb.turn_resolver import CanonicalTurnResolver
 from app.orb.governance import (
     compile_website_orb_governance,
@@ -3823,6 +3824,14 @@ async def _synthesize_website_orb_speech(semantic_result: Dict[str, Any]) -> Dic
         and governance_trace.get("tpc_state") == "passed"
         and governance_trace.get("doctrine_checksum") is True
     )
+    if not governance_verified:
+        _record_tts_withheld_for_governance(semantic_result)
+        return {
+            "tts_audio_url": None,
+            "tts_provider": None,
+            "tts_voice": None,
+            "tts_error": "Speech was withheld because governance approval is incomplete.",
+        }
     reusable = (
         lane in {"catalog", "apriori"}
         and correspondence_verified
@@ -3869,6 +3878,52 @@ async def _synthesize_website_orb_speech(semantic_result: Dict[str, Any]) -> Dic
             )
             result["tts_cache_class"] = "apriori_persistent"
     return result
+
+
+def _governance_delivery_approved(semantic_result: Dict[str, Any]) -> bool:
+    trace = semantic_result.get("governance_trace") or {}
+    return (
+        trace.get("status") == "approved"
+        and trace.get("tpc_state") == "passed"
+        and trace.get("doctrine_checksum") is True
+    )
+
+
+def _record_tts_withheld_for_governance(semantic_result: Dict[str, Any]) -> None:
+    """Record a fail-closed speech decision without storing visitor speech."""
+    trace = semantic_result.get("governance_trace") or {}
+    trace_id = str(trace.get("governance_trace_id") or "unfinalized")
+    state = str(trace.get("status") or "missing")
+    reason = "final_governance_not_approved"
+    record_vault_object(
+        object_id=f"tts_withheld:{trace_id}:{hashlib.sha256(reason.encode()).hexdigest()[:12]}",
+        object_type="tts_withheld_governance",
+        vault_partition="audit/governance_delivery",
+        content={
+            "schema": "orb_weaver.tts_withheld_governance.v1",
+            "governance_trace_id": trace_id,
+            "governance_status": state,
+            "tpc_state": trace.get("tpc_state"),
+            "doctrine_checksum": trace.get("doctrine_checksum"),
+            "reason": reason,
+        },
+        governance_trace_id=trace_id if trace_id != "unfinalized" else None,
+        source_ids=[str(item) for item in semantic_result.get("evidence_ids") or []],
+        verification_state="UNVERIFIED",
+        event_type="TTS_WITHHELD",
+        event_reason=reason,
+        runtime_eligibility="blocked",
+    )
+
+
+def _require_governance_delivery_approval(semantic_result: Dict[str, Any]) -> None:
+    if _governance_delivery_approved(semantic_result):
+        return
+    _record_tts_withheld_for_governance(semantic_result)
+    raise HTTPException(
+        status_code=409,
+        detail="Visitor speech was withheld because governance approval is incomplete.",
+    )
 
 
 def _chrome_devtools_runner() -> ChromeDevToolsReviewRunner:
@@ -7864,7 +7919,39 @@ async def _canonical_website_orb_turn(
     )
 
     if (experience_context or {}).get("tour"):
-        # One turn on the existing cognition path; no second evaluator/model call.
+        # Resolve supplied presentation facts before asking the model to
+        # articulate them. The model supplies wording only; the resolver
+        # supplies the truth/TPC stage that governance finalizes.
+        tour = dict((experience_context or {}).get("tour") or {})
+        concepts = [item for item in tour.get("required_concepts") or [] if isinstance(item, dict)]
+        fact_texts = [str(item.get("description") or "").strip() for item in concepts]
+        fact_texts = [item for item in fact_texts if item]
+        if not fact_texts:
+            raise HTTPException(status_code=503, detail="Tour cognition has no verified facts to articulate")
+        fact_ids = [
+            f"tour:{tour.get('chapter_id') or 'unknown'}:{tour.get('stop_id') or 'unknown'}:{item.get('id') or index}"
+            for index, item in enumerate(concepts)
+        ]
+        facts_query = " ".join(fact_texts)
+        fact_resolver = CanonicalTurnResolver()
+        resolved = await fact_resolver.resolve(
+            facts_query,
+            domain=domain,
+            route=route,
+            site_world={
+                "site_name": str((artifacts["site_world"] or {}).get("site_name") or "Orb Weaver"),
+                "site_summary": fact_texts[0],
+                "key_facts": fact_texts,
+            },
+            page_capsule=page_capsule,
+            pointer_matches=[],
+        )
+        if resolved.get("source_lane") not in {"site_world", "apriori", "catalog", "posteriori", "control"}:
+            raise HTTPException(status_code=503, detail="Tour facts could not be verified for governed articulation")
+        resolved["evidence_ids"] = fact_ids
+        resolved["source_truth_confidence"] = 1.0
+        resolved["query_correspondence_confidence"] = 1.0
+        resolved["query_correspondence_verified"] = True
         generated = await _llm_orb_spoken_output(
             transcript, cognitive_pulse, memory_context, artifacts["site_world"],
             page_capsule, operating_policy, experience_context, governance_context,
@@ -7872,17 +7959,40 @@ async def _canonical_website_orb_turn(
         evaluation = generated.get("chapter_evaluation")
         if not evaluation:
             raise HTTPException(status_code=503, detail="Tour cognition did not return concept evidence; the stop was not advanced")
+        doctrine = articulate(
+            {
+                "answer": generated["spoken_output"],
+                "answer_hash": hashlib.sha256(generated["spoken_output"].encode("utf-8")).hexdigest(),
+                "source_lane": "local_model",
+                "verification_state": "verified",
+            }
+        )
+        resolved["spoken_output"] = doctrine["spoken_text"]
+        governance_trace = finalize_governance_trace(
+            governance_context,
+            resolved=resolved,
+            doctrine_trace=doctrine["trace"],
+        )
+        governance_trace["glyph_trace_refs"] = persist_governance_artifacts(
+            governance_context,
+            governance_trace,
+            session_key=(f"customer:{customer.id}" if customer else f"anonymous:{domain}"),
+        )
         _update_orb_recent_context(customer, transcript, generated["spoken_output"], db)
-        return {
-            "transcript": transcript, "spoken_output": generated["spoken_output"],
+        result = {
+            "transcript": transcript, "spoken_output": resolved["spoken_output"],
             "chapter_evaluation": evaluation, "llm_source": generated["llm_source"],
-            "source_lane": "local_model", "answer_state": "unknown", "confidence": 0.55,
+            "source_lane": resolved["source_lane"], "answer_state": resolved["answer_state"], "confidence": resolved["confidence"],
             "cognitive_pulse": cognitive_pulse, "memory_context": memory_context,
-            "control_action": None, "guidance": None, "evidence_ids": [],
-            "governance_trace": initial_governance_trace(governance_context),
-            "resolution_diagnostics": {"resolution_source": "tour_cognition", "confidence": 0.55,
-                "qwen_bypassed": False, "cached_speech": False},
+            "control_action": None, "guidance": None, "evidence_ids": resolved["evidence_ids"],
+            "governance_trace": governance_trace,
+            "resolution_diagnostics": {"resolution_source": "tour_cognition", "confidence": resolved["confidence"],
+                "qwen_bypassed": False, "cached_speech": False,
+                "governance_status": governance_trace["status"], "tpc_state": governance_trace["tpc_state"],
+                "doctrine_checksum": governance_trace["doctrine_checksum"]},
         }
+        _require_governance_delivery_approval(result)
+        return result
 
     async def local_model(query: str, _context: Dict[str, Any]) -> Dict[str, Any]:
         local_policy = dict(operating_policy or {})
@@ -8134,6 +8244,7 @@ async def website_orb_voice(
         db=db,
         experience_context=experience_context,
     )
+    _require_governance_delivery_approval(semantic_result)
     mark("answer_selection", started)
     tts_cache_before = _tts_cache_probe(semantic_result["spoken_output"])
     started = time.perf_counter()
@@ -8417,6 +8528,7 @@ async def website_orb_text(
         db=db,
         experience_context=payload.experience.model_dump() if payload.experience else None,
     )
+    _require_governance_delivery_approval(semantic_result)
     tts_cache_before = _tts_cache_probe(semantic_result["spoken_output"])
     tts_result = (
         await _synthesize_website_orb_speech(semantic_result)

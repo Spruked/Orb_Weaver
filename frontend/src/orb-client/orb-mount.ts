@@ -309,7 +309,7 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
       log('Startup greeting unavailable', { provider: 'browser-speech-synthesis' });
     }
   };
-  const startVoiceQuestion = async (source: 'startup' | 'button') => {
+  const startVoiceQuestion = async (source: 'button') => {
     const button = element<HTMLButtonElement>('[data-voice]');
     if (recorder?.state === 'recording') { recorder.stop(); return true; }
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
@@ -350,9 +350,7 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
       recorder.start();
       button.textContent = 'Finish voice question';
       setStatus('online', 'Listening');
-      setMessage(source === 'startup'
-        ? 'I am listening. Speak naturally, then pause when your question is complete.'
-        : 'I am listening. Choose Finish when your question is complete.');
+      setMessage('I am listening. Choose Finish when your question is complete.');
       log('Voice initialization available', { available: true, permissionRequested: true, source });
       monitorSilence();
       return true;
@@ -371,10 +369,6 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
     setStatus('online', 'Listening');
     setMessage(`Hi, I am Weaver. I am connected to ${siteName} and I am listening.`);
     speakStartupGreeting();
-    window.setTimeout(() => {
-      if (!mounted || recorder?.state === 'recording') return;
-      void startVoiceQuestion('startup');
-    }, 650);
   };
   const load = async (snapshot: OrbSiteSnapshot) => {
     abortController?.abort();

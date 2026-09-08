@@ -66,11 +66,11 @@ const { chromium } = require('playwright');
   await page.route('https://runtime.test/api/orb/website-text', async (route) => {
     textRequests += 1;
     const request = JSON.parse(route.request().postData() || '{}');
-    assert.equal(request.transcript, 'start campaign', 'visitor question must reach Website ORB runtime');
+    assert.equal(request.transcript, 'where should I begin', 'visitor question must reach Website ORB runtime');
     await route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify({
-        transcript: 'start campaign',
+        transcript: 'where should I begin',
         spoken_output: 'I found it.',
         llm_source: 'site-world-route',
         suggested_route: '/',
@@ -118,7 +118,7 @@ const { chromium } = require('playwright');
 
   await page.waitForFunction(() => window.OrbWeaver?.getStatus().online === true);
   const locationBefore = page.url();
-  await page.evaluate(() => window.OrbWeaver.ask('start campaign'));
+  await page.evaluate(() => window.OrbWeaver.ask('where should I begin'));
   await page.waitForFunction(() => {
     const root = document.querySelector('#orb-weaver-universal-root')?.shadowRoot;
     return root?.querySelector('[data-pointer]')?.dataset.visible === 'true';
@@ -143,7 +143,7 @@ const { chromium } = require('playwright');
     scrolledToTarget: true,
     clicks: 0,
     output: 'I found it.',
-  }, 'question → runtime target → live DOM → scroll → geometry → ORB travel → pointer ping must complete without click');
+  }, `question → runtime target → live DOM → scroll → geometry → ORB travel → pointer ping must complete without click; observed ${JSON.stringify(proof)}`);
   assert.equal(textRequests, 1, 'question must execute exactly one Website ORB text request');
   assert.equal(page.url(), locationBefore, 'guidance must not navigate or click');
 
@@ -152,7 +152,7 @@ const { chromium } = require('playwright');
   await page.screenshot({ path: path.join(artifactDir, 'orb-pointer-e2e-proof.png') });
 
   await page.evaluate(() => document.querySelector('#approved .start-action').remove());
-  await page.evaluate(() => window.OrbWeaver.ask('start campaign'));
+  await page.evaluate(() => window.OrbWeaver.ask('where should I begin'));
   await page.waitForFunction(() => {
     const root = document.querySelector('#orb-weaver-universal-root')?.shadowRoot;
     return root?.querySelector('[data-output]')?.textContent.includes('could not verify that target');

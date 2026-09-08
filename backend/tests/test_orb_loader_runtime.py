@@ -3,6 +3,7 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -38,6 +39,7 @@ def load_app(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setenv("ORB_WEAVER_VAULT_ROOT", str(vault_root))
+    monkeypatch.setenv("ORB_TTS_CACHE_DIR", str(vault_root / "runtime" / "tts_cache"))
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'orb_loader_test.db'}")
     monkeypatch.setenv("LOCAL_LLM_URL", "")
     monkeypatch.setenv("LOCAL_LLM_MODEL", "")
@@ -61,6 +63,137 @@ def page_context(url="https://demo.openai.chatgpt.site/"):
         "visible_controls": [{"tag": "button", "text": "Start"}],
         "captured_at": "2026-07-18T12:00:00Z",
     }
+
+
+@pytest.mark.parametrize("governance_state", ["pending", "rejected", "errored"])
+def test_tour_delivery_requires_final_approved_governance(tmp_path, monkeypatch, governance_state):
+    """Phase-A regression: current tour bypass must fail this before its repair."""
+    main, client = load_app(tmp_path, monkeypatch)
+    tts_calls = []
+    withholding_events = []
+    original_finalize_trace = main.finalize_governance_trace
+
+    def non_approved_trace(*args, **kwargs):
+        trace = original_finalize_trace(*args, **kwargs)
+        trace.update({
+            "status": governance_state,
+            "tpc_state": governance_state,
+            "tpc_verification": {"state": governance_state, "evidence_ids": []},
+            "doctrine_version": governance_state,
+            "doctrine_checksum": False,
+        })
+        return trace
+
+    async def generated_tour_response(*_args, **_kwargs):
+        return {
+            "spoken_output": "This is an unapproved test articulation.",
+            "chapter_evaluation": {
+                "spoken_output": "This is an unapproved test articulation.",
+                "covered_concepts": [],
+                "detected_visitor_intent": None,
+                "suggested_transition": None,
+            },
+            "llm_source": "llamacpp-tour",
+        }
+
+    async def counted_tts(text, **_kwargs):
+        tts_calls.append(text)
+        return {"tts_audio_url": "/api/orb/tts/test.wav", "tts_provider": "kokoro", "tts_error": None}
+
+    def capture_withholding_event(**kwargs):
+        withholding_events.append(kwargs)
+        return {"glyph_trace_id": "GT-VLT-test-withheld"}
+
+    monkeypatch.setattr(main, "finalize_governance_trace", non_approved_trace)
+    monkeypatch.setattr(main, "_llm_orb_spoken_output", generated_tour_response)
+    monkeypatch.setattr(main, "_synthesize_orb_tts", counted_tts)
+    monkeypatch.setattr(main, "record_vault_object", capture_withholding_event)
+
+    response = client.post(
+        "/api/orb/website-text",
+        headers={"Origin": "https://demo.openai.chatgpt.site"},
+        json={
+            "transcript": "Explain the verified Preflight finding.",
+            "synthesize_tts": True,
+            "site_id": "orb-weaver-campaign",
+            "target_url": "https://demo.openai.chatgpt.site/",
+            "experience": {
+                "phase": "understanding",
+                "objective": "Explain the verified finding naturally.",
+                "verification_state": "verified",
+                "tour": {
+                    "chapter_id": "preflight-results",
+                    "stop_id": "finding-0",
+                    "purpose": "Explain one verified Preflight finding.",
+                    "required_concepts": [{"id": "PREFLIGHT_FINDING", "description": "A verified Preflight finding."}],
+                    "visible_section_text": "The report card is currently visible.",
+                    "evidence_attempt": 1,
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 409 and not tts_calls, {
+        "governance_state": governance_state,
+        "http_status": response.status_code,
+        "response": response.json(),
+        "tts_calls": tts_calls,
+    }
+    assert [event["event_type"] for event in withholding_events] == ["TTS_WITHHELD"]
+
+
+def test_tour_delivery_invokes_tts_only_after_final_governance_approval(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    tts_calls = []
+
+    async def generated_tour_response(*_args, **_kwargs):
+        return {
+            "spoken_output": "This is an approved test articulation.",
+            "chapter_evaluation": {
+                "spoken_output": "This is an approved test articulation.",
+                "covered_concepts": [],
+                "detected_visitor_intent": None,
+                "suggested_transition": None,
+            },
+            "llm_source": "llamacpp-tour",
+        }
+
+    async def counted_tts(text, **_kwargs):
+        tts_calls.append(text)
+        return {"tts_audio_url": "/api/orb/tts/test.wav", "tts_provider": "kokoro", "tts_error": None}
+
+    monkeypatch.setattr(main, "_llm_orb_spoken_output", generated_tour_response)
+    monkeypatch.setattr(main, "_synthesize_orb_tts", counted_tts)
+    response = client.post(
+        "/api/orb/website-text",
+        headers={"Origin": "https://demo.openai.chatgpt.site"},
+        json={
+            "transcript": "Explain the verified Preflight finding.",
+            "synthesize_tts": True,
+            "site_id": "orb-weaver-campaign",
+            "target_url": "https://demo.openai.chatgpt.site/",
+            "experience": {
+                "phase": "understanding",
+                "objective": "Explain the verified finding naturally.",
+                "verification_state": "verified",
+                "tour": {
+                    "chapter_id": "preflight-results",
+                    "stop_id": "finding-0",
+                    "purpose": "Explain one verified Preflight finding.",
+                    "required_concepts": [{"id": "PREFLIGHT_FINDING", "description": "A verified Preflight finding."}],
+                    "visible_section_text": "The report card is currently visible.",
+                    "evidence_attempt": 1,
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["governance_trace"]["status"] == "approved"
+    assert payload["governance_trace"]["tpc_state"] == "passed"
+    assert payload["governance_trace"]["doctrine_checksum"] is True
+    assert tts_calls == ["This is an approved test articulation."]
 
 
 def test_bootstrap_blocks_unverified_pointer_context(tmp_path, monkeypatch):

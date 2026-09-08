@@ -843,6 +843,16 @@
   transform: translate3d(0, 0, 0) scale(1);
 }
 
+/* The route controls where a MORB travels; these short internal motions make
+   the scouting pass legible without changing the verified target geometry. */
+.ow-v2-morb-pointer[data-orb-morb-trajectory="swirl"][data-orb-pointer-phase="TRAVEL"] {
+  animation: ow-v2-morb-swirl 460ms cubic-bezier(.33, .02, .24, 1) infinite;
+}
+
+.ow-v2-morb-pointer[data-orb-morb-trajectory="dart_orbit"][data-orb-pointer-phase="TRAVEL"] {
+  animation: ow-v2-morb-dart-orbit 300ms cubic-bezier(.22, .02, .12, 1) infinite;
+}
+
 .ow-v2-morb-pointer[data-orb-pointer-phase="ARRIVAL"] {
   animation: ow-v2-morb-arrival 420ms ease-out 1;
 }
@@ -908,10 +918,6 @@
 
 .ow-v2-orb-position.is-greeting .ow-v2-orb-body {
   animation: ow-v2-greeting-ping 1.8s ease-in-out infinite;
-}
-
-.ow-v2-orb-position.onboarding-safe-mode {
-  display: none;
 }
 
 .ow-v2-local-pulse {
@@ -1587,6 +1593,20 @@
   100% { filter: brightness(1); box-shadow: 0 0 9px var(--ow-morb-shadow, rgba(91, 200, 230, .68)), 0 0 16px var(--ow-morb-glow, rgba(91, 200, 230, .32)); }
 }
 
+@keyframes ow-v2-morb-swirl {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+  25% { transform: translate3d(8px, -9px, 0) rotate(76deg) scale(1.08); }
+  52% { transform: translate3d(-7px, -12px, 0) rotate(164deg) scale(.96); }
+  76% { transform: translate3d(-10px, 6px, 0) rotate(252deg) scale(1.06); }
+}
+
+@keyframes ow-v2-morb-dart-orbit {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0deg) scale(1); }
+  28% { transform: translate3d(13px, -4px, 0) rotate(118deg) scale(1.12); }
+  58% { transform: translate3d(-5px, -13px, 0) rotate(238deg) scale(.92); }
+  80% { transform: translate3d(-12px, 7px, 0) rotate(324deg) scale(1.06); }
+}
+
 @keyframes ow-v2-morb-arrival {
   0% { transform: translate3d(0, 0, 0) scale(.92); }
   55% { transform: translate3d(0, 0, 0) scale(1.08); }
@@ -1622,6 +1642,12 @@
   0%, 100% { filter: brightness(1); transform: scale(1); }
   35% { filter: brightness(1.28); transform: scale(1.035); }
   62% { filter: brightness(1.05); transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ow-v2-morb-pointer[data-orb-morb-trajectory][data-orb-pointer-phase="TRAVEL"] {
+    animation: none;
+  }
 }
 
 @keyframes ow-v2-greeting-logo-ping {

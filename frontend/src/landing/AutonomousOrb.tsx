@@ -85,6 +85,7 @@ type FirstEncounterFlag =
 type FirstEncounterState = Record<FirstEncounterFlag, boolean>;
 type PointerWaltzPhase = "ACQUIRE" | "LAUNCH" | "TRAVEL" | "APPROACH" | "STANCE" | "POINT" | "PING" | "COMPLETE" | "DISSOLVE" | "RECOVERY";
 type MorbWorkRole = "target" | "path" | "comparison" | "sequence" | "alternative" | "relationship";
+type MorbTrajectory = "direct" | "swirl" | "dart_orbit";
 type MorbPointerState = {
   targetId: string;
   role: MorbWorkRole;
@@ -94,6 +95,7 @@ type MorbPointerState = {
   pinging: boolean;
   dissolving: boolean;
   phase: PointerWaltzPhase;
+  trajectory: MorbTrajectory;
 };
 
 type PulseState = {
@@ -159,6 +161,54 @@ const SUITE_LOGO_POINTER_RECORD: WebsiteOrbPointerRecord = {
   pointer_health: "OWNER_VERIFIED",
   runtime_policy: { may_point: true, requires_live_verification: true },
 };
+const ONBOARDING_CONTINUATION_STORAGE_KEY = "orbweaver-onboarding-continuation";
+const ONBOARDING_ROUTE = "/signup";
+const ONBOARDING_FIRST_TARGET_ID = "full-name-field";
+type OnboardingContinuation = {
+  destination: string;
+  firstTargetId: string;
+  approvedAt: number;
+  guidedAt?: number;
+};
+
+const readOnboardingContinuation = (): OnboardingContinuation | null => {
+  try {
+    const raw = window.sessionStorage.getItem(ONBOARDING_CONTINUATION_STORAGE_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<OnboardingContinuation>;
+    return typeof value.destination === "string" && typeof value.firstTargetId === "string" &&
+      typeof value.approvedAt === "number"
+      ? { destination: value.destination, firstTargetId: value.firstTargetId, approvedAt: value.approvedAt, guidedAt: value.guidedAt }
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const saveOnboardingContinuation = (continuation: OnboardingContinuation): boolean => {
+  try {
+    window.sessionStorage.setItem(ONBOARDING_CONTINUATION_STORAGE_KEY, JSON.stringify(continuation));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const onboardingFirstTargetRecord = (): WebsiteOrbPointerRecord => ({
+  target_id: ONBOARDING_FIRST_TARGET_ID,
+  page_route: ONBOARDING_ROUTE,
+  target_type: "form_field",
+  meaning: "Full name",
+  direct_aliases: ["full name", "name field"],
+  intent_aliases: ["start onboarding", "begin account creation"],
+  content_fingerprint: "onboarding:full-name-field:live-route",
+  semantic_locator: '[data-orb-target="full-name-field"]',
+  confidence: 1,
+  confidence_class: "VERIFIED",
+  pointer_health: "OWNER_VERIFIED",
+  structural_context: { tag: "input" },
+  runtime_policy: { may_point: true, requires_live_verification: true },
+});
 const EMPTY_FIRST_ENCOUNTER_STATE: FirstEncounterState = {
   voice_ready: false,
   entrance_complete: false,
@@ -257,6 +307,15 @@ const morbStyleVars = (role: MorbWorkRole): React.CSSProperties => {
   } as React.CSSProperties;
 };
 
+const morbTrajectoryForGuidance = (guidanceSequence: number): MorbTrajectory => {
+  // Keep the ordinary direct path common. The other patterns appear often
+  // enough to feel alive, but are deterministic for a given guidance turn.
+  const variant = guidanceSequence % 5;
+  if (variant === 1) return "swirl";
+  if (variant === 3) return "dart_orbit";
+  return "direct";
+};
+
 const routeForUrl = (value?: string | null): string => {
   if (!value) return "/";
   try {
@@ -346,6 +405,10 @@ export const AutonomousOrb: React.FC<Props> = ({
   const restTransitionActiveRef = useRef(false);
   const resumeAutonomousPresenceRef = useRef<() => Promise<void>>(async () => undefined);
   const pointerRecordsRef = useRef<WebsiteOrbPointerRecord[]>([]);
+  // Route-local records are locators for freshly rendered first-party UI. They
+  // never modify the canonical crawl pointer map and remain non-authoritative
+  // until the existing movement controller verifies their live DOM target.
+  const onboardingLiveRecordRef = useRef<WebsiteOrbPointerRecord | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const recordingStreamRef = useRef<MediaStream | null>(null);
@@ -427,12 +490,21 @@ export const AutonomousOrb: React.FC<Props> = ({
     originAngle: number;
   } | null>(null);
   const [morbPointer, setMorbPointer] = useState<MorbPointerState | null>(null);
+  // Guidance is an async operation. Keep the currently rendered MORB in a ref
+  // so a cosmetic MORB state update cannot recreate the guidance callback and
+  // abort a route-continuation effect midway through a verified arrival.
+  const morbPointerRef = useRef<MorbPointerState | null>(null);
   const [pointerWaltzPhase, setPointerWaltzPhase] = useState<PointerWaltzPhase | null>(null);
   const [greetingActive, setGreetingActive] = useState(false);
   const [showStartupDiagnosticsPanel] = useState(() => startupDiagnosticsPanelEnabled());
   const [startupDiagnostics, setStartupDiagnostics] = useState<StartupDiagnostics>(() => initialStartupDiagnostics());
   const [runtimeAnswerDiagnostics, setRuntimeAnswerDiagnostics] = useState<RuntimeAnswerDiagnostics | null>(null);
   const preflightNarratedReportRef = useRef<string | null>(null);
+  const preflightWalkthroughAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    morbPointerRef.current = morbPointer;
+  }, [morbPointer]);
 
   const updateStartupDiagnostics = useCallback((patch: Partial<StartupDiagnostics>) => {
     setStartupDiagnostics((current) => {
@@ -894,7 +966,10 @@ export const AutonomousOrb: React.FC<Props> = ({
     const currentRoute = routeForUrl(window.location.href);
     let best: { record: WebsiteOrbPointerRecord; score: number } | null = null;
 
-    for (const record of pointerRecordsRef.current) {
+    const routeRecords = onboardingLiveRecordRef.current
+      ? [...pointerRecordsRef.current, onboardingLiveRecordRef.current]
+      : pointerRecordsRef.current;
+    for (const record of routeRecords) {
       if (routeForUrl(record.page_route) !== currentRoute) continue;
       const candidates = [
         record.meaning || "",
@@ -1094,7 +1169,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     const orbCenterX = destination.x + size / 2;
     const orbCenterY = destination.y + size / 2;
 
-    if (morbPointer) {
+    if (morbPointerRef.current) {
       setPointerWaltzPhase("DISSOLVE");
       setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "DISSOLVE", dissolving: true } : null);
       await awaitAbortable(wait(420), options.signal);
@@ -1104,6 +1179,7 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     setPointerWaltzPhase("LAUNCH");
     playMorbLaunchSound();
+    const morbTrajectory = morbTrajectoryForGuidance(guidanceSequence);
     setMorbPointer({
       targetId: record.target_id,
       role,
@@ -1113,6 +1189,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       pinging: false,
       dissolving: false,
       phase: "LAUNCH",
+      trajectory: morbTrajectory,
     });
     await awaitAbortable(wait(60), options.signal);
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
@@ -1121,15 +1198,56 @@ export const AutonomousOrb: React.FC<Props> = ({
     const morbTravelDuration = Math.max(760, Math.min(1500,
       Math.round(Math.hypot(finalTargetX - orbCenterX, finalTargetY - orbCenterY) * 1.25),
     ));
-    setMorbPointer((currentMorb) => currentMorb ? {
-      ...currentMorb,
-      left: finalTargetX - MORB_HALF,
-      top: finalTargetY - MORB_HALF,
-      visible: true,
-      phase: "TRAVEL",
-    } : null);
+    const moveMorbAlongLivePath = (x: number, y: number) => {
+      setMorbPointer((currentMorb) => currentMorb ? {
+        ...currentMorb,
+        left: x - MORB_HALF,
+        top: y - MORB_HALF,
+        visible: true,
+        phase: "TRAVEL",
+      } : null);
+    };
+    const pathX = finalTargetX - orbCenterX;
+    const pathY = finalTargetY - orbCenterY;
+    const pathLength = Math.max(1, Math.hypot(pathX, pathY));
+    const normalX = -pathY / pathLength;
+    const normalY = pathX / pathLength;
 
-    await awaitAbortable(wait(morbTravelDuration), options.signal);
+    if (morbTrajectory === "swirl") {
+      // A broad S-curve reads as a purposeful scouting pass before the MORB
+      // settles on the target. The live target is still rechecked below.
+      moveMorbAlongLivePath(
+        orbCenterX + pathX * .42 + normalX * Math.min(118, pathLength * .25),
+        orbCenterY + pathY * .42 + normalY * Math.min(118, pathLength * .25),
+      );
+      await awaitAbortable(wait(Math.round(morbTravelDuration * .34)), options.signal);
+      if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
+      moveMorbAlongLivePath(
+        orbCenterX + pathX * .78 - normalX * Math.min(76, pathLength * .16),
+        orbCenterY + pathY * .78 - normalY * Math.min(76, pathLength * .16),
+      );
+      await awaitAbortable(wait(Math.round(morbTravelDuration * .34)), options.signal);
+      if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
+      moveMorbAlongLivePath(finalTargetX, finalTargetY);
+      await awaitAbortable(wait(Math.round(morbTravelDuration * .32)), options.signal);
+    } else if (morbTrajectory === "dart_orbit") {
+      // A fast line followed by two tight target-relative passes gives the
+      // MORB a dart-and-circle arrival without ever using cached authority.
+      moveMorbAlongLivePath(orbCenterX + pathX * .78, orbCenterY + pathY * .78);
+      await awaitAbortable(wait(Math.round(morbTravelDuration * .42)), options.signal);
+      if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
+      moveMorbAlongLivePath(finalTargetX + normalX * 32, finalTargetY + normalY * 32);
+      await awaitAbortable(wait(Math.round(morbTravelDuration * .22)), options.signal);
+      if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
+      moveMorbAlongLivePath(finalTargetX - normalX * 26, finalTargetY - normalY * 26);
+      await awaitAbortable(wait(Math.round(morbTravelDuration * .18)), options.signal);
+      if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
+      moveMorbAlongLivePath(finalTargetX, finalTargetY);
+      await awaitAbortable(wait(Math.round(morbTravelDuration * .18)), options.signal);
+    } else {
+      moveMorbAlongLivePath(finalTargetX, finalTargetY);
+      await awaitAbortable(wait(morbTravelDuration), options.signal);
+    }
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
     stopMorbTravelSound();
     setPointerWaltzPhase("STANCE");
@@ -1181,7 +1299,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     setPointerWaltzPhase("COMPLETE");
     return finishGuidance(true);
     } finally { options.signal?.removeEventListener('abort', cancelGuidance); }
-  }, [authorizeMotion, bumpWorldStateSequence, clampPosition, markVisitorActivity, morbPointer, move, playMorbLaunchSound, playPointerPing, resumeAutonomousPresence, size, startMorbTravelSound, stopMorbTravelSound]);
+  }, [authorizeMotion, bumpWorldStateSequence, clampPosition, markVisitorActivity, move, playMorbLaunchSound, playPointerPing, resumeAutonomousPresence, size, startMorbTravelSound, stopMorbTravelSound]);
 
   const guideToPointerTarget = useCallback(async (intentText: string) => {
     const record = findPointerRecordForIntent(intentText);
@@ -1191,7 +1309,10 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const findPointerRecordById = useCallback((targetId: string) => {
     const currentRoute = routeForUrl(window.location.href);
-    return pointerRecordsRef.current.find((record) => (
+    const routeRecords = onboardingLiveRecordRef.current
+      ? [...pointerRecordsRef.current, onboardingLiveRecordRef.current]
+      : pointerRecordsRef.current;
+    return routeRecords.find((record) => (
       record.target_id === targetId && routeForUrl(record.page_route) === currentRoute
     )) || null;
   }, []);
@@ -2754,6 +2875,9 @@ export const AutonomousOrb: React.FC<Props> = ({
       const detail = (event as CustomEvent<PublicPreflightReport>).detail;
       if (!detail?.generated_at || preflightNarratedReportRef.current === detail.generated_at) return;
       preflightNarratedReportRef.current = detail.generated_at;
+      preflightWalkthroughAbortRef.current?.abort();
+      const walkthroughController = new AbortController();
+      preflightWalkthroughAbortRef.current = walkthroughController;
 
       if (!detail.outcome || !detail.site_url) return;
 
@@ -2808,11 +2932,13 @@ export const AutonomousOrb: React.FC<Props> = ({
           return;
         }
         for (const [index, element] of findingSequence.entries()) {
+          if (walkthroughController.signal.aborted || window.location.pathname !== '/preflight') return;
           const liveText = element.innerText.replace(/\s+/g, ' ').trim();
           if (!liveText) continue;
           const record = resultRecord(element, index);
-          const guided = await guideToPointerRecord(record, `Explain this Preflight result: ${liveText.slice(0, 220)}`);
+          const guided = await guideToPointerRecord(record, `Explain this Preflight result: ${liveText.slice(0, 220)}`, { signal: walkthroughController.signal });
           if (!guided) continue;
+          if (walkthroughController.signal.aborted || window.location.pathname !== '/preflight') return;
           const findingFacts = index === 0
             ? [detail.outcome_title, detail.summary, `Fit score: ${detail.fit_score}/100`, `Pages read: ${detail.basic_checks?.pages_read ?? detail.basic_checks?.sample_pages_read ?? 0}`]
             : index === 1
@@ -2865,6 +2991,7 @@ export const AutonomousOrb: React.FC<Props> = ({
             showStatus(7000);
             continue;
           }
+          if (walkthroughController.signal.aborted || window.location.pathname !== '/preflight') return;
           await speakWithGeneratedAudio(result.spoken_output, result.tts_audio_url, result.tts_provider);
         }
       };
@@ -2880,6 +3007,111 @@ export const AutonomousOrb: React.FC<Props> = ({
     window.addEventListener('orbweaver:preflight-complete', handlePreflightComplete);
     return () => window.removeEventListener('orbweaver:preflight-complete', handlePreflightComplete);
   }, [guideToPointerRecord, showStatus, speakWithGeneratedAudio]);
+
+  useEffect(() => {
+    const recordApprovedOnboarding = (event: Event) => {
+      const detail = (event as CustomEvent<{ destination?: unknown; first_target_id?: unknown }>).detail || {};
+      const destination = typeof detail.destination === "string" ? detail.destination : `${ONBOARDING_ROUTE}?intent=site_onboarding`;
+      const firstTargetId = typeof detail.first_target_id === "string" ? detail.first_target_id : ONBOARDING_FIRST_TARGET_ID;
+      const journey = websiteJourneyRef.current;
+      if (!journey || !journeyReadyRef.current) return;
+
+      saveWebsiteJourney({
+        ...journey,
+        stage: "ONBOARDING",
+        currentChapterId: null,
+        currentStopId: null,
+        currentStopCoveredConceptIds: [],
+        interruptionState: { isInterrupted: false, interruptedAtChapterId: null, interruptedAtStopId: null },
+      });
+      const continuation = { destination, firstTargetId, approvedAt: Date.now() };
+      preflightWalkthroughAbortRef.current?.abort();
+      if (!saveOnboardingContinuation(continuation)) {
+        setTourNotice("Your onboarding handoff could not be saved. Please enable session storage to continue.");
+        return;
+      }
+      emitOrbRuntimeEvent("onboarding_continuation_recorded", {
+        destination,
+        firstTargetId,
+        journey_stage: "ONBOARDING",
+      });
+    };
+
+    window.addEventListener("orbweaver:onboarding-approved", recordApprovedOnboarding);
+    return () => window.removeEventListener("orbweaver:onboarding-approved", recordApprovedOnboarding);
+  }, [saveWebsiteJourney]);
+
+  useEffect(() => {
+    if (location.pathname !== ONBOARDING_ROUTE) {
+      onboardingLiveRecordRef.current = null;
+      return;
+    }
+
+    const continuation = readOnboardingContinuation();
+    const journey = websiteJourneyRef.current;
+    if (!continuation || !journey || journey.stage !== "ONBOARDING" ||
+      routeForUrl(continuation.destination) !== ONBOARDING_ROUTE ||
+      continuation.firstTargetId !== ONBOARDING_FIRST_TARGET_ID) return;
+
+    let cancelled = false;
+    const controller = new AbortController();
+    const attachLiveTarget = async () => {
+      // Wait for the actual signup page to hydrate. This is a locator only;
+      // `guideToPointerRecord` must still prove connection, visibility,
+      // identity, current geometry, and final-arrival geometry before Ping.
+      await awaitAbortable(wait(160), controller.signal).catch(() => undefined);
+      if (cancelled || controller.signal.aborted) return;
+      for (let attempt = 0; !cancelled && attempt < 20; attempt += 1) {
+        const target = document.querySelector<HTMLElement>('[data-orb-target="full-name-field"]');
+        if (target && document.body.contains(target)) {
+          const record = onboardingFirstTargetRecord();
+          onboardingLiveRecordRef.current = record;
+          const rect = target.getBoundingClientRect();
+          lidarCacheRef.current.load([...pointerRecordsRef.current, record]);
+          lidarCacheRef.current.injectFrame({
+            event_type: "pointer_target_lock",
+            target_id: record.target_id,
+            absolute_top: rect.top + window.scrollY,
+            absolute_left: rect.left + window.scrollX,
+            width: rect.width,
+            height: rect.height,
+            semantic_intent: "onboarding_continuation",
+            movement_vector: "glide",
+            confidence: 1,
+            metadata: { route: location.pathname, continuation_approved_at: continuation.approvedAt },
+            timestamp_iso: new Date().toISOString(),
+          });
+          emitOrbRuntimeEvent("onboarding_lidar_target_mapped", {
+            targetId: record.target_id,
+            route: location.pathname,
+            source: "live_onboarding_dom",
+          });
+          emitOrbRuntimeEvent("onboarding_route_ready", {
+            route: location.pathname,
+            targetId: record.target_id,
+            resumed_session: true,
+          });
+
+          if (!continuation.guidedAt) {
+            const guided = await guideToPointerRecord(record, "Continue onboarding with your full name", { signal: controller.signal });
+            if (!cancelled && guided) {
+              saveOnboardingContinuation({ ...continuation, guidedAt: Date.now() });
+              emitOrbRuntimeEvent("onboarding_first_target_guided", { targetId: record.target_id });
+            }
+          }
+          return;
+        }
+        await awaitAbortable(wait(80), controller.signal).catch(() => undefined);
+      }
+      if (!cancelled) emitOrbRuntimeEvent("onboarding_route_blocked", { reason: "first_target_not_rendered" });
+    };
+
+    void attachLiveTarget();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [guideToPointerRecord, location.pathname]);
 
   useEffect(() => {
     api.websiteOrbCapabilities()
@@ -2913,9 +3145,13 @@ export const AutonomousOrb: React.FC<Props> = ({
     api.websiteOrbPointerMap(pointerDomain, controller.signal)
       .then((pointerMap) => {
         pointerRecordsRef.current = Array.isArray(pointerMap.records) ? pointerMap.records : [];
-        lidarCacheRef.current.load(pointerRecordsRef.current);
+        const liveOnboardingRecord = onboardingLiveRecordRef.current;
+        const recordsForCurrentRoute = liveOnboardingRecord && routeForUrl(liveOnboardingRecord.page_route) === location.pathname
+          ? [...pointerRecordsRef.current, liveOnboardingRecord]
+          : pointerRecordsRef.current;
+        lidarCacheRef.current.load(recordsForCurrentRoute);
         lidarCacheRef.current.startDriftAudit();
-        emitOrbRuntimeEvent("pointer_map_ready", { count: pointerRecordsRef.current.length });
+        emitOrbRuntimeEvent("pointer_map_ready", { count: pointerRecordsRef.current.length, route: location.pathname });
         bumpWorldStateSequence();
         if (process.env.NODE_ENV !== "production") {
           const demoQuery = new URLSearchParams(window.location.search).get("orbPointerDemo");
@@ -2930,7 +3166,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         bumpWorldStateSequence();
       });
     return () => controller.abort();
-  }, [activeOrbContext?.canonical_domain, bumpWorldStateSequence, guideToPointerTarget]);
+  }, [activeOrbContext?.canonical_domain, bumpWorldStateSequence, guideToPointerTarget, location.pathname]);
 
   useEffect(() => {
     guidanceSequenceRef.current += 1;
@@ -2944,9 +3180,21 @@ export const AutonomousOrb: React.FC<Props> = ({
     setGuidanceGeometrySource(null);
     bumpWorldStateSequence();
     const rebuild = window.setTimeout(() => {
-      lidarCacheRef.current.load(pointerRecordsRef.current);
+      const liveOnboardingRecord = onboardingLiveRecordRef.current;
+      lidarCacheRef.current.load(liveOnboardingRecord && routeForUrl(liveOnboardingRecord.page_route) === location.pathname
+        ? [...pointerRecordsRef.current, liveOnboardingRecord]
+        : pointerRecordsRef.current);
       emitOrbRuntimeEvent("route_spatial_state_ready", { route: location.pathname });
-      void resumeAutonomousPresenceRef.current();
+      const continuation = location.pathname === ONBOARDING_ROUTE ? readOnboardingContinuation() : null;
+      const pendingOnboardingGuidance = Boolean(
+        continuation &&
+        continuation.firstTargetId === ONBOARDING_FIRST_TARGET_ID &&
+        !continuation.guidedAt &&
+        websiteJourneyRef.current?.stage === "ONBOARDING",
+      );
+      if (!pendingOnboardingGuidance && !guidanceActiveRef.current) {
+        void resumeAutonomousPresenceRef.current();
+      }
     }, 120);
     return () => window.clearTimeout(rebuild);
   }, [bumpWorldStateSequence, location.pathname]);
@@ -3260,6 +3508,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         className={`ow-v2-morb-pointer ${morbPointer.visible ? "visible" : ""} ${morbPointer.pinging ? "pinging" : ""} ${morbPointer.dissolving ? "dissolving" : ""}`}
         data-orb-morb-target={morbPointer.targetId}
         data-orb-morb-role={morbPointer.role}
+        data-orb-morb-trajectory={morbPointer.trajectory}
         data-orb-pointer-state={pointerWaltzPhase || undefined}
         aria-hidden="true"
         style={{
@@ -3292,7 +3541,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       onPointerMove={handleOrbPointerMove}
       onPointerUp={handleOrbPointerUp}
       onPointerCancel={handleOrbPointerUp}
-      className={`ow-v2-orb-position ${pointerBloom ? "is-pointing" : ""} ${greetingActive ? "is-greeting" : ""} ${morbPointer ? "has-deployed-morb" : ""} ${onboardingSafeMode ? "onboarding-safe-mode" : ""} ${className}`}
+      className={`ow-v2-orb-position ${pointerBloom ? "is-pointing" : ""} ${greetingActive ? "is-greeting" : ""} ${morbPointer ? "has-deployed-morb" : ""} ${className}`}
       data-orb-last-guided-target={lastGuidedTarget || undefined}
       data-orb-voice-state={voiceState}
       data-orb-resting={isResting ? "true" : "false"}

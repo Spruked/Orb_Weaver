@@ -12,6 +12,16 @@ every downloadable customer ORB. A repository or installed ORB must contain
 exactly one directory named `vault_system`; components receive namespaces
 inside it and may not create independent stores.
 
+For a manufactured Website ORB, the only permitted package location is:
+
+```text
+<installed-orb-root>/runtime/vault_system/
+```
+
+The package resolver canonicalizes the configured path and rejects a missing,
+alternate, legacy, vendor, path-escape, or symlinked root. Package relocation
+is supported; redirecting its Vault outside the installed package is not.
+
 All subsystems resolve persistent and runtime data through this root. Component
 folders such as `backend/`, `Orb_Assistant/`, and legacy `substrate/` paths may
 contain source code, but they must not own independent data stores.

@@ -20,6 +20,7 @@ class AnswerResponse(BaseModel):
     requires_confirmation: bool
     source: str = "tpc_website_runtime"
     tpc_trace: Dict[str, Any] = Field(default_factory=dict)
+    governance_trace: Dict[str, Any] = Field(default_factory=dict)
 
 
 class RouteContextResponse(BaseModel):

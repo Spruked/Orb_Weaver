@@ -116,31 +116,12 @@ def answer_from_world(
     pointer_targets: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
 
-    # FAST PATH:
-    # A Priori -> A Posteriori
+    # A Priori/A Posteriori may supply the factual answer, but every returned
+    # visitor answer still travels through TPC and the final doctrine boundary.
     vault_result = _try_vault(message)
-
-    if vault_result is not None:
-        return {
-            "answer": vault_result["answer"],
-            "route": route,
-            "intent": vault_result["intent"],
-            "action_class": "informational",
-            "pointer_targets": pointer_targets,
-            "requires_confirmation": False,
-            "source": vault_result["source"],
-            "vault_trace": {
-                "confidence": vault_result["confidence"],
-                "routing_confidence": vault_result["routing_confidence"],
-                "resolution_path": vault_result["resolution_path"],
-                "entity_id": vault_result["entity_id"],
-                "data": vault_result["data"],
-            },
-        }
-
-    # EXISTING PATH:
-    # Website intent -> TPC -> doctrine gate -> existing composition
     intent, _score = classify_intent(message, route_record)
+    if vault_result is not None:
+        intent = vault_result["intent"]
 
     tpc = run_tpc(
         message,
@@ -152,11 +133,8 @@ def answer_from_world(
 
     gate = apply_doctrine_gate(tpc, route_record)
 
-    answer = _compose_answer(
-        intent,
-        route_record,
-        runtime_language,
-        pointer_targets,
+    answer = vault_result["answer"] if vault_result is not None else _compose_answer(
+        intent, route_record, runtime_language, pointer_targets,
     )
 
     if not gate["allowed"]:
@@ -165,7 +143,8 @@ def answer_from_world(
             "that action from the site."
         )
 
-    return {
+    governance_trace = _finalize_delivery_governance(tpc, gate, answer)
+    result = {
         "answer": answer,
         "route": route,
         "intent": intent,
@@ -178,6 +157,32 @@ def answer_from_world(
             "egf": tpc.get("egf"),
             "gate": gate,
         },
+        "governance_trace": governance_trace,
+    }
+    if vault_result is not None:
+        result["vault_trace"] = {
+            "confidence": vault_result["confidence"],
+            "routing_confidence": vault_result["routing_confidence"],
+            "resolution_path": vault_result["resolution_path"],
+            "entity_id": vault_result["entity_id"],
+            "data": vault_result["data"],
+        }
+    return result
+
+
+def _finalize_delivery_governance(tpc: Dict[str, Any], gate: Dict[str, Any], answer: str) -> Dict[str, Any]:
+    """The manufactured runtime's explicit TPC → doctrine → delivery trace."""
+    tpc_evaluated = all(key in tpc for key in ("locke", "hume", "kant", "spinoza", "fifth_mind"))
+    clean_answer = str(answer or "").strip()
+    doctrine_passed = bool(clean_answer) and not any(marker in clean_answer for marker in ("```", "**", "__"))
+    approved = tpc_evaluated and bool(gate.get("allowed")) and doctrine_passed
+    return {
+        "schema": "orb_weaver.manufactured_governance_trace.v1",
+        "tpc_state": "passed" if tpc_evaluated else "errored",
+        "doctrine_version": "website-orb-doctrine/1.0.0",
+        "doctrine_checksum": doctrine_passed,
+        "status": "approved" if approved else "rejected",
+        "reason": "approved" if approved else "tpc_or_doctrine_delivery_requirement_failed",
     }
 
 
