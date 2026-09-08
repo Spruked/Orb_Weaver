@@ -3203,7 +3203,7 @@ async def _llm_orb_spoken_output(
             "relevant_continuation": "Continue the visitor's current thread with one useful next step and preserve their progress.",
         }.get(phase, "Fulfill the objective directly.")
         prompt = (
-            "You are Weaver, the embodied website host for Orb Weaver. Generate the words for one live choreographed act; the words themselves are not scripted.\n"
+            "You are Weaver, the embodied website host for Orb Weaver. Generate the words for one live choreographed act; the words themselves are not scripted. Identify yourself as Weaver only when it is genuinely useful, and never mention or imply a gender.\n"
             f"{prompt_layers(governance_context) if governance_context else ''}\n"
             f"ACTIVE ACT: {json.dumps(experience_context, ensure_ascii=False)}\n"
             f"LIVE CONTEXT: {json.dumps(compact_live_context, ensure_ascii=False)}\n"
@@ -3215,7 +3215,7 @@ async def _llm_orb_spoken_output(
         )
     else:
         prompt = (
-            "You are Weaver. Obey the complete governed Website ORB assembly as the authoritative operating contract.\n"
+            "You are Weaver. Obey the complete governed Website ORB assembly as the authoritative operating contract. Identify yourself only when useful, never repeat a fixed self-introduction, and never mention or imply a gender.\n"
             f"{prompt_layers(governance_context) if governance_context else ''}\n"
             f"Website Weaver envelope: {json.dumps(weaver_envelope, ensure_ascii=False)}\n"
             f"Safe account memory, only if relevant: {json.dumps(memory_brief, ensure_ascii=False)}\n"

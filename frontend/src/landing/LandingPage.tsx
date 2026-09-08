@@ -11,16 +11,16 @@ const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
 const LANDING_SPLASH_COMPLETE_SESSION_KEY = "orbweaver-landing-splash-complete";
 const STARTUP_GREETING_SESSION_KEY = "orbweaver-startup-greeting-played";
 const FIRST_ENCOUNTER_STORAGE_KEY = "orbweaver-first-encounter-state";
-const SHOWROOM_INTRO_AUDIO_URL = "/orb/voice/weaver-showroom-intro-am-michael.wav";
+const SHOWROOM_INTRO_AUDIO_URL = "/orb/voice/weaver-showroom-intro-am-echo.wav";
 const POST_INTRO_READINESS_ATTEMPTS = 4;
 const POST_INTRO_READINESS_RETRY_MS = 2000;
 const INTRO_CAPTION_CUES = [
   { start: 0.429, end: 1.55, text: "Hello." },
-  { start: 1.55, end: 3.402, text: "I am Weaver, the Orb Weaver Website Assistant." },
-  { start: 3.98, end: 7.268, text: "I can help you with anything you need. I am not a chatbot." },
-  { start: 7.78, end: 15.797, text: "I make this website intelligent, so you can find things easier, navigate faster, process your orders quicker, and resolve issues seamlessly." },
-  { start: 16.374, end: 21.068, text: "Just call me Weaver. Feel free to ask a question in your normal way and I will answer." },
-  { start: 21.632, end: 22.534, text: "Let's get started." },
+  { start: 1.55, end: 2.9, text: "I am Weaver." },
+  { start: 2.9, end: 5.8, text: "I can help you with anything you need. I am not a chatbot." },
+  { start: 5.8, end: 11.8, text: "I make this website intelligent, so you can find things easier, navigate faster, process your orders quicker, and resolve issues seamlessly." },
+  { start: 11.8, end: 14.9, text: "Feel free to ask a question in your normal way and I will answer." },
+  { start: 14.9, end: 15.775, text: "Let's get started." },
 ];
 
 type IntroAudioState = "preloading" | "playing" | "autoplay_blocked" | "error" | "warming" | "blocked";

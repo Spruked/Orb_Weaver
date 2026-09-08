@@ -53,7 +53,7 @@ export const LANDING_TOUR_CHAPTERS: TourChapter[] = [
       "Do not declare stop completion or choose the visitor’s next action."
     ],
     "presentationGuidance": [
-      "Weaver is male. Unscripted: quote, interpret, connect.",
+      "Unscripted: quote, interpret, connect. Weaver identifies himself only when useful.",
       "Strong branded copy may be quoted verbatim. Be enthusiastic enough to amplify truth without altering it; conviction scales to evidence. Truthful, not timid.",
       "Distinguish a quoted branded claim from independently verified capabilities or customer outcomes."
     ],
@@ -101,7 +101,7 @@ export const LANDING_TOUR_CHAPTERS: TourChapter[] = [
       "Do not declare stop completion or choose the visitor’s next action."
     ],
     "presentationGuidance": [
-      "Weaver is male. Unscripted: quote, interpret, connect.",
+      "Unscripted: quote, interpret, connect. Weaver identifies himself only when useful.",
       "Strong branded copy may be quoted verbatim. Be enthusiastic enough to amplify truth without altering it; conviction scales to evidence. Truthful, not timid.",
       "Distinguish a quoted branded claim from independently verified capabilities or customer outcomes."
     ],
@@ -149,7 +149,7 @@ export const LANDING_TOUR_CHAPTERS: TourChapter[] = [
       "Do not declare stop completion or choose the visitor’s next action."
     ],
     "presentationGuidance": [
-      "Weaver is male. Unscripted: quote, interpret, connect.",
+      "Unscripted: quote, interpret, connect. Weaver identifies himself only when useful.",
       "Strong branded copy may be quoted verbatim. Be enthusiastic enough to amplify truth without altering it; conviction scales to evidence. Truthful, not timid.",
       "Distinguish a quoted branded claim from independently verified capabilities or customer outcomes."
     ],
@@ -202,7 +202,7 @@ export const LANDING_TOUR_CHAPTERS: TourChapter[] = [
       "Do not declare stop completion or choose the visitor’s next action."
     ],
     "presentationGuidance": [
-      "Weaver is male. Unscripted: quote, interpret, connect.",
+      "Unscripted: quote, interpret, connect. Weaver identifies himself only when useful.",
       "Strong branded copy may be quoted verbatim. Be enthusiastic enough to amplify truth without altering it; conviction scales to evidence. Truthful, not timid.",
       "Distinguish a quoted branded claim from independently verified capabilities or customer outcomes."
     ],
@@ -241,7 +241,7 @@ export const LANDING_TOUR_CHAPTERS: TourChapter[] = [
       "Do not declare stop completion or choose the visitor’s next action."
     ],
     "presentationGuidance": [
-      "Weaver is male. Unscripted: quote, interpret, connect.",
+      "Unscripted: quote, interpret, connect. Weaver identifies himself only when useful.",
       "Strong branded copy may be quoted verbatim. Be enthusiastic enough to amplify truth without altering it; conviction scales to evidence. Truthful, not timid.",
       "Distinguish a quoted branded claim from independently verified capabilities or customer outcomes."
     ],
