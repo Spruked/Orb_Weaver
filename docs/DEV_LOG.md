@@ -47,8 +47,12 @@
 2. The Preflight explanation can still be made more concise in a later content
    pass; this repair changes delivery timing and visitor-safe language, not
    the evidence or Pointer/LiDAR doctrine.
-3. Docker/public deployment verification follows this documentation and Git
-   save point; do not alter the primary llama.cpp service.
+3. Docker/public deployment is complete. The rebuilt service serves
+   `main.c0843634.js` locally and through `https://orbweaver.spruked.com`;
+   both bundles contain `caption_started` and the explicit transcript control.
+   Local public Preflight returned HTTP 200, local startup-readiness returned
+   HTTP 200, and the public capabilities endpoint returned HTTP 200. Do not
+   alter the primary llama.cpp service.
 
 ## 2026-09-08 — Cross-page Weaver continuity and MORB trajectories
 

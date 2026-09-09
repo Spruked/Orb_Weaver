@@ -105,6 +105,15 @@ Point/Ping → `website-text` → `llamacpp-tour` → Kokoro → caption events 
 The interruption trace proves an in-progress caption does not become a full
 transcript.
 
+Deployment was rebuilt from commit `ebd0741`. The new public container serves
+`main.c0843634.js` on local `16510` and through
+`https://orbweaver.spruked.com`; both bundles contain the caption runtime and
+explicit transcript control. Local public Preflight returned HTTP 200, local
+startup-readiness returned HTTP 200, and the public capabilities endpoint
+returned HTTP 200. The Docker startup contract reports `WARMING` only because
+the pre-existing Site World freshness proof is absent; cognition, Kokoro, STT,
+pointer, and governance proofs are ready.
+
 ## Verification performed
 
 ```text
