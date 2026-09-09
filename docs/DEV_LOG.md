@@ -1,5 +1,55 @@
 # Orb Weaver Development Log
 
+## 2026-09-09 — Live Preflight captions, visitor articulation, and presentation repair
+
+- Replaced the immediate full-response transcript in the root-mounted public
+  `AutonomousOrb` with audio-clock-driven captions. Nothing is rendered when
+  Kokoro begins; complete natural phrases appear only after the corresponding
+  playback position is reached. Pausing, interruption, audio failure, and a
+  superseding turn cancel caption progression and preserve no future text.
+- Normal captions are a dedicated page-level overlay, not a child of the
+  moving ORB. They are capped at four readable lines, remain above report
+  content, and do not change the result-page layout. After speech finishes,
+  the caption becomes a compact transcript control. A visitor can deliberately
+  expand the complete transcript and minimize it again.
+- Added a final visitor-speech sanitation boundary to the governed
+  `experience.tour` response path. It rejects tour/controller/curriculum,
+  internal-state, and status-stop language before delivery, without treating
+  ordinary phrases such as “stop by the front desk” as private language. An
+  empty post-sanitization result fails closed with no visitor speech.
+- Removed `stop.purpose` from the visitor-facing tour control. The control now
+  uses concise visitor copy, so authoring instructions such as “introduces
+  himself using the actual branded lines” cannot leak into the page.
+- The original Weaver image skin remains the active asset. Its presentation is
+  now given a restrained 3D glass/parallax, depth, and core-layer treatment;
+  the experimental plasma video supplied for review was intentionally not
+  wired into the runtime.
+- Focused tests passed: four caption unit tests; four backend visitor-speech
+  sanitation tests; `ORB_POINTER_E2E_PROOF_OK`; and
+  `ORB_ONBOARDING_CONTINUITY_E2E_PROOF_OK`. Frontend type checking, production
+  build, and `git diff --check` passed.
+- Real dev browser acceptance against `16667 → 19667` submitted
+  `https://www.spruked.com` through the public form. Evidence recorded a
+  real report, report-card identity, `preflight_lidar_target_mapped`, live
+  LiDAR cache verification, final `guidance_point_ping` with
+  `geometrySource: live_refresh`, fresh `website-text`, `llamacpp-tour`,
+  Kokoro audio, `caption_started`, audio-time `caption_progressed`, and
+  `caption_completed`. `PREFLIGHT_CAPTION_E2E_PROOF_OK` proved the compact and
+  deliberate full-transcript states. The separate live interruption run
+  returned `PREFLIGHT_CAPTION_INTERRUPT_E2E_PROOF_OK`: only already-spoken
+  text remained and no completion event followed.
+
+### Remaining follow-up
+
+1. Do a human visual review of the 3D Weaver skin and four-line caption at
+   desktop and mobile widths; the build is available locally at
+   `http://localhost:16667/` after a hard refresh.
+2. The Preflight explanation can still be made more concise in a later content
+   pass; this repair changes delivery timing and visitor-safe language, not
+   the evidence or Pointer/LiDAR doctrine.
+3. Docker/public deployment verification follows this documentation and Git
+   save point; do not alter the primary llama.cpp service.
+
 ## 2026-09-08 — Cross-page Weaver continuity and MORB trajectories
 
 - Root cause of the missing onboarding Weaver was twofold: the single global

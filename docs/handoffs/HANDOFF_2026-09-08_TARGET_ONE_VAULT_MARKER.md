@@ -61,6 +61,50 @@ trace is `approved`, TPC is `passed`, and Doctrine validation is true. A
 withheld delivery records a minimal canonical-Vault audit event; it does not
 persist unnecessary visitor speech.
 
+## 2026-09-09 Preflight presentation repair
+
+The live public Preflight page now uses a time-synchronized caption surface
+for Weaver’s generated Kokoro narration. Captions take their progress from the
+actual media clock (or decoded-audio clock for speaker boost), never from a
+separate typewriter timer. Until playback reaches a natural phrase boundary,
+no narration is exposed. Pause, interruption, playback error, and turn
+replacement stop progression immediately; no unspoken future text is retained.
+
+The caption is rendered through a page-level portal, outside the moving ORB’s
+transformed DOM tree. Its routine presentation is capped at four readable
+lines and has a stable, high interaction layer so it neither changes the
+Preflight-card layout nor becomes unclickable beneath a card. On completion it
+collapses to an accessible control; the complete transcript is revealed only
+by an explicit visitor action and can be minimized.
+
+The final `experience.tour` visitor-delivery path additionally sanitizes
+private orchestration language such as tour stops, controller/curriculum
+references, and internal route/state terminology. The sanitizer does not
+globally suppress ordinary uses of “stop”; empty post-sanitization output fails
+closed before speech delivery.
+
+The landing tour control also no longer renders the internal `stop.purpose`
+field. It uses concise visitor-facing guidance instead, keeping authoring
+instructions out of the visible page panel.
+
+Verification added:
+
+```text
+CI=true npm test -- --watch=false --runInBand src/orb/speechCaptions.test.ts
+PYTHONPATH=backend .venv/bin/pytest -q backend/tests/test_orb_loader_runtime.py \
+  -k 'visitor_speech_sanitizer or clean_spoken_output'
+node frontend/scripts/preflight-caption-e2e-proof.js
+CAPTION_INTERRUPT=1 node frontend/scripts/preflight-caption-e2e-proof.js
+```
+
+The real public-form browser runs returned
+`PREFLIGHT_CAPTION_E2E_PROOF_OK` and
+`PREFLIGHT_CAPTION_INTERRUPT_E2E_PROOF_OK`. The positive trace includes the
+actual report-card locator → live LiDAR verification → final live-refresh
+Point/Ping → `website-text` → `llamacpp-tour` → Kokoro → caption events chain.
+The interruption trace proves an in-progress caption does not become a full
+transcript.
+
 ## Verification performed
 
 ```text
@@ -118,10 +162,10 @@ call, and a canonical `tts_withheld` audit record.
 - The live and manufactured hard delivery boundaries are source and automated
   test proven, but not yet proven in one real browser Preflight request with
   live llama.cpp, Kokoro, and a persisted withholding event.
-- Tour sanitation is partial. It does not cover language such as “You're at
-  the outcomes status stop.”
-- `AutonomousOrb.tsx` renders `tourPosition?.stop.purpose` into visitor-facing
-  controls, exposing internal curriculum/authoring text.
+- The new delivery sanitizer blocks known status-stop/controller language in
+  final visitor speech. Broader factual-elevation review remains open.
+- Tour controls use visitor-facing copy rather than `stop.purpose`; no known
+  curriculum/authoring-field rendering remains in that panel.
 - The Outcomes source material permits a small model to elevate intended
   benefits into unsupported accomplished results.
 - Dynamic Preflight geometry authority is proven, but the timing of cognition

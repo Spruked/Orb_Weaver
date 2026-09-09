@@ -4,6 +4,7 @@ import { runTourController, isTourDecisionReady } from "../tour/controller";
 import { parseChapterEvaluation } from "../tour/evaluator";
 import type { TourDecisionAction } from "../types/tour";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, useAnimationControls } from "framer-motion";
 import { Volume2, VolumeX } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -35,6 +36,7 @@ import {
   shouldRearmVoice,
   shouldRunMountedStartupVoiceSequence,
 } from "../orb/voiceLifecycle";
+import { canAdvanceCaptionProgression, captionProgressAtPlayback, splitSpeechIntoCaptionPhrases } from "../orb/speechCaptions";
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, ms));
@@ -86,6 +88,14 @@ type FirstEncounterState = Record<FirstEncounterFlag, boolean>;
 type PointerWaltzPhase = "ACQUIRE" | "LAUNCH" | "TRAVEL" | "APPROACH" | "STANCE" | "POINT" | "PING" | "COMPLETE" | "DISSOLVE" | "RECOVERY";
 type MorbWorkRole = "target" | "path" | "comparison" | "sequence" | "alternative" | "relationship";
 type MorbTrajectory = "direct" | "swirl" | "dart_orbit";
+type SpeechCaptionPhase = "idle" | "speaking" | "complete" | "interrupted";
+type SpeechCaptionState = {
+  fullText: string;
+  revealedText: string;
+  phase: SpeechCaptionPhase;
+  collapsed: boolean;
+  expanded: boolean;
+};
 type MorbPointerState = {
   targetId: string;
   role: MorbWorkRole;
@@ -428,9 +438,11 @@ export const AutonomousOrb: React.FC<Props> = ({
   const mediaSpeechElementRef = useRef<HTMLAudioElement | null>(null);
   const speechPlaybackSettlementRef = useRef<PlaybackSettlement | null>(null);
   const speechPlaybackRef = useRef(false);
+  const captionFrameRef = useRef<number | null>(null);
+  const captionCollapseTimerRef = useRef<number | null>(null);
+  const captionPlaybackCancelledRef = useRef(false);
   const audioUnlockedRef = useRef(false);
   const statusTimerRef = useRef<number | null>(null);
-  const visitorSpeechTimerRef = useRef<number | null>(null);
   const avoidUntilRef = useRef(0);
   const voiceRequestInFlightRef = useRef(false);
   const activeVoiceAbortControllerRef = useRef<AbortController | null>(null);
@@ -473,7 +485,13 @@ export const AutonomousOrb: React.FC<Props> = ({
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusTitle, setStatusTitle] = useState("ORB online");
   const [statusLine, setStatusLine] = useState("Weaver is preparing voice.");
-  const [visitorUtterance, setVisitorUtterance] = useState("");
+  const [speechCaption, setSpeechCaption] = useState<SpeechCaptionState>({
+    fullText: "",
+    revealedText: "",
+    phase: "idle",
+    collapsed: false,
+    expanded: false,
+  });
   const [diagnosticUtterance, setDiagnosticUtterance] = useState("");
   const [activeOrbContext, setActiveOrbContext] = useState<ActiveOrbProjectContext | null>(() => getActiveOrbProjectContext());
   const [speakerBoost, setSpeakerBoost] = useState(false);
@@ -1415,18 +1433,61 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
   }, []);
 
-  const showVisitorUtterance = useCallback((text: string, hideAfterMs?: number) => {
-    setVisitorUtterance(text);
-    if (visitorSpeechTimerRef.current) {
-      window.clearTimeout(visitorSpeechTimerRef.current);
-      visitorSpeechTimerRef.current = null;
+  const stopSpeechCaptions = useCallback((completed: boolean) => {
+    if (!completed) captionPlaybackCancelledRef.current = true;
+    if (captionFrameRef.current) {
+      window.cancelAnimationFrame(captionFrameRef.current);
+      captionFrameRef.current = null;
     }
-    if (hideAfterMs) {
-      visitorSpeechTimerRef.current = window.setTimeout(() => {
-        setVisitorUtterance("");
-        visitorSpeechTimerRef.current = null;
-      }, hideAfterMs);
+    if (captionCollapseTimerRef.current) {
+      window.clearTimeout(captionCollapseTimerRef.current);
+      captionCollapseTimerRef.current = null;
     }
+    setSpeechCaption((current) => {
+      if (!current.fullText) return current;
+      const next = completed
+        ? { ...current, revealedText: current.fullText, phase: "complete" as const, collapsed: false, expanded: false }
+        : { ...current, phase: "interrupted" as const, collapsed: Boolean(current.revealedText), expanded: false };
+      emitOrbRuntimeEvent(completed ? "caption_completed" : "caption_stopped", {
+        revealedCharacters: next.revealedText.length,
+        fullCharacters: current.fullText.length,
+      });
+      return next;
+    });
+    if (completed) {
+      captionCollapseTimerRef.current = window.setTimeout(() => {
+        setSpeechCaption((current) => current.phase === "complete" ? { ...current, collapsed: true } : current);
+        captionCollapseTimerRef.current = null;
+      }, 2600);
+    }
+  }, []);
+
+  const startSpeechCaptions = useCallback((text: string, playback: () => { currentTime: number; duration: number; paused: boolean }) => {
+    captionPlaybackCancelledRef.current = false;
+    if (captionFrameRef.current) window.cancelAnimationFrame(captionFrameRef.current);
+    if (captionCollapseTimerRef.current) window.clearTimeout(captionCollapseTimerRef.current);
+    captionFrameRef.current = null;
+    captionCollapseTimerRef.current = null;
+    setSpeechCaption({ fullText: text, revealedText: "", phase: "speaking", collapsed: false, expanded: false });
+    emitOrbRuntimeEvent("caption_started", { fullCharacters: text.length });
+
+    let lastRevealed = "";
+    const advance = () => {
+      const progress = playback();
+      if (!canAdvanceCaptionProgression({ paused: progress.paused, cancelled: captionPlaybackCancelledRef.current })) return;
+      const next = captionProgressAtPlayback(text, progress.currentTime, progress.duration).revealedText;
+      if (next !== lastRevealed) {
+        lastRevealed = next;
+        setSpeechCaption((current) => current.phase === "speaking" ? { ...current, revealedText: next } : current);
+        emitOrbRuntimeEvent("caption_progressed", {
+          revealedCharacters: next.length,
+          audioCurrentTime: progress.currentTime,
+          audioDuration: progress.duration,
+        });
+      }
+      captionFrameRef.current = window.requestAnimationFrame(advance);
+    };
+    captionFrameRef.current = window.requestAnimationFrame(advance);
   }, []);
 
   const unlockAudio = useCallback(() => {
@@ -1521,7 +1582,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     return analyser;
   }, []);
 
-  const playDecodedSpeech = useCallback(async (audioUrl: string) => {
+  const playDecodedSpeech = useCallback(async (audioUrl: string, captionText?: string) => {
     const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextCtor) {
       throw new Error("AudioContext unavailable");
@@ -1563,10 +1624,19 @@ export const AutonomousOrb: React.FC<Props> = ({
     source.onended = () => {
       if (speechSourceRef.current === source) speechSourceRef.current = null;
       stopSpeechVisualizer();
+      stopSpeechCaptions(!captionPlaybackCancelledRef.current);
       settlement.resolve();
     };
     try {
+      const startedAt = context.currentTime;
       source.start();
+      if (captionText) {
+        startSpeechCaptions(captionText, () => ({
+          currentTime: Math.max(0, context.currentTime - startedAt),
+          duration: buffer.duration / ORB_SPEECH_PLAYBACK_RATE,
+          paused: false,
+        }));
+      }
       startSpeechVisualizer(analyser);
     } catch (error) {
       settlement.reject(error as Error);
@@ -1576,7 +1646,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     } finally {
       if (speechPlaybackSettlementRef.current === settlement) speechPlaybackSettlementRef.current = null;
     }
-  }, [startSpeechVisualizer, stopSpeechVisualizer]);
+  }, [startSpeechCaptions, startSpeechVisualizer, stopSpeechCaptions, stopSpeechVisualizer]);
 
   const logVoice = useCallback((message: string, turnId: number) => {
     if (process.env.NODE_ENV !== "production") {
@@ -1610,9 +1680,8 @@ export const AutonomousOrb: React.FC<Props> = ({
     const showTranscript = options.showTranscript !== false;
     if (showTranscript) {
       showStatus();
-      showVisitorUtterance(text);
     } else {
-      showVisitorUtterance("");
+      stopSpeechCaptions(false);
     }
     setStatusLine("Speaking through Website ORB voice.");
     setVoiceState("speaking");
@@ -1632,6 +1701,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       setStatusTitle("Voice response");
       if (!audioUrl) {
         speechPlaybackRef.current = false;
+        stopSpeechCaptions(false);
         setVoiceState("idle");
         setStatusTitle("Voice unavailable");
         setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
@@ -1639,11 +1709,10 @@ export const AutonomousOrb: React.FC<Props> = ({
         return false;
       }
       if (speakerBoostRef.current) {
-        await playDecodedSpeech(audioUrl);
+        await playDecodedSpeech(audioUrl, showTranscript ? text : undefined);
         speechPlaybackRef.current = false;
         setVoiceState("idle");
         showStatus(1400);
-        showVisitorUtterance("", 1);
         return true;
       }
       // Always use a fresh media element. A previous element may have been
@@ -1660,22 +1729,33 @@ export const AutonomousOrb: React.FC<Props> = ({
       const settlement = createPlaybackSettlement();
       speechPlaybackSettlementRef.current = settlement;
       audio.onended = () => {
+        stopSpeechCaptions(!captionPlaybackCancelledRef.current);
         if (speechAudioRef.current === audio) speechAudioRef.current = null;
         speechPlaybackRef.current = false;
         stopSpeechVisualizer();
         setVoiceState("idle");
         showStatus(1400);
         emitOrbRuntimeEvent("playback_ended", { provider: provider || null });
-        showVisitorUtterance("", 1);
         settlement.resolve();
       };
+      audio.onpause = () => {
+        if (speechAudioRef.current === audio && !audio.ended) stopSpeechCaptions(false);
+      };
       audio.onerror = () => {
+        stopSpeechCaptions(false);
         if (speechAudioRef.current === audio) speechAudioRef.current = null;
         settlement.reject(new Error("Audio playback failed"));
       };
       try {
         try {
           await audio.play();
+          if (showTranscript) {
+            startSpeechCaptions(text, () => ({
+              currentTime: audio.currentTime,
+              duration: audio.duration,
+              paused: audio.paused,
+            }));
+          }
           // Connect only after direct media playback begins. The captured copy
           // drives visuals without owning or muting the audible output.
           let speechAnalyser: AnalyserNode | null = null;
@@ -1696,6 +1776,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     } catch (error) {
       speechPlaybackRef.current = false;
       stopSpeechVisualizer();
+      stopSpeechCaptions(false);
       emitOrbRuntimeEvent("playback_failed", {
         provider: provider || null,
         error: error instanceof Error ? error.message : "unknown_playback_error",
@@ -1705,11 +1786,10 @@ export const AutonomousOrb: React.FC<Props> = ({
       setStatusTitle("Voice unavailable");
       setStatusLine(VOICE_UNAVAILABLE_MESSAGE);
       setVoiceState("idle");
-      showVisitorUtterance("", 1);
       showStatus(3600);
       return false;
     }
-  }, [connectSpeechMediaVisualizer, freezeOrbInPlace, playDecodedSpeech, showStatus, showVisitorUtterance, stopSpeechVisualizer]);
+  }, [connectSpeechMediaVisualizer, freezeOrbInPlace, playDecodedSpeech, showStatus, startSpeechCaptions, stopSpeechCaptions, stopSpeechVisualizer]);
 
   const speakWithGeneratedAudio = useCallback(async (text: string, audioUrl?: string | null, provider?: string | null) => {
     const normalizedText = normalizeOrbDialogue(text);
@@ -2485,6 +2565,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     voiceRequestInFlightRef.current = false;
     speechPlaybackSettlementRef.current?.cancel();
     speechPlaybackSettlementRef.current = null;
+    stopSpeechCaptions(false);
     if (speechAudioRef.current) {
       speechAudioRef.current.pause();
       speechAudioRef.current.currentTime = 0;
@@ -2510,7 +2591,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     avoidUntilRef.current = Date.now() + 900;
     emitOrbRuntimeEvent("playback_interrupted", { turnId: voiceTurnIdRef.current });
     window.setTimeout(() => void resumeAutonomousPresence(), 120);
-  }, [resumeAutonomousPresence, saveWebsiteJourney, showStatus, stopSpeechVisualizer]);
+  }, [resumeAutonomousPresence, saveWebsiteJourney, showStatus, stopSpeechCaptions, stopSpeechVisualizer]);
 
   const handleOrbPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest("button")) return;
@@ -3437,6 +3518,8 @@ export const AutonomousOrb: React.FC<Props> = ({
       voiceRequestInFlightRef.current = false;
       speechPlaybackSettlementRef.current?.cancel();
       speechPlaybackSettlementRef.current = null;
+      if (captionFrameRef.current) window.cancelAnimationFrame(captionFrameRef.current);
+      if (captionCollapseTimerRef.current) window.clearTimeout(captionCollapseTimerRef.current);
 
       if (recorderRef.current && recorderRef.current.state !== "inactive") {
         recordingCancelledRef.current = true;
@@ -3479,6 +3562,9 @@ export const AutonomousOrb: React.FC<Props> = ({
   const visual = ringStyle();
   const tourPosition = getTourPosition(tourState?.currentChapterId || null, tourState?.currentStopId || null);
   const tourDecisionReady = Boolean(tourState && isTourDecisionReady(tourState));
+  const visitorTourControlCopy = tourPosition?.chapter.title
+    ? `Weaver is guiding you through ${tourPosition.chapter.title}. You can pause or ask a question at any time.`
+    : 'Weaver is ready to guide you. You can pause or ask a question at any time.';
 
   return (
     <>
@@ -3487,7 +3573,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         <strong>{tourDecisionReady ? 'Your next step' : tourPosition?.chapter.title || 'Explore with Weaver'}</strong>
         <p aria-live="polite">{tourNotice || (tourState?.interruptionState.isInterrupted
           ? 'Your place is saved. Ask Weaver a question or continue the tour.'
-          : tourDecisionReady ? 'Choose when you want to examine your website.' : tourPosition?.stop.purpose)}</p>
+          : tourDecisionReady ? 'Choose when you want to examine your website.' : visitorTourControlCopy)}</p>
         {tourDecisionReady ? (
           <div className="ow-tour-actions">
             {tourPosition?.chapter.decisionConfig?.options.map(option => (
@@ -3629,10 +3715,41 @@ export const AutonomousOrb: React.FC<Props> = ({
             </button>
         </motion.div>
       </motion.div>
-      {visitorUtterance && (
-        <div className="ow-v2-orb-speech" aria-live="polite" aria-label="Weaver says">
-          <span>{visitorUtterance}</span>
-        </div>
+      {speechCaption.fullText && (speechCaption.phase !== "speaking" || speechCaption.revealedText) && createPortal(
+        <aside
+          className={`ow-v2-orb-speech ${speechCaption.collapsed ? "is-collapsed" : ""} ${speechCaption.expanded ? "is-expanded" : ""}`}
+          data-orb-caption-state={speechCaption.phase}
+          aria-live={speechCaption.phase === "speaking" ? "polite" : undefined}
+          aria-label="Weaver captions"
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          {speechCaption.collapsed ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setSpeechCaption((current) => ({ ...current, collapsed: false, expanded: current.phase === "complete" }));
+              }}
+              aria-label={speechCaption.phase === "complete" ? "Read complete Weaver transcript" : "Read spoken Weaver transcript"}
+            >
+              {speechCaption.phase === "complete" ? "Read transcript" : "Read spoken caption"}
+            </button>
+          ) : speechCaption.expanded && speechCaption.phase === "complete" ? (
+            <>
+              <span>{speechCaption.fullText}</span>
+              <button
+                type="button"
+                className="ow-v2-orb-speech-minimize"
+                onClick={() => setSpeechCaption((current) => ({ ...current, collapsed: true, expanded: false }))}
+              >
+                Minimize transcript
+              </button>
+            </>
+          ) : (
+            <span>{splitSpeechIntoCaptionPhrases(speechCaption.revealedText).slice(-3).join(" ")}</span>
+          )}
+        </aside>,
+        document.body,
       )}
     </motion.div>
     {showStartupDiagnosticsPanel && statusVisible && (

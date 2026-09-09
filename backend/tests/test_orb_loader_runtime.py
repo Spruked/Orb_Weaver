@@ -358,6 +358,25 @@ def test_site_world_route_hint_resolves_without_model_invention(tmp_path, monkey
     assert main._clean_spoken_output("Read [the guide](https://vite.dev/guide) **here**.") == "Read the guide here."
 
 
+@pytest.mark.parametrize(
+    ("internal", "expected"),
+    [
+        ("We've just completed our tour stop at the Preflight results section.", ""),
+        ("You're at the outcomes status stop.", ""),
+        ("Moving to the next tour stop. Your Preflight is complete.", "Your Preflight is complete."),
+    ],
+)
+def test_visitor_speech_sanitizer_removes_private_tour_language(tmp_path, monkeypatch, internal, expected):
+    main, _client = load_app(tmp_path, monkeypatch)
+    assert main._sanitize_visitor_spoken_output(internal) == expected
+
+
+def test_visitor_speech_sanitizer_preserves_ordinary_stop_usage(tmp_path, monkeypatch):
+    main, _client = load_app(tmp_path, monkeypatch)
+    sentence = "Stop by the front desk if you need help with your account."
+    assert main._sanitize_visitor_spoken_output(sentence) == sentence
+
+
 def test_orb_websocket_is_origin_checked_and_route_aware(tmp_path, monkeypatch):
     _main, client = load_app(tmp_path, monkeypatch)
     with client.websocket_connect(

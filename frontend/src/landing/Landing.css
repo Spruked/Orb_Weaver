@@ -982,6 +982,9 @@
     inset -24px -34px 46px rgba(0,0,0,.6),
     inset 14px 12px 28px rgba(255,255,255,.4);
   overflow: visible;
+  transform-style: preserve-3d;
+  perspective: 760px;
+  transition: transform 300ms cubic-bezier(.22,.8,.24,1), filter 300ms ease;
 }
 
 .ow-v2-orb-body.has-image-skin {
@@ -992,6 +995,7 @@
     0 0 118px rgba(1, 12, 54, .58),
     inset -20px -28px 44px rgba(0,0,0,.72),
     inset 10px 12px 24px rgba(75,130,215,.18);
+  transform: perspective(760px) rotateX(2deg) rotateY(-3deg) translateZ(0);
 }
 
 .ow-v2-orb-body::before {
@@ -1008,7 +1012,27 @@
 }
 
 .ow-v2-orb-body:hover {
-  transform: scale(1.025);
+  transform: perspective(760px) rotateX(-1deg) rotateY(3deg) translateZ(9px) scale(1.025);
+}
+
+.ow-v2-orb-body.has-image-skin::after {
+  content: "";
+  position: absolute;
+  inset: 4%;
+  z-index: 3;
+  border-radius: 50%;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 28% 21%, rgba(255,255,255,.76) 0 3%, rgba(192,232,255,.24) 11%, transparent 29%),
+    conic-gradient(from 218deg, transparent 0 13%, rgba(71,171,255,.10) 25%, transparent 39% 62%, rgba(255,255,255,.20) 72%, transparent 86% 100%);
+  box-shadow:
+    inset 11px 13px 18px rgba(255,255,255,.19),
+    inset -16px -19px 26px rgba(0,0,0,.38),
+    0 12px 20px rgba(0,0,0,.18);
+  mix-blend-mode: screen;
+  opacity: .82;
+  transform: translateZ(15px) rotate(-6deg);
+  animation: ow-v2-orb-glass-parallax 8.8s cubic-bezier(.42,0,.25,1) infinite;
 }
 
 .ow-v2-orb-body.listening,
@@ -1047,8 +1071,10 @@
   user-select: none;
   pointer-events: none;
   z-index: 1;
+  transform: translateZ(7px) scale(1.012);
   filter: saturate(1.12) contrast(1.12) brightness(1.12) drop-shadow(0 18px 22px rgba(0,0,0,.44));
 }
+
 
 .ow-v2-orb-core-pulse {
   position: absolute;
@@ -1056,7 +1082,7 @@
   top: 50%;
   width: 49%;
   height: 49%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) translateZ(25px);
   border-radius: 50%;
   z-index: 4;
   overflow: hidden;
@@ -1069,6 +1095,12 @@
   opacity: .98;
   pointer-events: none;
   animation: ow-v2-core-drift 64s cubic-bezier(.45,0,.55,1) infinite;
+}
+
+@keyframes ow-v2-orb-glass-parallax {
+  0%, 100% { transform: translateZ(15px) rotate(-6deg) translate3d(-1%, -1%, 0); opacity: .72; }
+  34% { transform: translateZ(19px) rotate(3deg) translate3d(2%, -2%, 0); opacity: .96; }
+  68% { transform: translateZ(13px) rotate(-2deg) translate3d(-2%, 2%, 0); opacity: .78; }
 }
 
 .ow-v2-orb-core-recess {
@@ -1440,21 +1472,23 @@
 
 .ow-v2-orb-speech {
   position: fixed;
+  z-index: 2147483001;
   right: clamp(12px, 4vw, 28px);
-  top: clamp(92px, 15vh, 160px);
-  width: min(360px, calc(100vw - 24px));
-  max-height: min(280px, 52vh);
+  bottom: clamp(92px, 12vh, 142px);
+  width: min(390px, calc(100vw - 28px));
+  min-height: 4.7em;
+  max-height: 6.35em;
   overflow: hidden;
-  border: 1px solid rgba(91,200,230,.24);
-  border-radius: 14px;
-  padding: 11px 13px;
-  background: rgba(4, 14, 24, .86);
+  border: 1px solid rgba(111,211,238,.36);
+  border-radius: 16px 16px 5px 16px;
+  padding: 10px 13px;
+  background: linear-gradient(145deg, rgba(5, 20, 34, .92), rgba(3, 11, 22, .84));
   color: rgba(236, 253, 255, .96);
-  font-size: 13px;
-  line-height: 1.42;
+  font-size: 14px;
+  line-height: 1.48;
   text-align: left;
-  box-shadow: 0 18px 48px rgba(0,0,0,.28);
-  pointer-events: none;
+  box-shadow: 0 14px 34px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.06);
+  pointer-events: auto;
 }
 
 .ow-v2-orb-speech span {
@@ -1463,6 +1497,73 @@
   display: block;
   color: rgba(236, 253, 255, .96);
   white-space: pre-line;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+
+.ow-v2-orb-speech:not(.is-collapsed) span {
+  max-height: 5.92em;
+}
+
+.ow-v2-orb-speech:not(.is-collapsed)::after {
+  content: "";
+  position: absolute;
+  right: 18px;
+  bottom: -7px;
+  width: 13px;
+  height: 13px;
+  transform: rotate(45deg);
+  border-right: 1px solid rgba(111,211,238,.28);
+  border-bottom: 1px solid rgba(111,211,238,.28);
+  background: rgba(3, 12, 24, .88);
+}
+
+.ow-v2-orb-speech.is-collapsed {
+  max-height: none;
+  min-height: 0;
+  padding: 0;
+  overflow: visible;
+  border-color: rgba(91,200,230,.18);
+  background: rgba(4, 14, 24, .72);
+}
+
+.ow-v2-orb-speech.is-expanded {
+  min-height: 0;
+  max-height: min(42vh, 400px);
+  overflow-y: auto;
+  padding: 12px 13px;
+}
+
+.ow-v2-orb-speech.is-expanded span {
+  display: block;
+  max-height: none;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+
+.ow-v2-orb-speech button {
+  border: 0;
+  border-radius: 12px;
+  padding: 7px 10px;
+  background: transparent;
+  color: rgba(215, 247, 255, .94);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ow-v2-orb-speech .ow-v2-orb-speech-minimize {
+  display: block;
+  margin: 8px 0 0 auto;
+  border: 1px solid rgba(111,211,238,.25);
+  background: rgba(8, 29, 46, .78);
+}
+
+.ow-v2-orb-speech button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 .ow-v2-startup-panel {
@@ -1552,7 +1653,7 @@
   .ow-v2-orb-speech {
     left: 12px;
     right: 12px;
-    top: 86px;
+    bottom: 82px;
     width: auto;
     transform: none;
     text-align: center;

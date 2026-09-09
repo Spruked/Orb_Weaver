@@ -4592,7 +4592,37 @@ def _lookup_site_route_hint(website_context: Optional[Dict[str, Any]], transcrip
 def _clean_spoken_output(value: str) -> str:
     spoken = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", str(value or ""))
     spoken = re.sub(r"[`*_#]+", "", spoken)
-    return re.sub(r"\s+", " ", spoken).strip()
+    return _sanitize_visitor_spoken_output(spoken)
+
+
+def _sanitize_visitor_spoken_output(value: str) -> str:
+    """Remove orchestration language without treating ordinary English as private.
+
+    This is the final visitor-speech boundary. It deliberately targets tour,
+    curriculum, controller, and state phrases—not the standalone word "stop".
+    """
+    spoken = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not spoken:
+        return ""
+    internal_patterns = (
+        r"\b(?:current|next|previous|this|the)?\s*(?:landing\s+)?tour\s+stop\b",
+        r"\b(?:current|next|previous)\s+stop\b",
+        r"\b(?:preflight|results?|outcomes?)\s+(?:status\s+)?stop\b",
+        r"\b(?:chapter|stop)\s*(?:id|identifier)\b",
+        r"\b(?:tour|journey)\s+(?:curriculum|controller|progression|state)\b",
+        r"\b(?:curriculum|controller|evidence attempt)\b",
+        r"\binternal\s+(?:route|state|progression)\b",
+    )
+    sentence_pattern = re.compile(r"(?<=[.!?])\s+|\n+")
+    visible_sentences = []
+    for sentence in sentence_pattern.split(spoken):
+        candidate = sentence.strip()
+        if not candidate:
+            continue
+        if any(re.search(pattern, candidate, flags=re.IGNORECASE) for pattern in internal_patterns):
+            continue
+        visible_sentences.append(candidate)
+    return " ".join(visible_sentences).strip()
 
 
 def _lookup_domain_runtime_tool(
@@ -7967,7 +7997,9 @@ async def _canonical_website_orb_turn(
                 "verification_state": "verified",
             }
         )
-        resolved["spoken_output"] = doctrine["spoken_text"]
+        resolved["spoken_output"] = _sanitize_visitor_spoken_output(doctrine["spoken_text"])
+        if not resolved["spoken_output"]:
+            raise HTTPException(status_code=503, detail="Tour articulation contained no visitor-safe speech")
         governance_trace = finalize_governance_trace(
             governance_context,
             resolved=resolved,

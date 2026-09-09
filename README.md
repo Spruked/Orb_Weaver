@@ -49,6 +49,9 @@ Target One is the full Home / Landing Page walkthrough. Future targets are Featu
 - End-of-speech detection submits automatically through `POST /api/orb/website-voice`.
 - The backend performs Faster Whisper STT, ORB cognition, protected identity answer selection, local LLM answers for ordinary questions, local TTS/cache, and WAV delivery.
 - Browser `SpeechRecognition` and browser `speechSynthesis` are not the canonical public ORB voice path.
+- During generated narration, Weaver shows only short, audio-synchronized
+  captions (up to four readable lines). The completed transcript is available
+  only by an explicit visitor action; future narration is never pre-rendered.
 - Gold-master replication details live in `docs/ORB_VOICE_RUNTIME_REPLICATION_REPORT.md`.
 - Pointer/runtime intent details live in `docs/ORB_POINTER_RUNTIME_MODEL.md`.
 
