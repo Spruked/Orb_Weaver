@@ -82,6 +82,7 @@ describe('Website ORB voice lifecycle', () => {
       voiceReady: true,
     };
     expect(shouldRearmVoice({ ...ready, voiceState: 'speaking' })).toBe(false);
+    expect(shouldRearmVoice({ ...ready, handsFree: false })).toBe(false);
     expect(shouldRearmVoice({ ...ready, requestInFlight: true })).toBe(false);
     expect(shouldRearmVoice({ ...ready, recording: true })).toBe(false);
     expect(shouldRearmVoice(ready)).toBe(true);

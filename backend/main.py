@@ -53,7 +53,14 @@ from app.core.storage import (
 )
 from app.crawler.engine import OrbWeaverCrawler, PageData
 from app.crawler.tesseract_weave import summarize_weaves
-from app.orb.tour_evaluation import TourActContext, TourChapterEvaluation, tour_prompt, parse_tour_evaluation
+from app.orb.tour_evaluation import (
+    TourActContext,
+    TourChapterEvaluation,
+    parse_tour_evaluation,
+    parse_tour_evidence,
+    tour_evidence_prompt,
+    tour_prompt,
+)
 from app.catalog.compiler import compile_commercial_catalog
 from app.reporting.audit_reporting import build_audit_pdf, enrich_audit_report
 from app.lifecycle import (
@@ -507,6 +514,7 @@ class WebsiteOrbVoiceResponse(BaseModel):
     skg_learning: Optional[Dict[str, Any]] = None
     control_action: Optional[Dict[str, Any]] = None
     timing_ms: Optional[Dict[str, float]] = None
+    tour_articulation_trace: Optional[Dict[str, Any]] = None
 
 
 class WebsiteOrbExperienceContext(BaseModel):
@@ -3256,6 +3264,10 @@ async def _llm_orb_spoken_output(
     tour_context = (experience_context or {}).get("tour")
     if tour_context:
         prompt = tour_prompt(tour_context)
+    tour_max_predict = (
+        240 if tour_context and tour_context.get("stop_id") == "stop-hero-meet"
+        else 800
+    )
     try:
         timeout_seconds = min(120.0, max(5.0, float(settings.LOCAL_LLM_TIMEOUT_SECONDS or 60.0)))
         async with httpx.AsyncClient(timeout=timeout_seconds) as client:
@@ -3268,7 +3280,7 @@ async def _llm_orb_spoken_output(
                     "keep_alive": settings.LOCAL_LLM_KEEP_ALIVE,
                     "options": {
                         "num_ctx": 4096 if tour_context else min(4096, max(512, int(settings.LOCAL_LLM_NUM_CTX or 1024))),
-                        "num_predict": 800 if tour_context else min(160, max(16, int(settings.LOCAL_LLM_NUM_PREDICT or 64))),
+                        "num_predict": tour_max_predict if tour_context else min(160, max(16, int(settings.LOCAL_LLM_NUM_PREDICT or 64))),
                         "temperature": 0.0 if tour_context else min(1.0, max(0.0, float(settings.LOCAL_LLM_TEMPERATURE or 0.35))),
                         **({"seed": 41 + max(1, int(tour_context.get("evidence_attempt") or 1))} if tour_context else {}),
                     },
@@ -3286,9 +3298,49 @@ async def _llm_orb_spoken_output(
                     raw_output[:4000],
                 )
             allowed_ids = [item["id"] for item in tour_context["required_concepts"]]
-            evaluation = parse_tour_evaluation(raw_output, allowed_ids)
+            coverage_requirements = {
+                str(item["id"]): list(item.get("coverage_requirements") or [])
+                for item in tour_context["required_concepts"]
+                if item.get("id")
+            }
+            evaluation = parse_tour_evaluation(raw_output, allowed_ids, coverage_requirements)
+            evidence_model_output = None
+            # Small local models sometimes deliver sound natural visitor prose
+            # but omit the machine-readable excerpt envelope. Ask the same live
+            # model to attest only to the already-final speech; it may neither
+            # write speech nor advance the controller. Exact excerpts remain
+            # mandatory at both backend and frontend boundaries.
+            if not evaluation.covered_concepts:
+                async with httpx.AsyncClient(timeout=timeout_seconds) as evidence_client:
+                    evidence_response = await evidence_client.post(
+                        settings.LOCAL_LLM_URL,
+                        json={
+                            "model": configured_model,
+                            "prompt": tour_evidence_prompt(tour_context, evaluation.spoken_output),
+                            "stream": False,
+                            "keep_alive": settings.LOCAL_LLM_KEEP_ALIVE,
+                            "options": {"num_ctx": 2048, "num_predict": 120, "temperature": 0.0},
+                        },
+                    )
+                    evidence_response.raise_for_status()
+                    evidence_payload = evidence_response.json()
+                evidence_model_output = str(evidence_payload.get("response") or evidence_payload.get("text") or "")
+                evidence = parse_tour_evidence(
+                    evidence_model_output,
+                    evaluation.spoken_output,
+                    allowed_ids,
+                    coverage_requirements,
+                )
+                if evidence:
+                    evaluation = TourChapterEvaluation(
+                        spoken_output=evaluation.spoken_output,
+                        covered_concepts=evidence,
+                        detected_visitor_intent=evaluation.detected_visitor_intent,
+                        suggested_transition=evaluation.suggested_transition,
+                    )
             return {"spoken_output": evaluation.spoken_output, "chapter_evaluation": evaluation.model_dump(),
-                    "llm_source": "llamacpp-tour"}
+                    "llm_source": "llamacpp-tour", "raw_model_output": raw_output,
+                    "evidence_model_output": evidence_model_output}
         spoken = _clean_spoken_output(raw_output)
         return {
             "spoken_output": spoken or fallback,
@@ -8005,6 +8057,17 @@ async def _canonical_website_orb_turn(
         # articulate them. The model supplies wording only; the resolver
         # supplies the truth/TPC stage that governance finalizes.
         tour = dict((experience_context or {}).get("tour") or {})
+        site_world = dict(artifacts["site_world"] or {})
+        # The articulation prompt gets a compact, relevant Site World slice,
+        # not an unbounded corpus dump. This makes the stop explainable in the
+        # context of the actual website while leaving authority in the resolver.
+        tour["site_world_slice"] = {
+            "site_name": site_world.get("site_name") or site_world.get("brand"),
+            "site_summary": site_world.get("site_summary"),
+            "key_facts": list(site_world.get("key_facts") or [])[:8],
+            "route_hints": dict(site_world.get("route_hints") or {}),
+            "current_route": route,
+        }
         concepts = [item for item in tour.get("required_concepts") or [] if isinstance(item, dict)]
         fact_texts = [str(item.get("description") or "").strip() for item in concepts]
         fact_texts = [item for item in fact_texts if item]
@@ -8034,10 +8097,17 @@ async def _canonical_website_orb_turn(
         resolved["source_truth_confidence"] = 1.0
         resolved["query_correspondence_confidence"] = 1.0
         resolved["query_correspondence_verified"] = True
+        tour_experience_context = {**dict(experience_context or {}), "tour": tour}
         generated = await _llm_orb_spoken_output(
             transcript, cognitive_pulse, memory_context, artifacts["site_world"],
-            page_capsule, operating_policy, experience_context, governance_context,
+            page_capsule, operating_policy, tour_experience_context, governance_context,
         )
+        if generated.get("llm_source") == "local-fallback":
+            logger.warning(
+                "tour_cognition_unavailable stop=%s llm_source=%s model_endpoint=%s",
+                tour.get("stop_id"), generated.get("llm_source"), settings.LOCAL_LLM_URL,
+            )
+            raise HTTPException(status_code=503, detail="Dynamic tour cognition is unavailable; the stop was not advanced")
         evaluation = generated.get("chapter_evaluation")
         if not evaluation:
             raise HTTPException(status_code=503, detail="Tour cognition did not return concept evidence; the stop was not advanced")
@@ -8049,9 +8119,21 @@ async def _canonical_website_orb_turn(
                 "verification_state": "verified",
             }
         )
+        raw_generated_output = str(generated["spoken_output"])
         resolved["spoken_output"] = _sanitize_visitor_spoken_output(doctrine["spoken_text"])
         if not resolved["spoken_output"]:
             raise HTTPException(status_code=503, detail="Tour articulation contained no visitor-safe speech")
+        # Claims are valid only when their exact supporting phrase survives the
+        # final visitor-speech boundary. The frontend repeats this check before
+        # it advances the controller.
+        evaluation = dict(evaluation)
+        evaluation["spoken_output"] = resolved["spoken_output"]
+        evaluation["covered_concepts"] = [
+            claim for claim in evaluation.get("covered_concepts") or []
+            if isinstance(claim, dict)
+            and str(claim.get("supporting_excerpt") or "").strip()
+            and str(claim.get("supporting_excerpt") or "") in resolved["spoken_output"]
+        ]
         governance_trace = finalize_governance_trace(
             governance_context,
             resolved=resolved,
@@ -8070,6 +8152,15 @@ async def _canonical_website_orb_turn(
             "cognitive_pulse": cognitive_pulse, "memory_context": memory_context,
             "control_action": None, "guidance": None, "evidence_ids": resolved["evidence_ids"],
             "governance_trace": governance_trace,
+            "tour_articulation_trace": {
+                "raw_model_output": str(generated.get("raw_model_output") or raw_generated_output),
+                "evidence_model_output": generated.get("evidence_model_output"),
+                "generated_output": raw_generated_output,
+                "sanitized_output": resolved["spoken_output"],
+                "delivered_output": resolved["spoken_output"],
+                "model_source": generated["llm_source"],
+                "site_world_slice": tour["site_world_slice"],
+            },
             "resolution_diagnostics": {"resolution_source": "tour_cognition", "confidence": resolved["confidence"],
                 "qwen_bypassed": False, "cached_speech": False,
                 "governance_status": governance_trace["status"], "tpc_state": governance_trace["tpc_state"],
@@ -8323,6 +8414,20 @@ async def website_orb_voice(
                 item.strip() for item in (experience_demonstrated_capabilities or "").split(",") if item.strip()
             ],
         ).model_dump()
+    # A live first-visitor act has its own evidence-rich choreography path.
+    # It must run before the generic canonical resolver; otherwise the latter
+    # sees an intentionally open visitor request as an unknown factual query
+    # and incorrectly converts healthy cognition into a 503.
+    if experience_context:
+        return await _first_visitor_act_response(
+            transcript=transcript,
+            experience_context=experience_context,
+            cognitive_pulse=cognitive_pulse,
+            memory_context=memory_context,
+            website_context=website_context,
+            page_capsule=page_capsule,
+            operating_policy=operating_policy,
+        )
     started = time.perf_counter()
     semantic_result = await _canonical_website_orb_turn(
         transcript=transcript,
@@ -8608,6 +8713,20 @@ async def website_orb_text(
         page_capsule["route"] = _route_from_url(target_url)
         page_capsule["context_domain"] = page_capsule.get("domain")
         page_capsule["domain"] = _domain_from_url(target_url)
+    # Tour acts remain on the governed curriculum path below. A non-tour
+    # first-visitor act must instead use its choreography response before the
+    # general resolver, which only accepts established factual lanes.
+    if payload.experience and not payload.experience.tour:
+        return await _first_visitor_act_response(
+            transcript=transcript,
+            experience_context=payload.experience.model_dump(),
+            cognitive_pulse=_orb_cognitive_pulse(transcript),
+            memory_context=memory_context,
+            website_context=website_context,
+            page_capsule=page_capsule,
+            operating_policy=operating_policy,
+            synthesize_tts=payload.synthesize_tts,
+        )
     semantic_result = await _canonical_website_orb_turn(
         transcript=transcript,
         site_id=payload.site_id,
@@ -8632,17 +8751,6 @@ async def website_orb_text(
         bool(tts_cache_before.get("hit")) if payload.synthesize_tts else False
     )
     return {**semantic_result, **tts_result}
-    if payload.experience:
-        return await _first_visitor_act_response(
-            transcript=transcript,
-            experience_context=payload.experience.dict(),
-            cognitive_pulse=_orb_cognitive_pulse(transcript),
-            memory_context=memory_context,
-            website_context=website_context,
-            page_capsule=page_capsule,
-            operating_policy=operating_policy,
-            synthesize_tts=payload.synthesize_tts,
-        )
     pointer_matches = _lookup_pointer_context(website_context, transcript)
     _queue_pointer_lock(pointer_matches, transcript)
     route_hint = _lookup_site_route_hint(website_context, transcript)

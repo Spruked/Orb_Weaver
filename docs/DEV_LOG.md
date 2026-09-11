@@ -1,5 +1,266 @@
 # Orb Weaver Development Log
 
+## 2026-09-11 — Intended local cognition service restored
+
+- Restored the supported local inference lane without Docker changes or a
+  provider/model substitution. The exact official Qwen 2.5 1.5B Instruct
+  GGUF (`Q4_K_M`) is installed at
+  `/home/bryan/substrate/llm/models/qwen2.5-1.5b-instruct-q4_k_m.gguf` and is
+  served by the existing substrate llama.cpp binary on `127.0.0.1:8080`.
+- The local inference gateway is alive at `127.0.0.1:16520`; its ready check
+  reports the `llamacpp` provider ready and as the only eligible runtime
+  provider. Kokoro retains the RTX for live speech; llama.cpp is configured
+  CPU-side rather than competing for its VRAM.
+- The profile launcher must run in a detached session in this development
+  shell environment. Current persistent processes are the profile-managed
+  `llama` and `gateway` entries; `bash tools/orb-inference-profile.sh status`
+  reports both running.
+- Live endpoint proof after restoration: direct `16520/api/generate` returned
+  `cognition ready`; governed landing-tour `website-text` returned **200**
+  with `llm_source=llamacpp-tour` and `tts_provider=kokoro`; first-visitor
+  `website-text` and multipart `website-voice` each returned **200** with
+  `llm_source=llamacpp-qwen2.5-1.5b-instruct-q4_k_m` and Kokoro audio.
+- Repaired an unrelated reachability ordering defect discovered during that
+  proof: non-tour first-visitor acts were reaching the generic canonical
+  resolver before their existing choreography handler, producing a false 503
+  even when cognition was healthy. They now reach the existing first-visitor
+  handler first. Governed Target One tour acts remain on their controller path.
+- The isolated source runtime was restarted cleanly on `16666` / `16667`
+  (`/tmp/orb-weaver-dev.DIMpbv`). The landing splash is deliberately once per
+  browser session; use `?orbStartupReset=1` in the local development URL to
+  replay it during verification. This resets only startup/tour session state.
+
+## 2026-09-11 — Target One first-stop articulation evidence repair
+
+- Captured the first governed stop (`chapter-meet-weaver/stop-hero-meet`): its
+  sole required concept is `WEAVER_IDENTITY` — Weaver is the Website ORB host,
+  understands the site, answers from verified knowledge, and guides when
+  showing is faster than explaining. The Site World slice for the self-hosted
+  landing page is intentionally sparse; the verified concept and visible hero
+  copy are the factual evidence supplied to articulation.
+- Root cause was not cognition availability or the frontend evaluator. Qwen
+  produced accurate natural speech but as plain prose rather than the required
+  JSON `covered_concepts` envelope. The prior prompt also buried the required
+  concept among broad instructions, allowing vague metaphorical output.
+- The articulation prompt now supplies concise semantic proof targets. A
+  strict secondary **evidence-only** live-cognition pass runs only if the
+  speech response omitted claims. It cannot alter visitor speech, select a
+  route, or advance state; it may return a concept only with an exact
+  contiguous excerpt from the already-final speech. Backend and frontend still
+  require that exact excerpt, so generic/fallback speech cannot advance.
+- Live first-stop proof now returns `llamacpp-tour` and Kokoro audio. Raw
+  speech states Weaver's host role, website understanding, verified knowledge,
+  and show-versus-explain guidance. The evidence pass returns
+  `WEAVER_IDENTITY` with the exact excerpt “I am Weaver, the Website ORB
+  host.” The final evaluator accepts it, so the controller may advance from
+  genuine coverage.
+- The existing Nine-of-Clubs discovery-versus-guidance question is now asked
+  immediately after the hero identity explanation at `stop-hero-meet`. Its
+  semantic categories and Stage Governor mappings are unchanged; the move
+  makes the first verified articulation end in the intended engagement turn.
+  No destination, Governor rule, movement behavior, inference configuration,
+  or Docker surface changed in this repair.
+
+## 2026-09-11 — Paused handoff: visitor-driven conversational controller
+
+> **Development intentionally stopped by owner direction.** The isolated
+> source runtime on `127.0.0.1:16666` / `127.0.0.1:16667` and the in-progress
+> production build were terminated cleanly. Docker was not started, changed,
+> or stopped. Resume only after the user restarts this work.
+
+### Locked behavioral acceptance
+
+- A tour that merely scrolls, speaks, and reaches Preflight fails Target One
+  if the visitor did not participate in selecting the route. Nine-of-Clubs
+  questions are control-loop inputs, not decorative tour copy.
+- Generic/fallback speech must never satisfy a required concept or advance the
+  controller. Current source behavior enforces this: an unavailable `16520`
+  cognition service produces HTTP **503** — `Dynamic tour cognition is
+  unavailable; the stop was not advanced` — rather than a false advancement.
+- The intended narrow implementation order is: (1) conservative concept
+  evaluation, (2) governed branching, (3) session interaction state, (4)
+  cross-page continuation with fresh Pointer/LiDAR context, (5) evidence-rich
+  articulation, then (6) one uninterrupted browser proof.
+
+### Current source state and next implementation target
+
+- Implemented so far: exact-excerpt concept checks; unavailable-model
+  non-advancement; compact Site World/current objective/recent context passed
+  to articulation; raw/sanitized/delivered articulation trace; session fields
+  for pending/asked questions, answer signals, visited routes, active route,
+  and recent Weaver speech; a small authored question set; and selected-route
+  conversational arrival continuation.
+- **Authority split completed in this resumed pass:** question wording now
+  defines only a bounded answer space; deterministic classification returns a
+  stable semantic category; and `frontend/src/tour/governor.ts` is the single
+  Website Tour Stage Governor that maps that category to the current finite
+  legal destination set. The saved state records the issued set for the
+  pending question and rejects a selection not issued by the governor. That
+  authorization is bound to the pending question plus its exact
+  stage/chapter/stop scope; it expires on any state-position transition and is
+  cleared when consumed. The model may vary wording, never routes, controls,
+  facts, or completion.
+- **Do not call this full acceptance.** The remaining work is live
+  destination/Pointer/DOM reacquisition and browser proof, not another hidden
+  branching layer.
+- Fresh retained-worktree validation after the authority split: frontend
+  TypeScript passed; frontend **51/51** tests passed; focused tour-evaluation
+  tests **16/16** passed; backend regression suite **210/210** passed; and the
+  production build passed. The isolated source lane has been restarted on
+  `16666` / `16667` (`/tmp/orb-weaver-dev.DpVCmi`); Docker remains untouched.
+  With `16520` still unavailable, the live dynamic-tour request was re-proven
+  to fail closed with HTTP **503**, not a false progression.
+- Finish that pass with live destination/Pointer/DOM reacquisition, no startup
+  replay or introduction repetition across pages, and an observed browser run:
+  explanation → question → visitor answer → deterministic category → different
+  authorized branch → verified guidance → route transition → contextual
+  continuation. Keep unknown-answer, interruption, and permission safeguards
+  intact. `16520` must be restored before this can become acceptance evidence.
+
+### Motion handoff (not a Gate 1 expansion)
+
+- Retune ambient movement to slow, smooth, bounded roaming with modest travel,
+  natural pauses, and no sharp reversals, sudden acceleration, viewport
+  bouncing, or cursor-escape behavior. Cursor proximity may be acknowledged
+  subtly but is not movement authority. While speaking or asking a question,
+  settle/reduce translation; resume gentle roaming after the turn. Governed
+  Pointer/LiDAR guidance remains a distinct, deliberate glide to a verified
+  target.
+- Make the motion contract 3D-ready now: `intent → target vector → orient →
+  travel → arrive → point/ping → reorient to visitor`. V1 remains the existing
+  2D/2.5D renderer with heading/look/pointer/travel-direction cues (inner-core,
+  highlight, shell, or shadow offsets). A true 3D ORB is V2, not a Gate 1
+  requirement, so its eventual renderer swap must not require a motion/control
+  architecture rewrite.
+
+## 2026-09-11 — Live cognition pause and ambient-motion repair
+
+### Browser evidence and exact boundary
+
+- Live `16667 → 16666` evidence confirms page-side startup is healthy:
+  `capabilities`, `page-capsule`, and `pointer-map` each returned **200**;
+  LiDAR progressed from an initial `0` targets to **4** live targets. This is
+  initialization/reacquisition evidence, not the current Target One blocker.
+- The first governed Target One request then reached the cognition boundary:
+  `/api/orb/website-text` returned **503**, followed by `/api/orb/website-voice`
+  returning **503**. Backend logs identify the same concrete cause:
+  `ConnectError: All connection attempts failed` while contacting
+  `http://127.0.0.1:16520/api/generate`.
+- The live UI now makes the governed condition explicit: “Weaver’s guided
+  tour is paused because live cognition is unavailable. Your place is saved.”
+  It holds the persisted tour state rather than falsely covering a concept or
+  advancing the stop. A deliberate retry control invokes resume from that
+  saved state rather than intro/startup state. The required live proof that it
+  resumes the exact paused stop is blocked until cognition returns.
+- The voice-turn path now recognizes the same 503 as a cognition pause,
+  disables hands-free rearming, and holds instead of cycling through failed
+  “start turn → 503 → finalized → start turn” retries. Other transient voice
+  failures remain independently recoverable.
+
+### Inference-service status — owner/service action required
+
+- `127.0.0.1:16520` currently refuses connections. The supported local
+  inference profile reports `gateway: stopped`, `llama: stopped`,
+  `aphrodite: stopped`, and `tensorrt: stopped`. No local `.env.inference`
+  model configuration or expected llama.cpp GGUF model file is present, so the
+  source lane cannot safely restore this service on its own.
+- Docker was inspected only and remains untouched. The existing container does
+  not expose `16520`; changing Docker or substituting another model/provider
+  would violate the locked fail-closed cognition contract. Restore the intended
+  local gateway/model service, then prove: retry saved place → first governed
+  articulation → Nine-of-Clubs question → answer classification → governor
+  route → Pointer/LiDAR verification → cross-page continuation without intro
+  replay.
+
+### Motion and voice scope
+
+- Ambient translation no longer reads cursor coordinates. It now uses a slow
+  bounded roam (26 px/s), short moves, a 5.2-second initial dwell, 7.8–12.4
+  second rests between moves, and a 3.6-second post-conversation dwell.
+  Speaking, listening, and thinking settle Weaver in place. Governed
+  Pointer/LiDAR travel remains intentionally distinct and authoritative.
+- The current Kokoro development voice is frozen as the temporary V1 voice.
+  **Custom Weaver Voice** remains backlog work required before final brand
+  polish (release-polish versus V2 scheduling is still an owner decision), and
+  is not a blocker for this repair.
+
+### Validation in this pass
+
+- Frontend TypeScript and frontend **51/51** tests pass, including the
+  explicit assertion that hands-free voice cannot rearm once disabled.
+  Focused backend tour-evaluation tests pass **16/16**. The production build
+  passes, and the isolated source lane was restarted cleanly at
+  `127.0.0.1:16666` / `127.0.0.1:16667` from
+  `/tmp/orb-weaver-dev.yTvc16`; backend health and frontend HTTP both return
+  **200**. A fresh governed `website-text` request returns the expected 503
+  with `tour_cognition_unavailable` logged against `16520`, proving the
+  boundary is still fail-closed after restart.
+
+## 2026-09-11 — Isolated development lane and release-candidate regression closeout
+
+> **Current runtime authority:** the isolated source lane is backend
+> `127.0.0.1:16666` and frontend `127.0.0.1:16667`. The reviewed Docker lane
+> remains `16500` / `16510` and was not changed. Any earlier references below
+> to `19667`, `16600`, or `16610` are historical evidence only; do not use
+> them for current development.
+
+- Repaired frontend API/telemetry port resolution to `16667 -> 16666` and
+  started the isolated source runtime without building, restarting, or
+  modifying Docker. The launcher now keeps disposable development database,
+  logs, and PID state outside the worktree while preserving the governed TTS
+  cache inside the canonical Vault.
+- Restricted credentialed CORS to explicit public and local frontend origins.
+  Live preflight accepts `http://127.0.0.1:16667` and rejects an untrusted
+  origin. Added `/health`; the isolated backend returns an operational status
+  and canonical Vault identity.
+- Repaired the canonical TTS-cache resolution, catalog variant traversal,
+  pointer recovery normalization, deterministic visitor-tool visibility, and
+  bounded authenticated-memory resolution without weakening Stage Governor or
+  unknown-answer controls.
+- Current validation on commit `2636522` (`Prepare isolated development
+  runtime and launch hardening`): backend **210 passed**; frontend **43/43
+  passed**; frontend TypeScript and production build passed; the four-case
+  startup/browser proof passed, including alternate intro assets and
+  deliberate autoplay recovery. The clean source commit was pushed to
+  `checkpoint/target-one-working-2026-09-07`.
+- The current release-evidence command sheet remains the Gate 1 authority.
+  Historical Docker/public success below does **not** close Gate 1. Gate 1 is
+  open until one identified release candidate is tagged, deployed, and
+  reproves the complete security, regression, health/readiness, voice/STT,
+  pointer positive/negative, two-site weave/install, latency, and evidence
+  bundle requirements together.
+- Current local caveat: the optional model endpoint on `127.0.0.1:16520` was
+  unavailable during launcher warm-up. Deterministic resolution and verified
+  startup/TTS paths remained operational; model-escalation acceptance must be
+  captured in the later same-RC voice evidence bundle.
+- Established `DOCUMENT_AUTHORITY.md`, a current isolated-runtime guide, and
+  corrected deployment/Vault documentation. Historical port generations,
+  snapshots, and rebuild prompts are explicitly non-authoritative rather than
+  being silently rewritten as current proof.
+- Target One review found a release-blocking acceptance defect: the linear
+  frontend evaluator currently treats any non-empty spoken response as coverage
+  for every missing concept, while local-model fallback returns a usable tour
+  envelope. Generic fallback speech can therefore advance visual progression.
+  The local model at `16520` is optional only for degraded runtime survival;
+  it is required for dynamic-tour acceptance. The new Visitor Interaction
+  Doctrine records the required governed question/answer and cross-page
+  destination model. No movement, pointer, or unknown-answer guard was
+  loosened during diagnosis.
+- **Owner direction updated later on 2026-09-11:** the focused Target One
+  behavioral pass is now implemented in the source lane. The evaluator no
+  longer converts any non-empty response into coverage; accepted claims need
+  an exact excerpt in final sanitized visitor speech. The backend supplies a
+  compact Site World slice, preserves raw/sanitized/delivered articulation
+  telemetry, and rejects unavailable-model fallback with HTTP 503 without
+  advancing the stop. The frontend persists a bounded Nine-of-Clubs question
+  state, deterministic authored answer mapping, selected route, answer signal,
+  visited routes, and recent Weaver context; selected-route arrival provides a
+  governed continuation instead of resetting the visit. This is a partial
+  implementation, not completion evidence: `16520` is currently unavailable,
+  and the complete cross-page graph, pointer/DOM proof, STT journey, and
+  same-RC browser evidence are still required. Dynamic Target One articulation
+  remains RED and Gate 1 remains open.
+
 ## 2026-09-09 — Live Preflight captions, visitor articulation, and presentation repair
 
 - Replaced the immediate full-response transcript in the root-mounted public

@@ -1,17 +1,15 @@
 import type { ChapterEvaluation, TourConcept } from '../types/tour';
 
 export function verifiedConceptIds(evaluation: ChapterEvaluation, required: TourConcept[]): string[] {
-  // Sequence-construction pass: successful cognition plus completed playback is
-  // enough to mark this stop as presented. Semantic evidence scoring is deferred
-  // until the governed-wording pass; the controller still owns all progression.
-  if (evaluation.spoken_output.trim()) return required.map(concept => concept.id);
-
-  const allowed = new Set(required.map(concept => concept.id));
+  const allowed = new Map(required.map(concept => [concept.id, concept]));
   const verified = new Set<string>();
   for (const claim of evaluation.covered_concepts) {
     const excerpt = claim.supporting_excerpt.trim();
-    if (!allowed.has(claim.concept_id) || !excerpt) continue;
+    const concept = allowed.get(claim.concept_id);
+    if (!concept || !excerpt) continue;
     if (!evaluation.spoken_output.includes(excerpt)) continue;
+    const normalizedExcerpt = excerpt.toLocaleLowerCase();
+    if (!(concept.coverageRequirements || []).every(requirement => normalizedExcerpt.includes(requirement.toLocaleLowerCase()))) continue;
     verified.add(claim.concept_id);
   }
   return [...verified];

@@ -1,6 +1,6 @@
 import json
 import pytest
-from app.orb.tour_evaluation import parse_tour_evaluation
+from app.orb.tour_evaluation import parse_tour_evaluation, parse_tour_evidence
 
 
 def response():
@@ -70,7 +70,7 @@ def test_removes_the_full_sentence_when_repeated_identity_is_embedded_in_it():
     assert result.spoken_output == 'Speak naturally and stay in control.'
 
 
-def test_prompt_requires_semantic_evidence_without_verbatim_reproduction():
+def test_prompt_requires_exact_spoken_evidence_without_mechanical_enumeration():
     from app.orb.tour_evaluation import tour_prompt
 
     prompt = tour_prompt({
@@ -79,9 +79,13 @@ def test_prompt_requires_semantic_evidence_without_verbatim_reproduction():
             {'id': 'VERIFIED_GUIDANCE', 'description': 'Point only to verified live targets.'},
         ],
     })
+    assert 'exact, non-empty phrase copied from spoken_output' in prompt
     assert 'meaningfully addressed' in prompt
     assert 'mechanically enumerate every detail' in prompt
     assert "Weaver has already been introduced" in prompt
+    assert 'SEMANTIC PROOF TARGETS' in prompt
+    assert 'Point only to verified live targets.' in prompt
+    assert 'a name, slogan, or vague metaphor alone is not coverage' in prompt
     assert 'Every detail in that concept\'s description must be spoken' not in prompt
 
 
@@ -89,9 +93,36 @@ def test_sequence_pass_uses_controller_ids_and_actual_live_speech():
     payload = response()
     payload['covered_concepts'][0]['supporting_excerpt'] = 'Words the model did not speak.'
     result = parse_tour_evaluation(json.dumps(payload), ['WEAVER_IDENTITY'])
-    assert result.covered_concepts[0].concept_id == 'WEAVER_IDENTITY'
-    assert result.covered_concepts[0].supporting_excerpt == 'Words the model did not speak.'
+    assert result.covered_concepts == []
     assert parse_tour_evaluation(json.dumps(response()), ['OTHER']).covered_concepts == []
+
+
+def test_evidence_pass_requires_an_exact_excerpt_from_final_visitor_speech():
+    speech = 'I am Weaver, the Website ORB host. I answer from verified knowledge.'
+    evidence = parse_tour_evidence(
+        '{"covered_concepts":[{"concept_id":"WEAVER_IDENTITY","supporting_excerpt":"I am Weaver, the Website ORB host."}]}.',
+        speech,
+        ['WEAVER_IDENTITY'],
+    )
+    assert [(item.concept_id, item.supporting_excerpt) for item in evidence] == [
+        ('WEAVER_IDENTITY', 'I am Weaver, the Website ORB host.'),
+    ]
+    assert parse_tour_evidence(
+        '{"covered_concepts":[{"concept_id":"WEAVER_IDENTITY","supporting_excerpt":"Invented proof."}]}',
+        speech,
+        ['WEAVER_IDENTITY'],
+    ) == []
+
+
+def test_evidence_pass_rejects_an_identity_introduction_that_omits_required_meaning():
+    speech = 'I am Weaver, the Website ORB host. I understand this website and can guide you to the right place.'
+    evidence = parse_tour_evidence(
+        '{"covered_concepts":[{"concept_id":"WEAVER_IDENTITY","supporting_excerpt":"I am Weaver, the Website ORB host. I understand this website and can guide you to the right place."}]}',
+        speech,
+        ['WEAVER_IDENTITY'],
+        {'WEAVER_IDENTITY': ['Website ORB host', 'this website', 'verified knowledge', 'right place', 'show', 'explain']},
+    )
+    assert evidence == []
 
 
 @pytest.mark.parametrize('extra', [{'stop_complete': True}, {'chosenAction': 'RUN_PREFLIGHT_NOW'}])

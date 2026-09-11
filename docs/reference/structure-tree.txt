@@ -1,3 +1,8 @@
+# HISTORICAL REPOSITORY SNAPSHOT — NOT CURRENT ARCHITECTURE AUTHORITY
+#
+# This raw tree includes generated state, legacy stores, obsolete adapters, and
+# editor debris. Use ../../structure_tree.txt for the current filtered map.
+
 .
 ├── Codex_correction_SKG_architecture.txt
 ├── Dockerfile

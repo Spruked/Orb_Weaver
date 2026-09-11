@@ -98,3 +98,8 @@ prefer one over the other without explicit direction. Report which one is
 currently mounted/active in the live site so a decision can be made.
 
 Do not commit or push.
+# HISTORICAL SESSION INSTRUCTION — NOT CURRENT IMPLEMENTATION AUTHORITY
+#
+# Retained for the build-time/lookup-oriented design discussion only. The
+# current resolver has several bounded deterministic evidence lanes; consult
+# docs/DOCUMENT_AUTHORITY.md before using this snapshot.

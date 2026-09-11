@@ -1104,6 +1104,15 @@ export interface WebsiteOrbVoiceResponse {
   } | null;
   skg_learning?: Record<string, unknown> | null;
   control_action?: { type: 'orb_motion'; command: string } | null;
+  tour_articulation_trace?: {
+    raw_model_output?: string;
+    evidence_model_output?: string | null;
+    generated_output: string;
+    sanitized_output: string;
+    delivered_output: string;
+    model_source: string;
+    site_world_slice?: Record<string, unknown>;
+  } | null;
 }
 
 export interface WebsiteOrbTtsVoices {
@@ -1151,6 +1160,14 @@ export interface WebsiteOrbExperienceContext {
     presentation_guidance: string[];
     visible_section_text: string;
     evidence_attempt: number;
+    engagement_question?: { id: string; prompt: string; intent: string } | null;
+    interaction_context?: {
+      recent_weaver_statements: string[];
+      covered_concept_ids: string[];
+      asked_question_ids: string[];
+      visited_routes: string[];
+      answer_signals: Record<string, string>;
+    };
   };
   phase: WebsiteOrbExperiencePhase;
   objective: string;

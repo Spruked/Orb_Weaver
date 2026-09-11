@@ -3,6 +3,8 @@ export interface TourConcept {
   id: string;
   description: string;
   label?: string;
+  /** Meaning-bearing terms that must appear in proof of this concept. */
+  coverageRequirements?: string[];
 }
 
 /** One real DOM stop; the controller verifies its required concepts. */
@@ -13,7 +15,33 @@ export interface TourStop {
   mustUnderstand: TourConcept[];
   presentationGuidance?: string;
   avoid?: string[];
+  engagementQuestion?: TourEngagementQuestion;
 }
+
+/** A bounded visitor choice. Its destinations are authored, never model-chosen. */
+export interface TourEngagementQuestion {
+  id: string;
+  intent: string;
+  prompt: string;
+  options: Array<{
+    id: string;
+    /** Stable answer meaning. Only the governor may translate it to a route. */
+    semanticCategory: TourSemanticCategory;
+    keywords: string[];
+  }>;
+}
+
+/** Bounded visitor-answer meanings; these are not navigation instructions. */
+export type TourSemanticCategory =
+  | 'SITE_DISCOVERY'
+  | 'VERIFIED_GUIDANCE'
+  | 'VISITOR_UNDERSTANDING'
+  | 'VISITOR_ASSISTANCE'
+  | 'DISCOVERY_FRICTION'
+  | 'CONVERSION_FRICTION';
+
+/** The only non-action routes a public Target One interaction may select. */
+export type TourDestinationRoute = '/features' | '/lidar-guidance' | '/how-it-works' | '/preflight';
 
 export type TourDecisionAction =
   | "RUN_PREFLIGHT_NOW"

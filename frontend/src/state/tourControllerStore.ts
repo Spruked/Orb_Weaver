@@ -1,4 +1,4 @@
-import type { TourPreflightStatus } from "../types/tour";
+import type { TourDestinationRoute, TourPreflightStatus } from "../types/tour";
 
 export type TourJourneyStage =
   | "LANDING_TOUR"
@@ -12,6 +12,26 @@ export interface InterruptionState {
   interruptedAtStopId: string | null;
 }
 
+/** A route authorization is valid only for the question and tour position that issued it. */
+export interface TourDestinationAuthorizationScope {
+  questionId: string;
+  stage: TourJourneyStage;
+  chapterId: string | null;
+  stopId: string | null;
+}
+
+export interface TourInteractionState {
+  pendingQuestionId: string | null;
+  /** Finite routes issued by the Website Tour Stage Governor for the pending question. */
+  eligibleDestinationRoutes: TourDestinationRoute[];
+  eligibleDestinationScope: TourDestinationAuthorizationScope | null;
+  activeDestinationRoute: TourDestinationRoute | null;
+  askedQuestionIds: string[];
+  answerSignals: Record<string, string>;
+  visitedRoutes: string[];
+  recentWeaverStatements: string[];
+}
+
 export interface WebsiteJourneyStateV2 {
   version: 2;
   stage: TourJourneyStage;
@@ -22,6 +42,7 @@ export interface WebsiteJourneyStateV2 {
   interruptionState: InterruptionState;
   preflightStatus: TourPreflightStatus;
   accountCreated: boolean;
+  interaction: TourInteractionState;
 }
 
 export function createInitialJourneyState(): WebsiteJourneyStateV2 {
@@ -39,6 +60,16 @@ export function createInitialJourneyState(): WebsiteJourneyStateV2 {
     },
     preflightStatus: "NOT_STARTED",
     accountCreated: false,
+    interaction: {
+      pendingQuestionId: null,
+      eligibleDestinationRoutes: [],
+      eligibleDestinationScope: null,
+      activeDestinationRoute: null,
+      askedQuestionIds: [],
+      answerSignals: {},
+      visitedRoutes: ['/'],
+      recentWeaverStatements: [],
+    },
   };
 }
 
@@ -98,6 +129,43 @@ const isId = (value: unknown): value is string =>
 const isNullableId = (value: unknown) => value === null || isId(value);
 const isIdList = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every(isId);
+const TOUR_DESTINATION_ROUTES: TourDestinationRoute[] = ['/features', '/lidar-guidance', '/how-it-works', '/preflight'];
+const isDestinationRouteList = (value: unknown): value is TourDestinationRoute[] =>
+  Array.isArray(value) && value.every((item) => TOUR_DESTINATION_ROUTES.includes(item as TourDestinationRoute));
+const isJourneyStage = (value: unknown): value is TourJourneyStage =>
+  typeof value === 'string' && ['LANDING_TOUR', 'PREFLIGHT', 'ONBOARDING', 'PRODUCTION_SCAN'].includes(value);
+const isDestinationScope = (value: unknown): value is TourDestinationAuthorizationScope =>
+  isRecord(value) && isId(value.questionId) && isJourneyStage(value.stage) &&
+  isNullableId(value.chapterId) && isNullableId(value.stopId) &&
+  (value.chapterId === null) === (value.stopId === null);
+const normalizeInteraction = (value: unknown): TourInteractionState | null => {
+  if (value === undefined) return createInitialJourneyState().interaction;
+  if (!isRecord(value) || !isNullableId(value.pendingQuestionId) ||
+    (value.eligibleDestinationRoutes !== undefined && !isDestinationRouteList(value.eligibleDestinationRoutes)) ||
+    (value.eligibleDestinationScope !== undefined && value.eligibleDestinationScope !== null && !isDestinationScope(value.eligibleDestinationScope)) ||
+    (value.activeDestinationRoute !== undefined && value.activeDestinationRoute !== null &&
+      !TOUR_DESTINATION_ROUTES.includes(value.activeDestinationRoute as TourDestinationRoute)) || !isIdList(value.askedQuestionIds) ||
+    !isRecord(value.answerSignals) || !isIdList(value.visitedRoutes) || !isIdList(value.recentWeaverStatements) ||
+    !Object.values(value.answerSignals).every(isId)) return null;
+  return {
+    pendingQuestionId: value.pendingQuestionId as string | null,
+    eligibleDestinationRoutes: value.eligibleDestinationRoutes === undefined
+      ? []
+      : [...new Set(value.eligibleDestinationRoutes as TourDestinationRoute[])],
+    eligibleDestinationScope: (value.eligibleDestinationScope ?? null) as TourDestinationAuthorizationScope | null,
+    // Older V2 records had no cross-page destination. Keep their valid tour
+    // progress rather than treating the newly introduced field as corruption.
+    activeDestinationRoute: (value.activeDestinationRoute ?? null) as TourDestinationRoute | null,
+    askedQuestionIds: [...new Set(value.askedQuestionIds)],
+    answerSignals: Object.fromEntries(
+      Object.entries(value.answerSignals)
+        .filter(([, signal]) => isId(signal))
+        .map(([questionId, signal]) => [questionId, String(signal)]),
+    ),
+    visitedRoutes: [...new Set(value.visitedRoutes)],
+    recentWeaverStatements: value.recentWeaverStatements.slice(-4),
+  };
+};
 
 function normalizeV2(value: Record<string, unknown>): WebsiteJourneyStateV2 | null {
   const interruption = value.interruptionState;
@@ -114,6 +182,8 @@ function normalizeV2(value: Record<string, unknown>): WebsiteJourneyStateV2 | nu
     !isNullableId(interruption.interruptedAtChapterId) || !isNullableId(interruption.interruptedAtStopId) ||
     (interruption.interruptedAtChapterId === null) !== (interruption.interruptedAtStopId === null)
   ) return null;
+  const interaction = normalizeInteraction(value.interaction);
+  if (!interaction) return null;
   // Explicit projection excludes utterances, derived flags, and unknown fields.
   const state = createInitialJourneyState();
   state.stage = value.stage as TourJourneyStage;
@@ -141,6 +211,7 @@ function normalizeV2(value: Record<string, unknown>): WebsiteJourneyStateV2 | nu
   }
   state.preflightStatus = value.preflightStatus as TourPreflightStatus;
   state.accountCreated = value.accountCreated;
+  state.interaction = interaction;
   return state;
 }
 

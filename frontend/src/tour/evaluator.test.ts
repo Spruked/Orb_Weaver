@@ -43,14 +43,30 @@ test('a claimed required concept with an exact spoken excerpt advances the seque
   expect(verifiedConceptIds(evaluation, [presenceConcept])).toEqual([presenceConcept.id]);
 });
 
-test('live spoken output advances the sequencing pass when model evidence is empty', () => {
+test('speech without verified concept evidence does not advance the sequencing pass', () => {
   const evaluation: ChapterEvaluation = {
     spoken_output: 'Can I trust it?',
     covered_concepts: [],
     detected_visitor_intent: null,
     suggested_transition: null,
   };
-  expect(verifiedConceptIds(evaluation, [presenceConcept])).toEqual([presenceConcept.id]);
+  expect(verifiedConceptIds(evaluation, [presenceConcept])).toEqual([]);
+});
+
+test('an identity introduction without all required meaning cannot advance', () => {
+  const identity: TourConcept = {
+    id: 'WEAVER_IDENTITY',
+    description: 'Weaver is the Website ORB host who understands this website, answers from verified knowledge, and guides to the right place when showing is faster than explaining.',
+    coverageRequirements: ['Website ORB host', 'this website', 'verified knowledge', 'right place', 'show', 'explain'],
+  };
+  const excerpt = 'I am Weaver, the Website ORB host. I understand this website and guide you to the right place.';
+  const evaluation: ChapterEvaluation = {
+    spoken_output: excerpt,
+    covered_concepts: [{ concept_id: identity.id, supporting_excerpt: excerpt }],
+    detected_visitor_intent: null,
+    suggested_transition: null,
+  };
+  expect(verifiedConceptIds(evaluation, [identity])).toEqual([]);
 });
 
 test('verified bounded permissions and governance may state security as safety', () => {

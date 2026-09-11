@@ -1456,6 +1456,40 @@
   background: rgba(3, 12, 24, .88);
 }
 
+.ow-v2-orb-notice {
+  border-color: rgba(238, 186, 86, .62);
+  background: linear-gradient(145deg, rgba(39, 25, 4, .94), rgba(21, 12, 2, .9));
+  pointer-events: auto;
+}
+
+.ow-v2-orb-notice::after {
+  border-right-color: rgba(238, 186, 86, .52);
+  border-bottom-color: rgba(238, 186, 86, .52);
+  background: rgba(27, 16, 2, .92);
+}
+
+.ow-v2-orb-notice-retry {
+  position: relative;
+  z-index: 1;
+  margin-top: 9px;
+  border: 1px solid rgba(238, 186, 86, .64);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgba(86, 51, 5, .82);
+  color: rgba(255, 242, 205, .98);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ow-v2-orb-notice-retry:hover,
+.ow-v2-orb-notice-retry:focus-visible {
+  background: rgba(126, 77, 8, .92);
+  outline: 2px solid rgba(255, 232, 158, .84);
+  outline-offset: 2px;
+}
+
 .ow-v2-startup-panel {
   position: fixed;
   right: 14px;

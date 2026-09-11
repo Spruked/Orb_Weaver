@@ -101,6 +101,16 @@ describe('tour controller migration and persistence', () => {
     expect(storage.getItem(WEBSITE_JOURNEY_STORAGE_KEY)).not.toMatch(/private utterance|visitorQuestion|productionScanUnlocked/);
   });
 
+  it('loads an earlier interaction record that predates cross-page routing', () => {
+    const state = createInitialJourneyState();
+    const { activeDestinationRoute: _unused, ...earlierInteraction } = state.interaction;
+    const storage = memoryStorage(JSON.stringify({ ...state, interaction: earlierInteraction }));
+    expect(loadJourneyState(storage)).toEqual({
+      status: 'loaded',
+      state: { ...state, interaction: { ...state.interaction, activeDestinationRoute: null } },
+    });
+  });
+
   it('clears current landing location after leaving the curriculum', () => {
     const storage = memoryStorage();
     expect(saveJourneyState({ ...createInitialJourneyState(), stage: 'ONBOARDING', currentStopCoveredConceptIds: ['old'] }, storage)).toBe(true);

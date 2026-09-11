@@ -2,7 +2,9 @@ import { createInitialJourneyState, loadJourneyState, migrateStoredJourneyState,
 import { TOUR_POINTER_TARGETS, TOUR_STOP_SOURCE_SELECTORS } from "../tour/curriculum";
 import { runTourController, isTourDecisionReady } from "../tour/controller";
 import { parseChapterEvaluation } from "../tour/evaluator";
-import type { TourDecisionAction } from "../types/tour";
+import type { TourDecisionAction, TourEngagementQuestion } from "../types/tour";
+import { classifyEngagementAnswer, engagementById } from "../tour/interaction";
+import { resolveGovernedDestination } from "../tour/governor";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useAnimationControls } from "framer-motion";
 import { Volume2, VolumeX } from "lucide-react";
@@ -10,6 +12,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Orb } from "./Orb";
 import {
   api,
+  ApiError,
   type WebsiteOrbExperienceContext,
   type WebsiteOrbPointerRecord,
   type PublicPreflightReport,
@@ -132,9 +135,11 @@ const ORB_OVERLAY_Z_INDEX = 2147483640;
 const EDGE = 8;
 // Keep Weaver visibly alive between guided actions without entering a target,
 // speaking over the visitor, or compromising the LiDAR-safe movement path.
-const AMBIENT_TRAVEL_PX_PER_SECOND = 72;
-const AMBIENT_SETTLE_MS = 850;
-const CURSOR_EVASION_COOLDOWN_MS = 850;
+const AMBIENT_TRAVEL_PX_PER_SECOND = 26;
+const AMBIENT_INITIAL_DWELL_MS = 5200;
+const AMBIENT_SETTLE_MIN_MS = 7800;
+const AMBIENT_SETTLE_VARIANCE_MS = 4600;
+const AMBIENT_POST_INTERACTION_DWELL_MS = 3600;
 const REST_AFTER_INACTIVITY_MS = 15 * 60 * 1000;
 const ACTIVE_ORB_OPACITY = 1;
 const REST_ORB_OPACITY = 0.78;
@@ -397,8 +402,6 @@ export const AutonomousOrb: React.FC<Props> = ({
   const lastAutonomousDestinationRef = useRef<{ x: number; y: number } | null>(null);
   const ambientPoseHistoryRef = useRef<{ x: number; y: number }[]>([]);
   const ambientVantageRef = useRef<AmbientVantagePreference | null>(readAmbientVantagePreference());
-  const cursorRef = useRef<{ x: number; y: number; at: number } | null>(null);
-  const lastCursorEvasionAtRef = useRef(0);
   const movementControllerRef = useRef<OrbRoboticsMovementController | null>(null);
   const nudgePointerRef = useRef<{ pointerId: number; start: { x: number; y: number }; origin: { x: number; y: number } } | null>(null);
   const lidarCacheRef = useRef(Lidar2DMappingCoordinateCache.getInstance());
@@ -444,6 +447,9 @@ export const AutonomousOrb: React.FC<Props> = ({
   const statusTimerRef = useRef<number | null>(null);
   const avoidUntilRef = useRef(0);
   const voiceRequestInFlightRef = useRef(false);
+  // A governed 503 is a pause, not a transient microphone failure. It must
+  // suppress hands-free rearming until the visitor explicitly retries.
+  const cognitionUnavailableRef = useRef(false);
   const activeVoiceAbortControllerRef = useRef<AbortController | null>(null);
   const voiceTurnIdRef = useRef(0);
   const recordingMonitorTimerRef = useRef<number | null>(null);
@@ -469,7 +475,9 @@ export const AutonomousOrb: React.FC<Props> = ({
   const [journeyBoot] = useState(() => loadJourneyState());
   const websiteJourneyRef = useRef<WebsiteJourneyStateV2 | null>(journeyBoot.state);
   const [, setTourState] = useState<WebsiteJourneyStateV2 | null>(journeyBoot.state);
-  const [, setTourNotice] = useState('');
+  // This is visitor-facing operational state. It must not be silently dropped
+  // when a governed dependency pauses the tour.
+  const [tourNotice, setTourNotice] = useState('');
   // loadJourneyState() has already validated the initial in-memory snapshot.
   // Mark it ready immediately so the startup intro cannot request the tour
   // before the migration effect gets a chance to run.
@@ -477,6 +485,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const landingTourRunningRef = useRef(false);
   const landingTourSettledRef = useRef<Promise<void>>(Promise.resolve());
   const landingTourAbortControllerRef = useRef<AbortController | null>(null);
+  const routeArrivalInFlightRef = useRef<string | null>(null);
   const handsFreeEnabledRef = useRef(false);
   const [pulse, setPulse] = useState<PulseState>(null);
   const [voiceState, setVoiceState] = useState<OrbVoiceState>("idle");
@@ -724,9 +733,8 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const nextDestination = useCallback(() => {
     const current = positionRef.current;
-    const minimumTravel = Math.max(112, size * 0.62);
-    const cursor = cursorRef.current && Date.now() - cursorRef.current.at < 8000 ? cursorRef.current : null;
-    const cursorAvoidanceRadius = Math.max(184, size * 1.35);
+    const minimumTravel = Math.max(56, Math.min(92, size * 0.45));
+    const maximumTravel = Math.max(152, Math.min(248, size * 1.3));
     const lidarMap = buildLidarGuidanceMap({
       orbPosition: { x: current.x + size / 2, y: current.y + size / 2 },
     });
@@ -744,7 +752,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       Math.max(0, Math.min(a.right, b.x + b.width) - Math.max(a.left, b.x)) *
       Math.max(0, Math.min(a.bottom, b.y + b.height) - Math.max(a.top, b.y));
 
-    let best: { point: { x: number; y: number }; score: number; collisions: number; cursorClearance: number } | null = null;
+    let best: { point: { x: number; y: number }; score: number; collisions: number } | null = null;
     for (let row = 0; row < 5; row += 1) {
       for (let column = 0; column < 7; column += 1) {
         const candidate = clampPosition(
@@ -753,20 +761,19 @@ export const AutonomousOrb: React.FC<Props> = ({
         );
       const actualTravel = Math.hypot(candidate.x - current.x, candidate.y - current.y);
       const candidateCenter = { x: candidate.x + size / 2, y: candidate.y + size / 2 };
-      const cursorClearance = cursor ? Math.hypot(candidateCenter.x - cursor.x, candidateCenter.y - cursor.y) : cursorAvoidanceRadius;
       const rect = { left: candidate.x - 12, top: candidate.y - 12, right: candidate.x + size + 12, bottom: candidate.y + size + 12 };
       const collisions = relevantFeatures.reduce((total, feature) => total + intersects(rect, feature.rect), 0);
       const recentDistance = ambientPoseHistoryRef.current.length
         ? Math.min(...ambientPoseHistoryRef.current.map((pose) => Math.hypot(candidate.x - pose.x, candidate.y - pose.y)))
         : minimumTravel;
-      if (actualTravel < minimumTravel * 0.72 || cursorClearance < cursorAvoidanceRadius || recentDistance < Math.max(96, size * 0.7)) continue;
+      if (actualTravel < minimumTravel * 0.72 || actualTravel > maximumTravel || recentDistance < Math.max(72, size * 0.46)) continue;
       const normalized = { x: candidateCenter.x / window.innerWidth, y: candidateCenter.y / window.innerHeight };
       const preferenceScore = preference
         ? Math.max(0, 150 - Math.hypot(normalized.x - preference.x, normalized.y - preference.y) * 360) * preference.confidence
         : 0;
       const edgeVantage = Math.min(candidateCenter.x, window.innerWidth - candidateCenter.x, candidateCenter.y, window.innerHeight - candidateCenter.y);
-      const score = preferenceScore + cursorClearance * 0.72 + recentDistance * 0.5 - collisions * 2.2 - actualTravel * 0.08 - edgeVantage * 0.12;
-      if (!best || score > best.score) best = { point: candidate, score, collisions, cursorClearance };
+      const score = preferenceScore + recentDistance * 0.5 - collisions * 2.2 - actualTravel * 0.18 - edgeVantage * 0.12;
+      if (!best || score > best.score) best = { point: candidate, score, collisions };
       }
     }
 
@@ -786,7 +793,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         featureCount: lidarMap.features.length,
         dynamicObstacleCount: lidarMap.dynamicObstacleCount,
         collisions: Math.round(best.collisions),
-        cursorClearance: Math.round(best.cursorClearance),
+        ambientVelocity: AMBIENT_TRAVEL_PX_PER_SECOND,
         destination: best.point,
       });
       return best.point;
@@ -799,11 +806,6 @@ export const AutonomousOrb: React.FC<Props> = ({
     });
     return current.x || current.y ? current : clampPosition(maxX, minY);
   }, [bounds, clampPosition, size]);
-
-  const cursorEvasionDestination = useCallback((cursor: { x: number; y: number }) => {
-    cursorRef.current = { ...cursor, at: Date.now() };
-    return nextDestination();
-  }, [nextDestination]);
 
   const resumeAutonomousPresence = useCallback(async () => {
     const blockers = {
@@ -821,6 +823,13 @@ export const AutonomousOrb: React.FC<Props> = ({
       return;
     }
     autonomousResumeActiveRef.current = true;
+    // Conversation and guidance resolve into a visible, attentive dwell before
+    // Weaver resumes ambient motion. This is never guidance travel.
+    await wait(AMBIENT_POST_INTERACTION_DWELL_MS);
+    if (speechPlaybackRef.current || guidanceActiveRef.current || controlMotionActiveRef.current || manualHoldRef.current || restModeRef.current) {
+      autonomousResumeActiveRef.current = false;
+      return;
+    }
     const sequence = motionInterruptionSequenceRef.current + 1;
     motionInterruptionSequenceRef.current = sequence;
     const destination = nextDestination();
@@ -832,7 +841,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       await move.start({
         x: destination.x,
         y: destination.y,
-        transition: { duration: 5.2, ease: [0.37, 0, 0.22, 1] },
+        transition: { duration: Math.max(4.8, Math.min(9.6, Math.hypot(destination.x - positionRef.current.x, destination.y - positionRef.current.y) / AMBIENT_TRAVEL_PX_PER_SECOND)), ease: [0.37, 0, 0.22, 1] },
       });
       if (sequence === motionInterruptionSequenceRef.current) positionRef.current = destination;
     } finally {
@@ -843,51 +852,6 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
   }, [authorizeMotion, move, nextDestination]);
   resumeAutonomousPresenceRef.current = resumeAutonomousPresence;
-
-  useEffect(() => {
-    const handleCursorMove = (event: PointerEvent) => {
-      const cursor = { x: event.clientX, y: event.clientY, at: Date.now() };
-      cursorRef.current = cursor;
-      markVisitorActivity();
-
-      if (
-        startupUnresolved() || speechPlaybackRef.current || guidanceActiveRef.current || controlMotionActiveRef.current ||
-        manualHoldRef.current || nudgePointerRef.current || Date.now() - lastCursorEvasionAtRef.current < CURSOR_EVASION_COOLDOWN_MS
-      ) return;
-
-      const current = positionRef.current;
-      const center = { x: current.x + size / 2, y: current.y + size / 2 };
-      const distance = Math.hypot(center.x - cursor.x, center.y - cursor.y);
-      const evasionRadius = Math.max(156, size * 1.12);
-      if (distance >= evasionRadius) return;
-
-      const destination = cursorEvasionDestination(cursor);
-      const authorization = authorizeMotion(destination, "Cursor avoidance");
-      if (!authorization) return;
-
-      const sequence = motionInterruptionSequenceRef.current + 1;
-      motionInterruptionSequenceRef.current = sequence;
-      autonomousResumeActiveRef.current = false;
-      lastCursorEvasionAtRef.current = Date.now();
-      avoidUntilRef.current = Date.now() + CURSOR_EVASION_COOLDOWN_MS;
-      move.stop();
-      emitOrbRuntimeEvent("cursor_avoidance_started", { cursor, distance, destination });
-      assertMovementAuthorization(authorization);
-      void move.start({
-        x: destination.x,
-        y: destination.y,
-        transition: { duration: 0.8, ease: [0.37, 0, 0.22, 1] },
-      }).then(() => {
-        if (sequence !== motionInterruptionSequenceRef.current) return;
-        positionRef.current = destination;
-        lastAutonomousDestinationRef.current = destination;
-        emitOrbRuntimeEvent("cursor_avoidance_complete", { destination });
-      });
-    };
-
-    window.addEventListener("pointermove", handleCursorMove, { passive: true });
-    return () => window.removeEventListener("pointermove", handleCursorMove);
-  }, [authorizeMotion, cursorEvasionDestination, markVisitorActivity, move, size]);
 
   const localMoveOutDestination = useCallback(() => {
     const currentRect = orbElementRef.current?.getBoundingClientRect();
@@ -1644,8 +1608,9 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, []);
 
   const freezeOrbInPlace = useCallback((_holdMs = 4200) => {
-    // Listening and thinking may continue to drift. Only audible speech holds Weaver still.
-    if (!speechPlaybackRef.current) return;
+    // A conversation is attentive, not another ambient travel state. Hold
+    // position while listening, thinking, or speaking; inner animation keeps
+    // Weaver visibly alive without positional restlessness.
     const rect = orbElementRef.current?.getBoundingClientRect();
     if (rect) positionRef.current = { x: rect.left, y: rect.top };
     motionInterruptionSequenceRef.current += 1;
@@ -1885,12 +1850,34 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const runLandingTour = useCallback(async () => {
     const journey = websiteJourneyRef.current;
-    if (!journeyReadyRef.current || !journey || !isPublicLandingExperience() || landingTourRunningRef.current || voiceRequestInFlightRef.current || recorderRef.current || onboardingSafeMode || journey.stage !== "LANDING_TOUR") {
+    const blockedReason = !journeyReadyRef.current ? 'journey_not_ready'
+      : !journey ? 'journey_missing'
+      : !isPublicLandingExperience() ? 'not_public_landing'
+      : landingTourRunningRef.current ? 'already_running'
+      : voiceRequestInFlightRef.current ? 'voice_turn_active'
+      : recorderRef.current ? 'recorder_active'
+      : onboardingSafeMode ? 'onboarding_safe_mode'
+      : journey.stage !== 'LANDING_TOUR' ? 'stage_not_landing_tour'
+      : null;
+    if (blockedReason || !journey) {
+      emitOrbRuntimeEvent('target_one_tour_start_blocked', { blockedReason, stage: journey?.stage || null, stopId: journey?.currentStopId || null });
       return;
     }
     if (journey.interruptionState.isInterrupted || journey.preflightStatus === "DEFERRED") {
+      emitOrbRuntimeEvent('target_one_tour_start_blocked', { blockedReason: journey.interruptionState.isInterrupted ? 'interrupted' : 'preflight_deferred', stage: journey.stage, stopId: journey.currentStopId });
       return;
     }
+    if (journey.interaction.pendingQuestionId || journey.interaction.activeDestinationRoute) {
+      emitOrbRuntimeEvent('target_one_tour_start_blocked', { blockedReason: 'awaiting_governed_interaction', stage: journey.stage, stopId: journey.currentStopId, pendingQuestionId: journey.interaction.pendingQuestionId, activeDestinationRoute: journey.interaction.activeDestinationRoute });
+      return;
+    }
+    emitOrbRuntimeEvent('target_one_tour_controller_initialized', {
+      stage: journey.stage,
+      chapterId: journey.currentChapterId,
+      stopId: journey.currentStopId,
+      modelEndpoint: 'http://127.0.0.1:16520/api/generate',
+      apiEndpoint: 'http://127.0.0.1:16666/api/orb/website-text',
+    });
     landingTourRunningRef.current = true;
     let settleTour: () => void = () => undefined;
     landingTourSettledRef.current = new Promise<void>(resolve => { settleTour = resolve; });
@@ -1903,6 +1890,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         save: saveWebsiteJourney,
         verifySection: async (stop, signal) => {
           if (signal.aborted) return false;
+          emitOrbRuntimeEvent('target_one_governed_stop_activated', { stage: journey.stage, chapterId: websiteJourneyRef.current?.currentChapterId || null, stopId: stop.id });
           const section = document.querySelector<HTMLElement>(stop.sectionDomSelector);
           if (!section?.id) return false;
           if (stop.id === 'stop-hero-meet') {
@@ -1924,7 +1912,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           const guided = await guideToPointerRecord(target, "Demonstrate verified visual guidance without activating the target", { signal });
           return Boolean(guided) && !signal.aborted;
         },
-        converse: async (chapter, stop, missing, signal, attempt) => {
+        converse: async (chapter, stop, missing, engagement: TourEngagementQuestion | null, signal, attempt) => {
           const section = document.querySelector<HTMLElement>(stop.sectionDomSelector);
           if (!section || signal.aborted) throw new DOMException("Tour interrupted", "AbortError");
           const sourceSelectors = TOUR_STOP_SOURCE_SELECTORS[stop.id] || [stop.sectionDomSelector];
@@ -1935,7 +1923,8 @@ export const AutonomousOrb: React.FC<Props> = ({
           setStatusTitle("Preparing voice");
           setStatusLine("Weaver is preparing this tour stop.");
           showStatus();
-          emitOrbRuntimeEvent('tour_converse_started', { stopId: stop.id, evidenceAttempt: attempt });
+          emitOrbRuntimeEvent('tour_converse_started', { stopId: stop.id, evidenceAttempt: attempt, apiEndpoint: 'http://127.0.0.1:16666/api/orb/website-text' });
+          const interaction = websiteJourneyRef.current?.interaction || journey.interaction;
           const result = await api.websiteOrbText(`Explain the current landing tour stop: ${stop.id}.`, true, signal, {
             project_id: activeOrbContext?.project_id,
             target_url: contextTargetUrl(),
@@ -1949,11 +1938,21 @@ export const AutonomousOrb: React.FC<Props> = ({
                 presentation_guidance: [...(chapter.presentationGuidance || []), ...(stop.presentationGuidance ? [stop.presentationGuidance] : [])],
                 visible_section_text: sourceText.slice(0, 8000),
                 evidence_attempt: attempt,
+                // A failed articulation did not ask the visitor anything, so
+                // retain this governed question for the final evidence attempt.
+                engagement_question: engagement ? { id: engagement.id, prompt: engagement.prompt, intent: engagement.intent } : null,
+                interaction_context: {
+                  recent_weaver_statements: interaction.recentWeaverStatements,
+                  covered_concept_ids: websiteJourneyRef.current?.completedTourConceptIds || journey.completedTourConceptIds,
+                  asked_question_ids: interaction.askedQuestionIds,
+                  visited_routes: interaction.visitedRoutes,
+                  answer_signals: interaction.answerSignals,
+                },
               },
             },
           });
           if (signal.aborted) throw new DOMException("Tour interrupted", "AbortError");
-          emitOrbRuntimeEvent('tour_converse_received', { stopId: stop.id, hasAudio: Boolean(result.tts_audio_url), hasEvidence: Boolean(result.chapter_evaluation) });
+          emitOrbRuntimeEvent('tour_converse_received', { stopId: stop.id, hasAudio: Boolean(result.tts_audio_url), hasEvidence: Boolean(result.chapter_evaluation), llmSource: result.llm_source });
           emitOrbRuntimeEvent('tour_articulation_received', {
             stopId: stop.id,
             source_facts: sourceText.slice(0, 2500),
@@ -1961,10 +1960,13 @@ export const AutonomousOrb: React.FC<Props> = ({
               purpose: stop.purpose,
               required_concepts: missing.map((concept) => ({ id: concept.id, description: concept.description })),
             },
-            raw_spoken_output: result.spoken_output,
-            final_spoken_text: result.spoken_output,
+            raw_spoken_output: result.tour_articulation_trace?.raw_model_output || result.tour_articulation_trace?.generated_output || result.spoken_output,
+            evidence_model_output: result.tour_articulation_trace?.evidence_model_output || null,
+            sanitized_output: result.tour_articulation_trace?.sanitized_output || result.spoken_output,
+            final_spoken_text: result.tour_articulation_trace?.delivered_output || result.spoken_output,
             llm_source: result.llm_source,
             tts_provider: result.tts_provider || null,
+            site_world_slice: result.tour_articulation_trace?.site_world_slice || null,
           });
           const evaluation = parseChapterEvaluation(result.chapter_evaluation, result.spoken_output);
           const cancelPlayback = () => {
@@ -1978,13 +1980,43 @@ export const AutonomousOrb: React.FC<Props> = ({
             const played = await speakWithGeneratedAudio(result.spoken_output, result.tts_audio_url, result.tts_provider);
             if (signal.aborted) throw new DOMException("Tour interrupted", "AbortError");
             if (!played) throw new Error("Voice playback did not finish. Your tour position is saved.");
+            const currentJourney = websiteJourneyRef.current;
+            if (currentJourney) {
+              saveWebsiteJourney({
+                ...currentJourney,
+                interaction: {
+                  ...currentJourney.interaction,
+                  recentWeaverStatements: [...currentJourney.interaction.recentWeaverStatements, result.spoken_output].slice(-4),
+                },
+              });
+            }
             return evaluation;
           } finally { signal.removeEventListener('abort', cancelPlayback); }
         },
       }, controller.signal);
     } catch (error) {
       if (controller.signal.aborted || (error as Error)?.name === "AbortError") return;
-      setTourNotice(error instanceof Error ? error.message : "The tour is paused. Your position is saved.");
+      const message = error instanceof Error ? error.message : "The tour is paused. Your position is saved.";
+      const status = error instanceof ApiError ? error.status : null;
+      const cognitionUnavailable = status === 503 && /dynamic tour cognition/i.test(message);
+      emitOrbRuntimeEvent('target_one_tour_execution_blocked', {
+        stage: websiteJourneyRef.current?.stage || null,
+        chapterId: websiteJourneyRef.current?.currentChapterId || null,
+        stopId: websiteJourneyRef.current?.currentStopId || null,
+        httpStatus: status,
+        reason: message,
+        cognitionUnavailable,
+      });
+      if (cognitionUnavailable) {
+        cognitionUnavailableRef.current = true;
+        handsFreeEnabledRef.current = false;
+        setTourNotice('Weaver’s guided tour is paused because live cognition is unavailable. Your place is saved.');
+        setStatusTitle('Tour waiting for live cognition');
+        setStatusLine('Weaver cannot begin this guided stop until the live reasoning service returns.');
+        showStatus(7200);
+      } else {
+        setTourNotice(message);
+      }
     } finally {
       if (landingTourAbortControllerRef.current === controller) landingTourAbortControllerRef.current = null;
       landingTourRunningRef.current = false;
@@ -2007,6 +2039,17 @@ export const AutonomousOrb: React.FC<Props> = ({
     } catch (error) { setTourNotice((error as Error).message); }
   }, [runLandingTour, saveWebsiteJourney]);
 
+  const retryPausedTour = useCallback(() => {
+    cognitionUnavailableRef.current = false;
+    setTourNotice('');
+    emitOrbRuntimeEvent('target_one_tour_retry_requested', {
+      stage: websiteJourneyRef.current?.stage || null,
+      chapterId: websiteJourneyRef.current?.currentChapterId || null,
+      stopId: websiteJourneyRef.current?.currentStopId || null,
+    });
+    void resumeLandingTour();
+  }, [resumeLandingTour]);
+
   const chooseTourDecision = useCallback((action: TourDecisionAction) => {
     const state = websiteJourneyRef.current;
     if (!state || !isTourDecisionReady(state)) return false;
@@ -2023,6 +2066,49 @@ export const AutonomousOrb: React.FC<Props> = ({
       setTourNotice((error as Error).message);
       return false;
     }
+  }, [navigate, saveWebsiteJourney]);
+
+  const applyEngagementAnswer = useCallback((transcript: string): boolean => {
+    const state = websiteJourneyRef.current;
+    const question = engagementById(state?.interaction.pendingQuestionId || null);
+    if (!state || !question) return false;
+    const selection = classifyEngagementAnswer(question, transcript);
+    if (!selection) {
+      setTourNotice("I am keeping your place. Tell me which of the two directions matters more to you, or ask me a different question.");
+      return false;
+    }
+    const destination = resolveGovernedDestination(state, question, selection.semanticCategory);
+    if (!destination) {
+      // An old or tampered persisted route list must not silently create a
+      // second navigation authority. Preserve the question for recovery.
+      setTourNotice("I am keeping your place while I recheck the available direction.");
+      emitOrbRuntimeEvent("tour_engagement_destination_blocked", {
+        questionId: question.id,
+        answerSignal: selection.optionId,
+        semanticCategory: selection.semanticCategory,
+      });
+      return false;
+    }
+    saveWebsiteJourney({
+      ...state,
+      interaction: {
+        ...state.interaction,
+        pendingQuestionId: null,
+        eligibleDestinationRoutes: [],
+        eligibleDestinationScope: null,
+        activeDestinationRoute: destination,
+        answerSignals: { ...state.interaction.answerSignals, [question.id]: selection.optionId },
+        visitedRoutes: [...new Set([...state.interaction.visitedRoutes, destination])],
+      },
+    });
+    emitOrbRuntimeEvent("tour_engagement_destination_selected", {
+      questionId: question.id,
+      answerSignal: selection.optionId,
+      semanticCategory: selection.semanticCategory,
+      destinationRoute: destination,
+    });
+    navigate(destination);
+    return true;
   }, [navigate, saveWebsiteJourney]);
 
   const processRecordedOrbAudio = useCallback(async (audio: Blob) => {
@@ -2076,6 +2162,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         target_url: targetUrl,
         experience,
       });
+      if (applyEngagementAnswer(result.transcript || "")) return;
       const decisionAction = resolveTourDecisionAction(result.transcript || "");
       if (decisionAction && chooseTourDecision(decisionAction)) return;
       const spokenOutput = result.spoken_output;
@@ -2115,10 +2202,22 @@ export const AutonomousOrb: React.FC<Props> = ({
       }
     } catch (error) {
       if ((error as Error)?.name === "AbortError") return;
-      setStatusTitle("Voice reconnecting");
-      setStatusLine("Voice temporarily unavailable");
+      const message = error instanceof Error ? error.message : "Voice temporarily unavailable";
+      const status = error instanceof ApiError ? error.status : null;
+      const cognitionUnavailable = status === 503 && /cognition.*unavailable|act was not advanced/i.test(message);
+      if (cognitionUnavailable) {
+        cognitionUnavailableRef.current = true;
+        handsFreeEnabledRef.current = false;
+        setTourNotice('Weaver is holding here until live cognition returns. Your tour place is saved.');
+        setStatusTitle('Voice waiting for live cognition');
+        setStatusLine('Automatic listening is paused to avoid retrying an unavailable reasoning service.');
+        emitOrbRuntimeEvent('voice_turn_cognition_blocked', { turnId, httpStatus: status, reason: message });
+      } else {
+        setStatusTitle("Voice reconnecting");
+        setStatusLine("Voice temporarily unavailable");
+      }
       setVoiceState("idle");
-      showStatus(3600);
+      showStatus(cognitionUnavailable ? 7200 : 3600);
     } finally {
       if (activeVoiceAbortControllerRef.current === controller) {
         activeVoiceAbortControllerRef.current = null;
@@ -2128,7 +2227,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       }
       logVoice("finalized", turnId);
     }
-  }, [activeOrbContext?.project_id, chooseTourDecision, contextTargetUrl, executeOrbControlAction, firstEncounterComplete, freezeOrbInPlace, guideFromRuntimeResult, logVoice, markFirstEncounter, markVisitorActivity, resumeLandingTour, showStatus, speakWithGeneratedAudio]);
+  }, [activeOrbContext?.project_id, applyEngagementAnswer, chooseTourDecision, contextTargetUrl, executeOrbControlAction, firstEncounterComplete, freezeOrbInPlace, guideFromRuntimeResult, logVoice, markFirstEncounter, markVisitorActivity, resumeLandingTour, showStatus, speakWithGeneratedAudio]);
 
   const stopOrbRecording = useCallback((cancel = false) => {
     if (recordingStopTimerRef.current) {
@@ -3113,7 +3212,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     const journey = websiteJourneyRef.current;
     if (!journeyReadyRef.current || !journey) return;
     // Route arrival is observable evidence; it is not evidence of a scan running.
-    if (location.pathname === "/preflight" && journey.stage === "LANDING_TOUR") {
+    if (location.pathname === "/preflight" && journey.stage === "LANDING_TOUR" && !journey.interaction.activeDestinationRoute) {
       try {
         saveWebsiteJourney({ ...journey, stage: "PREFLIGHT", currentChapterId: null, currentStopId: null,
           currentStopCoveredConceptIds: [],
@@ -3129,6 +3228,50 @@ export const AutonomousOrb: React.FC<Props> = ({
       return () => window.clearTimeout(timer);
     }
   }, [location.pathname, onboardingSafeMode, runLandingTour, saveWebsiteJourney]);
+
+  useEffect(() => {
+    const journey = websiteJourneyRef.current;
+    const destination = journey?.interaction.activeDestinationRoute;
+    if (!journey || !destination || destination !== location.pathname || routeArrivalInFlightRef.current === destination) return;
+    routeArrivalInFlightRef.current = destination;
+    const controller = new AbortController();
+    const arrivalObjective = "Continue the governed visitor conversation on this selected page. Explain how this page answers the visitor's stated direction, without claiming completion or choosing a further destination.";
+    void api.websiteOrbText("Continue from the visitor's selected direction on the current page.", true, controller.signal, {
+      project_id: activeOrbContext?.project_id,
+      target_url: contextTargetUrl(),
+      experience: {
+        phase: "understanding",
+        objective: arrivalObjective,
+        verification_state: "verified",
+        demonstrated_capabilities: ["governed cross-page continuity", "current-page explanation"],
+      },
+    }).then(async (result) => {
+      if (controller.signal.aborted) return;
+      emitOrbRuntimeEvent("tour_engagement_destination_arrived", {
+        route: destination,
+        sourceLane: result.source_lane || result.llm_source,
+        llmSource: result.llm_source,
+      });
+      const played = await speakWithGeneratedAudio(result.spoken_output, result.tts_audio_url, result.tts_provider);
+      if (!played || controller.signal.aborted) return;
+      const current = websiteJourneyRef.current;
+      if (current?.interaction.activeDestinationRoute === destination) {
+        saveWebsiteJourney({
+          ...current,
+          interaction: {
+            ...current.interaction,
+            activeDestinationRoute: null,
+            recentWeaverStatements: [...current.interaction.recentWeaverStatements, result.spoken_output].slice(-4),
+          },
+        });
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted) setTourNotice("Your selected page is open. My conversational response is temporarily unavailable, and your place is saved.");
+    }).finally(() => {
+      if (routeArrivalInFlightRef.current === destination) routeArrivalInFlightRef.current = null;
+    });
+    return () => controller.abort();
+  }, [activeOrbContext?.project_id, contextTargetUrl, location.pathname, saveWebsiteJourney, speakWithGeneratedAudio]);
 
   useEffect(() => () => {
     landingTourAbortControllerRef.current?.abort();
@@ -3192,7 +3335,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         });
       }
 
-      await wait(700);
+      await wait(AMBIENT_INITIAL_DWELL_MS);
 
       while (activeRef.current) {
         if (startupUnresolved()) {
@@ -3257,7 +3400,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           x: destination.x,
           y: destination.y,
           transition: {
-            duration: Math.max(2.5, Math.min(4.8, travelDistance / AMBIENT_TRAVEL_PX_PER_SECOND)),
+            duration: Math.max(4.8, Math.min(9.6, travelDistance / AMBIENT_TRAVEL_PX_PER_SECOND)),
             ease: [0.37, 0, 0.22, 1],
           },
         });
@@ -3271,7 +3414,7 @@ export const AutonomousOrb: React.FC<Props> = ({
 
         if (!activeRef.current) break;
 
-        await wait(AMBIENT_SETTLE_MS);
+        await wait(AMBIENT_SETTLE_MIN_MS + Math.round(Math.random() * AMBIENT_SETTLE_VARIANCE_MS));
       }
     };
 
@@ -3525,6 +3668,16 @@ export const AutonomousOrb: React.FC<Props> = ({
           aria-label="Weaver speech"
         >
           <span>{speechCaption.revealedText || speechCaption.fullText}</span>
+        </aside>
+      )}
+      {tourNotice && !speechCaption.fullText && (
+        <aside className="ow-v2-orb-speech ow-v2-orb-notice" role="status" aria-live="polite">
+          <span>{tourNotice}</span>
+          {cognitionUnavailableRef.current && (
+            <button type="button" className="ow-v2-orb-notice-retry" onClick={retryPausedTour}>
+              Retry guided tour
+            </button>
+          )}
         </aside>
       )}
     </motion.div>

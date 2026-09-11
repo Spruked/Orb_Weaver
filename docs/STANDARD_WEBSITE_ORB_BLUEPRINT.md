@@ -1,5 +1,12 @@
 # Standard Website ORB Blueprint
 
+> **STATUS: REWRITE REQUIRED — do not treat this draft as current runtime
+> instruction.** It predates the documentation-authority model and contains
+> obsolete storage, movement, and optional Desktop-integration assumptions.
+> Current code must follow the release command sheet, transactional doctrine,
+> Stage Governor contracts, canonical-Vault policy, and current operations
+> documents until this blueprint is regenerated from them.
+
 This is the reusable ORB deployment pattern from Orb Weaver, separated from this site's visual branding. Use it when building a new Website ORB that should feel like the same living voice-and-motion system, without copying the exact page design.
 
 ## Goal

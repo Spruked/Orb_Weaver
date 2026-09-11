@@ -1,8 +1,13 @@
 # Orb Weaver Intelligence Preservation
 
-Orb Weaver learns locally from each website and globally from anonymized patterns across all scanned sites.
+**Implemented invariant:** all persistent Orb Weaver intelligence resolves
+through the repository-root `vault_system/`. No backend, ORB component,
+crawler, scanner, or legacy substrate path may maintain an independent store.
 
-All stored intelligence resolves through the repository-root `vault_system/`. No backend, ORB component, crawler, scanner, or legacy substrate path may maintain an independent store.
+**Planned/optional capability:** anonymized cross-site pattern learning may
+operate only when its privacy boundary, retention policy, and evidence are
+implemented and verified. It is not implied by the presence of the global
+directory schema below.
 
 ## Private Client Intelligence
 
@@ -46,7 +51,8 @@ Preserved private data includes:
 
 ## Global Anonymized Intelligence
 
-Global learning writes pattern-only records under the same canonical vault:
+When enabled and verified, global learning writes pattern-only records under
+the same canonical vault:
 
 ```text
 vault_system/indexes/global_intelligence/
@@ -86,7 +92,7 @@ Global intelligence is pattern-based only. Client intelligence remains private t
 ```text
 Orb Weaver scans
   -> vault_system/clients/<domain> is updated
-  -> anonymized global pattern event is appended under vault_system/indexes
+  -> optional verified anonymized global pattern event is appended under vault_system/indexes
   -> Website ORB reads the current client Site World and verified pointer map
   -> Website ORB can improve responses and recommendations over time
 ```

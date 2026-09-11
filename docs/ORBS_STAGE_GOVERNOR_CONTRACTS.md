@@ -35,6 +35,11 @@ backward-compatible contract amendment.
    closed.
 10. All contract records persist through the sole Vault-backed database.
 
+Resolver visibility of an approved visitor tool or bounded authenticated-memory
+record does not grant action authority. Execution remains limited to the fresh
+snapshot's `allowed_actions` and its confirmation, destination, and
+idempotency requirements.
+
 ## Guest merge flow
 
 ```text
@@ -51,4 +56,3 @@ transition. The returned snapshot determines the next legal action—normally
 `run_preflight` for a newly created project.
 
 No frontend or Orb Assistant code may perform or infer this merge locally.
-

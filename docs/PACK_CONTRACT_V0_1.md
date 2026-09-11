@@ -44,8 +44,8 @@ vault_system/clients/<domain>/
     latest_crawl.json
     latest_audit.json
   history/
-    crawl_<id>.json
-    audit_<id>.json
+    events.jsonl
+    retained_proof/
   recommendations/
     audit_<id>_recommendations.json
   website_orb_context/
@@ -136,9 +136,11 @@ Basic:
 - no customer-specific visitor memory
 - no Desktop MCP dependency
 
-Premium:
+Enhanced:
 
-- customer-aware context only when login integration exists
+- authenticated personal/customer memory only when login integration exists;
+  this is a bounded evidence lane separate from public Site World and remains
+  subject to account authorization
 - approved customer pointers only
 - denser maintained pointer coverage and richer route-specific intents
 - governance layer required
@@ -151,6 +153,12 @@ Platinum:
 - advanced history and recommendation timeline
 - desktop/app-window pointer targets where applicable
 - deeper MCP/Desktop workflows through DockStation or deliberately configured adapters
+
+History retains compact events, deltas, and proof required for provenance.
+It must not imply unbounded retention of duplicate full crawls or audits.
+
+Global anonymized intelligence is a contracted optional capability, not a
+claim that a cross-site learning pipeline is currently operating.
 
 ## Scoring Weights
 

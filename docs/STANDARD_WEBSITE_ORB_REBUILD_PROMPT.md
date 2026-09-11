@@ -1,5 +1,10 @@
 # Standard Website ORB Rebuild Prompt
 
+> **QUARANTINED — NOT CURRENT IMPLEMENTATION AUTHORITY.** This prompt contains
+> superseded runtime and storage instructions and must not be supplied to an
+> implementation agent. Regenerate it only from the rewritten canonical
+> Website ORB blueprint and the current documentation-authority map.
+
 Use this prompt when asking Codex or another coding agent to rebuild the same basic ORB system in another site. Replace bracketed values before using.
 
 ```text
