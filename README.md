@@ -334,6 +334,31 @@ Backend API: http://127.0.0.1:16500
 Frontend UI: http://127.0.0.1:16510
 ```
 
+## Isolated non-Docker development
+
+The reviewed Docker runtime stays on `16500` / `16510`. For source changes,
+use the isolated local lane instead; it runs the backend on `16666` and the
+hot-reload frontend on `16667`. By default, its database, logs, and process
+IDs live in a fresh `/tmp/orb-weaver-dev.*` directory, so running the developer
+environment does not modify tracked repository files or the production vault.
+The governed speech cache stays under `vault_system/development` because the
+runtime enforces that cache boundary. Set `ORB_WEAVER_DEV_RUNTIME_ROOT` to
+retain the disposable runtime state between runs.
+
+```bash
+./scripts/start-dev-runtime.sh
+```
+
+In another terminal, verify the process pair:
+
+```bash
+curl -fsS http://127.0.0.1:16666/health
+curl -fsS http://127.0.0.1:16667/
+cd frontend && npm run verify:weaver-startup
+```
+
+The dev launcher does not build, restart, or modify Docker services.
+
 ## Windows Local Commands
 
 ```powershell

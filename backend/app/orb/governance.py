@@ -135,7 +135,7 @@ def finalize_governance_trace(
     evidence_ids = [str(item) for item in resolved.get("evidence_ids") or []]
     trace["governance_trace_id"] = f"GT-RUNTIME-{_hash({'versions': compiled['versions'], 'answer_hash': resolved.get('answer_hash'), 'evidence_ids': evidence_ids})[:24]}"
     deterministic = (
-        lane in {"control", "catalog", "apriori", "posteriori", "site_world"}
+        lane in {"control", "catalog", "memory", "apriori", "posteriori", "site_world"}
         and bool(resolved.get("query_correspondence_verified", True))
     )
     trace.update(

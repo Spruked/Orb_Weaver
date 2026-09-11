@@ -66,7 +66,8 @@ function installSpeechBubbleViewportGuard(): void {
     bubble.style.width = `${width}px`;
     bubble.style.maxWidth = `${width}px`;
     bubble.style.maxHeight = `${maxHeight}px`;
-    bubble.style.overflowY = 'auto';
+    bubble.style.overflowY = 'hidden';
+    bubble.style.bottom = 'auto';
     bubble.style.overflowWrap = 'anywhere';
     bubble.style.transform = 'none';
 

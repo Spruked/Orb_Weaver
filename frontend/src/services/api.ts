@@ -8,8 +8,7 @@ function defaultApiBaseUrl() {
   const pairedApiPorts: Record<string, string> = {
     '16510': '16500',
     '16610': '16600',
-    '16666': '19667',
-    '16667': '19667',
+    '16667': '16666',
     '16777': '16776',
   };
   const isLocalOrPrivateHost =

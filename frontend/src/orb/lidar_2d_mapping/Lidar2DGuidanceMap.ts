@@ -151,7 +151,7 @@ export function buildLidarGuidanceMap(options: BuildLidarGuidanceMapOptions = {}
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     const distance = orb ? Math.hypot(centerX - orb.x, centerY - orb.y) : undefined;
-    const preflightStatus = url && options.preflightByUrl?.[url] || 'unknown';
+    const preflightStatus = (url && options.preflightByUrl?.[url]) || 'unknown';
 
     features.push({
       id,

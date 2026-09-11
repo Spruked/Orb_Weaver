@@ -96,6 +96,9 @@ class CanonicalTurnResolver:
             semantic = self._catalog(query, CatalogRepository(catalog_path))
             attempts.append({"lane": "catalog", "matched": bool(semantic)})
         if semantic is None:
+            semantic = self._memory(query, (model_context or {}).get("memory_context") or {})
+            attempts.append({"lane": "memory", "matched": bool(semantic)})
+        if semantic is None:
             semantic = self._apriori(query, apriori or {})
             attempts.append({"lane": "apriori", "matched": bool(semantic)})
         if semantic is None and self.vault_skg_lookup:
@@ -186,7 +189,7 @@ class CanonicalTurnResolver:
             "spoken_output": articulation["spoken_text"],
             "trace": {
                 "schema": "orb_weaver.canonical_turn_trace.v1",
-                "resolution_order": ["control", "catalog", "apriori", "posteriori", "site_world", "local_model", "external_provider", "articulation"],
+                "resolution_order": ["control", "catalog", "memory", "apriori", "posteriori", "site_world", "local_model", "external_provider", "articulation"],
                 "attempts": attempts,
                 "factual_source": {"lane": semantic["source_lane"], "evidence_ids": semantic["evidence_ids"]},
                 "semantic_resolution": {"answer_state": semantic["answer_state"], "confidence": semantic["confidence"]},
@@ -205,14 +208,14 @@ class CanonicalTurnResolver:
             "source": source_lane,
             "evidence_ids": evidence_ids,
             "confidence": round(confidence, 3),
-            "verification_state": "verified" if source_lane in {"control", "catalog", "apriori", "posteriori", "site_world"} else "not_verified",
+            "verification_state": "verified" if source_lane in {"control", "catalog", "memory", "apriori", "posteriori", "site_world"} else "not_verified",
             "escalation_used": None,
             "learning_eligible": source_lane not in {"control", "catalog", "apriori", "posteriori", "site_world"},
-            "source_truth_confidence": 1.0 if source_lane in {"control", "catalog", "apriori", "posteriori", "site_world"} else 0.0,
+            "source_truth_confidence": 1.0 if source_lane in {"control", "catalog", "memory", "apriori", "posteriori", "site_world"} else 0.0,
             "query_correspondence_confidence": round(confidence, 3),
             "query_correspondence_verified": (
                 source_lane == "control"
-                or (source_lane in {"catalog", "apriori", "posteriori", "site_world"} and confidence >= 0.62)
+                or (source_lane in {"catalog", "memory", "apriori", "posteriori", "site_world"} and confidence >= 0.62)
             ),
         }
 
@@ -252,6 +255,36 @@ class CanonicalTurnResolver:
                 answer="Stopped.", source_lane="control", answer_state="known", evidence_ids=["control:stop"], confidence=1.0
             )
         return None
+
+    def _memory(self, query: str, memory_context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Answer an explicit profile-memory question without exposing other users."""
+        normalized = " ".join(query.lower().split())
+        if not any(phrase in normalized for phrase in ("remember", "know me", "who am i", "my name")):
+            return None
+        for item in memory_context.get("items") or []:
+            if item.get("category") != "preferred_name" or not item.get("value"):
+                continue
+            key = str(item.get("key") or "preferred_name")
+            return self._semantic(
+                answer=f"I remember that you prefer to be addressed as {item['value']}.",
+                source_lane="memory",
+                answer_state="known",
+                evidence_ids=[f"memory:preferred_name:{key}"],
+                confidence=1.0,
+            )
+        if memory_context.get("scope") == "anonymous_session":
+            answer = "I do not retain personal profile information for anonymous visitors."
+            evidence_id = "memory:anonymous_session_policy"
+        else:
+            answer = "I do not have a saved preference for how to address you."
+            evidence_id = "memory:no_preferred_name"
+        return self._semantic(
+            answer=answer,
+            source_lane="memory",
+            answer_state="known",
+            evidence_ids=[evidence_id],
+            confidence=1.0,
+        )
 
     def _catalog(self, query: str, repository: CatalogRepository) -> Optional[Dict[str, Any]]:
         match = repository.lookup(query)
@@ -330,6 +363,12 @@ class CanonicalTurnResolver:
                     evidence_ids=["site_world:site_summary"],
                     confidence=0.9,
                 )
+        for tool in site_world.get("visitor_tools") or []:
+            tool_id = str(tool.get("id") or "").strip()
+            spoken_output = str(tool.get("spoken_output") or "").strip()
+            score = _score(query, [*(tool.get("keywords") or []), tool_id])
+            if tool_id and spoken_output and score >= 0.62 and (best is None or score > best[0]):
+                best = (score, spoken_output, [tool_id], "orb-runtime-context")
         for index, fact in enumerate(site_world.get("key_facts") or []):
             fact_text = str(fact).strip()
             score = _score(query, [fact_text])
@@ -348,7 +387,10 @@ class CanonicalTurnResolver:
                 best = (score, str(chunk.get("text") or "")[:900], [str(chunk.get("chunk_id") or chunk.get("content_hash") or "site_world")])
         if not best:
             return None
-        return self._semantic(answer=best[1], source_lane="site_world", answer_state="known", evidence_ids=best[2], confidence=best[0])
+        semantic = self._semantic(answer=best[1], source_lane="site_world", answer_state="known", evidence_ids=best[2], confidence=best[0])
+        if len(best) > 3:
+            semantic["runtime_source"] = best[3]
+        return semantic
 
     @staticmethod
     def _provider_prompt(query: str, site_world: Dict[str, Any], page_capsule: Dict[str, Any]) -> str:

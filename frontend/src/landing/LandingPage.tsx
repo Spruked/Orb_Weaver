@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import PublicHeader from "../components/PublicHeader";
 import PublicFooter from "../components/PublicFooter";
-import OrbBurst from "./OrbBurst";
 import { api, authStore } from "../services/api";
+import { currentSpeechCaption } from '../orb/speechCaptions';
 import { trackOnboardingEvent } from "../services/analytics";
 import { createIntentGuestSession, LandingIntent } from "../onboarding/guestOnboarding";
 import "./Landing.css";
@@ -11,7 +11,7 @@ const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
 const LANDING_SPLASH_COMPLETE_SESSION_KEY = "orbweaver-landing-splash-complete";
 const STARTUP_GREETING_SESSION_KEY = "orbweaver-startup-greeting-played";
 const FIRST_ENCOUNTER_STORAGE_KEY = "orbweaver-first-encounter-state";
-const SHOWROOM_INTRO_AUDIO_URL = "/orb/voice/weaver-showroom-intro-am-echo.wav";
+const LAST_INTRO_VARIANT_SESSION_KEY = "orbweaver-last-intro-variant";
 const POST_INTRO_READINESS_ATTEMPTS = 4;
 const POST_INTRO_READINESS_RETRY_MS = 2000;
 const INTRO_CAPTION_CUES = [
@@ -22,6 +22,22 @@ const INTRO_CAPTION_CUES = [
   { start: 11.8, end: 14.9, text: "Feel free to ask a question in your normal way and I will answer." },
   { start: 14.9, end: 15.775, text: "Let's get started." },
 ];
+type IntroVariant = {
+  id: string;
+  asset?: string;
+  text?: string;
+  cues: readonly { start: number; end: number; text: string }[];
+};
+
+const INTRO_VARIANTS: readonly IntroVariant[] = [
+  { id: "am-echo", asset: "/orb/voice/weaver-showroom-intro-am-echo.wav", cues: INTRO_CAPTION_CUES },
+  { id: "am-michael", asset: "/orb/voice/weaver-showroom-intro-am-michael.wav", cues: INTRO_CAPTION_CUES },
+  {
+    id: "kokoro-host",
+    text: "Welcome. I am Weaver, the intelligence that lives inside this website. I will show you what matters, guide you to what is real, and pause for your direction when it counts. Let’s begin together.",
+    cues: [],
+  },
+] as const;
 
 type IntroAudioState = "preloading" | "playing" | "autoplay_blocked" | "error" | "warming" | "blocked";
 type StartupReadinessResult = { ready: boolean; error?: string; [key: string]: unknown };
@@ -42,9 +58,9 @@ const LandingPage: React.FC = () => {
   const [error, setError] = useState('');
   const [visibleBeats, setVisibleBeats] = useState<Record<string, boolean>>({ beat1: true });
   const [splashTrigger, setSplashTrigger] = useState(0);
-  const [introBeat, setIntroBeat] = useState<number | null>(null);
   const [introAudioState, setIntroAudioState] = useState<IntroAudioState>("preloading");
   const introAudioRef = useRef<HTMLAudioElement | null>(null);
+  const selectedIntroRef = useRef<IntroVariant | null>(null);
   const introPlaybackRequestRef = useRef<(() => void) | null>(null);
   const completeStartupGateRef = useRef<(voiceUnavailable?: boolean) => void>(() => undefined);
   const startupReadinessRef = useRef<Promise<StartupReadinessResult> | null>(null);
@@ -122,18 +138,29 @@ const LandingPage: React.FC = () => {
       window.dispatchEvent(new CustomEvent("orbweaver:startup-intro", { detail: { phase, ...detail } }));
     };
 
-    const audio = new Audio(SHOWROOM_INTRO_AUDIO_URL);
+    const previousVariantId = window.sessionStorage.getItem(LAST_INTRO_VARIANT_SESSION_KEY);
+    const availableVariants = INTRO_VARIANTS.filter((variant) => variant.id !== previousVariantId);
+    const introVariant = selectedIntroRef.current || availableVariants[Math.floor(Math.random() * availableVariants.length)] || INTRO_VARIANTS[0];
+    selectedIntroRef.current = introVariant;
+    window.sessionStorage.setItem(LAST_INTRO_VARIANT_SESSION_KEY, introVariant.id);
+    const audio = new Audio();
     let playbackRequested = false;
     let introFailed = false;
     let startupCompletionRequested = false;
+    let lastCaption: string | null = null;
+    const synthesisController = new AbortController();
+    let synthesisTimer: number | undefined;
     audio.preload = "auto";
+    audio.playbackRate = 0.9;
+    audio.defaultPlaybackRate = 0.9;
+    audio.preservesPitch = true;
     introAudioRef.current = audio;
     setIntroAudioState("preloading");
-    setIntroBeat(null);
     emitIntro("INTRO_AUDIO_REQUESTED", {
-      provider: "kokoro",
-      voice: "am_echo",
-      asset: SHOWROOM_INTRO_AUDIO_URL,
+      provider: introVariant.id === "kokoro-host" ? "kokoro" : "recorded",
+      voice: introVariant.id,
+      variant: introVariant.id,
+      asset: introVariant.asset || null,
     });
 
     const completeStartup = (voiceUnavailable = false) => {
@@ -144,28 +171,38 @@ const LandingPage: React.FC = () => {
 
     const syncCaption = () => {
       if (cancelled) return;
-      const cueIndex = INTRO_CAPTION_CUES.findIndex(
-        (cue) => audio.currentTime >= cue.start && audio.currentTime < cue.end,
+      // Recorded variants share wording, but have different audio durations.
+      const cueTime = introVariant.cues.length && Number.isFinite(audio.duration)
+        ? audio.currentTime * INTRO_CAPTION_CUES[INTRO_CAPTION_CUES.length - 1].end / audio.duration
+        : audio.currentTime;
+      const cueIndex = introVariant.cues.findIndex(
+        (cue) => cueTime >= cue.start && cueTime < cue.end,
       );
-      const nextCue = cueIndex >= 0 ? cueIndex : null;
-      setIntroBeat((current) => (current === nextCue ? current : nextCue));
+      const cue = cueIndex >= 0 ? introVariant.cues[cueIndex] : null;
+      const nextCaption = cue
+        ? currentSpeechCaption(cue.text, cueTime - cue.start, cue.end - cue.start)
+        : introVariant.text ? currentSpeechCaption(introVariant.text, audio.currentTime, audio.duration) : null;
+      if (nextCaption !== lastCaption) {
+        lastCaption = nextCaption;
+        emitIntro("INTRO_CAPTION", { text: nextCaption });
+      }
     };
 
     const fail = (phase: "INTRO_AUTOPLAY_BLOCKED" | "INTRO_AUDIO_ERROR", detail: Record<string, unknown> = {}) => {
       if (cancelled || introFailed) return;
       introFailed = true;
-      setIntroBeat(null);
+      emitIntro("INTRO_CAPTION", { text: null });
       setIntroAudioState(phase === "INTRO_AUTOPLAY_BLOCKED" ? "autoplay_blocked" : "error");
       emitIntro(phase, { ...detail });
       // Audible autoplay is normally blocked on a first visit. Keep the
       // startup cover in place and let one visitor tap resume the scripted
       // Web Audio path; do not silently discard the spoken introduction.
-      if (phase === "INTRO_AUDIO_ERROR") completeStartup(true);
     };
 
     const startPlayback = () => {
       if (cancelled || introFailed || playbackRequested) return;
       playbackRequested = true;
+      audio.playbackRate = 0.9;
       void audio.play().then(() => {
         if (cancelled || introFailed) return;
         setIntroAudioState("playing");
@@ -188,6 +225,10 @@ const LandingPage: React.FC = () => {
 
     introPlaybackRequestRef.current = () => {
       if (cancelled) return;
+      if (!audio.getAttribute('src')) {
+        setSplashTrigger(Date.now());
+        return;
+      }
       introFailed = false;
       setIntroAudioState("preloading");
       startPlayback();
@@ -201,16 +242,33 @@ const LandingPage: React.FC = () => {
     };
     audio.onended = () => {
       if (cancelled) return;
-      setIntroBeat(null);
+      emitIntro("INTRO_CAPTION", { text: null });
       emitIntro("INTRO_AUDIO_ENDED", { asset: audio.currentSrc, duration: audio.duration });
       window.sessionStorage.setItem(STARTUP_GREETING_SESSION_KEY, "1");
       completeStartup();
     };
-    audio.load();
-    if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) startPlayback();
+    void (async () => {
+      try {
+        synthesisTimer = window.setTimeout(() => synthesisController.abort(), 20000);
+        const generated = introVariant.asset
+          ? introVariant.asset
+          : (await api.websiteOrbTts(introVariant.text || "", synthesisController.signal, "kokoro")).tts_audio_url;
+        if (cancelled || !generated) throw new Error("Intro audio unavailable");
+        audio.src = introVariant.asset ? generated : api.orbMediaUrl(generated);
+        audio.load();
+        if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) startPlayback();
+      } catch {
+        if (cancelled) return;
+        fail("INTRO_AUDIO_ERROR", { error: "Intro synthesis unavailable" });
+      } finally {
+        window.clearTimeout(synthesisTimer);
+      }
+    })();
 
     return () => {
       cancelled = true;
+      synthesisController.abort();
+      window.clearTimeout(synthesisTimer);
       introAudioRef.current?.pause();
       introAudioRef.current = null;
       introPlaybackRequestRef.current = null;
@@ -225,23 +283,16 @@ const LandingPage: React.FC = () => {
   }, [splashTrigger]);
 
   const completeStartupGate = async (voiceUnavailable = false) => {
+    // The spoken intro is the visitor-facing startup gate. Readiness warming
+    // may continue in the background, but it must never strand the visitor on
+    // “Weaver is getting ready...” after the intro has ended.
     if (!voiceUnavailable) setIntroAudioState("warming");
-    const readiness = await beginStartupWarmup();
-    if (readiness.ready) {
-      window.sessionStorage.setItem(LANDING_SPLASH_SESSION_KEY, "1");
-      window.sessionStorage.setItem(LANDING_SPLASH_COMPLETE_SESSION_KEY, "1");
-      setSplashTrigger(0);
-      window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-complete", {
-        detail: { splash_state: "complete", readiness_state: "READY", readiness },
-      }));
-      return;
-    }
-
+    void beginStartupWarmup();
     window.sessionStorage.setItem(LANDING_SPLASH_SESSION_KEY, "1");
     window.sessionStorage.setItem(LANDING_SPLASH_COMPLETE_SESSION_KEY, "1");
     setSplashTrigger(0);
     window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-complete", {
-      detail: { splash_state: "complete", readiness_state: "BLOCKED", readiness_error: String(readiness.error || "readiness_timeout") },
+      detail: { splash_state: "complete", readiness_state: "WARMING", voice_unavailable: voiceUnavailable },
     }));
   };
   completeStartupGateRef.current = (voiceUnavailable = false) => {
@@ -298,20 +349,6 @@ const LandingPage: React.FC = () => {
           className="ow-cut-startup-gate"
           aria-live="polite"
         >
-          {introBeat !== null && (
-            <div className="ow-cut-startup-caption" key={INTRO_CAPTION_CUES[introBeat].text}>
-              {INTRO_CAPTION_CUES[introBeat].text}
-            </div>
-          )}
-          <div className="ow-cut-startup-burst" aria-hidden="true">
-            <OrbBurst
-              trigger={splashTrigger}
-              size={260}
-              color="blue"
-              direction="out"
-              onComplete={() => undefined}
-            />
-          </div>
           {(introAudioState === "autoplay_blocked" || introAudioState === "error" || introAudioState === "warming" || introAudioState === "blocked") && (
             <p className="ow-cut-startup-audio-status" role="status">
               {introAudioState === "warming"
@@ -320,10 +357,10 @@ const LandingPage: React.FC = () => {
                   ? "Audio needs your permission. Start with Weaver to hear the introduction."
                   : introAudioState === "blocked"
                     ? "Voice temporarily unavailable."
-                    : "Voice unavailable. Continuing startup..."}
+                    : "Introduction unavailable. Please retry."}
             </p>
           )}
-          {introAudioState === "autoplay_blocked" && (
+          {(introAudioState === "autoplay_blocked" || introAudioState === "error") && (
             <button
               type="button"
               className="ow-cut-startup-button"

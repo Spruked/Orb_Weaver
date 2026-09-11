@@ -1,10 +1,9 @@
 import { createInitialJourneyState, loadJourneyState, migrateStoredJourneyState, saveJourneyState, WEBSITE_JOURNEY_STORAGE_KEY, type WebsiteJourneyStateV2 } from "../state/tourControllerStore";
-import { getTourPosition, TOUR_POINTER_TARGETS, TOUR_STOP_SOURCE_SELECTORS } from "../tour/curriculum";
+import { TOUR_POINTER_TARGETS, TOUR_STOP_SOURCE_SELECTORS } from "../tour/curriculum";
 import { runTourController, isTourDecisionReady } from "../tour/controller";
 import { parseChapterEvaluation } from "../tour/evaluator";
 import type { TourDecisionAction } from "../types/tour";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { motion, useAnimationControls } from "framer-motion";
 import { Volume2, VolumeX } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -36,7 +35,7 @@ import {
   shouldRearmVoice,
   shouldRunMountedStartupVoiceSequence,
 } from "../orb/voiceLifecycle";
-import { canAdvanceCaptionProgression, captionProgressAtPlayback, splitSpeechIntoCaptionPhrases } from "../orb/speechCaptions";
+import { canAdvanceCaptionProgression, currentSpeechCaption } from "../orb/speechCaptions";
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, ms));
@@ -53,16 +52,13 @@ const END_SILENCE_MS = 2200;
 const ABSOLUTE_RECORDING_LIMIT_MS = 22000;
 const SPEECH_LEVEL_THRESHOLD = 0.018;
 const LIDAR_DRIFT_THRESHOLD_PX = 12;
-const ORB_SPEECH_PLAYBACK_RATE = 1.3;
+const ORB_SPEECH_PLAYBACK_RATE = 0.9;
 
-const MOVE_ASIDE_PHRASES = [
-  "weaver move", "move out of the way", "you are in my way", "you're in my way",
-  "get out of the way", "move over", "move aside", "please move",
-];
-
-const isMoveAsideRequest = (text: string): boolean => {
-  const normalized = text.toLowerCase().replace(/[’']/g, "'").replace(/\s+/g, " ").trim();
-  return MOVE_ASIDE_PHRASES.some((phrase) => normalized.includes(phrase));
+const resolveTourDecisionAction = (text: string): TourDecisionAction | null => {
+  const normalized = text.toLowerCase().replace(/[’']/g, "'").replace(/[^a-z0-9\s']/g, " ").replace(/\s+/g, " ").trim();
+  if (/\b(preflight|scan|start|begin|let's do it|lets do it|yes)\b/.test(normalized)) return "RUN_PREFLIGHT_NOW";
+  if (/\b(not now|later|continue exploring|keep exploring|skip|no thanks|no)\b/.test(normalized)) return "DEFER_PREFLIGHT";
+  return null;
 };
 
 const emitOrbRuntimeEvent = (phase: string, detail: Record<string, unknown> = {}) => {
@@ -134,8 +130,10 @@ type Props = {
 const HEADER_SAFE = 96;
 const ORB_OVERLAY_Z_INDEX = 2147483640;
 const EDGE = 8;
-const AMBIENT_TRAVEL_PX_PER_SECOND = 54;
-const AMBIENT_SETTLE_MS = 1900;
+// Keep Weaver visibly alive between guided actions without entering a target,
+// speaking over the visitor, or compromising the LiDAR-safe movement path.
+const AMBIENT_TRAVEL_PX_PER_SECOND = 72;
+const AMBIENT_SETTLE_MS = 850;
 const CURSOR_EVASION_COOLDOWN_MS = 850;
 const REST_AFTER_INACTIVITY_MS = 15 * 60 * 1000;
 const ACTIVE_ORB_OPACITY = 1;
@@ -146,6 +144,7 @@ const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
 const LANDING_SPLASH_COMPLETE_SESSION_KEY = "orbweaver-landing-splash-complete";
 const AMBIENT_VANTAGE_STORAGE_KEY = "orbweaver-ambient-vantage";
 const STARTUP_GATE_COMPLETE_EVENT = "orbweaver:startup-gate-complete";
+const startupUnresolved = () => isPublicLandingExperience() && window.sessionStorage.getItem(LANDING_SPLASH_COMPLETE_SESSION_KEY) !== '1';
 type StartupDiagnostics = {
   splash_state: "waiting" | "playing" | "complete" | "skipped_session_once";
   permission_state: "waiting" | "user_activated" | "requesting" | "ready" | "blocked";
@@ -354,7 +353,7 @@ const readAmbientVantagePreference = (): AmbientVantagePreference | null => {
 };
 
 const startupGreetingText = (): string => {
-  return "Hello. I am Weaver. I can help you with anything you need. I am not a chatbot. I make this website intelligent, so you can find things easier, navigate faster, process your orders quicker, and resolve issues seamlessly. Feel free to ask a question in your normal way and I will answer. Let's get started.";
+  return "Hello. I am Weaver. I make this website intelligent, so you can find what matters, move with confidence, and get things done without hunting through pages. I will lead us one step at a time, and I will check in when your direction matters. You can speak naturally at any point; if I miss you, tap me to interrupt. Let’s begin.";
 };
 
 const normalizeOrbDialogue = (text: string): string => text
@@ -452,8 +451,6 @@ export const AutonomousOrb: React.FC<Props> = ({
   const speechDetectedRef = useRef(false);
   const silenceStartedAtRef = useRef<number | null>(null);
   const speechRecognitionRef = useRef<any>(null);
-  const speechRecognitionTranscriptRef = useRef("");
-  const speechRecognitionDisabledRef = useRef(false);
   const speechRecognitionStopTimerRef = useRef<number | null>(null);
   const speechRecognitionAbsoluteTimerRef = useRef<number | null>(null);
   const speakerBoostRef = useRef(false);
@@ -471,9 +468,12 @@ export const AutonomousOrb: React.FC<Props> = ({
   const navigate = useNavigate();
   const [journeyBoot] = useState(() => loadJourneyState());
   const websiteJourneyRef = useRef<WebsiteJourneyStateV2 | null>(journeyBoot.state);
-  const [tourState, setTourState] = useState<WebsiteJourneyStateV2 | null>(journeyBoot.state);
-  const [tourNotice, setTourNotice] = useState('');
-  const journeyReadyRef = useRef(false);
+  const [, setTourState] = useState<WebsiteJourneyStateV2 | null>(journeyBoot.state);
+  const [, setTourNotice] = useState('');
+  // loadJourneyState() has already validated the initial in-memory snapshot.
+  // Mark it ready immediately so the startup intro cannot request the tour
+  // before the migration effect gets a chance to run.
+  const journeyReadyRef = useRef(Boolean(journeyBoot.state));
   const landingTourRunningRef = useRef(false);
   const landingTourSettledRef = useRef<Promise<void>>(Promise.resolve());
   const landingTourAbortControllerRef = useRef<AbortController | null>(null);
@@ -724,7 +724,7 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const nextDestination = useCallback(() => {
     const current = positionRef.current;
-    const minimumTravel = Math.max(76, size * 0.44);
+    const minimumTravel = Math.max(112, size * 0.62);
     const cursor = cursorRef.current && Date.now() - cursorRef.current.at < 8000 ? cursorRef.current : null;
     const cursorAvoidanceRadius = Math.max(184, size * 1.35);
     const lidarMap = buildLidarGuidanceMap({
@@ -808,6 +808,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const resumeAutonomousPresence = useCallback(async () => {
     const blockers = {
       inactive: !activeRef.current,
+      startup: startupUnresolved(),
       speech: speechPlaybackRef.current,
       guidance: guidanceActiveRef.current,
       control: controlMotionActiveRef.current,
@@ -850,7 +851,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       markVisitorActivity();
 
       if (
-        speechPlaybackRef.current || guidanceActiveRef.current || controlMotionActiveRef.current ||
+        startupUnresolved() || speechPlaybackRef.current || guidanceActiveRef.current || controlMotionActiveRef.current ||
         manualHoldRef.current || nudgePointerRef.current || Date.now() - lastCursorEvasionAtRef.current < CURSOR_EVASION_COOLDOWN_MS
       ) return;
 
@@ -1443,23 +1444,8 @@ export const AutonomousOrb: React.FC<Props> = ({
       window.clearTimeout(captionCollapseTimerRef.current);
       captionCollapseTimerRef.current = null;
     }
-    setSpeechCaption((current) => {
-      if (!current.fullText) return current;
-      const next = completed
-        ? { ...current, revealedText: current.fullText, phase: "complete" as const, collapsed: false, expanded: false }
-        : { ...current, phase: "interrupted" as const, collapsed: Boolean(current.revealedText), expanded: false };
-      emitOrbRuntimeEvent(completed ? "caption_completed" : "caption_stopped", {
-        revealedCharacters: next.revealedText.length,
-        fullCharacters: current.fullText.length,
-      });
-      return next;
-    });
-    if (completed) {
-      captionCollapseTimerRef.current = window.setTimeout(() => {
-        setSpeechCaption((current) => current.phase === "complete" ? { ...current, collapsed: true } : current);
-        captionCollapseTimerRef.current = null;
-      }, 2600);
-    }
+    setSpeechCaption({ fullText: '', revealedText: '', phase: 'idle', collapsed: false, expanded: false });
+    emitOrbRuntimeEvent(completed ? 'caption_completed' : 'caption_stopped');
   }, []);
 
   const startSpeechCaptions = useCallback((text: string, playback: () => { currentTime: number; duration: number; paused: boolean }) => {
@@ -1475,7 +1461,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     const advance = () => {
       const progress = playback();
       if (!canAdvanceCaptionProgression({ paused: progress.paused, cancelled: captionPlaybackCancelledRef.current })) return;
-      const next = captionProgressAtPlayback(text, progress.currentTime, progress.duration).revealedText;
+      const next = currentSpeechCaption(text, progress.currentTime, progress.duration);
       if (next !== lastRevealed) {
         lastRevealed = next;
         setSpeechCaption((current) => current.phase === "speaking" ? { ...current, revealedText: next } : current);
@@ -1601,40 +1587,36 @@ export const AutonomousOrb: React.FC<Props> = ({
       speechSourceRef.current = null;
     }
 
-    const response = await fetch(api.orbMediaUrl(audioUrl), { cache: "force-cache" });
-    if (!response.ok) {
-      throw new Error("Speech audio unavailable");
-    }
-
-    const buffer = await context.decodeAudioData(await response.arrayBuffer());
-    const source = context.createBufferSource();
+    const audio = new Audio(api.orbMediaUrl(audioUrl));
+    audio.crossOrigin = 'anonymous';
+    audio.playbackRate = ORB_SPEECH_PLAYBACK_RATE;
+    audio.defaultPlaybackRate = ORB_SPEECH_PLAYBACK_RATE;
+    audio.preservesPitch = true;
+    speechAudioRef.current = audio;
+    const source = context.createMediaElementSource(audio);
     const gain = context.createGain();
-    source.buffer = buffer;
-    source.playbackRate.value = ORB_SPEECH_PLAYBACK_RATE;
-    source.detune.value = -1200 * Math.log2(ORB_SPEECH_PLAYBACK_RATE);
     gain.gain.value = speakerBoostRef.current ? 1.85 : 1;
     const analyser = context.createAnalyser();
     source.connect(gain);
     gain.connect(analyser);
     analyser.connect(context.destination);
-    speechSourceRef.current = source;
 
     const settlement = createPlaybackSettlement();
     speechPlaybackSettlementRef.current = settlement;
-    source.onended = () => {
-      if (speechSourceRef.current === source) speechSourceRef.current = null;
+    audio.onended = () => {
+      if (speechAudioRef.current === audio) speechAudioRef.current = null;
       stopSpeechVisualizer();
       stopSpeechCaptions(!captionPlaybackCancelledRef.current);
       settlement.resolve();
     };
     try {
-      const startedAt = context.currentTime;
-      source.start();
+      audio.onerror = () => settlement.reject(new Error('Speech audio unavailable'));
+      await audio.play();
       if (captionText) {
         startSpeechCaptions(captionText, () => ({
-          currentTime: Math.max(0, context.currentTime - startedAt),
-          duration: buffer.duration / ORB_SPEECH_PLAYBACK_RATE,
-          paused: false,
+          currentTime: audio.currentTime,
+          duration: audio.duration,
+          paused: audio.paused,
         }));
       }
       startSpeechVisualizer(analyser);
@@ -1723,6 +1705,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       audio.muted = false;
       audio.volume = speakerBoostRef.current ? 1 : 0.86;
       audio.playbackRate = ORB_SPEECH_PLAYBACK_RATE;
+      audio.defaultPlaybackRate = ORB_SPEECH_PLAYBACK_RATE;
       audio.preservesPitch = true;
       audio.src = api.orbMediaUrl(audioUrl);
       speechAudioRef.current = audio;
@@ -1789,7 +1772,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       showStatus(3600);
       return false;
     }
-  }, [connectSpeechMediaVisualizer, freezeOrbInPlace, playDecodedSpeech, showStatus, startSpeechCaptions, stopSpeechCaptions, stopSpeechVisualizer]);
+  }, [connectSpeechMediaVisualizer, freezeOrbInPlace, playDecodedSpeech, showStatus, startSpeechCaptions, startSpeechVisualizer, stopSpeechCaptions, stopSpeechVisualizer]);
 
   const speakWithGeneratedAudio = useCallback(async (text: string, audioUrl?: string | null, provider?: string | null) => {
     const normalizedText = normalizeOrbDialogue(text);
@@ -1902,8 +1885,12 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const runLandingTour = useCallback(async () => {
     const journey = websiteJourneyRef.current;
-    if (!journeyReadyRef.current || !journey || !isPublicLandingExperience() || landingTourRunningRef.current || voiceRequestInFlightRef.current || recorderRef.current || onboardingSafeMode || journey.stage !== "LANDING_TOUR") return;
-    if (journey.interruptionState.isInterrupted || journey.preflightStatus === "DEFERRED") return;
+    if (!journeyReadyRef.current || !journey || !isPublicLandingExperience() || landingTourRunningRef.current || voiceRequestInFlightRef.current || recorderRef.current || onboardingSafeMode || journey.stage !== "LANDING_TOUR") {
+      return;
+    }
+    if (journey.interruptionState.isInterrupted || journey.preflightStatus === "DEFERRED") {
+      return;
+    }
     landingTourRunningRef.current = true;
     let settleTour: () => void = () => undefined;
     landingTourSettledRef.current = new Promise<void>(resolve => { settleTour = resolve; });
@@ -2022,16 +2009,20 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const chooseTourDecision = useCallback((action: TourDecisionAction) => {
     const state = websiteJourneyRef.current;
-    if (!state || !isTourDecisionReady(state)) return;
+    if (!state || !isTourDecisionReady(state)) return false;
     try {
       if (action === 'DEFER_PREFLIGHT') {
         saveWebsiteJourney({ ...state, preflightStatus: 'DEFERRED' });
-        setTourNotice('Continue exploring at your own pace. The landing tour ends here; use the page’s Dashboard link whenever you’re ready.');
+        setTourNotice('Weaver will leave Preflight for later and keep the visitor on the current page.');
       } else if (action === 'RUN_PREFLIGHT_NOW') {
-        // This explicit visitor action authorizes routing, never scan completion.
+        // A spoken visitor choice authorizes routing, never scan completion.
         navigate('/preflight');
       }
-    } catch (error) { setTourNotice((error as Error).message); }
+      return true;
+    } catch (error) {
+      setTourNotice((error as Error).message);
+      return false;
+    }
   }, [navigate, saveWebsiteJourney]);
 
   const processRecordedOrbAudio = useCallback(async (audio: Blob) => {
@@ -2085,6 +2076,8 @@ export const AutonomousOrb: React.FC<Props> = ({
         target_url: targetUrl,
         experience,
       });
+      const decisionAction = resolveTourDecisionAction(result.transcript || "");
+      if (decisionAction && chooseTourDecision(decisionAction)) return;
       const spokenOutput = result.spoken_output;
       setRuntimeAnswerDiagnostics(result.resolution_diagnostics || null);
       setStatusTitle("Voice response");
@@ -2135,101 +2128,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       }
       logVoice("finalized", turnId);
     }
-  }, [activeOrbContext?.project_id, contextTargetUrl, executeOrbControlAction, firstEncounterComplete, freezeOrbInPlace, guideFromRuntimeResult, logVoice, markFirstEncounter, markVisitorActivity, resumeLandingTour, showStatus, speakRecovery, speakWithGeneratedAudio]);
-
-  const processRecognizedOrbText = useCallback(async (transcript: string) => {
-    markVisitorActivity();
-    const cleanTranscript = transcript.replace(/\s+/g, " ").trim();
-    if (!cleanTranscript || voiceRequestInFlightRef.current) return;
-    if (isMoveAsideRequest(cleanTranscript)) {
-      if (speechPlaybackRef.current) interruptOrbSpeech();
-      await executeOrbControlAction({ type: "orb_motion", command: "move_out_of_way" });
-      return;
-    }
-    const turnId = voiceTurnIdRef.current;
-    const controller = new AbortController();
-    activeVoiceAbortControllerRef.current = controller;
-    voiceRequestInFlightRef.current = true;
-
-    setStatusTitle("Thinking");
-    setStatusLine(cleanTranscript);
-    setVoiceState("thinking");
-    showStatus();
-    freezeOrbInPlace(4200);
-    try {
-      logVoice("browser-speech-recognition", turnId);
-      const targetUrl = contextTargetUrl();
-      const visitorTurn = firstEncounterVisitorTurnRef.current + 1;
-      firstEncounterVisitorTurnRef.current = visitorTurn;
-      const inFirstEncounter = isPublicLandingExperience() && !firstEncounterComplete();
-      const experience: WebsiteOrbExperienceContext | null = inFirstEncounter
-        ? visitorTurn === 1
-          ? {
-              phase: "make_it_personal",
-              objective: "Respond to the visitor's actual first request, show that it was understood in context, and guide to a verified relevant target when one exists.",
-              visitor_turn: visitorTurn,
-              verification_state: "pending",
-              demonstrated_capabilities: ["browser speech recognition", "Site World reasoning", "Kokoro voice"],
-            }
-          : {
-              phase: "relevant_continuation",
-              objective: "Continue from the visitor's words and prior demonstrated capability with a relevant next step, preserving their progress and transitioning into normal consultation.",
-              visitor_turn: visitorTurn,
-              verification_state: "pending",
-              demonstrated_capabilities: ["voice turn-taking", "contextual reasoning", "verified visual guidance"],
-            }
-        : null;
-      const result = await api.websiteOrbText(cleanTranscript, true, controller.signal, {
-        project_id: activeOrbContext?.project_id,
-        target_url: targetUrl,
-        experience,
-      });
-      const spokenOutput = result.spoken_output;
-      setRuntimeAnswerDiagnostics(result.resolution_diagnostics || null);
-      setStatusTitle("Voice response");
-      setStatusLine(spokenOutput);
-      emitOrbRuntimeEvent("canonical_response", {
-        turnId,
-        transcript: result.transcript,
-        sourceLane: result.source_lane || result.llm_source,
-        ttsProvider: result.tts_provider || null,
-        controlCommand: result.control_action?.command || null,
-      });
-      const responsePlayed = await speakWithGeneratedAudio(spokenOutput, result.tts_audio_url, result.tts_provider);
-      if (!responsePlayed) return;
-      if (controller.signal.aborted) return;
-      const controlHandled = await executeOrbControlAction(result.control_action);
-      const guided = controlHandled ? false : await guideFromRuntimeResult(result);
-      if (guided) markFirstEncounter("responsive_guidance_complete");
-      if (experience?.phase === "make_it_personal") {
-        markFirstEncounter("visitor_first_turn_complete");
-        markFirstEncounter("personal_relevance_complete");
-      } else if (experience?.phase === "relevant_continuation") {
-        markFirstEncounter("relevant_continuation_complete");
-        if (guided || firstEncounterStateRef.current.responsive_guidance_complete) {
-          markFirstEncounter("controller_handoff_complete");
-        }
-      }
-      if (controller.signal.aborted) return;
-      if (websiteJourneyRef.current?.stage === 'LANDING_TOUR') {
-        window.setTimeout(() => void resumeLandingTour(), 360);
-      }
-    } catch (error) {
-      if ((error as Error)?.name === "AbortError") return;
-      setStatusTitle("Voice reconnecting");
-      setStatusLine("Voice temporarily unavailable");
-      setVoiceState("idle");
-      showStatus(3600);
-    } finally {
-      if (activeVoiceAbortControllerRef.current === controller) {
-        activeVoiceAbortControllerRef.current = null;
-        voiceRequestInFlightRef.current = false;
-        setVoiceState("idle");
-        setVoiceRearmSequence((value) => value + 1);
-      }
-      logVoice("finalized", turnId);
-    }
-  }, [activeOrbContext?.project_id, contextTargetUrl, executeOrbControlAction, firstEncounterComplete, freezeOrbInPlace, guideFromRuntimeResult, logVoice, markFirstEncounter, markVisitorActivity, resumeLandingTour, showStatus, speakRecovery, speakWithGeneratedAudio]);
+  }, [activeOrbContext?.project_id, chooseTourDecision, contextTargetUrl, executeOrbControlAction, firstEncounterComplete, freezeOrbInPlace, guideFromRuntimeResult, logVoice, markFirstEncounter, markVisitorActivity, resumeLandingTour, showStatus, speakWithGeneratedAudio]);
 
   const stopOrbRecording = useCallback((cancel = false) => {
     if (recordingStopTimerRef.current) {
@@ -2336,98 +2235,6 @@ export const AutonomousOrb: React.FC<Props> = ({
       speechRecognitionRef.current = null;
     }
   }, []);
-
-  const startBrowserSpeechRecognition = useCallback(() => {
-    if (speechRecognitionDisabledRef.current) return false;
-    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognitionCtor) return false;
-    if (speechRecognitionRef.current) {
-      stopBrowserSpeechRecognition(true);
-      return true;
-    }
-
-    const turnId = voiceTurnIdRef.current + 1;
-    voiceTurnIdRef.current = turnId;
-    const recognition = new SpeechRecognitionCtor();
-    speechRecognitionRef.current = recognition;
-    speechRecognitionTranscriptRef.current = "";
-    recognition.lang = "en-US";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.maxAlternatives = 1;
-
-    const armPauseTimer = () => {
-      if (speechRecognitionStopTimerRef.current) window.clearTimeout(speechRecognitionStopTimerRef.current);
-      speechRecognitionStopTimerRef.current = window.setTimeout(() => stopBrowserSpeechRecognition(false), END_SILENCE_MS);
-    };
-
-    recognition.onresult = (event: any) => {
-      let interim = "";
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        const text = String(result?.[0]?.transcript || "");
-        if (result.isFinal) {
-          speechRecognitionTranscriptRef.current = `${speechRecognitionTranscriptRef.current} ${text}`.trim();
-        } else {
-          interim = `${interim} ${text}`.trim();
-        }
-      }
-      const preview = `${speechRecognitionTranscriptRef.current} ${interim}`.replace(/\s+/g, " ").trim();
-      if (preview) {
-        setStatusTitle("Listening");
-        setStatusLine(preview);
-        armPauseTimer();
-      }
-    };
-    recognition.onerror = () => {
-      speechRecognitionDisabledRef.current = true;
-      speechRecognitionRef.current = null;
-      setStatusTitle("Speech recognition unavailable");
-      setStatusLine("Tap the ORB again to use microphone recording.");
-      setVoiceState("idle");
-      showStatus(1800);
-    };
-    recognition.onend = () => {
-      const cancelled = Boolean(recognition.__orbCancelled);
-      speechRecognitionRef.current = null;
-      if (speechRecognitionStopTimerRef.current) window.clearTimeout(speechRecognitionStopTimerRef.current);
-      if (speechRecognitionAbsoluteTimerRef.current) window.clearTimeout(speechRecognitionAbsoluteTimerRef.current);
-      speechRecognitionStopTimerRef.current = null;
-      speechRecognitionAbsoluteTimerRef.current = null;
-      const transcript = speechRecognitionTranscriptRef.current.replace(/\s+/g, " ").trim();
-      speechRecognitionTranscriptRef.current = "";
-      if (cancelled) {
-        setStatusTitle("Listening cancelled");
-        setStatusLine("Tap the ORB when you want to speak.");
-        setVoiceState("idle");
-        showStatus(1800);
-        return;
-      }
-      if (!transcript) {
-        handsFreeEnabledRef.current = false;
-        setStatusTitle("Still listening");
-        setStatusLine("I did not hear speech. Tap the ORB when you are ready.");
-        setVoiceState("idle");
-        showStatus(2600);
-        return;
-      }
-      handsFreeEnabledRef.current = isPublicLandingExperience();
-      void processRecognizedOrbText(transcript);
-    };
-
-    try {
-      setStatusTitle("Listening");
-      setStatusLine("Speak your full question. Pause when you are done.");
-      setVoiceState("listening");
-      showStatus();
-      recognition.start();
-      speechRecognitionAbsoluteTimerRef.current = window.setTimeout(() => stopBrowserSpeechRecognition(false), ABSOLUTE_RECORDING_LIMIT_MS);
-      return true;
-    } catch {
-      speechRecognitionRef.current = null;
-      return false;
-    }
-  }, [processRecognizedOrbText, showStatus, stopBrowserSpeechRecognition]);
 
   const startOrbRecording = useCallback(async () => {
     if (landingTourRunningRef.current) return;
@@ -2585,7 +2392,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       latencyAudioRef.current = null;
     }
     setStatusTitle("Interrupted");
-    setStatusLine("Tap the ORB when you want to speak.");
+    setStatusLine("I’ve paused here. Tap Weaver, then tell me where you want to go next.");
     setVoiceState("idle");
     showStatus(1600);
     avoidUntilRef.current = Date.now() + 900;
@@ -2716,14 +2523,6 @@ export const AutonomousOrb: React.FC<Props> = ({
     return preparation;
   }, [showStatus, unlockAudio, updateStartupDiagnostics]);
 
-  const continueLandingTour = useCallback(async () => {
-    unlockAudio();
-    if (!recordingStreamRef.current?.active) {
-      await requestStartupMicrophonePermission();
-    }
-    await resumeLandingTour();
-  }, [requestStartupMicrophonePermission, resumeLandingTour, unlockAudio]);
-
   const runStartupVoiceSequence = useCallback(async () => {
     const onLanding = isPublicLandingExperience();
     const greetingAlreadyPlayed =
@@ -2786,7 +2585,11 @@ export const AutonomousOrb: React.FC<Props> = ({
         markFirstEncounter("entrance_complete");
       } catch {
         updateStartupDiagnostics({ audio_tts_state: "failed", greeting_state: "failed" });
-        await speakRecovery(preparation.greeting);
+        // Recovery is still a valid spoken introduction. Preserve its result
+        // so a transient primary-playback failure cannot strand the visitor
+        // between the splash and Target One.
+        const recoveryOutcome = await speakRecovery(preparation.greeting);
+        introAudioPlayed = recoveryOutcome === "played";
       } finally {
         setGreetingActive(false);
         if (introAudioPlayed) {
@@ -2799,22 +2602,27 @@ export const AutonomousOrb: React.FC<Props> = ({
         }
       }
 
-      if (!introAudioPlayed) return;
+      if (!introAudioPlayed) {
+        // A cancelled or unavailable voice path must not dead-end the host.
+        // The tour will surface its own governed evidence/voice status.
+        emitOrbRuntimeEvent("intro_continuing_without_audio");
+      }
 
       // The introduction hands directly into the persistent Website ORB tour.
       // Conversation remains available throughout; the tour is never an idle gate.
       void runLandingTour();
     } else {
       updateStartupDiagnostics({ greeting_state: splashHandledGreeting || greetingAlreadyPlayed ? "skipped_session_once" : "waiting" });
+      if (onLanding && splashHandledGreeting && !greetingAlreadyPlayed) {
+        // The scripted intro has ended. Tour progression must not wait for a
+        // browser permission prompt that can remain open indefinitely.
+        emitOrbRuntimeEvent("intro_handoff_to_landing_tour");
+        void runLandingTour();
+      }
       micReady = await requestStartupMicrophonePermission();
       emitOrbRuntimeEvent("permission_handoff_complete", { micReady });
       updateStartupDiagnostics({ orb_readiness_state: "ready" });
       emitOrbRuntimeEvent("orb_ready");
-      if (onLanding && splashHandledGreeting && !greetingAlreadyPlayed) {
-        // The splash owns the introduction, then the mounted ORB continues
-        // directly into the persistent landing tour.
-        void runLandingTour();
-      }
     }
 
     if (micReady && activeRef.current) {
@@ -2901,6 +2709,27 @@ export const AutonomousOrb: React.FC<Props> = ({
       handsFreeEnabledRef.current = true;
     }
   }, [onboardingSafeMode]);
+
+  useEffect(() => {
+    if (!isPublicLandingExperience()) return;
+    const syncIntroPresence = (event: Event) => {
+      const detail = (event as CustomEvent<{ phase?: string; text?: string | null }>).detail;
+      const phase = detail?.phase;
+      if (phase === "INTRO_AUDIO_PLAYING") {
+        setGreetingActive(true);
+        setVoiceState("speaking");
+      } else if (phase === "INTRO_CAPTION") {
+        const text = detail?.text?.trim() || "";
+        setSpeechCaption({ fullText: text, revealedText: text, phase: text ? "speaking" : "idle", collapsed: false, expanded: false });
+      } else if (phase === "INTRO_AUDIO_ENDED" || phase === "INTRO_AUDIO_ERROR") {
+        setGreetingActive(false);
+        setSpeechCaption({ fullText: "", revealedText: "", phase: "idle", collapsed: false, expanded: false });
+        if (!speechPlaybackRef.current) setVoiceState("idle");
+      }
+    };
+    window.addEventListener("orbweaver:startup-intro", syncIntroPresence);
+    return () => window.removeEventListener("orbweaver:startup-intro", syncIntroPresence);
+  }, []);
 
   useEffect(() => {
     if (!isPublicLandingExperience() || landingTourRunningRef.current) return;
@@ -3366,6 +3195,10 @@ export const AutonomousOrb: React.FC<Props> = ({
       await wait(700);
 
       while (activeRef.current) {
+        if (startupUnresolved()) {
+          await wait(160);
+          continue;
+        }
         const inactiveForMs = Date.now() - lastActivityAtRef.current;
         const shouldEnterRest =
           inactiveForMs >= REST_AFTER_INACTIVITY_MS &&
@@ -3560,35 +3393,9 @@ export const AutonomousOrb: React.FC<Props> = ({
   };
 
   const visual = ringStyle();
-  const tourPosition = getTourPosition(tourState?.currentChapterId || null, tourState?.currentStopId || null);
-  const tourDecisionReady = Boolean(tourState && isTourDecisionReady(tourState));
-  const visitorTourControlCopy = tourPosition?.chapter.title
-    ? `Weaver is guiding you through ${tourPosition.chapter.title}. You can pause or ask a question at any time.`
-    : 'Weaver is ready to guide you. You can pause or ask a question at any time.';
 
   return (
     <>
-    {isPublicLandingExperience() && (tourState?.stage === 'LANDING_TOUR' || tourNotice) && (
-      <aside className="ow-tour-controls" aria-label="Guided website tour">
-        <strong>{tourDecisionReady ? 'Your next step' : tourPosition?.chapter.title || 'Explore with Weaver'}</strong>
-        <p aria-live="polite">{tourNotice || (tourState?.interruptionState.isInterrupted
-          ? 'Your place is saved. Ask Weaver a question or continue the tour.'
-          : tourDecisionReady ? 'Choose when you want to examine your website.' : visitorTourControlCopy)}</p>
-        {tourDecisionReady ? (
-          <div className="ow-tour-actions">
-            {tourPosition?.chapter.decisionConfig?.options.map(option => (
-              <button type="button" key={option.action} onClick={() => chooseTourDecision(option.action)}>{option.label}</button>
-            ))}
-          </div>
-        ) : tourState && journeyReadyRef.current && (
-          <div className="ow-tour-actions">
-            {(tourNotice || tourState.interruptionState.isInterrupted) ?
-              <button type="button" disabled={voiceState === "listening" || voiceRequestInFlightRef.current} onClick={() => void continueLandingTour()}>Continue tour</button> :
-              <button type="button" onClick={interruptOrbSpeech}>Pause tour</button>}
-          </div>
-        )}
-      </aside>
-    )}
     {morbPointer && (
       <div
         className={`ow-v2-morb-pointer ${morbPointer.visible ? "visible" : ""} ${morbPointer.pinging ? "pinging" : ""} ${morbPointer.dissolving ? "dissolving" : ""}`}
@@ -3645,11 +3452,6 @@ export const AutonomousOrb: React.FC<Props> = ({
         "--ow-pointer-angle": `${pointerBloom?.originAngle || 0}deg`,
       } as React.CSSProperties}
     >
-      <div className="ow-v2-morb-orbit" aria-hidden="true">
-        <span className="ow-v2-morb-orbit-dot ow-v2-morb-orbit-dot-one" />
-        <span className="ow-v2-morb-orbit-dot ow-v2-morb-orbit-dot-two" />
-        <span className="ow-v2-morb-orbit-dot ow-v2-morb-orbit-dot-three" />
-      </div>
       {pulse && (
         <div className="ow-v2-local-pulse" key={pulse.id}>
           <motion.div
@@ -3715,41 +3517,15 @@ export const AutonomousOrb: React.FC<Props> = ({
             </button>
         </motion.div>
       </motion.div>
-      {speechCaption.fullText && (speechCaption.phase !== "speaking" || speechCaption.revealedText) && createPortal(
+      {speechCaption.fullText && (speechCaption.phase !== "speaking" || speechCaption.revealedText) && (
         <aside
-          className={`ow-v2-orb-speech ${speechCaption.collapsed ? "is-collapsed" : ""} ${speechCaption.expanded ? "is-expanded" : ""}`}
+          className="ow-v2-orb-speech"
           data-orb-caption-state={speechCaption.phase}
           aria-live={speechCaption.phase === "speaking" ? "polite" : undefined}
-          aria-label="Weaver captions"
-          onPointerDown={(event) => event.stopPropagation()}
+          aria-label="Weaver speech"
         >
-          {speechCaption.collapsed ? (
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setSpeechCaption((current) => ({ ...current, collapsed: false, expanded: current.phase === "complete" }));
-              }}
-              aria-label={speechCaption.phase === "complete" ? "Read complete Weaver transcript" : "Read spoken Weaver transcript"}
-            >
-              {speechCaption.phase === "complete" ? "Read transcript" : "Read spoken caption"}
-            </button>
-          ) : speechCaption.expanded && speechCaption.phase === "complete" ? (
-            <>
-              <span>{speechCaption.fullText}</span>
-              <button
-                type="button"
-                className="ow-v2-orb-speech-minimize"
-                onClick={() => setSpeechCaption((current) => ({ ...current, collapsed: true, expanded: false }))}
-              >
-                Minimize transcript
-              </button>
-            </>
-          ) : (
-            <span>{splitSpeechIntoCaptionPhrases(speechCaption.revealedText).slice(-3).join(" ")}</span>
-          )}
-        </aside>,
-        document.body,
+          <span>{speechCaption.revealedText || speechCaption.fullText}</span>
+        </aside>
       )}
     </motion.div>
     {showStartupDiagnosticsPanel && statusVisible && (

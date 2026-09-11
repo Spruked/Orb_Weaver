@@ -1,4 +1,4 @@
-import { canAdvanceCaptionProgression, captionProgressAtPlayback, splitSpeechIntoCaptionPhrases } from "./speechCaptions";
+import { canAdvanceCaptionProgression, captionProgressAtPlayback, splitSpeechIntoCaptionPhrases, currentSpeechCaption } from "./speechCaptions";
 
 declare const describe: (name: string, testSuite: () => void) => void;
 declare const test: (name: string, testCase: () => void) => void;
@@ -11,6 +11,13 @@ declare const expect: (actual: unknown) => {
 };
 
 describe("speech captions", () => {
+  test('current caption replaces prior thoughts and clears at completion', () => {
+    const speech = 'First thought. Second thought. Third thought.';
+    expect(currentSpeechCaption(speech, 0, 9)).toBe('First thought.');
+    expect(currentSpeechCaption(speech, 4, 9)).toBe('Second thought.');
+    expect(currentSpeechCaption(speech, 7, 9)).toBe('Third thought.');
+    expect(currentSpeechCaption(speech, 9, 9)).toBe('');
+  });
   const narration = "Your Preflight is complete. Two links need attention, and checkout needs review. The full report is ready.";
 
   test("starts empty and keeps future narration hidden during early playback", () => {

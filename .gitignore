@@ -2,6 +2,7 @@
 # Environment Files
 # -------------------------
 .env
+/frontend/test-artifacts/
 .env.*
 !.env.example
 
@@ -88,6 +89,7 @@ substrate/*
 !substrate/clients
 !substrate/global_intelligence
 data/tts_cache/
+/vault_system/development/runtime/tts_cache/
 
 # Audio cache/content generated locally.
 *.wav

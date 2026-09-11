@@ -74,7 +74,10 @@ def _walk_json(value: Any) -> Iterable[Mapping[str, Any]]:
         if graph is not None:
             yield from _walk_json(graph)
         for key, child in value.items():
-            if key == "@graph":
+            # A variant belongs to its parent product entry. The parent parser
+            # captures it in `variants`; walking it again incorrectly creates a
+            # second sellable catalog entry.
+            if key in {"@graph", "hasVariant"}:
                 continue
             if isinstance(child, (Mapping, list)):
                 yield from _walk_json(child)

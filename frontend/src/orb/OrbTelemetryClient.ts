@@ -12,8 +12,7 @@ import type { ClientInboundMessage, TelemetryFrame } from './types';
 const LOCAL_API_PORT_PAIRS: Record<string, string> = {
   '16510': '16500',
   '16610': '16600',
-  '16666': '19667',
-  '16667': '19667',
+  '16667': '16666',
   '16777': '16776',
 };
 

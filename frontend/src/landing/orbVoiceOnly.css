@@ -5,9 +5,6 @@
 
 /* Product doctrine: the splash hands off automatically; there is no normal
    visitor-facing Start ORB button. Browser-policy interaction is fallback only. */
-.ow-cut-startup-button {
-  display: none !important;
-}
 
 .ow-cut-startup-gate,
 .ow-cut-startup-gate.is-ready {

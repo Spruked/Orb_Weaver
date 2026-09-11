@@ -169,9 +169,21 @@ app = FastAPI(
     version=settings.VERSION,
 )
 
+# Browser clients with credentials must be explicitly known. The public site
+# normally uses same-origin requests; these local origins support the isolated
+# development lane without granting arbitrary websites API access.
+CORS_ALLOWED_ORIGINS = [
+    "https://orbweaver.spruked.com",
+    "https://www.orbweaver.spruked.com",
+    "http://localhost:16510",
+    "http://127.0.0.1:16510",
+    "http://localhost:16667",
+    "http://127.0.0.1:16667",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -212,7 +224,15 @@ init_db(ENGINE)
 
 REPORT_COMPILER_ROOT = REPORTS_ROOT
 REPORT_COMPILER_ROOT.mkdir(parents=True, exist_ok=True)
-ORB_TTS_CACHE_ROOT = Path(settings.ORB_TTS_CACHE_DIR).expanduser().resolve()
+# Resolve relative cache settings from the canonical Vault rather than the
+# caller's working directory. This keeps local runs, tests, and containers on
+# one durable storage authority.
+_configured_tts_cache = Path(settings.ORB_TTS_CACHE_DIR).expanduser()
+ORB_TTS_CACHE_ROOT = (
+    _configured_tts_cache
+    if _configured_tts_cache.is_absolute()
+    else VAULT_ROOT / _configured_tts_cache
+).resolve()
 require_vault_path(ORB_TTS_CACHE_ROOT, "Website ORB TTS cache")
 ORB_TTS_CACHE_ROOT.mkdir(parents=True, exist_ok=True)
 ORB_TTS_INFLIGHT_LOCK = asyncio.Lock()
@@ -266,6 +286,8 @@ ORB_INSTALL_SITES: Dict[str, Dict[str, Any]] = {
             "http://127.0.0.1:16510",
             "http://localhost:16610",
             "http://127.0.0.1:16610",
+            "http://localhost:16667",
+            "http://127.0.0.1:16667",
             "http://localhost:3000",
             "http://127.0.0.1:3000",
         },
@@ -280,6 +302,8 @@ ORB_INSTALL_SITES: Dict[str, Dict[str, Any]] = {
             "https://spruked.chatgpt.site",
             "http://localhost:3000",
             "http://127.0.0.1:3000",
+            "http://localhost:16667",
+            "http://127.0.0.1:16667",
         },
         "allowed_origin_suffixes": (".openai.chatgpt.site",),
     },
@@ -3278,6 +3302,16 @@ async def _llm_orb_spoken_output(
         return {
             "spoken_output": fallback,
             "llm_source": "local-fallback",
+            # Keep the governed tour contract intact even when the local model
+            # returns malformed JSON or is unavailable. The controller still
+            # owns progression; this only preserves the spoken evaluation
+            # envelope needed for the already-verified fallback path.
+            **({
+                "chapter_evaluation": TourChapterEvaluation(
+                    spoken_output=fallback,
+                    covered_concepts=[],
+                ).model_dump(),
+            } if tour_context else {}),
             "governance_trace": initial_governance_trace(governance_context) if governance_context else None,
         }
 
@@ -5104,8 +5138,16 @@ def _runtime_pointer_map(domain: str, db: Session) -> Dict[str, Any]:
                 or "data-testid" in locator
                 or target_type in {"nav", "download"}
             )
+            explicitly_actionable = (
+                "point" in {str(item) for item in (record.get("allowed_actions") or [])}
+                or "may_point" in (record.get("runtime_policy") or {})
+            )
             if target_type in {"heading", "paragraph", "faq_answer", "policy_line"}:
                 record["pointer_class"] = "semantic_reference"
+            elif explicitly_actionable and not target_type:
+                # Preserve incomplete legacy records for recovery. They remain
+                # blocked from guidance until all later confidence checks pass.
+                record["pointer_class"] = "live_guidance"
             elif target_type in {"nav", "form_field", "button", "price_card", "download"} and durable_locator:
                 record["pointer_class"] = "live_guidance"
             elif target_type == "section" and durable_locator and re.search(
@@ -7803,6 +7845,16 @@ async def root():
     }
 
 
+@app.get("/health")
+async def health():
+    """Lightweight readiness signal for local process supervision."""
+    return {
+        "status": "operational",
+        "vault_root": str(VAULT_ROOT),
+        "database": "configured",
+    }
+
+
 @app.post("/api/public/preflight")
 async def public_preflight(payload: PublicPreflightRequest):
     try:
@@ -8073,13 +8125,22 @@ async def _canonical_website_orb_turn(
         raise HTTPException(status_code=503, detail="First-visitor cognition is unavailable; the act was not advanced")
 
     spoken_output = resolved["spoken_output"]
-    llm_source = resolved["source_lane"]
+    # Keep factual resolution separate from the originating deterministic
+    # runtime source. Governance evaluates the lane; diagnostics retain the
+    # concrete context adapter that supplied the visitor-facing answer.
+    llm_source = str(resolved.get("runtime_source") or resolved["source_lane"])
     # A response is not an outcome. Only resolver-approved, valid visitor turns
     # may create posteriori evidence or affect reinforcement statistics.
     # STT text alone is not proof of a successful visitor interaction. A later
     # verified outcome may explicitly promote it; passive runtime turns never do.
     transcript_quality = "UNCERTAIN"
-    learning_allowed = False
+    # Only grounded, resolver-approved answers with traceable evidence are
+    # eligible for sanitized posteriori recording. Unknown or merely spoken
+    # visitor turns never become reusable knowledge.
+    learning_allowed = (
+        resolved["answer_state"] in {"known", "resolved"}
+        and bool(resolved["evidence_ids"])
+    )
     skg_learning = None
     if skg_adapter and learning_allowed:
         try:

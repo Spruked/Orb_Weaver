@@ -152,7 +152,10 @@ def _is_live_guidance_candidate(record: Dict[str, Any]) -> bool:
     allowed_actions = {str(item) for item in (record.get("allowed_actions") or [])}
     runtime_policy = record.get("runtime_policy") or {}
     if "point" in allowed_actions or "may_point" in runtime_policy:
-        return target_type in LIVE_GUIDANCE_TARGET_TYPES
+        # An old map may lack a target type. It is never eligible for live
+        # guidance without the later checks, but it must remain visible to the
+        # recovery gate rather than being silently counted as no target.
+        return not target_type or target_type in LIVE_GUIDANCE_TARGET_TYPES
     if target_type not in LIVE_GUIDANCE_TARGET_TYPES:
         return False
     locator = str(record.get("semantic_locator") or "")

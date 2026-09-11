@@ -35,9 +35,10 @@ export function useLidar2DMapping({
   }, [onTargetLock]);
 
   useEffect(() => {
-    cacheRef.current.load(records);
-    cacheRef.current.startDriftAudit();
-    return () => cacheRef.current.stopDriftAudit();
+    const cache = cacheRef.current;
+    cache.load(records);
+    cache.startDriftAudit();
+    return () => cache.stopDriftAudit();
   }, [records]);
 
   useEffect(() => {

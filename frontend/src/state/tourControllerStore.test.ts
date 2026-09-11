@@ -34,25 +34,32 @@ describe('tour controller migration and persistence', () => {
     expect(migrateWebsiteJourneyV1ToV2(legacy({ currentSegment: 'opening' }))).toEqual(createInitialJourneyState());
   });
 
-  it('preserves every unmapped legacy position byte-for-byte', () => {
-    const segments = ['host_proof', 'relationships', 'website_orb', 'weave', 'preflight'] as const;
-    segments.forEach((segment, offset) => {
-      [legacy({ currentSegment: segment, nextSegmentIndex: offset + 1 }),
-        legacy({ currentSegment: null, nextSegmentIndex: offset + 1 })].forEach((value) => {
-        const raw = JSON.stringify(value);
-        const storage = memoryStorage(raw);
-        expect(migrateWebsiteJourneyV1ToV2(value)).toBeNull();
-        expect(loadJourneyState(storage).status).toBe('needs_mapping');
-        expect(migrateStoredJourneyState(storage).status).toBe('needs_mapping');
-        expect(saveJourneyState(createInitialJourneyState(), storage)).toBe(false);
-        expect(storage.getItem(WEBSITE_JOURNEY_STORAGE_KEY)).toBe(raw);
-      });
+  it('maps every supported legacy position without claiming completed concepts', () => {
+    const positions = [
+      ['host_proof', 'chapter-meet-weaver', 'stop-how-to-talk'],
+      ['relationships', 'chapter-why-weaving', 'stop-relationships'],
+      ['website_orb', 'chapter-trust', 'stop-website-orb-outcome'],
+      ['weave', 'chapter-intelligence', 'stop-28-weave'],
+      ['preflight', 'chapter-preflight', 'stop-preflight-decision'],
+    ] as const;
+    positions.forEach(([segment, chapterId, stopId], offset) => {
+      const value = legacy({ currentSegment: segment, nextSegmentIndex: offset + 1 });
+      const expected = { ...createInitialJourneyState(), currentChapterId: chapterId, currentStopId: stopId };
+      const storage = memoryStorage(JSON.stringify(value));
+      expect(migrateWebsiteJourneyV1ToV2(value)).toEqual(expected);
+      expect(loadJourneyState(storage)).toEqual({ status: 'migrated', state: expected });
+      expect(migrateStoredJourneyState(storage)).toEqual({ status: 'migrated', state: expected });
+      expect(saveJourneyState(createInitialJourneyState(), storage)).toBe(true);
     });
   });
 
-  it('does not reset an exhausted landing sequence or pending navigation', () => {
+  it('maps an exhausted landing sequence or pending navigation to the Preflight decision', () => {
     for (const stage of ['LANDING_TOUR', 'PREFLIGHT_PENDING'] as const) {
-      expect(migrateWebsiteJourneyV1ToV2(legacy({ stage, nextSegmentIndex: 6 }))).toBeNull();
+      expect(migrateWebsiteJourneyV1ToV2(legacy({ stage, nextSegmentIndex: 6 }))).toEqual({
+        ...createInitialJourneyState(),
+        currentChapterId: 'chapter-preflight',
+        currentStopId: 'stop-preflight-decision',
+      });
     }
   });
 
@@ -80,7 +87,17 @@ describe('tour controller migration and persistence', () => {
     expect(saveJourneyState({ ...state, productionScanUnlocked: true,
       interruptionState: { ...state.interruptionState, visitorQuestion: 'private utterance' },
     } as typeof state, storage)).toBe(true);
-    expect(loadJourneyState(storage)).toEqual({ status: 'loaded', state });
+    expect(loadJourneyState(storage)).toEqual({
+      status: 'loaded',
+      state: {
+        ...state,
+        interruptionState: {
+          isInterrupted: true,
+          interruptedAtChapterId: 'chapter-meet-weaver',
+          interruptedAtStopId: 'stop-hero-meet',
+        },
+      },
+    });
     expect(storage.getItem(WEBSITE_JOURNEY_STORAGE_KEY)).not.toMatch(/private utterance|visitorQuestion|productionScanUnlocked/);
   });
 

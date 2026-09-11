@@ -26,6 +26,7 @@
     "build:orb-loader": "npm run verify:factory-skin && node scripts/build-orb-loader.js",
     "smoke:orb-loader": "node scripts/orb-loader-smoke.js",
     "smoke:preflight": "node scripts/preflight-dashboard-smoke.js",
+    "verify:weaver-startup": "node scripts/verify-weaver-startup.cjs",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

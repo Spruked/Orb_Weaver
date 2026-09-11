@@ -32,7 +32,7 @@ const LATENCY_FILLER_PATHS = [
   '/orb/voice/latency-fillers/working.wav',
 ];
 const VOICE_UNAVAILABLE_MESSAGE = 'Voice unavailable';
-const ORB_SPEECH_PLAYBACK_RATE = 1.3;
+const ORB_SPEECH_PLAYBACK_RATE = 0.9;
 const EMBEDDED_ORB_SITE_ID = 'orb-weaver';
 const lidar = LidarCoordinateCache.getInstance();
 const MORB_SIZE = 50;
