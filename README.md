@@ -42,6 +42,23 @@ The source is built; integrated validation is deferred. This does not claim a te
 - Account, cart, checkout order, admin customer, project, crawl, audit, GA4, report, legal pages, and admin-section scan awareness.
 - Service catalog includes Starter Audit, Growth Audit, and Premium Intelligence Pack.
 
+### Paid Customer Review Package
+
+- A paying customer is no longer limited to crawl/audit CSV output after a completed weave.
+- Verified **Package 1 ($49)** and **Package 2 ($99)** purchases unlock the Full Review Package. The backend checks the verified checkout record; a frontend/browser flag cannot unlock it.
+- The package is written under the canonical client Vault and contains:
+  - `report.html`
+  - `manifest.json`
+  - `crawl.csv`
+  - `crawl.json`
+  - `audit.csv`
+  - `audit.json`
+  - `website_context.json`
+  - `pointer_map.json`
+- `report.html` is the human-readable entry point. JSON files provide structured evidence for customer review, automation, migration, and future ORB work.
+- Existing individual CSV/PDF controls remain available as basic report-library exports; the complete eight-file bundle is the paid deliverable.
+- Full contract: [docs/CUSTOMER_REVIEW_PACKAGE.md](docs/CUSTOMER_REVIEW_PACKAGE.md).
+
 ### Website ORB Voice Runtime
 
 - The live public Website ORB voice runtime is `frontend/src/landing/AutonomousOrb.tsx`.
@@ -233,6 +250,7 @@ Orb Weaver now includes:
 - Dock Station owner policy controls for behavior, greeting, voice posture, model/provider selection, job description, and must-follow/must-not rules.
 - Website ORB site-learning loop with posteriori interaction records, Stump Ledger, verified-case reuse, and clean-slate pack templates.
 - CCO runtime trace active in the Website ORB answer path.
+- Paid Full Review Package generation for verified Package 1 ($49) and Package 2 ($99) customers.
 
 The implemented onboarding path is:
 
@@ -252,7 +270,7 @@ The broader ORBS customer path is:
 
 ### Verification status
 
-The historical checkpoint is preserved in commit `7f65f5a`. Since then, the local working tree has advanced with Dock Station behavior controls, Website ORB learning-loop records, CCO renaming, and live CCO tracing.
+The historical checkpoint is preserved in commit `7f65f5a`. Since then, the local working tree has advanced with Dock Station behavior controls, Website ORB learning-loop records, CCO renaming, live CCO tracing, and the paid customer review-package source path.
 
 Current commercial stance as of 2026-07-30:
 
@@ -391,7 +409,7 @@ python3 scripts/migrate_to_canonical_vault.py --finalize
 
 ## Root Docker Image
 
-The repo has a root Dockerfile for WSL/tunnel use. Build from the repository root:
+The repo has a root Dockerfile for WSL/tunnel use. Build from the repository root only after native development verification is complete:
 
 ```bash
 docker build -t orb-weaver:latest .
@@ -415,7 +433,7 @@ Backend API: 16500
 Frontend UI: 16510
 ```
 
-The root image compiles the React frontend during Docker build, copies the resulting `/app/frontend/build` into the final image, and serves it with nginx. Running `npm run build` in the workspace does not update the public container by itself; use `docker compose up -d --build orb-weaver` only after development verification and confirm the served main bundle hash before public browser tests.
+The root image compiles the React frontend during Docker build, copies the resulting `/app/frontend/build` into the final image, and serves it with nginx. Running `npm run build` in the workspace does not update the public container by itself; Docker packaging is a release step after native development verification.
 
 Static frontend: `http://127.0.0.1:16510`
 
@@ -467,6 +485,8 @@ Public tunnel routing is documented in `deploy/cloudflared/orbweaver.spruked.com
 - `GET /api/audit-reports/{id}` - Get audit report
 - `GET /api/projects/{id}/report-compiler` - Report compiler payload
 - `GET /api/projects/{id}/report-files/{filename}` - Retrieve report file
+- `GET /api/projects/{id}/customer-review-package` - Check verified paid entitlement and package readiness; materialize the package when ready
+- `GET /api/projects/{id}/customer-review-package/download` - Download the paid Full Review Package ZIP
 
 ### Cart and Checkout
 
@@ -547,17 +567,34 @@ Expected artifacts include:
 - `history/`
 - `recommendations/`
 - `reports/`
+- `customer_review_packages/`
 - `local_index/client_index.sqlite`
+
+## Paid Full Review Package
+
+Verified Package 1 ($49) and Package 2 ($99) customers receive the complete customer review bundle once a completed crawl and audit exist. The package is persisted beneath the project client Vault and exposed from the Reports page.
+
+```text
+report.html
+manifest.json
+crawl.csv
+crawl.json
+audit.csv
+audit.json
+website_context.json
+pointer_map.json
+```
+
+The entitlement gate is backend-authoritative and requires a verified checkout payment. See `docs/CUSTOMER_REVIEW_PACKAGE.md` for the exact contract, storage path, fallback behavior, and validation boundary.
 
 ## Premium Intelligence Pack
 
-The Premium Intelligence Pack is in the service catalog and checkout flow. It currently creates a cart item and checkout order. The intelligence artifacts are produced when preflight, crawl, and audit jobs run and are preserved into the canonical client vault.
-
-Automatic post-payment entitlement and fulfillment are not yet wired.
+The Premium Intelligence Pack remains part of the broader service catalog and checkout flow. Intelligence artifacts produced by preflight, crawl, audit, Site World, Pointer/LiDAR, and package-generation work remain preserved in the canonical client Vault. The Full Review Package described above is a separate customer-facing deliverable gated specifically to the verified $49 and $99 Package 1/Package 2 purchases.
 
 ## Documentation
 
 - `docs/README.md` (central documentation index)
+- `docs/CUSTOMER_REVIEW_PACKAGE.md`
 - `docs/DEPLOYMENT_ORB_WEAVER_SPRUKED.md`
 - `docs/ORB_MARKETPLACE_ARCHITECTURE.md`
 - `docs/ORB_WEAVER_V1_TRANSACTIONAL_DOCTRINE.md`
