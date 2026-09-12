@@ -7,12 +7,17 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field, ValidationError
 
+from app.routers.customer_review_package import router as customer_review_package_router
 from app.routers.lidar_2d_mapping_telemetry import router as lidar_2d_mapping_router
 
 logger = logging.getLogger('orb.telemetry')
 
-router = APIRouter(prefix='/ws', tags=['orb-telemetry'])
-router.include_router(lidar_2d_mapping_router)
+# Keep the existing WebSocket URLs unchanged while also mounting authenticated
+# customer-review HTTP routes through the router that backend/main.py already
+# includes. This avoids adding another application bootstrap path.
+router = APIRouter(tags=['orb-telemetry'])
+router.include_router(lidar_2d_mapping_router, prefix='/ws')
+router.include_router(customer_review_package_router)
 
 
 class TelemetryFrame(BaseModel):
@@ -32,7 +37,7 @@ class TelemetryFrame(BaseModel):
 class ClientInboundMessage(BaseModel):
   event_type: str = Field(..., pattern='^(heartbeat|pointer_drift_alert|target_acquired_ack)$')
   current_route: str = Field(..., min_length=1)
-  pointing_target_id: Optional[str] = Field(default=None)
+  pointing_target_id: Optional[str] = None
   status: str = Field(default='ready', pattern='^(ready|active|drift_detected|error)$')
   viewport_width: Optional[int] = Field(default=None, ge=100)
   viewport_height: Optional[int] = Field(default=None, ge=100)
@@ -89,7 +94,7 @@ class OrbTelemetryManager:
 telemetry_manager = OrbTelemetryManager()
 
 
-@router.websocket('/orb-pointer')
+@router.websocket('/ws/orb-pointer')
 async def orb_telemetry_endpoint(websocket: WebSocket):
   await telemetry_manager.connect(websocket)
   try:
