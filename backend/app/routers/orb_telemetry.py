@@ -37,7 +37,7 @@ class TelemetryFrame(BaseModel):
 class ClientInboundMessage(BaseModel):
   event_type: str = Field(..., pattern='^(heartbeat|pointer_drift_alert|target_acquired_ack)$')
   current_route: str = Field(..., min_length=1)
-  pointing_target_id: Optional[str] = None
+  pointing_target_id: Optional[str] = Field(default=None)
   status: str = Field(default='ready', pattern='^(ready|active|drift_detected|error)$')
   viewport_width: Optional[int] = Field(default=None, ge=100)
   viewport_height: Optional[int] = Field(default=None, ge=100)
