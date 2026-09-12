@@ -32,7 +32,11 @@ import PublicSecurity from './pages/PublicSecurity';
 import LidarGuidance from './pages/LidarGuidance';
 import { api, authStore, Customer } from './services/api';
 import { marketplaceUrl } from './services/marketplaceUrl';
+import { returningAccountShortcutEnabled } from './services/returningAccountShortcut';
 import './index.css';
+
+const LANDING_SPLASH_COMPLETE_SESSION_KEY = 'orbweaver-landing-splash-complete';
+const STARTUP_GATE_COMPLETE_EVENT = 'orbweaver:startup-gate-complete';
 
 const MarketplaceRedirect: React.FC = () => {
   const location = useLocation();
@@ -77,6 +81,23 @@ function App() {
 
     loadCustomer();
   }, []);
+
+  useEffect(() => {
+    if (customer || location.pathname !== '/' || authStore.getToken() || !returningAccountShortcutEnabled()) return undefined;
+
+    const openLogin = () => {
+      window.location.replace('/login');
+    };
+
+    if (window.sessionStorage.getItem(LANDING_SPLASH_COMPLETE_SESSION_KEY) === '1') {
+      openLogin();
+      return undefined;
+    }
+
+    const handleStartupComplete = () => openLogin();
+    window.addEventListener(STARTUP_GATE_COMPLETE_EVENT, handleStartupComplete, { once: true });
+    return () => window.removeEventListener(STARTUP_GATE_COMPLETE_EVENT, handleStartupComplete);
+  }, [customer, location.pathname]);
 
   const handleLogout = async () => {
     try {
