@@ -2,27 +2,43 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { FileText, Download, RefreshCw, Eye, FolderOpen } from 'lucide-react';
 import { api, Project, ReportCompilerPayload, downloads, openFiles } from '../services/api';
+import {
+  CustomerReviewPackageStatus,
+  downloadCustomerReviewPackage,
+  getCustomerReviewPackageStatus,
+} from '../services/customerReviewPackage';
 
 const ReportCompiler: React.FC = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const [data, setData] = useState<ReportCompilerPayload | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [reviewPackage, setReviewPackage] = useState<CustomerReviewPackageStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDownloadingPackage, setIsDownloadingPackage] = useState(false);
   const [error, setError] = useState('');
+  const [packageError, setPackageError] = useState('');
 
   const load = useCallback(async () => {
     setIsLoading(true);
     setError('');
+    setPackageError('');
     try {
       if (projectId) {
         const payload = await api.getReportCompiler(projectId);
         setData(payload);
         setProjects([]);
+        try {
+          setReviewPackage(await getCustomerReviewPackageStatus(projectId));
+        } catch (err) {
+          setReviewPackage(null);
+          setPackageError(err instanceof Error ? err.message : 'Could not load Full Review Package status.');
+        }
       } else {
         const projectList = await api.listProjects();
         setProjects(projectList);
         setData(null);
+        setReviewPackage(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load reports');
@@ -34,6 +50,19 @@ const ReportCompiler: React.FC = () => {
   useEffect(() => {
     load();
   }, [load]);
+
+  const downloadFullPackage = async () => {
+    if (!projectId) return;
+    setPackageError('');
+    setIsDownloadingPackage(true);
+    try {
+      await downloadCustomerReviewPackage(projectId);
+    } catch (err) {
+      setPackageError(err instanceof Error ? err.message : 'Could not download Full Review Package.');
+    } finally {
+      setIsDownloadingPackage(false);
+    }
+  };
 
   if (isLoading) return <div className="card text-gray-500">Loading report compiler...</div>;
   if (error) return <div className="card text-red-600">{error}</div>;
@@ -167,8 +196,45 @@ const ReportCompiler: React.FC = () => {
         </div>
       </div>
 
+      <div className={`card ${reviewPackage?.eligible ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Full Review Package</h2>
+            {reviewPackage?.eligible && reviewPackage.ready ? (
+              <>
+                <p className="text-sm text-gray-700 mt-1">
+                  Paid access verified. Your complete human-readable and machine-readable project package is ready.
+                </p>
+                <p className="text-xs text-gray-600 mt-2">
+                  report.html · manifest.json · crawl.csv · crawl.json · audit.csv · audit.json · website_context.json · pointer_map.json
+                </p>
+              </>
+            ) : reviewPackage?.eligible ? (
+              <p className="text-sm text-gray-700 mt-1">
+                Paid access verified. The package will become available when the completed crawl and audit evidence are ready.
+              </p>
+            ) : (
+              <p className="text-sm text-gray-600 mt-1">
+                The complete review bundle is included only with a verified Package 1 ($49) or Package 2 ($99) purchase. Individual basic exports remain available below.
+              </p>
+            )}
+            {packageError && <p className="text-sm text-red-600 mt-2">{packageError}</p>}
+          </div>
+          {reviewPackage?.eligible && reviewPackage.ready && (
+            <button
+              onClick={downloadFullPackage}
+              disabled={isDownloadingPackage}
+              className="btn-primary flex items-center gap-2 whitespace-nowrap"
+            >
+              <Download className="w-4 h-4" />
+              {isDownloadingPackage ? 'Preparing…' : 'Download Full Review Package'}
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="card">
-        <h2 className="text-lg font-bold text-gray-900 mb-4">Exports</h2>
+        <h2 className="text-lg font-bold text-gray-900 mb-4">Basic Exports</h2>
         <div className="flex flex-wrap gap-3">
           {latestCrawlId && (
             <button
