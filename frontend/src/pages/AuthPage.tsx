@@ -9,6 +9,11 @@ import {
 } from '../services/api';
 import { trackOnboardingEvent } from '../services/analytics';
 import {
+  RETURN_TO_LOGIN_DISCLOSURE,
+  returningAccountShortcutEnabled,
+  setReturningAccountShortcut,
+} from '../services/returningAccountShortcut';
+import {
   clearMergedGuestReference,
   createIntentGuestSession,
   intentFromLocation,
@@ -31,6 +36,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
   const [step, setStep] = useState<1 | 2>(1);
   const [legal, setLegal] = useState({ terms: false, privacy: false });
+  const [returnToLoginShortcut, setReturnToLoginShortcutState] = useState(returningAccountShortcutEnabled);
   const [form, setForm] = useState({
     full_name: '',
     business_name: '',
@@ -65,6 +71,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
   const submitLogin = async () => {
     const response = await api.login({ email: form.email, password: form.password });
     authStore.setToken(response.token);
+    setReturningAccountShortcut(returnToLoginShortcut);
     const next = new URLSearchParams(window.location.search).get('next');
     onAuthenticated(response.customer, { nextPath: next?.startsWith('/') ? next : '/dashboard' });
   };
@@ -95,7 +102,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
       guest_session_id: guest.guest_session_id,
     });
     authStore.setToken(response.token);
-    trackOnboardingEvent('account_created', { intent: intent.intent });
+    setReturningAccountShortcut(returnToLoginShortcut);
+    trackOnboardingEvent('account_created', {
+      intent: intent.intent,
+      return_to_login_opt_in: returnToLoginShortcut,
+    });
 
     try {
       const mergeResult = await api.mergeOrbsGuestSession(guest.guest_session_id, {
@@ -197,6 +208,19 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
                 <label><input type="checkbox" checked={legal.terms} onChange={(event) => setLegal({ ...legal, terms: event.target.checked })} /> I agree to the <a href="/terms">Terms</a>.</label>
                 <label><input type="checkbox" checked={legal.privacy} onChange={(event) => setLegal({ ...legal, privacy: event.target.checked })} /> I agree to the <a href="/privacy">Privacy Policy</a>.</label>
               </div>
+            </div>
+          )}
+
+          {(!isSignup || step === 2) && (
+            <div className="onboarding-legal">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={returnToLoginShortcut}
+                  onChange={(event) => setReturnToLoginShortcutState(event.target.checked)}
+                />
+                {' '}{RETURN_TO_LOGIN_DISCLOSURE}
+              </label>
             </div>
           )}
 
