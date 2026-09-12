@@ -410,14 +410,9 @@ def _build_package(project: Project, customer: Customer, db: Session, entitlemen
             }
             for name, path in files.items()
         ],
+        "manifest_note": "manifest.json is the integrity index and therefore does not self-hash.",
     }
     manifest_path = package_root / "manifest.json"
-    _write_json(manifest_path, manifest)
-    manifest["files"].append({
-        "name": "manifest.json",
-        "sha256": _file_sha256(manifest_path),
-        "bytes": manifest_path.stat().st_size,
-    })
     _write_json(manifest_path, manifest)
 
     zip_path = require_vault_path(package_root / f"orb-weaver-review-{project.id}.zip", "customer review package archive")
