@@ -1,0 +1,2886 @@
+{
+  "schemaVersion": 1,
+  "source": "Owner-supplied canonical question bank, 2026-09-14",
+  "patterns": [
+    {
+      "id": "NOC_01",
+      "sourceNumber": 1,
+      "dimension": "GOAL_DISCOVERY",
+      "intent": "Identify the visitor's primary desired benefit",
+      "choices": [
+        {
+          "semanticOutput": "GUIDANCE",
+          "fallbackLabel": "how I guide visitors",
+          "candidateAction": {
+            "id": "EXPLAIN:GUIDANCE",
+            "kind": "EXPLAIN",
+            "topic": "GUIDANCE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "CONVERSION",
+          "fallbackLabel": "help convert them",
+          "candidateAction": {
+            "id": "EXPLAIN:CONVERSION",
+            "kind": "EXPLAIN",
+            "topic": "CONVERSION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "SUPPORT",
+          "fallbackLabel": "handle support",
+          "candidateAction": {
+            "id": "EXPLAIN:SUPPORT",
+            "kind": "EXPLAIN",
+            "topic": "SUPPORT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 1,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "What would be most useful to see first",
+      "fallbackRendering": "What would be most useful to see first — how I guide visitors, help convert them, or handle support?"
+    },
+    {
+      "id": "NOC_02",
+      "sourceNumber": 2,
+      "dimension": "FRICTION_DISCOVERY",
+      "intent": "Identify the most costly visitor-experience problem",
+      "choices": [
+        {
+          "semanticOutput": "NAVIGATION",
+          "fallbackLabel": "visitors not finding what they need",
+          "candidateAction": {
+            "id": "EXPLAIN:NAVIGATION",
+            "kind": "EXPLAIN",
+            "topic": "NAVIGATION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "ABANDONMENT",
+          "fallbackLabel": "leaving before taking action",
+          "candidateAction": {
+            "id": "EXPLAIN:ABANDONMENT",
+            "kind": "EXPLAIN",
+            "topic": "ABANDONMENT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "AVAILABILITY",
+          "fallbackLabel": "needing help that is not immediately available",
+          "candidateAction": {
+            "id": "EXPLAIN:AVAILABILITY",
+            "kind": "EXPLAIN",
+            "topic": "AVAILABILITY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 1,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which problem costs you more",
+      "fallbackRendering": "Which problem costs you more — visitors not finding what they need, leaving before taking action, or needing help that is not immediately available?"
+    },
+    {
+      "id": "NOC_03",
+      "sourceNumber": 3,
+      "dimension": "PRIORITY_SELECTION",
+      "intent": "Prioritize speed, personalization, or missed opportunities",
+      "choices": [
+        {
+          "semanticOutput": "SPEED",
+          "fallbackLabel": "speed",
+          "candidateAction": {
+            "id": "EXPLAIN:SPEED",
+            "kind": "EXPLAIN",
+            "topic": "SPEED",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "PERSONALIZATION",
+          "fallbackLabel": "personalization",
+          "candidateAction": {
+            "id": "EXPLAIN:PERSONALIZATION",
+            "kind": "EXPLAIN",
+            "topic": "PERSONALIZATION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "CAPTURE",
+          "fallbackLabel": "capturing opportunities that would otherwise be missed",
+          "candidateAction": {
+            "id": "EXPLAIN:CAPTURE",
+            "kind": "EXPLAIN",
+            "topic": "CAPTURE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which matters most in the visitor experience",
+      "fallbackRendering": "Which matters most in the visitor experience — speed, personalization, or capturing opportunities that would otherwise be missed?"
+    },
+    {
+      "id": "NOC_04",
+      "sourceNumber": 4,
+      "dimension": "VISITOR_STATE_DISCOVERY",
+      "intent": "Select the visitor state to demonstrate",
+      "choices": [
+        {
+          "semanticOutput": "HIGH_INTENT",
+          "fallbackLabel": "someone ready to act",
+          "candidateAction": {
+            "id": "DEMONSTRATE:HIGH_INTENT",
+            "kind": "DEMONSTRATE",
+            "topic": "HIGH_INTENT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "COMPARISON",
+          "fallbackLabel": "someone comparing choices",
+          "candidateAction": {
+            "id": "DEMONSTRATE:COMPARISON",
+            "kind": "DEMONSTRATE",
+            "topic": "COMPARISON",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "EXPLORATION",
+          "fallbackLabel": "someone still exploring",
+          "candidateAction": {
+            "id": "DEMONSTRATE:EXPLORATION",
+            "kind": "DEMONSTRATE",
+            "topic": "EXPLORATION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which visitor should I demonstrate with",
+      "fallbackRendering": "Which visitor should I demonstrate with — someone ready to act, someone comparing choices, or someone still exploring?"
+    },
+    {
+      "id": "NOC_05",
+      "sourceNumber": 5,
+      "dimension": "PRIORITY_SELECTION",
+      "intent": "Identify the decision information that matters",
+      "choices": [
+        {
+          "semanticOutput": "BUDGET",
+          "fallbackLabel": "their budget",
+          "candidateAction": {
+            "id": "EXPLAIN:BUDGET",
+            "kind": "EXPLAIN",
+            "topic": "BUDGET",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "NEED",
+          "fallbackLabel": "what they actually need",
+          "candidateAction": {
+            "id": "EXPLAIN:NEED",
+            "kind": "EXPLAIN",
+            "topic": "NEED",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "OBJECTION",
+          "fallbackLabel": "what is preventing the decision",
+          "candidateAction": {
+            "id": "EXPLAIN:OBJECTION",
+            "kind": "EXPLAIN",
+            "topic": "OBJECTION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "When visitors hesitate, what matters most to understand",
+      "fallbackRendering": "When visitors hesitate, what matters most to understand — their budget, what they actually need, or what is preventing the decision?"
+    },
+    {
+      "id": "NOC_06",
+      "sourceNumber": 6,
+      "dimension": "VISITOR_STATE_DISCOVERY",
+      "intent": "Identify the visitor recovery opportunity",
+      "choices": [
+        {
+          "semanticOutput": "EXIT_RISK",
+          "fallbackLabel": "someone about to leave",
+          "candidateAction": {
+            "id": "EXPLAIN:EXIT_RISK",
+            "kind": "EXPLAIN",
+            "topic": "EXIT_RISK",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "DECISION_FRICTION",
+          "fallbackLabel": "someone stuck between choices",
+          "candidateAction": {
+            "id": "EXPLAIN:DECISION_FRICTION",
+            "kind": "EXPLAIN",
+            "topic": "DECISION_FRICTION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "NURTURE",
+          "fallbackLabel": "someone interested but not ready yet",
+          "candidateAction": {
+            "id": "EXPLAIN:NURTURE",
+            "kind": "EXPLAIN",
+            "topic": "NURTURE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [
+        "host"
+      ],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which visitor would you most want {host} to recover",
+      "fallbackRendering": "Which visitor would you most want {host} to recover — someone about to leave, someone stuck between choices, or someone interested but not ready yet?"
+    },
+    {
+      "id": "NOC_07",
+      "sourceNumber": 7,
+      "dimension": "PRIORITY_SELECTION",
+      "intent": "Locate the buying-process improvement priority",
+      "choices": [
+        {
+          "semanticOutput": "MATCHING",
+          "fallbackLabel": "finding the right option",
+          "candidateAction": {
+            "id": "EXPLAIN:MATCHING",
+            "kind": "EXPLAIN",
+            "topic": "MATCHING",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "VALUE",
+          "fallbackLabel": "understanding its value",
+          "candidateAction": {
+            "id": "EXPLAIN:VALUE",
+            "kind": "EXPLAIN",
+            "topic": "VALUE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "ACTION",
+          "fallbackLabel": "taking the next action",
+          "candidateAction": {
+            "id": "EXPLAIN:ACTION",
+            "kind": "EXPLAIN",
+            "topic": "ACTION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which part of the buying process should improve first",
+      "fallbackRendering": "Which part of the buying process should improve first — finding the right option, understanding its value, or taking the next action?"
+    },
+    {
+      "id": "NOC_08",
+      "sourceNumber": 8,
+      "dimension": "PRIORITY_SELECTION",
+      "intent": "Prioritize relationship, offer value, or conversion protection",
+      "choices": [
+        {
+          "semanticOutput": "RELATIONSHIP",
+          "fallbackLabel": "the customer relationship",
+          "candidateAction": {
+            "id": "EXPLAIN:RELATIONSHIP",
+            "kind": "EXPLAIN",
+            "topic": "RELATIONSHIP",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "VALUE_PROTECTION",
+          "fallbackLabel": "the value of the offer",
+          "candidateAction": {
+            "id": "EXPLAIN:VALUE_PROTECTION",
+            "kind": "EXPLAIN",
+            "topic": "VALUE_PROTECTION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "CONVERSION",
+          "fallbackLabel": "the conversion opportunity",
+          "candidateAction": {
+            "id": "EXPLAIN:CONVERSION",
+            "kind": "EXPLAIN",
+            "topic": "CONVERSION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "What should the system protect most aggressively",
+      "fallbackRendering": "What should the system protect most aggressively — the customer relationship, the value of the offer, or the conversion opportunity?"
+    },
+    {
+      "id": "NOC_09",
+      "sourceNumber": 9,
+      "dimension": "CONSTRAINT_DISCOVERY",
+      "intent": "Identify the preferred response to a price constraint",
+      "choices": [
+        {
+          "semanticOutput": "VALUE_BUILD",
+          "fallbackLabel": "establish value",
+          "candidateAction": {
+            "id": "EXPLAIN:VALUE_BUILD",
+            "kind": "EXPLAIN",
+            "topic": "VALUE_BUILD",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "COMPARISON",
+          "fallbackLabel": "compare suitable choices",
+          "candidateAction": {
+            "id": "EXPLAIN:COMPARISON",
+            "kind": "EXPLAIN",
+            "topic": "COMPARISON",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "DEAL_OPTIMIZATION",
+          "fallbackLabel": "identify an available legitimate deal",
+          "candidateAction": {
+            "id": "EXPLAIN:DEAL_OPTIMIZATION",
+            "kind": "EXPLAIN",
+            "topic": "DEAL_OPTIMIZATION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "When price becomes the issue, what should happen first",
+      "fallbackRendering": "When price becomes the issue, what should happen first — establish value, compare suitable choices, or identify an available legitimate deal?"
+    },
+    {
+      "id": "NOC_10",
+      "sourceNumber": 10,
+      "dimension": "PROOF_SELECTION",
+      "intent": "Choose the complexity of the proof interaction",
+      "choices": [
+        {
+          "semanticOutput": "SIMPLE",
+          "fallbackLabel": "a simple request",
+          "candidateAction": {
+            "id": "DEMONSTRATE:SIMPLE",
+            "kind": "DEMONSTRATE",
+            "topic": "SIMPLE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "MULTI_CONSTRAINT",
+          "fallbackLabel": "a customer with several competing requirements",
+          "candidateAction": {
+            "id": "DEMONSTRATE:MULTI_CONSTRAINT",
+            "kind": "DEMONSTRATE",
+            "topic": "MULTI_CONSTRAINT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "DYNAMIC",
+          "fallbackLabel": "someone who changes direction during the conversation",
+          "candidateAction": {
+            "id": "DEMONSTRATE:DYNAMIC",
+            "kind": "DEMONSTRATE",
+            "topic": "DYNAMIC",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.8,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which interaction should I demonstrate",
+      "fallbackRendering": "Which interaction should I demonstrate — a simple request, a customer with several competing requirements, or someone who changes direction during the conversation?"
+    },
+    {
+      "id": "NOC_11",
+      "sourceNumber": 11,
+      "dimension": "CAPABILITY_SELECTION",
+      "intent": "Identify the desired depth of guidance",
+      "choices": [
+        {
+          "semanticOutput": "NAVIGATION",
+          "fallbackLabel": "showing visitors where to go",
+          "candidateAction": {
+            "id": "EXPLAIN:NAVIGATION",
+            "kind": "EXPLAIN",
+            "topic": "NAVIGATION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "EDUCATION",
+          "fallbackLabel": "explaining what they are seeing",
+          "candidateAction": {
+            "id": "EXPLAIN:EDUCATION",
+            "kind": "EXPLAIN",
+            "topic": "EDUCATION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "EXECUTION",
+          "fallbackLabel": "helping them complete the task",
+          "candidateAction": {
+            "id": "EXPLAIN:EXECUTION",
+            "kind": "EXPLAIN",
+            "topic": "EXECUTION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which kind of guidance matters most",
+      "fallbackRendering": "Which kind of guidance matters most — showing visitors where to go, explaining what they are seeing, or helping them complete the task?"
+    },
+    {
+      "id": "NOC_12",
+      "sourceNumber": 12,
+      "dimension": "PRIORITY_SELECTION",
+      "intent": "Identify the first decision-narrowing criterion",
+      "choices": [
+        {
+          "semanticOutput": "CUSTOMER_PRIORITY",
+          "fallbackLabel": "the visitor’s priorities",
+          "candidateAction": {
+            "id": "EXPLAIN:CUSTOMER_PRIORITY",
+            "kind": "EXPLAIN",
+            "topic": "CUSTOMER_PRIORITY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "VALUE",
+          "fallbackLabel": "overall value",
+          "candidateAction": {
+            "id": "EXPLAIN:VALUE",
+            "kind": "EXPLAIN",
+            "topic": "VALUE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "PURCHASE_PATH",
+          "fallbackLabel": "the easiest appropriate purchase path",
+          "candidateAction": {
+            "id": "EXPLAIN:PURCHASE_PATH",
+            "kind": "EXPLAIN",
+            "topic": "PURCHASE_PATH",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "When several options could work, what should narrow them first",
+      "fallbackRendering": "When several options could work, what should narrow them first — the visitor’s priorities, overall value, or the easiest appropriate purchase path?"
+    },
+    {
+      "id": "NOC_13",
+      "sourceNumber": 13,
+      "dimension": "VISITOR_STATE_DISCOVERY",
+      "intent": "Identify the preferred source of visitor-state evidence",
+      "choices": [
+        {
+          "semanticOutput": "DECLARED_INTENT",
+          "fallbackLabel": "what visitors explicitly tell us",
+          "candidateAction": {
+            "id": "EXPLAIN:DECLARED_INTENT",
+            "kind": "EXPLAIN",
+            "topic": "DECLARED_INTENT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "HISTORY",
+          "fallbackLabel": "what they have already explored",
+          "candidateAction": {
+            "id": "EXPLAIN:HISTORY",
+            "kind": "EXPLAIN",
+            "topic": "HISTORY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "LIVE_BEHAVIOR",
+          "fallbackLabel": "what they are doing right now",
+          "candidateAction": {
+            "id": "EXPLAIN:LIVE_BEHAVIOR",
+            "kind": "EXPLAIN",
+            "topic": "LIVE_BEHAVIOR",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which signal should carry the most weight",
+      "fallbackRendering": "Which signal should carry the most weight — what visitors explicitly tell us, what they have already explored, or what they are doing right now?"
+    },
+    {
+      "id": "NOC_14",
+      "sourceNumber": 14,
+      "dimension": "VISITOR_STATE_DISCOVERY",
+      "intent": "Identify how to engage an exploring visitor",
+      "choices": [
+        {
+          "semanticOutput": "DISCOVER_INTENT",
+          "fallbackLabel": "discover what brought them here",
+          "candidateAction": {
+            "id": "EXPLAIN:DISCOVER_INTENT",
+            "kind": "EXPLAIN",
+            "topic": "DISCOVER_INTENT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "RELEVANCE",
+          "fallbackLabel": "immediately show something relevant",
+          "candidateAction": {
+            "id": "EXPLAIN:RELEVANCE",
+            "kind": "EXPLAIN",
+            "topic": "RELEVANCE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "LOW_PRESSURE_COMPARISON",
+          "fallbackLabel": "help them compare without pressure",
+          "candidateAction": {
+            "id": "EXPLAIN:LOW_PRESSURE_COMPARISON",
+            "kind": "EXPLAIN",
+            "topic": "LOW_PRESSURE_COMPARISON",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "When someone says they are “just looking,” what is the best next move",
+      "fallbackRendering": "When someone says they are “just looking,” what is the best next move — discover what brought them here, immediately show something relevant, or help them compare without pressure?"
+    },
+    {
+      "id": "NOC_15",
+      "sourceNumber": 15,
+      "dimension": "CAPABILITY_SELECTION",
+      "intent": "Identify the desired service role",
+      "choices": [
+        {
+          "semanticOutput": "GUIDE",
+          "fallbackLabel": "a knowledgeable guide",
+          "candidateAction": {
+            "id": "EXPLAIN:GUIDE",
+            "kind": "EXPLAIN",
+            "topic": "GUIDE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "SHOPPING_ASSISTANT",
+          "fallbackLabel": "a personal shopping assistant",
+          "candidateAction": {
+            "id": "EXPLAIN:SHOPPING_ASSISTANT",
+            "kind": "EXPLAIN",
+            "topic": "SHOPPING_ASSISTANT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "SERVICE",
+          "fallbackLabel": "a capable service representative",
+          "candidateAction": {
+            "id": "EXPLAIN:SERVICE",
+            "kind": "EXPLAIN",
+            "topic": "SERVICE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "What should the experience feel most like",
+      "fallbackRendering": "What should the experience feel most like — a knowledgeable guide, a personal shopping assistant, or a capable service representative?"
+    },
+    {
+      "id": "NOC_16",
+      "sourceNumber": 16,
+      "dimension": "PRIORITY_SELECTION",
+      "intent": "Identify the remaining need after buying intent appears",
+      "choices": [
+        {
+          "semanticOutput": "RESOLVE",
+          "fallbackLabel": "resolving remaining questions",
+          "candidateAction": {
+            "id": "EXPLAIN:RESOLVE",
+            "kind": "EXPLAIN",
+            "topic": "RESOLVE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "CONFIDENCE",
+          "fallbackLabel": "strengthening confidence",
+          "candidateAction": {
+            "id": "EXPLAIN:CONFIDENCE",
+            "kind": "EXPLAIN",
+            "topic": "CONFIDENCE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "COMMITMENT",
+          "fallbackLabel": "making the action easier",
+          "candidateAction": {
+            "id": "EXPLAIN:COMMITMENT",
+            "kind": "EXPLAIN",
+            "topic": "COMMITMENT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "When strong buying intent appears, what matters next",
+      "fallbackRendering": "When strong buying intent appears, what matters next — resolving remaining questions, strengthening confidence, or making the action easier?"
+    },
+    {
+      "id": "NOC_17",
+      "sourceNumber": 17,
+      "dimension": "CONSTRAINT_DISCOVERY",
+      "intent": "Identify handoff requirements",
+      "choices": [
+        {
+          "semanticOutput": "ESCALATION",
+          "fallbackLabel": "getting the right person involved quickly",
+          "candidateAction": {
+            "id": "EXPLAIN:ESCALATION",
+            "kind": "EXPLAIN",
+            "topic": "ESCALATION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "CONTEXT_PRESERVATION",
+          "fallbackLabel": "preserving everything already learned",
+          "candidateAction": {
+            "id": "EXPLAIN:CONTEXT_PRESERVATION",
+            "kind": "EXPLAIN",
+            "topic": "CONTEXT_PRESERVATION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "CONTINUITY",
+          "fallbackLabel": "maintaining continuity while the handoff happens",
+          "candidateAction": {
+            "id": "EXPLAIN:CONTINUITY",
+            "kind": "EXPLAIN",
+            "topic": "CONTINUITY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "When human involvement becomes necessary, what matters most",
+      "fallbackRendering": "When human involvement becomes necessary, what matters most — getting the right person involved quickly, preserving everything already learned, or maintaining continuity while the handoff happens?"
+    },
+    {
+      "id": "NOC_18",
+      "sourceNumber": 18,
+      "dimension": "FRICTION_DISCOVERY",
+      "intent": "Identify the friction to prevent",
+      "choices": [
+        {
+          "semanticOutput": "CONFUSION",
+          "fallbackLabel": "confusion",
+          "candidateAction": {
+            "id": "EXPLAIN:CONFUSION",
+            "kind": "EXPLAIN",
+            "topic": "CONFUSION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "HESITATION",
+          "fallbackLabel": "hesitation",
+          "candidateAction": {
+            "id": "EXPLAIN:HESITATION",
+            "kind": "EXPLAIN",
+            "topic": "HESITATION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "UX_FRICTION",
+          "fallbackLabel": "unnecessary website effort",
+          "candidateAction": {
+            "id": "EXPLAIN:UX_FRICTION",
+            "kind": "EXPLAIN",
+            "topic": "UX_FRICTION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 1,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which friction should be prevented first",
+      "fallbackRendering": "Which friction should be prevented first — confusion, hesitation, or unnecessary website effort?"
+    },
+    {
+      "id": "NOC_19",
+      "sourceNumber": 19,
+      "dimension": "GOAL_DISCOVERY",
+      "intent": "Identify the desired completed-interaction outcome",
+      "choices": [
+        {
+          "semanticOutput": "CHECKOUT",
+          "fallbackLabel": "completed checkout",
+          "candidateAction": {
+            "id": "EXPLAIN:CHECKOUT",
+            "kind": "EXPLAIN",
+            "topic": "CHECKOUT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "LEAD_CAPTURE",
+          "fallbackLabel": "a qualified lead",
+          "candidateAction": {
+            "id": "EXPLAIN:LEAD_CAPTURE",
+            "kind": "EXPLAIN",
+            "topic": "LEAD_CAPTURE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "NEXT_ACTION",
+          "fallbackLabel": "a clearly defined next action",
+          "candidateAction": {
+            "id": "EXPLAIN:NEXT_ACTION",
+            "kind": "EXPLAIN",
+            "topic": "NEXT_ACTION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 1,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "At the end of a productive interaction, what outcome matters most",
+      "fallbackRendering": "At the end of a productive interaction, what outcome matters most — completed checkout, a qualified lead, or a clearly defined next action?"
+    },
+    {
+      "id": "NOC_20",
+      "sourceNumber": 20,
+      "dimension": "CAPABILITY_SELECTION",
+      "intent": "Identify the highest-value capability",
+      "choices": [
+        {
+          "semanticOutput": "GUIDANCE",
+          "fallbackLabel": "visitor guidance",
+          "candidateAction": {
+            "id": "EXPLAIN:GUIDANCE",
+            "kind": "EXPLAIN",
+            "topic": "GUIDANCE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "DECISION_SUPPORT",
+          "fallbackLabel": "decision support",
+          "candidateAction": {
+            "id": "EXPLAIN:DECISION_SUPPORT",
+            "kind": "EXPLAIN",
+            "topic": "DECISION_SUPPORT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "CONVERSION",
+          "fallbackLabel": "conversion assistance",
+          "candidateAction": {
+            "id": "EXPLAIN:CONVERSION",
+            "kind": "EXPLAIN",
+            "topic": "CONVERSION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which capability would create the most value on the site",
+      "fallbackRendering": "Which capability would create the most value on the site — visitor guidance, decision support, or conversion assistance?"
+    },
+    {
+      "id": "NOC_21",
+      "sourceNumber": 21,
+      "dimension": "CONSTRAINT_DISCOVERY",
+      "intent": "Identify the dominant implementation constraint",
+      "choices": [
+        {
+          "semanticOutput": "TIME",
+          "fallbackLabel": "time",
+          "candidateAction": {
+            "id": "EXPLAIN:TIME",
+            "kind": "EXPLAIN",
+            "topic": "TIME",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "COMPLEXITY",
+          "fallbackLabel": "technical complexity",
+          "candidateAction": {
+            "id": "EXPLAIN:COMPLEXITY",
+            "kind": "EXPLAIN",
+            "topic": "COMPLEXITY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "VISITOR_BEHAVIOR",
+          "fallbackLabel": "visitor behavior",
+          "candidateAction": {
+            "id": "EXPLAIN:VISITOR_BEHAVIOR",
+            "kind": "EXPLAIN",
+            "topic": "VISITOR_BEHAVIOR",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "What is the largest constraint",
+      "fallbackRendering": "What is the largest constraint — time, technical complexity, or visitor behavior?"
+    },
+    {
+      "id": "NOC_22",
+      "sourceNumber": 22,
+      "dimension": "CONSTRAINT_DISCOVERY",
+      "intent": "Locate time costs",
+      "choices": [
+        {
+          "semanticOutput": "SETUP_TIME",
+          "fallbackLabel": "initial setup",
+          "candidateAction": {
+            "id": "EXPLAIN:SETUP_TIME",
+            "kind": "EXPLAIN",
+            "topic": "SETUP_TIME",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "LEARNING_TIME",
+          "fallbackLabel": "learning how to operate the system",
+          "candidateAction": {
+            "id": "EXPLAIN:LEARNING_TIME",
+            "kind": "EXPLAIN",
+            "topic": "LEARNING_TIME",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "MAINTENANCE_TIME",
+          "fallbackLabel": "ongoing maintenance",
+          "candidateAction": {
+            "id": "EXPLAIN:MAINTENANCE_TIME",
+            "kind": "EXPLAIN",
+            "topic": "MAINTENANCE_TIME",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Where is time being consumed most",
+      "fallbackRendering": "Where is time being consumed most — initial setup, learning how to operate the system, or ongoing maintenance?"
+    },
+    {
+      "id": "NOC_23",
+      "sourceNumber": 23,
+      "dimension": "CONSTRAINT_DISCOVERY",
+      "intent": "Locate complexity costs",
+      "choices": [
+        {
+          "semanticOutput": "SITE_COMPLEXITY",
+          "fallbackLabel": "the website itself",
+          "candidateAction": {
+            "id": "EXPLAIN:SITE_COMPLEXITY",
+            "kind": "EXPLAIN",
+            "topic": "SITE_COMPLEXITY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "TOOL_COMPLEXITY",
+          "fallbackLabel": "the existing tools",
+          "candidateAction": {
+            "id": "EXPLAIN:TOOL_COMPLEXITY",
+            "kind": "EXPLAIN",
+            "topic": "TOOL_COMPLEXITY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "WORKFLOW_COMPLEXITY",
+          "fallbackLabel": "the business workflow around them",
+          "candidateAction": {
+            "id": "EXPLAIN:WORKFLOW_COMPLEXITY",
+            "kind": "EXPLAIN",
+            "topic": "WORKFLOW_COMPLEXITY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Where is the complexity concentrated",
+      "fallbackRendering": "Where is the complexity concentrated — the website itself, the existing tools, or the business workflow around them?"
+    },
+    {
+      "id": "NOC_24",
+      "sourceNumber": 24,
+      "dimension": "FRICTION_DISCOVERY",
+      "intent": "Identify loss-producing visitor behavior",
+      "choices": [
+        {
+          "semanticOutput": "SKIMMING",
+          "fallbackLabel": "skimming past important information",
+          "candidateAction": {
+            "id": "EXPLAIN:SKIMMING",
+            "kind": "EXPLAIN",
+            "topic": "SKIMMING",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "HESITATION",
+          "fallbackLabel": "hesitating without acting",
+          "candidateAction": {
+            "id": "EXPLAIN:HESITATION",
+            "kind": "EXPLAIN",
+            "topic": "HESITATION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "BOUNCE",
+          "fallbackLabel": "leaving entirely",
+          "candidateAction": {
+            "id": "EXPLAIN:BOUNCE",
+            "kind": "EXPLAIN",
+            "topic": "BOUNCE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 1,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which visitor behavior creates the biggest loss",
+      "fallbackRendering": "Which visitor behavior creates the biggest loss — skimming past important information, hesitating without acting, or leaving entirely?"
+    },
+    {
+      "id": "NOC_25",
+      "sourceNumber": 25,
+      "dimension": "FRICTION_DISCOVERY",
+      "intent": "Locate uncertainty on the site",
+      "choices": [
+        {
+          "semanticOutput": "CLICK_UNCERTAINTY",
+          "fallbackLabel": "visitors unsure what to select",
+          "candidateAction": {
+            "id": "EXPLAIN:CLICK_UNCERTAINTY",
+            "kind": "EXPLAIN",
+            "topic": "CLICK_UNCERTAINTY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "MEANING_UNCERTAINTY",
+          "fallbackLabel": "unsure what something means",
+          "candidateAction": {
+            "id": "EXPLAIN:MEANING_UNCERTAINTY",
+            "kind": "EXPLAIN",
+            "topic": "MEANING_UNCERTAINTY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "NEXT_STEP_UNCERTAINTY",
+          "fallbackLabel": "unsure what to do next",
+          "candidateAction": {
+            "id": "EXPLAIN:NEXT_STEP_UNCERTAINTY",
+            "kind": "EXPLAIN",
+            "topic": "NEXT_STEP_UNCERTAINTY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 1,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Where does the site fail silently",
+      "fallbackRendering": "Where does the site fail silently — visitors unsure what to select, unsure what something means, or unsure what to do next?"
+    },
+    {
+      "id": "NOC_26",
+      "sourceNumber": 26,
+      "dimension": "CAPABILITY_SELECTION",
+      "intent": "Identify the most useful intervention",
+      "choices": [
+        {
+          "semanticOutput": "POINT_TO_CONTROL",
+          "fallbackLabel": "pointing to the correct control",
+          "candidateAction": {
+            "id": "DEMONSTRATE:POINT_TO_CONTROL",
+            "kind": "DEMONSTRATE",
+            "topic": "POINT_TO_CONTROL",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "EXPLAIN_CONTEXT",
+          "fallbackLabel": "explaining the current context",
+          "candidateAction": {
+            "id": "DEMONSTRATE:EXPLAIN_CONTEXT",
+            "kind": "DEMONSTRATE",
+            "topic": "EXPLAIN_CONTEXT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "STEP_GUIDANCE",
+          "fallbackLabel": "guiding the visitor through the steps",
+          "candidateAction": {
+            "id": "DEMONSTRATE:STEP_GUIDANCE",
+            "kind": "DEMONSTRATE",
+            "topic": "STEP_GUIDANCE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "What kind of intervention would help most",
+      "fallbackRendering": "What kind of intervention would help most — pointing to the correct control, explaining the current context, or guiding the visitor through the steps?"
+    },
+    {
+      "id": "NOC_27",
+      "sourceNumber": 27,
+      "dimension": "FRICTION_DISCOVERY",
+      "intent": "Locate funnel loss",
+      "choices": [
+        {
+          "semanticOutput": "LANDING",
+          "fallbackLabel": "initial landing",
+          "candidateAction": {
+            "id": "EXPLAIN:LANDING",
+            "kind": "EXPLAIN",
+            "topic": "LANDING",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "PRODUCT_EVALUATION",
+          "fallbackLabel": "product or service evaluation",
+          "candidateAction": {
+            "id": "EXPLAIN:PRODUCT_EVALUATION",
+            "kind": "EXPLAIN",
+            "topic": "PRODUCT_EVALUATION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "CHECKOUT",
+          "fallbackLabel": "checkout/completion",
+          "candidateAction": {
+            "id": "EXPLAIN:CHECKOUT",
+            "kind": "EXPLAIN",
+            "topic": "CHECKOUT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 1,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which part of the funnel loses the most people",
+      "fallbackRendering": "Which part of the funnel loses the most people — initial landing, product or service evaluation, or checkout/completion?"
+    },
+    {
+      "id": "NOC_28",
+      "sourceNumber": 28,
+      "dimension": "FRICTION_DISCOVERY",
+      "intent": "Distinguish cognitive, emotional, and procedural friction",
+      "choices": [
+        {
+          "semanticOutput": "COGNITIVE",
+          "fallbackLabel": "understanding what to do",
+          "candidateAction": {
+            "id": "EXPLAIN:COGNITIVE",
+            "kind": "EXPLAIN",
+            "topic": "COGNITIVE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "EMOTIONAL",
+          "fallbackLabel": "feeling uncertain about the decision",
+          "candidateAction": {
+            "id": "EXPLAIN:EMOTIONAL",
+            "kind": "EXPLAIN",
+            "topic": "EMOTIONAL",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "PROCEDURAL",
+          "fallbackLabel": "completing the required process",
+          "candidateAction": {
+            "id": "EXPLAIN:PROCEDURAL",
+            "kind": "EXPLAIN",
+            "topic": "PROCEDURAL",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 1,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "What kind of friction dominates",
+      "fallbackRendering": "What kind of friction dominates — understanding what to do, feeling uncertain about the decision, or completing the required process?"
+    },
+    {
+      "id": "NOC_29",
+      "sourceNumber": 29,
+      "dimension": "CAPABILITY_SELECTION",
+      "intent": "Identify how to reduce choice friction",
+      "choices": [
+        {
+          "semanticOutput": "REDUCE_CHOICES",
+          "fallbackLabel": "reduce the number of choices",
+          "candidateAction": {
+            "id": "EXPLAIN:REDUCE_CHOICES",
+            "kind": "EXPLAIN",
+            "topic": "REDUCE_CHOICES",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "CLARIFY_CHOICES",
+          "fallbackLabel": "clarify the differences",
+          "candidateAction": {
+            "id": "EXPLAIN:CLARIFY_CHOICES",
+            "kind": "EXPLAIN",
+            "topic": "CLARIFY_CHOICES",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "JUSTIFY_CHOICE",
+          "fallbackLabel": "explain why one fits better",
+          "candidateAction": {
+            "id": "EXPLAIN:JUSTIFY_CHOICE",
+            "kind": "EXPLAIN",
+            "topic": "JUSTIFY_CHOICE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [
+        "host"
+      ],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "When choices become difficult, what should {host} do first",
+      "fallbackRendering": "When choices become difficult, what should {host} do first — reduce the number of choices, clarify the differences, or explain why one fits better?"
+    },
+    {
+      "id": "NOC_30",
+      "sourceNumber": 30,
+      "dimension": "CAPABILITY_SELECTION",
+      "intent": "Identify the preferred response to a stalled interaction",
+      "choices": [
+        {
+          "semanticOutput": "ASK",
+          "fallbackLabel": "ask a narrowing question",
+          "candidateAction": {
+            "id": "EXPLAIN:ASK",
+            "kind": "EXPLAIN",
+            "topic": "ASK",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "SUGGEST",
+          "fallbackLabel": "suggest the strongest fit",
+          "candidateAction": {
+            "id": "EXPLAIN:SUGGEST",
+            "kind": "EXPLAIN",
+            "topic": "SUGGEST",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "DEMONSTRATE",
+          "fallbackLabel": "demonstrate the next step",
+          "candidateAction": {
+            "id": "EXPLAIN:DEMONSTRATE",
+            "kind": "EXPLAIN",
+            "topic": "DEMONSTRATE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "When someone stalls, which intervention is most appropriate",
+      "fallbackRendering": "When someone stalls, which intervention is most appropriate — ask a narrowing question, suggest the strongest fit, or demonstrate the next step?"
+    },
+    {
+      "id": "NOC_31",
+      "sourceNumber": 31,
+      "dimension": "CAPABILITY_SELECTION",
+      "intent": "Identify the first capability to add",
+      "choices": [
+        {
+          "semanticOutput": "ANSWER",
+          "fallbackLabel": "answering questions",
+          "candidateAction": {
+            "id": "EXPLAIN:ANSWER",
+            "kind": "EXPLAIN",
+            "topic": "ANSWER",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "GUIDE",
+          "fallbackLabel": "guiding actions",
+          "candidateAction": {
+            "id": "EXPLAIN:GUIDE",
+            "kind": "EXPLAIN",
+            "topic": "GUIDE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "VERIFY",
+          "fallbackLabel": "verifying that the visitor is taking the right steps",
+          "candidateAction": {
+            "id": "EXPLAIN:VERIFY",
+            "kind": "EXPLAIN",
+            "topic": "VERIFY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "If the site gained one new ability first, which should it be",
+      "fallbackRendering": "If the site gained one new ability first, which should it be — answering questions, guiding actions, or verifying that the visitor is taking the right steps?"
+    },
+    {
+      "id": "NOC_32",
+      "sourceNumber": 32,
+      "dimension": "CAPABILITY_SELECTION",
+      "intent": "Identify the most useful answer form",
+      "choices": [
+        {
+          "semanticOutput": "INSTANT",
+          "fallbackLabel": "immediate direct answers",
+          "candidateAction": {
+            "id": "EXPLAIN:INSTANT",
+            "kind": "EXPLAIN",
+            "topic": "INSTANT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "CONTEXTUAL",
+          "fallbackLabel": "answers grounded in the current context",
+          "candidateAction": {
+            "id": "EXPLAIN:CONTEXTUAL",
+            "kind": "EXPLAIN",
+            "topic": "CONTEXTUAL",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "COMPARATIVE",
+          "fallbackLabel": "comparisons between relevant choices",
+          "candidateAction": {
+            "id": "EXPLAIN:COMPARATIVE",
+            "kind": "EXPLAIN",
+            "topic": "COMPARATIVE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "What kind of answers would be most useful",
+      "fallbackRendering": "What kind of answers would be most useful — immediate direct answers, answers grounded in the current context, or comparisons between relevant choices?"
+    },
+    {
+      "id": "NOC_33",
+      "sourceNumber": 33,
+      "dimension": "CAPABILITY_SELECTION",
+      "intent": "Identify guidance modality",
+      "choices": [
+        {
+          "semanticOutput": "VISUAL",
+          "fallbackLabel": "visually through the page",
+          "candidateAction": {
+            "id": "DEMONSTRATE:VISUAL",
+            "kind": "DEMONSTRATE",
+            "topic": "VISUAL",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "SPOKEN",
+          "fallbackLabel": "through spoken guidance",
+          "candidateAction": {
+            "id": "DEMONSTRATE:SPOKEN",
+            "kind": "DEMONSTRATE",
+            "topic": "SPOKEN",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "MULTIMODAL",
+          "fallbackLabel": "through coordinated visual and spoken guidance",
+          "candidateAction": {
+            "id": "DEMONSTRATE:MULTIMODAL",
+            "kind": "DEMONSTRATE",
+            "topic": "MULTIMODAL",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "How should guidance primarily be delivered",
+      "fallbackRendering": "How should guidance primarily be delivered — visually through the page, through spoken guidance, or through coordinated visual and spoken guidance?"
+    },
+    {
+      "id": "NOC_34",
+      "sourceNumber": 34,
+      "dimension": "CAPABILITY_SELECTION",
+      "intent": "Identify the desired verification assistance",
+      "choices": [
+        {
+          "semanticOutput": "WARN_EARLY",
+          "fallbackLabel": "warn before a likely mistake",
+          "candidateAction": {
+            "id": "DEMONSTRATE:WARN_EARLY",
+            "kind": "DEMONSTRATE",
+            "topic": "WARN_EARLY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "CONFIRM_STEP",
+          "fallbackLabel": "confirm important steps",
+          "candidateAction": {
+            "id": "DEMONSTRATE:CONFIRM_STEP",
+            "kind": "DEMONSTRATE",
+            "topic": "CONFIRM_STEP",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "PREVENT_ERROR",
+          "fallbackLabel": "actively prevent invalid actions",
+          "candidateAction": {
+            "id": "DEMONSTRATE:PREVENT_ERROR",
+            "kind": "DEMONSTRATE",
+            "topic": "PREVENT_ERROR",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "How should verification help",
+      "fallbackRendering": "How should verification help — warn before a likely mistake, confirm important steps, or actively prevent invalid actions?"
+    },
+    {
+      "id": "NOC_35",
+      "sourceNumber": 35,
+      "dimension": "CONSTRAINT_DISCOVERY",
+      "intent": "Identify the desired balance of adaptation and owner rules",
+      "choices": [
+        {
+          "semanticOutput": "ADAPTIVE",
+          "fallbackLabel": "infer appropriate behavior from the site and visitor context",
+          "candidateAction": {
+            "id": "EXPLAIN:ADAPTIVE",
+            "kind": "EXPLAIN",
+            "topic": "ADAPTIVE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "RULE_DEFINED",
+          "fallbackLabel": "follow explicit owner-defined rules",
+          "candidateAction": {
+            "id": "EXPLAIN:RULE_DEFINED",
+            "kind": "EXPLAIN",
+            "topic": "RULE_DEFINED",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "HYBRID",
+          "fallbackLabel": "combine adaptive behavior with hard business rules",
+          "candidateAction": {
+            "id": "EXPLAIN:HYBRID",
+            "kind": "EXPLAIN",
+            "topic": "HYBRID",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [
+        "host"
+      ],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "How should {host} adapt",
+      "fallbackRendering": "How should {host} adapt — infer appropriate behavior from the site and visitor context, follow explicit owner-defined rules, or combine adaptive behavior with hard business rules?"
+    },
+    {
+      "id": "NOC_36",
+      "sourceNumber": 36,
+      "dimension": "PRIORITY_SELECTION",
+      "intent": "Prioritize clarity, confidence, or momentum",
+      "choices": [
+        {
+          "semanticOutput": "CLARITY",
+          "fallbackLabel": "clarity",
+          "candidateAction": {
+            "id": "EXPLAIN:CLARITY",
+            "kind": "EXPLAIN",
+            "topic": "CLARITY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "CONFIDENCE",
+          "fallbackLabel": "confidence",
+          "candidateAction": {
+            "id": "EXPLAIN:CONFIDENCE",
+            "kind": "EXPLAIN",
+            "topic": "CONFIDENCE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "MOMENTUM",
+          "fallbackLabel": "forward momentum",
+          "candidateAction": {
+            "id": "EXPLAIN:MOMENTUM",
+            "kind": "EXPLAIN",
+            "topic": "MOMENTUM",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [
+        "host"
+      ],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which result should {host} prioritize",
+      "fallbackRendering": "Which result should {host} prioritize — clarity, confidence, or forward momentum?"
+    },
+    {
+      "id": "NOC_37",
+      "sourceNumber": 37,
+      "dimension": "VISITOR_STATE_DISCOVERY",
+      "intent": "Identify the preferred personalization evidence",
+      "choices": [
+        {
+          "semanticOutput": "BEHAVIOR",
+          "fallbackLabel": "current behavior",
+          "candidateAction": {
+            "id": "EXPLAIN:BEHAVIOR",
+            "kind": "EXPLAIN",
+            "topic": "BEHAVIOR",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "HISTORY",
+          "fallbackLabel": "known prior context",
+          "candidateAction": {
+            "id": "EXPLAIN:HISTORY",
+            "kind": "EXPLAIN",
+            "topic": "HISTORY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "STATED_INTENT",
+          "fallbackLabel": "what the visitor explicitly says they want",
+          "candidateAction": {
+            "id": "EXPLAIN:STATED_INTENT",
+            "kind": "EXPLAIN",
+            "topic": "STATED_INTENT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which personalization signal should matter most",
+      "fallbackRendering": "Which personalization signal should matter most — current behavior, known prior context, or what the visitor explicitly says they want?"
+    },
+    {
+      "id": "NOC_38",
+      "sourceNumber": 38,
+      "dimension": "CAPABILITY_SELECTION",
+      "intent": "Identify the preferred choice-reduction strategy",
+      "choices": [
+        {
+          "semanticOutput": "SIMPLIFY",
+          "fallbackLabel": "simplify the field",
+          "candidateAction": {
+            "id": "EXPLAIN:SIMPLIFY",
+            "kind": "EXPLAIN",
+            "topic": "SIMPLIFY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "HIGHLIGHT_BEST_FITS",
+          "fallbackLabel": "highlight the strongest fits",
+          "candidateAction": {
+            "id": "EXPLAIN:HIGHLIGHT_BEST_FITS",
+            "kind": "EXPLAIN",
+            "topic": "HIGHLIGHT_BEST_FITS",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "ELIMINATE_BAD_FITS",
+          "fallbackLabel": "eliminate clearly unsuitable options",
+          "candidateAction": {
+            "id": "EXPLAIN:ELIMINATE_BAD_FITS",
+            "kind": "EXPLAIN",
+            "topic": "ELIMINATE_BAD_FITS",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [
+        "host"
+      ],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "When several choices exist, what should {host} do first",
+      "fallbackRendering": "When several choices exist, what should {host} do first — simplify the field, highlight the strongest fits, or eliminate clearly unsuitable options?"
+    },
+    {
+      "id": "NOC_39",
+      "sourceNumber": 39,
+      "dimension": "VISITOR_STATE_DISCOVERY",
+      "intent": "Identify the visitor state needing adaptive guidance",
+      "choices": [
+        {
+          "semanticOutput": "FIRST_TIME",
+          "fallbackLabel": "first-time visitors",
+          "candidateAction": {
+            "id": "EXPLAIN:FIRST_TIME",
+            "kind": "EXPLAIN",
+            "topic": "FIRST_TIME",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "RETURNING",
+          "fallbackLabel": "returning visitors",
+          "candidateAction": {
+            "id": "EXPLAIN:RETURNING",
+            "kind": "EXPLAIN",
+            "topic": "RETURNING",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "HIGH_INTENT",
+          "fallbackLabel": "visitors showing strong intent",
+          "candidateAction": {
+            "id": "EXPLAIN:HIGH_INTENT",
+            "kind": "EXPLAIN",
+            "topic": "HIGH_INTENT",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which visitors should receive the strongest adaptive guidance",
+      "fallbackRendering": "Which visitors should receive the strongest adaptive guidance — first-time visitors, returning visitors, or visitors showing strong intent?"
+    },
+    {
+      "id": "NOC_40",
+      "sourceNumber": 40,
+      "dimension": "PRIORITY_SELECTION",
+      "intent": "Identify the interaction depth priority",
+      "choices": [
+        {
+          "semanticOutput": "SPEED",
+          "fallbackLabel": "speed",
+          "candidateAction": {
+            "id": "EXPLAIN:SPEED",
+            "kind": "EXPLAIN",
+            "topic": "SPEED",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "DEPTH",
+          "fallbackLabel": "depth of understanding",
+          "candidateAction": {
+            "id": "EXPLAIN:DEPTH",
+            "kind": "EXPLAIN",
+            "topic": "DEPTH",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "PERSUASION",
+          "fallbackLabel": "persuasive guidance toward the right action",
+          "candidateAction": {
+            "id": "EXPLAIN:PERSUASION",
+            "kind": "EXPLAIN",
+            "topic": "PERSUASION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "What should the interaction optimize for",
+      "fallbackRendering": "What should the interaction optimize for — speed, depth of understanding, or persuasive guidance toward the right action?"
+    },
+    {
+      "id": "NOC_41",
+      "sourceNumber": 41,
+      "dimension": "CAPABILITY_SELECTION",
+      "intent": "Identify the desired embodied assistance responsibility",
+      "choices": [
+        {
+          "semanticOutput": "GUIDE",
+          "fallbackLabel": "guiding visitors",
+          "candidateAction": {
+            "id": "DEMONSTRATE:GUIDE",
+            "kind": "DEMONSTRATE",
+            "topic": "GUIDE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "RESOLVE",
+          "fallbackLabel": "resolving their questions",
+          "candidateAction": {
+            "id": "DEMONSTRATE:RESOLVE",
+            "kind": "DEMONSTRATE",
+            "topic": "RESOLVE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "EXECUTE",
+          "fallbackLabel": "helping them complete actions",
+          "candidateAction": {
+            "id": "DEMONSTRATE:EXECUTE",
+            "kind": "DEMONSTRATE",
+            "topic": "EXECUTE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which role would be most useful from a site-native assistant that understands the page and its controls",
+      "fallbackRendering": "Which role would be most useful from a site-native assistant that understands the page and its controls — guiding visitors, resolving their questions, or helping them complete actions?"
+    },
+    {
+      "id": "NOC_42",
+      "sourceNumber": 42,
+      "dimension": "CAPABILITY_SELECTION",
+      "intent": "Identify the desired operating role",
+      "choices": [
+        {
+          "semanticOutput": "GUIDE_ROLE",
+          "fallbackLabel": "guide",
+          "candidateAction": {
+            "id": "EXPLAIN:GUIDE_ROLE",
+            "kind": "EXPLAIN",
+            "topic": "GUIDE_ROLE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "CONCIERGE_ROLE",
+          "fallbackLabel": "concierge",
+          "candidateAction": {
+            "id": "EXPLAIN:CONCIERGE_ROLE",
+            "kind": "EXPLAIN",
+            "topic": "CONCIERGE_ROLE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "ADVISOR_ROLE",
+          "fallbackLabel": "advisor",
+          "candidateAction": {
+            "id": "EXPLAIN:ADVISOR_ROLE",
+            "kind": "EXPLAIN",
+            "topic": "ADVISOR_ROLE",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which operating role fits best",
+      "fallbackRendering": "Which operating role fits best — guide, concierge, or advisor?"
+    },
+    {
+      "id": "NOC_43",
+      "sourceNumber": 43,
+      "dimension": "PROOF_SELECTION",
+      "intent": "Select the responsibility to demonstrate",
+      "choices": [
+        {
+          "semanticOutput": "NAVIGATION",
+          "fallbackLabel": "navigation",
+          "candidateAction": {
+            "id": "DEMONSTRATE:NAVIGATION",
+            "kind": "DEMONSTRATE",
+            "topic": "NAVIGATION",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "QUESTIONS",
+          "fallbackLabel": "answering visitor questions",
+          "candidateAction": {
+            "id": "DEMONSTRATE:QUESTIONS",
+            "kind": "DEMONSTRATE",
+            "topic": "QUESTIONS",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "PURCHASES",
+          "fallbackLabel": "assisting with purchases or other completion actions",
+          "candidateAction": {
+            "id": "DEMONSTRATE:PURCHASES",
+            "kind": "DEMONSTRATE",
+            "topic": "PURCHASES",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.8,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which responsibility should it prove first",
+      "fallbackRendering": "Which responsibility should it prove first — navigation, answering visitor questions, or assisting with purchases or other completion actions?"
+    },
+    {
+      "id": "NOC_44",
+      "sourceNumber": 44,
+      "dimension": "PROOF_SELECTION",
+      "intent": "Select the value criterion to demonstrate",
+      "choices": [
+        {
+          "semanticOutput": "SPEED_PROOF",
+          "fallbackLabel": "faster completion",
+          "candidateAction": {
+            "id": "DEMONSTRATE:SPEED_PROOF",
+            "kind": "DEMONSTRATE",
+            "topic": "SPEED_PROOF",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "CLARITY_PROOF",
+          "fallbackLabel": "greater clarity",
+          "candidateAction": {
+            "id": "DEMONSTRATE:CLARITY_PROOF",
+            "kind": "DEMONSTRATE",
+            "topic": "CLARITY_PROOF",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "CONVERSION_PROOF",
+          "fallbackLabel": "more completed conversions",
+          "candidateAction": {
+            "id": "DEMONSTRATE:CONVERSION_PROOF",
+            "kind": "DEMONSTRATE",
+            "topic": "CONVERSION_PROOF",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.8,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "What would make its value most obvious",
+      "fallbackRendering": "What would make its value most obvious — faster completion, greater clarity, or more completed conversions?"
+    },
+    {
+      "id": "NOC_45",
+      "sourceNumber": 45,
+      "dimension": "CONSTRAINT_DISCOVERY",
+      "intent": "Identify knowledge-update constraints",
+      "choices": [
+        {
+          "semanticOutput": "CONTINUOUS",
+          "fallbackLabel": "continuously from governed site updates",
+          "candidateAction": {
+            "id": "EXPLAIN:CONTINUOUS",
+            "kind": "EXPLAIN",
+            "topic": "CONTINUOUS",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "FIXED",
+          "fallbackLabel": "primarily from fixed owner-defined patterns",
+          "candidateAction": {
+            "id": "EXPLAIN:FIXED",
+            "kind": "EXPLAIN",
+            "topic": "FIXED",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "GOVERNED_HYBRID",
+          "fallbackLabel": "through a governed combination of both",
+          "candidateAction": {
+            "id": "EXPLAIN:GOVERNED_HYBRID",
+            "kind": "EXPLAIN",
+            "topic": "GOVERNED_HYBRID",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.5,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "How should its knowledge evolve",
+      "fallbackRendering": "How should its knowledge evolve — continuously from governed site updates, primarily from fixed owner-defined patterns, or through a governed combination of both?"
+    },
+    {
+      "id": "NOC_46",
+      "sourceNumber": 46,
+      "dimension": "COMMERCIAL_FIT_DISCOVERY",
+      "intent": "Identify ownership-model preference without asserting offer availability",
+      "choices": [
+        {
+          "semanticOutput": "OWNERSHIP",
+          "fallbackLabel": "owning the core system outright",
+          "candidateAction": {
+            "id": "REVIEW_COMMERCIAL_FIT:OWNERSHIP",
+            "kind": "REVIEW_COMMERCIAL_FIT",
+            "topic": "OWNERSHIP",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "RECURRING",
+          "fallbackLabel": "predictable recurring service",
+          "candidateAction": {
+            "id": "REVIEW_COMMERCIAL_FIT:RECURRING",
+            "kind": "REVIEW_COMMERCIAL_FIT",
+            "topic": "RECURRING",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "HYBRID",
+          "fallbackLabel": "a hybrid where the core is owned and optional services remain recurring",
+          "candidateAction": {
+            "id": "REVIEW_COMMERCIAL_FIT:HYBRID",
+            "kind": "REVIEW_COMMERCIAL_FIT",
+            "topic": "HYBRID",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [
+        "GOAL_DISCOVERY",
+        "FRICTION_DISCOVERY",
+        "CAPABILITY_SELECTION",
+        "PROOF_SELECTION"
+      ],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.9,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which ownership model fits your business better",
+      "fallbackRendering": "Which ownership model fits your business better — owning the core system outright, predictable recurring service, or a hybrid where the core is owned and optional services remain recurring?"
+    },
+    {
+      "id": "NOC_47",
+      "sourceNumber": 47,
+      "dimension": "COMMERCIAL_FIT_DISCOVERY",
+      "intent": "Identify cost-structure preference",
+      "choices": [
+        {
+          "semanticOutput": "LONG_TERM_COST",
+          "fallbackLabel": "lowest long-term ownership cost",
+          "candidateAction": {
+            "id": "REVIEW_COMMERCIAL_FIT:LONG_TERM_COST",
+            "kind": "REVIEW_COMMERCIAL_FIT",
+            "topic": "LONG_TERM_COST",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "PREDICTABLE_OPEX",
+          "fallbackLabel": "predictable operating expense",
+          "candidateAction": {
+            "id": "REVIEW_COMMERCIAL_FIT:PREDICTABLE_OPEX",
+            "kind": "REVIEW_COMMERCIAL_FIT",
+            "topic": "PREDICTABLE_OPEX",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "FLEXIBILITY",
+          "fallbackLabel": "maximum flexibility as needs change",
+          "candidateAction": {
+            "id": "REVIEW_COMMERCIAL_FIT:FLEXIBILITY",
+            "kind": "REVIEW_COMMERCIAL_FIT",
+            "topic": "FLEXIBILITY",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [
+        "GOAL_DISCOVERY",
+        "FRICTION_DISCOVERY",
+        "CAPABILITY_SELECTION",
+        "PROOF_SELECTION"
+      ],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.9,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which cost structure matters most",
+      "fallbackRendering": "Which cost structure matters most — lowest long-term ownership cost, predictable operating expense, or maximum flexibility as needs change?"
+    },
+    {
+      "id": "NOC_48",
+      "sourceNumber": 48,
+      "dimension": "PROOF_SELECTION",
+      "intent": "Select proof tied to the visitor's stated needs",
+      "choices": [
+        {
+          "semanticOutput": "FRICTION_PROOF",
+          "fallbackLabel": "reducing visitor friction",
+          "candidateAction": {
+            "id": "DEMONSTRATE:FRICTION_PROOF",
+            "kind": "DEMONSTRATE",
+            "topic": "FRICTION_PROOF",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "INTELLIGENCE_PROOF",
+          "fallbackLabel": "answering intelligently in context",
+          "candidateAction": {
+            "id": "DEMONSTRATE:INTELLIGENCE_PROOF",
+            "kind": "DEMONSTRATE",
+            "topic": "INTELLIGENCE_PROOF",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "CONVERSION_PROOF",
+          "fallbackLabel": "increasing completed actions",
+          "candidateAction": {
+            "id": "DEMONSTRATE:CONVERSION_PROOF",
+            "kind": "DEMONSTRATE",
+            "topic": "CONVERSION_PROOF",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        }
+      ],
+      "requiredLexicalSlots": [
+        "host"
+      ],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.8,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which part of what you described should {host} prove first",
+      "fallbackRendering": "Which part of what you described should {host} prove first — reducing visitor friction, answering intelligently in context, or increasing completed actions?"
+    },
+    {
+      "id": "NOC_49",
+      "sourceNumber": 49,
+      "dimension": "PROOF_SELECTION",
+      "intent": "Select a relevant live demonstration",
+      "choices": [
+        {
+          "semanticOutput": "NAVIGATION_DEMO",
+          "fallbackLabel": "navigation guidance",
+          "candidateAction": {
+            "id": "DEMONSTRATE:NAVIGATION_DEMO",
+            "kind": "DEMONSTRATE",
+            "topic": "NAVIGATION_DEMO",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "QUESTION_DEMO",
+          "fallbackLabel": "contextual question handling",
+          "candidateAction": {
+            "id": "DEMONSTRATE:QUESTION_DEMO",
+            "kind": "DEMONSTRATE",
+            "topic": "QUESTION_DEMO",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        },
+        {
+          "semanticOutput": "CONVERSION_DEMO",
+          "fallbackLabel": "conversion guidance",
+          "candidateAction": {
+            "id": "DEMONSTRATE:CONVERSION_DEMO",
+            "kind": "DEMONSTRATE",
+            "topic": "CONVERSION_DEMO",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": true
+          }
+        }
+      ],
+      "requiredLexicalSlots": [],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [],
+      "confidenceTarget": 0.8,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 0.8,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "Which live demonstration would be most useful now",
+      "fallbackRendering": "Which live demonstration would be most useful now — navigation guidance, contextual question handling, or conversion guidance?"
+    },
+    {
+      "id": "NOC_50",
+      "sourceNumber": 50,
+      "dimension": "COMMITMENT_NEXT_STEP",
+      "intent": "Identify the visitor's preferred next step without executing it",
+      "choices": [
+        {
+          "semanticOutput": "SITE_SCAN",
+          "fallbackLabel": "scan the site",
+          "candidateAction": {
+            "id": "REQUEST_SITE_SCAN:SITE_SCAN",
+            "kind": "REQUEST_SITE_SCAN",
+            "topic": "SITE_SCAN",
+            "requiresExplicitConsent": true,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "CONFIGURE_ORB",
+          "fallbackLabel": "configure {host} around what we discovered",
+          "candidateAction": {
+            "id": "REQUEST_CONFIGURATION:CONFIGURE_ORB",
+            "kind": "REQUEST_CONFIGURATION",
+            "topic": "CONFIGURE_ORB",
+            "requiresExplicitConsent": true,
+            "requiresLiveVerification": false
+          }
+        },
+        {
+          "semanticOutput": "IMPLEMENTATION_PREVIEW",
+          "fallbackLabel": "review the implementation path first",
+          "candidateAction": {
+            "id": "REVIEW_IMPLEMENTATION:IMPLEMENTATION_PREVIEW",
+            "kind": "REVIEW_IMPLEMENTATION",
+            "topic": "IMPLEMENTATION_PREVIEW",
+            "requiresExplicitConsent": false,
+            "requiresLiveVerification": false
+          }
+        }
+      ],
+      "requiredLexicalSlots": [
+        "host"
+      ],
+      "legalStages": [
+        "LANDING_TOUR"
+      ],
+      "requiredDimensions": [
+        "GOAL_DISCOVERY",
+        "FRICTION_DISCOVERY",
+        "CAPABILITY_SELECTION",
+        "PROOF_SELECTION",
+        "COMMERCIAL_FIT_DISCOVERY"
+      ],
+      "confidenceTarget": 0.9,
+      "informationGainWeight": 0.8,
+      "convergenceWeight": 1,
+      "generationConstraints": {
+        "choiceCount": 3,
+        "preserveOrder": true,
+        "allowAdditionalBranches": false,
+        "allowYesNoExit": false
+      },
+      "fallbackStem": "What makes the most sense as the next step",
+      "fallbackRendering": "What makes the most sense as the next step — scan the site, configure {host} around what we discovered, or review the implementation path first?"
+    }
+  ]
+}

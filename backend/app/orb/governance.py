@@ -163,15 +163,36 @@ def finalize_governance_trace(
 
 
 def prompt_layers(compiled: Dict[str, Any]) -> str:
-    """Return the complete governed context for the configured articulation model."""
+    """Return governance layers without dumping the compiled Site World.
+
+    Site World evidence is selected by the runtime retrieval path and supplied
+    separately to cognition.  Keeping this layer structural prevents a large
+    crawl artifact from crowding out the evidence selected for this turn.
+    """
+    deployment = compiled["deployment"]
+    turn = compiled["turn"]
+    deployment_brief = {
+        "identity": deployment.get("identity"),
+        "tool_manifest": deployment.get("tool_manifest") or [],
+        "operating_policy": deployment.get("operating_policy") or {},
+        "site_world_version": compiled.get("versions", {}).get("site_world_version"),
+    }
+    turn_brief = {
+        "transcript": turn.get("transcript"),
+        "current_page": turn.get("current_page") or {},
+        "visitor_state": turn.get("visitor_state") or {},
+        "experience_context": turn.get("experience_context"),
+        "pointer_matches": turn.get("pointer_matches") or [],
+        "route": turn.get("route"),
+    }
     return (
         "GOVERNED WEBSITE ORB ASSEMBLY. Preserve every layer and do not summarize or omit the persistent standard.\n"
         "PERSISTENT / IMMUTABLE LAYER:\n"
         f"{compiled['persistent']['professional_inculcation']}\n\n"
         "DEPLOYMENT LAYER:\n"
-        f"{compiled['deployment']}\n\n"
+        f"{deployment_brief}\n\n"
         "TURN LAYER:\n"
-        f"{compiled['turn']}\n"
+        f"{turn_brief}\n"
         "TPC resolves deterministic truth before articulation. Doctrine v1 checks the final spoken output before release."
     )
 
