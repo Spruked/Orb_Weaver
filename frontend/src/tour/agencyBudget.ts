@@ -27,6 +27,13 @@ export function boundedAgencyInput(envelope: AgencyEnvelope, visitorContext: str
   recent_interaction?: string[];
   active_permissions?: string[];
   acquisitions_remaining?: number;
+  recent_evidence_ids?: string[];
+  active_excursion?: {
+    purpose: string;
+    origin_route: string;
+    destination_route: string;
+    status: 'PENDING_ARRIVAL' | 'ACTIVE';
+  } | null;
 } = {}) {
   if (envelope.candidates.length > budget.maxCandidates) throw new Error('Candidate count exceeds Kmax before cognition');
   const payload = {
