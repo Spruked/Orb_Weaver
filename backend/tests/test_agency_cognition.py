@@ -12,7 +12,7 @@ from memory_core import AIMSMemorySystem
 def memory(tmp_path: Path, monkeypatch):
     system = AIMSMemorySystem(tmp_path)
     monkeypatch.setattr(agency, '_aims', lambda: system)
-    monkeypatch.setattr(agency, 'context_for_turn', lambda *args: {'relevant_session_context': [{'kind': 'goal', 'text': 'installation complexity'}]})
+    monkeypatch.setattr(agency, 'context_for_agency', lambda *args: {'relevant_session_context': [{'kind': 'goal', 'text': 'installation complexity'}]})
     return system
 
 
@@ -99,7 +99,7 @@ async def test_budget_is_utf8_bytes_not_character_count(memory, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_memory_growth_does_not_expand_inference_payload(memory, monkeypatch):
-    monkeypatch.setattr(agency, 'context_for_turn', lambda *args: {'relevant_session_context': [{'text': 'private' * 4000}] * 100})
+    monkeypatch.setattr(agency, 'context_for_agency', lambda *args: {'relevant_session_context': [{'text': 'private' * 4000}] * 100})
     generate = AsyncMock(return_value={'selected_candidate_id': 'explain'})
     monkeypatch.setattr(agency, 'generate_agency_json', generate)
     result = await agency.agency_cognition(request(candidates=[{'candidate_id': 'explain'}]))
