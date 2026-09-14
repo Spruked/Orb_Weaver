@@ -68,3 +68,20 @@ test('working cache remains bounded and rejects corrupted authority-like state',
     recentEvidenceIds: [], excursions: [{ origin: { route: 'https://evil.test/' } }], updatedAt: Date.now() }));
   expect(readAgencySessionCache(storage).excursions).toEqual([]);
 });
+
+test('stale short-term cache expires instead of resuming an abandoned excursion', () => {
+  const storage = new MemoryStorage();
+  storage.setItem(AGENCY_SESSION_CACHE_KEY, JSON.stringify({
+    version: 1,
+    visitorContext: 'old visitor context',
+    boundedSetRevision: 'old:set',
+    activeCandidateId: 'move:old',
+    recentEvidenceIds: ['evidence-old'],
+    excursions: [],
+    updatedAt: Date.now() - (31 * 60 * 1000),
+  }));
+  const cache = readAgencySessionCache(storage);
+  expect(cache.visitorContext).toBe('');
+  expect(cache.activeCandidateId).toBeNull();
+  expect(storage.getItem(AGENCY_SESSION_CACHE_KEY)).toBeNull();
+});
