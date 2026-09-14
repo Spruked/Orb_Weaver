@@ -67,8 +67,8 @@ current candidate availability. It returns no route and performs no action.
 unsupported classifications. The host must still obtain and consume a real
 execution authorization from its existing action path.
 
-Confidence targets and ranking weights are initial deterministic policy values,
-not measured conversion claims. Commercial-fit patterns require goal, friction,
+Confidence targets and ranking weights are deterministic policy values, not
+measured conversion claims. Commercial-fit patterns require goal, friction,
 capability, and proof coverage; commitment additionally requires commercial-fit
 coverage. The host supplies evidence-derived confidence and the acquisition
 budget. Neither is an LLM-selected policy field.
@@ -96,23 +96,101 @@ choose an action until ambiguity is resolved. Supporting excerpts must appear
 in the actual visitor response. This is interpretation evidence, not promotion
 to an authoritative visitor declaration or an execution permission.
 
-## Connected versus remaining runtime work
+## Agency Envelope and coherent candidate moves
 
-Connected: legacy curriculum consumes shared registry records; the existing
-Governor owns canonical ranking and scoped candidate evaluation; canonical
-compile/classify outputs have validated, provider-neutral boundaries.
+The live tour runtime now constructs a bounded Agency Envelope from the current
+verified environment. The six legal vectors describe the model's current
+freedom, but the model never assembles an executable action by independently
+mixing vector values. The Governor/environment first assembles complete,
+coherent candidate moves; cognition may select only one supplied
+`candidate_id`.
 
-The live controller still uses the three compatibility questions. It does not
-yet schedule the new bank. Required follow-on runtime work includes wiring
-evidence-derived confidence/budgets and currently legal candidate bindings into
-selection, registering real cognition adapters, connecting the existing scanned
-lexical model, and recording question/answer/demo provenance through AIMS.
-Provider tests use deterministic doubles; they do not prove live Qwen/cloud
-equivalence or voice/DOM behavior.
+The legal set is an intersection of universal capability, site-scan evidence,
+live DOM/target evidence, Governor policy, visitor permission, and applicable
+security/business policy. Site content is evidence, never authority. A model
+response is a proposal/preference, never execution authority.
 
-The present destination scope has question/stage/chapter/stop checks but no
-single-use nonce or movement epoch. Full action grants, nonce consumption,
-return-to-same-position replay rejection, and live Pointer confirmation must
-be connected before candidate actions become executable. New selection helpers
-do not claim to supply those guarantees. No startup, movement, purchase,
-production service, or live deployment behavior is changed by this registry pass.
+Each candidate is bound to a `bounded_set_revision`. The Governor re-reads the
+live environment before issuing and consuming authorization. Relevant position,
+route, DOM/target, permission, visitor, evidence, or execution changes invalidate
+the prior set. Single-use authorization nonces are consumed before action
+execution; stale, forged, replayed, cross-envelope, or superseded grants fail
+closed.
+
+Consequence tier is independent of cognitive action. `OBSERVE`, `NAVIGATE`,
+`PREPARE`, and `COMMIT` are separate permission classes. `COMMIT` always requires
+explicit confirmation. A scanned checkout label or model-selected destination
+cannot elevate permission.
+
+## Bounded working state and scaling contract
+
+`Kmax` is the configured upper bound on candidate count supplied to cognition.
+Selection cost is described as `O(k)`, where `k <= Kmax`; it is not claimed to be
+mathematically `O(1)`.
+
+`B` is the configured UTF-8 byte budget for the complete active cognition
+prompt. The browser bounds its serialized working set before sending it, and the
+backend independently measures payload and final prompt bytes before inference.
+A.I.M.S. retrieval is relevance-selected and separately bounded by evidence item
+and byte budgets. Historical memory growth therefore does not imply unbounded
+inference context.
+
+Operationally:
+
+- site discovery/indexing scales with the discovered site, approximately `O(P + E)` for pages and indexed affordances/evidence;
+- active cognition context is `O(B)`;
+- model candidate selection is `O(k)`, `k <= Kmax`;
+- Vault/evidence storage grows with recorded history, approximately `O(N)`;
+- inference payload remains bounded by `B` rather than total historical `N`.
+
+Payload telemetry records candidate count, `Kmax`, payload bytes, prompt bytes,
+selected evidence items/bytes, and their configured budgets. These are measured
+operational bounds, not latency guarantees.
+
+## Memory, evidence, and continuity boundaries
+
+A.I.M.S. is an advisory evidence/memory layer. Its selected session context may
+inform cognition, but it cannot create routes, targets, permissions, candidate
+moves, or execution grants. Browser observations preserve provenance and are not
+silently promoted to server-verified facts. Inference records are stored as
+`INFERRED`, distinct from direct visitor declarations and verified results.
+
+The mounted runtime also owns a bounded, browser-session-only Agency short-term
+cache. It carries irreducible continuity across React/page remounts: visitor
+context, recent evidence identifiers, active candidate/revision metadata, and a
+small excursion stack. Recomputable confidence, coverage, permissions, and live
+DOM facts remain derived from the canonical journey/environment rather than
+being trusted from cache.
+
+Cross-page governed navigation is treated as an excursion. Before navigation,
+Weaver must persist a return/resume contract containing the candidate/revision,
+purpose, exact origin stage/chapter/stop/route, and governed destination. The
+runtime suppresses nested cross-page navigation while that excursion is active.
+On the destination page it re-verifies arrival against the current journey and
+live route, performs destination work through a fresh Agency Envelope, then
+consumes the return contract before navigating back to the exact governed
+origin. Cached return data alone never grants authority.
+
+## Current runtime status and remaining acceptance work
+
+Connected now:
+
+- all 50 canonical patterns and 150 semantic choices;
+- compatibility questions and existing route semantics;
+- evidence-derived acquisition ranking and confidence suppression;
+- provider-neutral question compilation and response classification;
+- live Agency Envelope construction and bounded candidate selection;
+- single-use authorization, stale-revision rejection, replay rejection, and
+  live target/destination revalidation;
+- bounded A.I.M.S. context and outcome/evidence recording;
+- browser-session short-term continuity and governed cross-page return/resume.
+
+Remaining work is acceptance/hardening rather than missing architectural
+ownership: run the backend Agency/A.I.M.S. tests, frontend Agency/runtime/cache
+suite, TypeScript typecheck, and the live `16667 -> 16666 -> 16520` cognition
+path against the current dev services. Provider equivalence, voice playback,
+real DOM target behavior, and end-to-end LiDAR excursion/return must be verified
+live before this work is called production-ready.
+
+No Docker rebuild or production deployment is implied by this architecture
+work.
