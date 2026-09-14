@@ -56,6 +56,65 @@
   cursor: wait;
 }
 
+/* The opening is visible over the real page, never a page-covering gate. */
+.ow-cut-startup-presence {
+  position: fixed;
+  z-index: 2147482997;
+  left: 66vw;
+  top: 37vh;
+  width: min(360px, 54vw);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.ow-cut-startup-presence-bloom,
+.ow-cut-startup-presence-ring {
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+}
+
+.ow-cut-startup-presence-bloom {
+  background: radial-gradient(circle, rgba(108, 215, 238, .30), rgba(108, 215, 238, .08) 42%, transparent 70%);
+  filter: blur(15px);
+  animation: ow-cut-startup-bloom 1.8s ease-out both;
+}
+
+.ow-cut-startup-presence-ring {
+  border: 1px solid rgba(108, 215, 238, .52);
+  box-shadow: 0 0 24px rgba(108, 215, 238, .18);
+  animation: ow-cut-startup-ring 2.2s ease-out both;
+}
+
+.ow-cut-startup-presence-ring-b { animation-delay: .55s; border-color: rgba(228, 197, 103, .44); }
+.ow-cut-startup-presence-ring-c { animation-delay: 1.1s; }
+
+.ow-cut-startup-presence.is-awaiting-audio .ow-cut-startup-presence-bloom,
+.ow-cut-startup-presence.is-awaiting-audio .ow-cut-startup-presence-ring {
+  animation-iteration-count: infinite;
+}
+
+@keyframes ow-cut-startup-bloom {
+  from { opacity: 0; transform: scale(.62); }
+  38% { opacity: 1; }
+  to { opacity: 0; transform: scale(1.3); }
+}
+
+@keyframes ow-cut-startup-ring {
+  from { opacity: 0; transform: scale(.55); }
+  18% { opacity: .9; }
+  to { opacity: 0; transform: scale(1.38); }
+}
+
+@media (max-width: 680px) {
+  .ow-cut-startup-presence {
+    left: 69vw;
+    top: 31vh;
+    width: min(300px, 78vw);
+  }
+}
+
 .ow-cut-startup-caption {
   position: relative;
   z-index: 2;

@@ -58,6 +58,7 @@ const LandingPage: React.FC = () => {
   const [error, setError] = useState('');
   const [visibleBeats, setVisibleBeats] = useState<Record<string, boolean>>({ beat1: true });
   const [splashTrigger, setSplashTrigger] = useState(0);
+  const [introVisualActive, setIntroVisualActive] = useState(false);
   const [introAudioState, setIntroAudioState] = useState<IntroAudioState>("preloading");
   const introAudioRef = useRef<HTMLAudioElement | null>(null);
   const selectedIntroRef = useRef<IntroVariant | null>(null);
@@ -127,8 +128,16 @@ const LandingPage: React.FC = () => {
     }
 
     void beginStartupWarmup();
+    setIntroVisualActive(true);
     setSplashTrigger(Date.now());
   }, []);
+
+  useEffect(() => {
+    if (!splashTrigger) return;
+    window.dispatchEvent(new CustomEvent("orbweaver:startup-intro", {
+      detail: { phase: "INTRO_VISUAL_STARTED" },
+    }));
+  }, [splashTrigger]);
 
   useEffect(() => {
     if (!splashTrigger) return;
@@ -169,6 +178,11 @@ const LandingPage: React.FC = () => {
       completeStartupGateRef.current(voiceUnavailable);
     };
 
+    const finishIntroVisual = () => {
+      setIntroVisualActive(false);
+      emitIntro("INTRO_VISUAL_ENDED");
+    };
+
     const syncCaption = () => {
       if (cancelled) return;
       // Recorded variants share wording, but have different audio durations.
@@ -194,9 +208,14 @@ const LandingPage: React.FC = () => {
       emitIntro("INTRO_CAPTION", { text: null });
       setIntroAudioState(phase === "INTRO_AUTOPLAY_BLOCKED" ? "autoplay_blocked" : "error");
       emitIntro(phase, { ...detail });
-      // Audible autoplay is normally blocked on a first visit. Keep the
-      // startup cover in place and let one visitor tap resume the scripted
-      // Web Audio path; do not silently discard the spoken introduction.
+      if (phase === "INTRO_AUTOPLAY_BLOCKED") {
+        // Browser autoplay is not completion. Keep this fresh-session intro
+        // staged over the live page until the existing speaker control gives
+        // us a real visitor gesture.
+        return;
+      }
+      finishIntroVisual();
+      completeStartup(true);
     };
 
     const startPlayback = () => {
@@ -230,6 +249,7 @@ const LandingPage: React.FC = () => {
         return;
       }
       introFailed = false;
+      setIntroVisualActive(true);
       setIntroAudioState("preloading");
       startPlayback();
     };
@@ -244,6 +264,7 @@ const LandingPage: React.FC = () => {
       if (cancelled) return;
       emitIntro("INTRO_CAPTION", { text: null });
       emitIntro("INTRO_AUDIO_ENDED", { asset: audio.currentSrc, duration: audio.duration });
+      finishIntroVisual();
       window.sessionStorage.setItem(STARTUP_GREETING_SESSION_KEY, "1");
       completeStartup();
     };
@@ -276,6 +297,12 @@ const LandingPage: React.FC = () => {
   }, [splashTrigger]);
 
   useEffect(() => {
+    const resumeFromSpeakerControl = () => introPlaybackRequestRef.current?.();
+    window.addEventListener("orbweaver:startup-audio-permission", resumeFromSpeakerControl);
+    return () => window.removeEventListener("orbweaver:startup-audio-permission", resumeFromSpeakerControl);
+  }, []);
+
+  useEffect(() => {
     if (!splashTrigger) return;
     window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-started", {
       detail: { splash_state: "playing" },
@@ -292,7 +319,7 @@ const LandingPage: React.FC = () => {
     window.sessionStorage.setItem(LANDING_SPLASH_COMPLETE_SESSION_KEY, "1");
     setSplashTrigger(0);
     window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-complete", {
-      detail: { splash_state: "complete", readiness_state: "WARMING", voice_unavailable: voiceUnavailable },
+      detail: { splash_state: "complete", readiness_state: voiceUnavailable ? "BLOCKED" : "WARMING", voice_unavailable: voiceUnavailable },
     }));
   };
   completeStartupGateRef.current = (voiceUnavailable = false) => {
@@ -344,36 +371,16 @@ const LandingPage: React.FC = () => {
 
   return (
     <main className="ow-cut-page">
-      {splashTrigger > 0 && (
-        <div
-          className="ow-cut-startup-gate"
-          aria-live="polite"
-        >
-          {(introAudioState === "autoplay_blocked" || introAudioState === "error" || introAudioState === "warming" || introAudioState === "blocked") && (
-            <p className="ow-cut-startup-audio-status" role="status">
-              {introAudioState === "warming"
-                ? "Weaver is getting ready..."
-                : introAudioState === "autoplay_blocked"
-                  ? "Audio needs your permission. Start with Weaver to hear the introduction."
-                  : introAudioState === "blocked"
-                    ? "Voice temporarily unavailable."
-                    : "Introduction unavailable. Please retry."}
-            </p>
-          )}
-          {(introAudioState === "autoplay_blocked" || introAudioState === "error") && (
-            <button
-              type="button"
-              className="ow-cut-startup-button"
-              onClick={() => introPlaybackRequestRef.current?.()}
-            >
-              Start with Weaver
-            </button>
-          )}
-        </div>
-      )}
-
       <div className="ow-cut-grid" />
       <div className="ow-cut-noise" />
+      {introVisualActive && (
+        <div className={`ow-cut-startup-presence ${introAudioState === "autoplay_blocked" ? "is-awaiting-audio" : ""}`} aria-hidden="true">
+          <span className="ow-cut-startup-presence-bloom" />
+          <span className="ow-cut-startup-presence-ring ow-cut-startup-presence-ring-a" />
+          <span className="ow-cut-startup-presence-ring ow-cut-startup-presence-ring-b" />
+          <span className="ow-cut-startup-presence-ring ow-cut-startup-presence-ring-c" />
+        </div>
+      )}
 
       <PublicHeader theme="dark" />
 
@@ -395,7 +402,7 @@ const LandingPage: React.FC = () => {
               <p data-orb-target="what_weaver_does"><strong>What does Weaver do?</strong> He understands this website, answers from its verified knowledge, and guides you to the right place when showing is faster than explaining.</p>
               <p data-orb-target="what_to_say"><strong>What do I say?</strong> Anything you would ask a person who knows the site. Click Weaver, speak naturally, finish your thought, and pause.</p>
               <p id="watch-weaver-guide" data-orb-target="watch_weaver_guide"><strong>Watch Weaver guide.</strong> When pointing is useful, Weaver guides only to a verified target and pings the exact place it can prove is live.</p>
-              <p data-orb-target="interrupt_or_guide"><strong>You stay in control.</strong> Click Weaver while he is talking to pause him. Click again to ask your question, or choose Continue tour to resume.</p>
+              <p data-orb-target="interrupt_or_guide"><strong>You stay in control.</strong> Click Weaver while speaking to pause, then click again when you are ready to talk.</p>
             </div>
           </div>
         </div>

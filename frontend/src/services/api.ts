@@ -26,6 +26,8 @@ function defaultApiBaseUrl() {
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || defaultApiBaseUrl();
 const TOKEN_KEY = 'orb_weaver_customer_token';
+const SESSION_TOKEN_KEY = 'orb_weaver_customer_session_token';
+const WEBSITE_ORB_ANONYMOUS_SESSION_KEY = 'orb_weaver_website_orb_session';
 const ORB_RECONNECT_MESSAGE = 'I am reconnecting to my response service. Please try again in a moment.';
 
 // A Website ORB workspace is intentionally not a remembered browser login.
@@ -35,18 +37,48 @@ let activeCustomerToken: string | null = null;
 if (typeof window !== 'undefined') {
   try {
     window.localStorage.removeItem(TOKEN_KEY);
+    // Authentication belongs to this browser session only. It survives a
+    // normal reload, but a new browser session must sign in again.
+    activeCustomerToken = window.sessionStorage.getItem(SESSION_TOKEN_KEY);
   } catch {
     // Storage can be unavailable in hardened or private browser contexts.
   }
 }
 
+// This is deliberately a browser-session handle, not an account identifier.
+// It lets the Website ORB retain a few conversational turns without writing
+// anonymous visitor data to customer memory or durable browser storage.
+function websiteOrbAnonymousSessionId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const existing = window.sessionStorage.getItem(WEBSITE_ORB_ANONYMOUS_SESSION_KEY);
+    if (existing && /^[A-Za-z0-9_-]{24,128}$/.test(existing)) return existing;
+    const generated = typeof window.crypto?.randomUUID === 'function'
+      ? window.crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    window.sessionStorage.setItem(WEBSITE_ORB_ANONYMOUS_SESSION_KEY, generated);
+    return generated;
+  } catch {
+    return null;
+  }
+}
+
 export const authStore = {
   getToken: () => activeCustomerToken,
-  setToken: (token: string) => { activeCustomerToken = token; },
+  setToken: (token: string) => {
+    activeCustomerToken = token;
+    try {
+      window.sessionStorage.setItem(SESSION_TOKEN_KEY, token);
+      window.localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      // The active in-page token still provides the current session.
+    }
+  },
   clearToken: () => {
     activeCustomerToken = null;
     try {
       window.localStorage.removeItem(TOKEN_KEY);
+      window.sessionStorage.removeItem(SESSION_TOKEN_KEY);
     } catch {
       // The in-memory session is already cleared.
     }
@@ -1415,6 +1447,8 @@ export const api = {
     if (context?.site_id) {
       formData.append('site_id', context.site_id);
     }
+    const anonymousSessionId = websiteOrbAnonymousSessionId();
+    if (anonymousSessionId) formData.append('anonymous_session_id', anonymousSessionId);
     if (context?.experience) {
       formData.append('experience_phase', context.experience.phase);
       formData.append('experience_objective', context.experience.objective);
@@ -1436,7 +1470,7 @@ export const api = {
   ) =>
     request<WebsiteOrbVoiceResponse>('/api/orb/website-text', {
       method: 'POST',
-      body: JSON.stringify({ transcript, synthesize_tts: synthesizeTts, ...(context || {}) }),
+      body: JSON.stringify({ transcript, synthesize_tts: synthesizeTts, ...(context || {}), anonymous_session_id: websiteOrbAnonymousSessionId() }),
       signal
     }),
   websiteOrbTts: (text: string, signal?: AbortSignal, provider?: 'qwen' | 'kokoro') =>

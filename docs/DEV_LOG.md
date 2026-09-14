@@ -826,3 +826,16 @@ Update this file after meaningful code, configuration, runtime, testing, or doct
 ### Working-tree caution
 
 The repository already contained many modified and untracked files before the guiderail work. Preserve unrelated user changes and inspect overlapping diffs before editing.
+
+---
+
+## 2026-09-13 — Dev Landing Content Behind Weaver
+
+* Scope: restore the real landing-page content behind Weaver in the isolated frontend only (`127.0.0.1:16667`). No production/live service, Docker configuration, deployment, commit, or push was touched.
+* The dev landing composition is now the real page content plus Weaver layered above it. The existing speaker/audio control remains with Weaver.
+* Verification: fresh desktop and mobile captures from `16667` show the landing hero visible behind a single Weaver; the frontend returned HTTP 200.
+* Fresh-session repair: restored a short, transparent intro/splash animation around Weaver without reintroducing a page cover. The durable startup handoff now survives the event-subscription race.
+* Autoplay repair: blocked autoplay now holds the fresh-session intro at the existing Weaver speaker control; it does not complete the opening or start the tour until the visitor gives that control a gesture.
+* Account-session repair: `/` remains the Weaver landing surface for an authenticated current-session account, so the account still receives the intro. After the intro, the mounted host emits `landing_tour_skipped_authenticated`; unsigned visitors begin Target One. Customer tokens use `sessionStorage` only and the legacy persistent token is removed on load.
+* Account-session verification on the documented runtime (`127.0.0.1:16666` → `127.0.0.1:16667`): a fresh signed-in session showed the real landing hero and emitted `INTRO_AUDIO_REQUESTED`; the signed-in completed-intro handoff emitted `landing_tour_skipped_authenticated` without `target_one_tour_controller_initialized`; the signed-out handoff emitted `target_one_tour_controller_initialized` and `tour_converse_started`. A new browser context contained neither the session token nor a seeded legacy local-storage token. Both dev endpoints returned HTTP 200.
+* Keep this entry current for the remainder of the active Codex session. Do not expand this task beyond the landing-content restoration without new direction.

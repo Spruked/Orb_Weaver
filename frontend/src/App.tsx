@@ -114,7 +114,10 @@ function App() {
     </QueryClientProvider>
   );
 
-  if (!customer && publicPath === '/') {
+  // The landing is Weaver's public host surface for every current browser
+  // session. An authenticated existing account still receives the opening;
+  // the mounted host decides whether its post-intro tour is appropriate.
+  if (publicPath === '/') {
     return renderPublicPage(<LandingPage />);
   }
 

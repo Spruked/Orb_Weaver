@@ -13,6 +13,7 @@ import { Orb } from "./Orb";
 import {
   api,
   ApiError,
+  authStore,
   type WebsiteOrbExperienceContext,
   type WebsiteOrbPointerRecord,
   type PublicPreflightReport,
@@ -1849,6 +1850,10 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, [bumpWorldStateSequence]);
 
   const runLandingTour = useCallback(async () => {
+    if (authStore.getToken()) {
+      emitOrbRuntimeEvent('landing_tour_skipped_authenticated');
+      return;
+    }
     const journey = websiteJourneyRef.current;
     const blockedReason = !journeyReadyRef.current ? 'journey_not_ready'
       : !journey ? 'journey_missing'
@@ -2577,6 +2582,18 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     updateStartupDiagnostics({ splash_state: "playing", orb_readiness_state: "waiting_for_gate" });
     return new Promise<"READY" | "BLOCKED">((resolve) => {
+      let settled = false;
+      const settle = (readiness: "READY" | "BLOCKED") => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        window.removeEventListener(STARTUP_GATE_COMPLETE_EVENT, handler);
+        resolve(readiness);
+      };
+      const timeout = window.setTimeout(() => {
+        emitOrbRuntimeEvent("startup_gate_failed_closed", { reason: "startup_gate_timeout" });
+        settle("BLOCKED");
+      }, 30000);
       const handler = (event: Event) => {
         const detail = (event as CustomEvent).detail || {};
         unlockAudio();
@@ -2584,10 +2601,15 @@ export const AutonomousOrb: React.FC<Props> = ({
           splash_state: detail.splash_state === "skipped_session_once" ? "skipped_session_once" : "complete",
           permission_state: detail.permission_state === "user_activated" ? "user_activated" : "waiting",
         });
-        window.removeEventListener(STARTUP_GATE_COMPLETE_EVENT, handler);
-        resolve(detail.readiness_state === "BLOCKED" ? "BLOCKED" : "READY");
+        settle(detail.readiness_state === "BLOCKED" ? "BLOCKED" : "READY");
       };
       window.addEventListener(STARTUP_GATE_COMPLETE_EVENT, handler, { once: true });
+      // LandingPage can complete its non-blocking opening before this mount
+      // effect subscribes. Session state is the durable handoff; the event is
+      // only the fast path.
+      if (window.sessionStorage.getItem(LANDING_SPLASH_COMPLETE_SESSION_KEY) === "1") {
+        settle("READY");
+      }
     });
   }, [unlockAudio, updateStartupDiagnostics]);
 
@@ -2624,6 +2646,7 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const runStartupVoiceSequence = useCallback(async () => {
     const onLanding = isPublicLandingExperience();
+    const authenticatedExistingAccount = Boolean(authStore.getToken());
     const greetingAlreadyPlayed =
       window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1";
 
@@ -2709,14 +2732,17 @@ export const AutonomousOrb: React.FC<Props> = ({
 
       // The introduction hands directly into the persistent Website ORB tour.
       // Conversation remains available throughout; the tour is never an idle gate.
-      void runLandingTour();
+      if (!authenticatedExistingAccount) void runLandingTour();
+      else emitOrbRuntimeEvent("landing_tour_skipped_authenticated");
     } else {
       updateStartupDiagnostics({ greeting_state: splashHandledGreeting || greetingAlreadyPlayed ? "skipped_session_once" : "waiting" });
-      if (onLanding && splashHandledGreeting && !greetingAlreadyPlayed) {
+      if (onLanding && splashHandledGreeting && !greetingAlreadyPlayed && !authenticatedExistingAccount) {
         // The scripted intro has ended. Tour progression must not wait for a
         // browser permission prompt that can remain open indefinitely.
         emitOrbRuntimeEvent("intro_handoff_to_landing_tour");
         void runLandingTour();
+      } else if (onLanding && authenticatedExistingAccount) {
+        emitOrbRuntimeEvent("landing_tour_skipped_authenticated");
       }
       micReady = await requestStartupMicrophonePermission();
       emitOrbRuntimeEvent("permission_handoff_complete", { micReady });
@@ -2792,6 +2818,9 @@ export const AutonomousOrb: React.FC<Props> = ({
       morbTravelAudioRef.current.volume = next ? 0.72 : 0.54;
     }
     unlockAudio();
+    // The one existing audio control is also the permitted user gesture for a
+    // browser-blocked landing introduction; no startup card/button is needed.
+    window.dispatchEvent(new CustomEvent("orbweaver:startup-audio-permission"));
   }, [markVisitorActivity, showStatus, unlockAudio]);
 
   useEffect(() => {
@@ -3223,6 +3252,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
     if (journey.stage === "LANDING_TOUR" && !journey.interruptionState.isInterrupted &&
       isPublicLandingExperience() && !onboardingSafeMode &&
+      !authStore.getToken() &&
       window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1") {
       const timer = window.setTimeout(() => void runLandingTour(), 180);
       return () => window.clearTimeout(timer);
@@ -3670,55 +3700,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           <span>{speechCaption.revealedText || speechCaption.fullText}</span>
         </aside>
       )}
-      {tourNotice && !speechCaption.fullText && (
-        <aside className="ow-v2-orb-speech ow-v2-orb-notice" role="status" aria-live="polite">
-          <span>{tourNotice}</span>
-          {cognitionUnavailableRef.current && (
-            <button type="button" className="ow-v2-orb-notice-retry" onClick={retryPausedTour}>
-              Retry guided tour
-            </button>
-          )}
-        </aside>
-      )}
     </motion.div>
-    {showStartupDiagnosticsPanel && statusVisible && (
-      <aside className="ow-v2-startup-panel" aria-label="Startup diagnostics">
-        <strong>{statusTitle}</strong>
-        <p>{statusLine}</p>
-        <dl className="ow-v2-startup-diagnostics">
-          <div><dt>Splash</dt><dd>{startupDiagnostics.splash_state}</dd></div>
-          <div><dt>Permission</dt><dd>{startupDiagnostics.permission_state}</dd></div>
-          <div><dt>Greeting</dt><dd>{startupDiagnostics.greeting_state}</dd></div>
-          <div><dt>Audio</dt><dd>{startupDiagnostics.audio_tts_state}</dd></div>
-          <div><dt>Voice</dt><dd>{startupDiagnostics.tts_voice}</dd></div>
-          <div><dt>Session</dt><dd>{startupDiagnostics.session_once_flag ? "once played" : "not played"}</dd></div>
-          <div><dt>Ready</dt><dd>{startupDiagnostics.orb_readiness_state}</dd></div>
-          <div><dt>Answer</dt><dd>{runtimeAnswerDiagnostics?.resolution_source || "not resolved"}</dd></div>
-          <div><dt>Record</dt><dd>{runtimeAnswerDiagnostics?.fact_record_id || "none"}</dd></div>
-          <div><dt>Confidence</dt><dd>{runtimeAnswerDiagnostics?.confidence?.toFixed(2) || "n/a"}</dd></div>
-          <div><dt>Qwen</dt><dd>{runtimeAnswerDiagnostics?.qwen_bypassed ? "bypassed" : "used / n/a"}</dd></div>
-          <div><dt>Speech</dt><dd>{runtimeAnswerDiagnostics?.cached_speech ? "cached" : "live / n/a"}</dd></div>
-          <div><dt>Learning</dt><dd>{runtimeAnswerDiagnostics?.learning_candidate_state || "none"}</dd></div>
-        </dl>
-        {diagnosticUtterance && (
-          <p className="ow-v2-diagnostic-utterance">{diagnosticUtterance}</p>
-        )}
-        <button
-          type="button"
-          className="ow-v2-startup-reset"
-          onClick={speakDiagnostics}
-        >
-          Speak diagnostics
-        </button>
-        <button
-          type="button"
-          className="ow-v2-startup-reset"
-          onClick={resetStartupSequence}
-        >
-          Reset first encounter
-        </button>
-      </aside>
-    )}
     </>
   );
 };
