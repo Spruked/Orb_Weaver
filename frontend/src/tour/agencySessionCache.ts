@@ -9,6 +9,7 @@ const MAX_VISITOR_CONTEXT = 1500;
 const MAX_EVIDENCE_IDS = 16;
 const MAX_EXCURSIONS = 2;
 const MAX_SERIALIZED_BYTES = 16000;
+const CACHE_TTL_MS = 30 * 60 * 1000;
 const TOUR_ROUTE_ALLOWLIST = new Set(['/', '/features', '/lidar-guidance', '/how-it-works', '/preflight']);
 
 export type AgencyExcursionStatus = 'PENDING_ARRIVAL' | 'ACTIVE';
@@ -98,7 +99,8 @@ const normalizeCache = (value: unknown): AgencyShortTermCache | null => {
     !nullableBoundedString(value.boundedSetRevision, 240) || !nullableBoundedString(value.activeCandidateId, 240) ||
     !Array.isArray(value.recentEvidenceIds) || value.recentEvidenceIds.length > MAX_EVIDENCE_IDS ||
     !value.recentEvidenceIds.every(item => boundedString(item, 240)) || !Array.isArray(value.excursions) ||
-    value.excursions.length > MAX_EXCURSIONS || typeof value.updatedAt !== 'number' || !Number.isFinite(value.updatedAt)) return null;
+    value.excursions.length > MAX_EXCURSIONS || typeof value.updatedAt !== 'number' || !Number.isFinite(value.updatedAt) ||
+    value.updatedAt <= 0) return null;
   const excursions = value.excursions.map(normalizeExcursion);
   if (excursions.some(item => item === null)) return null;
   return {
@@ -121,7 +123,14 @@ export function readAgencySessionCache(storage: SessionStorageLike | null = defa
   try {
     const raw = storage.getItem(AGENCY_SESSION_CACHE_KEY);
     if (!raw) return emptyCache();
-    return normalizeCache(JSON.parse(raw)) || emptyCache();
+    const normalized = normalizeCache(JSON.parse(raw));
+    if (!normalized) return emptyCache();
+    const age = Date.now() - normalized.updatedAt;
+    if (age > CACHE_TTL_MS || age < -60_000) {
+      storage.removeItem(AGENCY_SESSION_CACHE_KEY);
+      return emptyCache();
+    }
+    return normalized;
   } catch { return emptyCache(); }
 }
 
