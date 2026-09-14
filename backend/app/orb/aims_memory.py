@@ -73,24 +73,19 @@ def _compact(value: Any, depth: int = 0) -> Any:
     return value
 
 
-def context_for_turn(
-    transcript: str, anonymous_session_id: Optional[str], customer_id: Optional[str],
-    target_url: Optional[str] = None, experience: Optional[Dict[str, Any]] = None,
+def _selected_context(
+    query: str, anonymous_session_id: Optional[str], customer_id: Optional[str], limit: int = 12,
 ) -> Dict[str, Any]:
-    """Record the visitor turn and return only selected session/prior context."""
+    """Read bounded A.I.M.S. context without manufacturing a new visitor event."""
     aims = _aims()
     session_id = _session_id(anonymous_session_id, customer_id)
-    aims.start_session(session_id) if session_id not in aims.sessions else None
-    aims.remember_session_event(session_id, "message", {"text": transcript}, tags=["visitor"], relevance=0.9)
-    if target_url:
-        aims.remember_session_event(session_id, "page_visit", {"url": target_url}, tags=["navigation"], relevance=0.65)
-    if experience:
-        aims.remember_session_event(session_id, "action", _compact(experience), tags=["tour", "experience"], relevance=0.8)
-    selected = aims.session_context(session_id, transcript, limit=12)
+    if session_id not in aims.sessions:
+        aims.start_session(session_id)
+    selected = aims.session_context(session_id, query, limit=limit)
     prior: List[Dict[str, Any]] = []
     key = _visitor_key(customer_id)
     if key:
-        prior = aims.retrieve_prior_session_outcomes(key, transcript, limit=3)
+        prior = aims.retrieve_prior_session_outcomes(key, query, limit=3)
     return {
         "provider": "aims",
         "session_id": session_id,
@@ -99,6 +94,35 @@ def context_for_turn(
         "prior_session_outcomes": prior,
         "authority_note": "AIMS context is advisory only; Vault/SKG evidence and Stage Governor remain authoritative.",
     }
+
+
+def context_for_turn(
+    transcript: str, anonymous_session_id: Optional[str], customer_id: Optional[str],
+    target_url: Optional[str] = None, experience: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Record a real visitor turn and return only selected session/prior context."""
+    aims = _aims()
+    session_id = _session_id(anonymous_session_id, customer_id)
+    if session_id not in aims.sessions:
+        aims.start_session(session_id)
+    aims.remember_session_event(session_id, "message", {"text": transcript}, tags=["visitor"], relevance=0.9)
+    if target_url:
+        aims.remember_session_event(session_id, "page_visit", {"url": target_url}, tags=["navigation"], relevance=0.65)
+    if experience:
+        aims.remember_session_event(session_id, "action", _compact(experience), tags=["tour", "experience"], relevance=0.8)
+    return _selected_context(transcript, anonymous_session_id, customer_id)
+
+
+def context_for_agency(
+    query: str, anonymous_session_id: Optional[str], customer_id: Optional[str],
+) -> Dict[str, Any]:
+    """Retrieve Agency context without recording cognition plumbing as visitor speech.
+
+    Real visitor declarations and runtime observations are recorded through the
+    explicit Website ORB turn/observe paths. Candidate selection, question
+    compilation, and semantic classification are retrieval operations only.
+    """
+    return _selected_context(query, anonymous_session_id, customer_id)
 
 
 def record_turn_result(
