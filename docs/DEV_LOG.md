@@ -45,6 +45,11 @@
 - Focused frontend tests: **30/30 passed** across startup controls, login
   handoff, voice lifecycle, tour evaluator, Stage Governor, and interaction.
 - Frontend TypeScript no-emit check passed; `git diff --check` passed.
+- The first clean Docker build exposed a test-only dependency declaration
+  gap hidden by the long-lived workspace: the production compiler could not
+  resolve implicit Jest globals in `startupDevelopment.test.ts`. The test now
+  imports `describe`, `expect`, and `test` explicitly from the existing
+  `@jest/globals` package; no runtime dependency or product behavior changed.
 - The development backend health endpoint and frontend document both returned
   HTTP **200** on `16666` and `16667`.
 - Browser matrix **passed 5/5 cases** on `16667`: `am-echo` (6/6 cue lines),

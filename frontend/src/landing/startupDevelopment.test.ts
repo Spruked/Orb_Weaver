@@ -1,3 +1,4 @@
+import { describe, expect, test } from '@jest/globals';
 import { developmentFullTourOverride, developmentIntroVariant, tourEligibleForAccount } from './startupDevelopment';
 
 describe('development startup controls', () => {
