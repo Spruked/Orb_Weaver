@@ -9,6 +9,18 @@ INFERENCE_URL="${ORB_WEAVER_INFERENCE_URL:-http://127.0.0.1:16520}"
 say() { printf '\n=== %s ===\n' "$1"; }
 fail() { printf 'FAILED: %s\n' "$1" >&2; exit 1; }
 
+# Use the repository's established Python environment for backend verification.
+# Never install dependencies or silently mutate the host from this read-only runner.
+if [[ -x "$ROOT/.venv/bin/python" ]]; then
+  BACKEND_PYTHON="$ROOT/.venv/bin/python"
+elif [[ -x "$ROOT/backend/.venv/bin/python" ]]; then
+  BACKEND_PYTHON="$ROOT/backend/.venv/bin/python"
+elif python3 -c 'import pytest' >/dev/null 2>&1; then
+  BACKEND_PYTHON="$(command -v python3)"
+else
+  fail "pytest is unavailable; expected $ROOT/.venv/bin/python (or another project Python with pytest)"
+fi
+
 say "Development service reachability"
 curl -fsS "${BACKEND_URL}/health" >/dev/null || fail "backend ${BACKEND_URL}/health"
 printf 'backend:   OK %s\n' "$BACKEND_URL"
@@ -31,9 +43,10 @@ if not any(bool(item.get("ready")) for item in providers.values() if isinstance(
 PY
 
 say "Backend Agency and A.I.M.S. focused tests"
+printf 'python: %s\n' "$BACKEND_PYTHON"
 (
   cd "$ROOT/backend"
-  python3 -m pytest -q \
+  "$BACKEND_PYTHON" -m pytest -q \
     tests/test_agency_cognition.py \
     tests/test_aims_memory_bridge.py \
     tests/test_site_world_runtime_context.py
