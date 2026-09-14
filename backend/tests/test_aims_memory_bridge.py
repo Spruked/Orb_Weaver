@@ -32,6 +32,21 @@ class AimsMemoryBridgeTests(unittest.TestCase):
         self.assertGreater(active["session"]["event_count"], 48)
         self.assertEqual(aims_memory._aims().retrieval_ledger.outcome_statistics()["total"], 1)
 
+    def test_agency_context_retrieval_does_not_manufacture_visitor_messages(self):
+        session = "d" * 24
+        context = aims_memory.context_for_turn("I want to see guidance", session, None)
+        system = aims_memory._aims()
+        before = system.session_context(context["session_id"], "guidance")["session"]["event_count"]
+
+        selected = aims_memory.context_for_agency("Current governed tour objective", session, None)
+        after_context = system.session_context(context["session_id"], "guidance")
+
+        self.assertEqual(selected["session_id"], context["session_id"])
+        self.assertEqual(after_context["session"]["event_count"], before)
+        texts = [event.payload.get("text") for event in system.sessions[context["session_id"]].events()]
+        self.assertNotIn("Current governed tour objective", texts)
+        self.assertIn("I want to see guidance", texts)
+
     def test_authenticated_prior_outcome_is_pseudonymous_and_retrieved(self):
         session = "b" * 24
         context = aims_memory.context_for_turn("checkout", session, "customer-42")
