@@ -11,6 +11,15 @@ import { engagementById } from './interaction';
 import { getTourPosition } from './curriculum';
 import { validateOrbPointerTarget } from '../orb/targetValidation';
 import { AGENCY_BUDGET, boundedAgencyInput } from './agencyBudget';
+import {
+  activeAgencyExcursion,
+  beginAgencyExcursion,
+  consumeAgencyExcursionReturn,
+  markAgencyExcursionArrived,
+  patchAgencySessionCache,
+  readAgencySessionCache,
+  rememberAgencyEvidence,
+} from './agencySessionCache';
 
 interface TourAgencyHost {
   read(): WebsiteJourneyStateV2 | null;
@@ -36,7 +45,7 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
   let permissionRevision = 0;
   let permissionIdentity: string | null = null;
   let lastPosition = '';
-  let visitorContext = '';
+  let visitorContext = readAgencySessionCache().visitorContext;
   let requestedRoute: string | null = null;
   let busy = false;
   const check = (signal: AbortSignal) => { if (signal.aborted) throw new DOMException('Agency interrupted', 'AbortError'); };
@@ -44,6 +53,7 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
   const observe = async (payload: Record<string, unknown>, signal?: AbortSignal) => {
     const result = await api.websiteOrbAgency('observe', payload, host.targetUrl(), signal);
     evidenceRevision += 1;
+    if (typeof result.event_id === 'string') rememberAgencyEvidence(result.event_id);
     host.telemetry('agency_evidence_recorded', { eventId: result.event_id, source: payload.source });
   };
 
@@ -60,6 +70,7 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
     const section = getTourPosition(journey.currentChapterId, journey.currentStopId)?.stop;
     const sectionExists = Boolean(section && document.querySelector(section.sectionDomSelector));
     const pageEvidence = `page:${route}`;
+    const activeExcursion = activeAgencyExcursion();
     const env: AgencyEnvironment = {
       journey, route, positionRevision, domRevision: domRevision + host.worldRevision(), visitorRevision, evidenceRevision, permissionRevision,
       universalCapabilities: [], scannedAffordances: [], liveAffordances: [], governedCapabilities: [], policyCapabilities: [],
@@ -111,7 +122,7 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
         pointer.runtime_policy?.may_point === true && pointer.runtime_policy?.requires_user_confirmation !== true);
       }
       const anchor = verified.element.closest('a[href]') as HTMLAnchorElement | null;
-      if (!anchor || pointer.runtime_policy?.may_navigate !== true || pointer.runtime_policy?.requires_user_confirmation === true) continue;
+      if (activeExcursion || !anchor || pointer.runtime_policy?.may_navigate !== true || pointer.runtime_policy?.requires_user_confirmation === true) continue;
       const target = new URL(anchor.href, window.location.origin);
       if (target.origin !== window.location.origin || target.search || target.hash || !allowedRoutes.includes(target.pathname as any) || target.pathname === route) continue;
       if (requestedRoute && target.pathname !== requestedRoute) continue;
@@ -134,10 +145,21 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
     busy = true;
     try {
       check(signal);
+      const startingState = host.read();
+      if (!startingState) return 'continue';
+      const arrived = markAgencyExcursionArrived(window.location.pathname, startingState);
+      if (arrived) {
+        host.telemetry('agency_excursion_arrived', {
+          excursion_id: arrived.excursionId, destination_route: arrived.destinationRoute,
+          origin_route: arrived.origin.route,
+        });
+      }
       const envelope = authority.refresh();
       if (!envelope.candidates.length) return 'continue';
       host.telemetry('agency_envelope', envelope as unknown as Record<string, unknown>);
       const currentEnv = environment();
+      const cache = readAgencySessionCache();
+      const activeExcursion = activeAgencyExcursion();
       const working = boundedAgencyInput(envelope, visitorContext, host.capsule()?.page_summary || '', AGENCY_BUDGET, {
         confidence: currentEnv.acquisition.confidenceByDimension,
         beliefs: Object.entries(currentEnv.journey.interaction.agency?.answers || {}).slice(-8).map(([pattern, answer]) => ({ pattern, ...answer })),
@@ -145,6 +167,13 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
         recent_interaction: currentEnv.journey.interaction.recentWeaverStatements.slice(-3).map(text => text.slice(0, 400)),
         active_permissions: currentEnv.permissionTiers,
         acquisitions_remaining: currentEnv.acquisition.remainingAcquisitions,
+        recent_evidence_ids: cache.recentEvidenceIds,
+        active_excursion: activeExcursion ? {
+          purpose: activeExcursion.purpose,
+          origin_route: activeExcursion.origin.route,
+          destination_route: activeExcursion.destinationRoute,
+          status: activeExcursion.status,
+        } : null,
       });
       host.telemetry('agency_working_set', working.metrics);
       const response = await api.websiteOrbAgency('choose_candidate', working.payload, host.targetUrl(), signal);
@@ -152,6 +181,7 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
       let authorization = authority.issue(response.result, envelope.bounded_set_revision);
       if (!authorization) throw new Error('The legal context changed; Weaver will recheck before acting.');
       const selected = envelope.candidates.find(move => move.candidate_id === authorization!.candidate_id)!;
+      patchAgencySessionCache({ boundedSetRevision: envelope.bounded_set_revision, activeCandidateId: selected.candidate_id, visitorContext });
       host.telemetry('agency_candidate_selected', { candidate_id: selected.candidate_id, bounded_set_revision: envelope.bounded_set_revision });
       let text = '';
       let audio: Pick<WebsiteOrbTtsResponse, 'tts_audio_url' | 'tts_provider'> | null = null;
@@ -198,11 +228,35 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
           const destination = environment().destinations[move.semantic_destination!];
           if (!destination) return false;
           const state = host.read()!;
+          const contract = beginAgencyExcursion({
+            candidateId: move.candidate_id,
+            boundedSetRevision: move.bounded_set_revision,
+            purpose: move.purpose,
+            origin: {
+              stage: state.stage,
+              chapterId: state.currentChapterId,
+              stopId: state.currentStopId,
+              route: window.location.pathname,
+            },
+            destinationRoute: destination.route,
+            semanticDestination: move.semantic_destination!,
+          });
+          if (!contract) return false;
           host.save({ ...state, interaction: { ...state.interaction, activeDestinationRoute: destination.route as any } });
+          const persisted = host.read();
+          const persistedContract = activeAgencyExcursion();
+          if (!persisted || persisted.interaction.activeDestinationRoute !== destination.route ||
+            persistedContract?.excursionId !== contract.excursionId) return false;
+          host.telemetry('agency_excursion_started', {
+            excursion_id: contract.excursionId,
+            candidate_id: move.candidate_id,
+            origin_route: contract.origin.route,
+            destination_route: contract.destinationRoute,
+          });
           host.navigate(destination.route);
           requestedRoute = null;
           awaiting = true;
-          return true; // Only route request, not arrival/completion evidence.
+          return true; // Route request only; arrival and destination work are reverified after remount.
         }
         return host.speak(text, audio?.tts_audio_url, audio?.tts_provider);
       });
@@ -213,6 +267,36 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
       });
       host.telemetry('agency_execution', { candidate_id: selected.candidate_id, executed });
       if (!executed) throw new Error('The selected move could not be verified. Your place is saved.');
+
+      if (selected.choreography !== 'NAVIGATE_TO') {
+        const active = activeAgencyExcursion();
+        const current = host.read();
+        const hasDemonstrationCandidate = envelope.candidates.some(move => move.cognitive_action === 'DEMONSTRATE');
+        const destinationWorkComplete = selected.cognitive_action === 'DEMONSTRATE' ||
+          (!hasDemonstrationCandidate && selected.cognitive_action === 'EXPLAIN');
+        if (active && current && active.status === 'ACTIVE' && destinationWorkComplete &&
+          window.location.pathname === active.destinationRoute) {
+          const resume = consumeAgencyExcursionReturn(active.excursionId, window.location.pathname, current);
+          if (resume) {
+            host.save({ ...current, interaction: { ...current.interaction,
+              activeDestinationRoute: null,
+              visitedRoutes: [...new Set([...current.interaction.visitedRoutes, resume.destinationRoute])],
+            } });
+            patchAgencySessionCache({ boundedSetRevision: null, activeCandidateId: null, visitorContext });
+            host.telemetry('agency_excursion_resuming', {
+              excursion_id: resume.excursionId,
+              return_route: resume.origin.route,
+              stage: resume.origin.stage,
+              chapter: resume.origin.chapterId,
+              stop: resume.origin.stopId,
+            });
+            authority.invalidate('route');
+            host.navigate(resume.origin.route);
+            awaiting = true;
+          }
+        }
+      }
+      patchAgencySessionCache({ activeCandidateId: null, visitorContext });
       return awaiting ? 'awaiting_visitor' : 'continue';
     } finally { busy = false; }
   };
@@ -221,6 +305,7 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
     const state = host.read();
     if (!state || state.stage !== 'LANDING_TOUR') return false;
     visitorContext = transcript;
+    patchAgencySessionCache({ visitorContext });
     visitorRevision += 1;
     authority.invalidate('visitor');
     await observe({ source: 'VISITOR_DECLARATION', text: transcript, question_id: state.interaction.pendingQuestionId }, signal);
@@ -244,6 +329,7 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
         requestedRoute = destination;
         // Routing is selected from a newly verified coherent envelope below.
         visitorContext += `\nVisitor selected the governed direction ${category.semanticOutput}.`;
+        patchAgencySessionCache({ visitorContext });
       }
       host.save({ ...resumed, interaction: { ...resumed.interaction,
         pendingQuestionId: null, eligibleDestinationRoutes: [], eligibleDestinationScope: null,
