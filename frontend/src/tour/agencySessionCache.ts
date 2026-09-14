@@ -130,7 +130,9 @@ export function writeAgencySessionCache(cache: AgencyShortTermCache, storage: Se
   const normalized = normalizeCache({ ...cache, updatedAt: Date.now() });
   if (!normalized) return false;
   const serialized = JSON.stringify(normalized);
-  if (new TextEncoder().encode(serialized).length > MAX_SERIALIZED_BYTES) return false;
+  // Match agencyBudget.ts: Blob gives UTF-8 byte size in browser/jsdom without
+  // depending on TextEncoder being present in every Jest environment.
+  if (new Blob([serialized]).size > MAX_SERIALIZED_BYTES) return false;
   try { storage.setItem(AGENCY_SESSION_CACHE_KEY, serialized); return true; } catch { return false; }
 }
 
