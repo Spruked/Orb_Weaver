@@ -27,6 +27,13 @@ interface AuthPageProps {
   initialMode?: 'login' | 'signup';
 }
 
+// A standard existing-account login starts at Weaver's landing host. An
+// explicitly requested in-app destination remains authoritative.
+export const loginHandoffPath = (search: string): string => {
+  const next = new URLSearchParams(search).get('next');
+  return next?.startsWith('/') ? next : '/';
+};
+
 const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'login' }) => {
   const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
   const [step, setStep] = useState<1 | 2>(1);
@@ -65,8 +72,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
   const submitLogin = async () => {
     const response = await api.login({ email: form.email, password: form.password });
     authStore.setToken(response.token);
-    const next = new URLSearchParams(window.location.search).get('next');
-    onAuthenticated(response.customer, { nextPath: next?.startsWith('/') ? next : '/dashboard' });
+    onAuthenticated(response.customer, { nextPath: loginHandoffPath(window.location.search) });
   };
 
   const submitSignup = async () => {
