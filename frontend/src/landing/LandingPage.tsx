@@ -5,6 +5,7 @@ import { api, authStore } from "../services/api";
 import { currentSpeechCaption } from '../orb/speechCaptions';
 import { trackOnboardingEvent } from "../services/analytics";
 import { createIntentGuestSession, LandingIntent } from "../onboarding/guestOnboarding";
+import { developmentIntroVariant, emitDevelopmentStartupTrace } from "./startupDevelopment";
 import "./Landing.css";
 
 const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
@@ -112,7 +113,8 @@ const LandingPage: React.FC = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("orbStartupReset") === "1") {
+    const forcedDevelopmentVariant = developmentIntroVariant(INTRO_VARIANTS.map((variant) => variant.id));
+    if (params.get("orbStartupReset") === "1" || forcedDevelopmentVariant) {
       window.sessionStorage.removeItem(LANDING_SPLASH_SESSION_KEY);
       window.sessionStorage.removeItem(LANDING_SPLASH_COMPLETE_SESSION_KEY);
       window.sessionStorage.removeItem(STARTUP_GREETING_SESSION_KEY);
@@ -128,6 +130,7 @@ const LandingPage: React.FC = () => {
     }
 
     void beginStartupWarmup();
+    emitDevelopmentStartupTrace("startup_begun");
     setIntroVisualActive(true);
     setSplashTrigger(Date.now());
   }, []);
@@ -147,9 +150,11 @@ const LandingPage: React.FC = () => {
       window.dispatchEvent(new CustomEvent("orbweaver:startup-intro", { detail: { phase, ...detail } }));
     };
 
+    const forcedVariantId = developmentIntroVariant(INTRO_VARIANTS.map((variant) => variant.id));
     const previousVariantId = window.sessionStorage.getItem(LAST_INTRO_VARIANT_SESSION_KEY);
     const availableVariants = INTRO_VARIANTS.filter((variant) => variant.id !== previousVariantId);
-    const introVariant = selectedIntroRef.current || availableVariants[Math.floor(Math.random() * availableVariants.length)] || INTRO_VARIANTS[0];
+    const forcedVariant = forcedVariantId ? INTRO_VARIANTS.find((variant) => variant.id === forcedVariantId) : null;
+    const introVariant = selectedIntroRef.current || forcedVariant || availableVariants[Math.floor(Math.random() * availableVariants.length)] || INTRO_VARIANTS[0];
     selectedIntroRef.current = introVariant;
     window.sessionStorage.setItem(LAST_INTRO_VARIANT_SESSION_KEY, introVariant.id);
     const audio = new Audio();
@@ -157,6 +162,10 @@ const LandingPage: React.FC = () => {
     let introFailed = false;
     let startupCompletionRequested = false;
     let lastCaption: string | null = null;
+    let activeLineIndex = -1;
+    let audioReadyLogged = false;
+    const startedLineNumbers = new Set<number>();
+    const endedLineNumbers = new Set<number>();
     const synthesisController = new AbortController();
     let synthesisTimer: number | undefined;
     audio.preload = "auto";
@@ -165,6 +174,31 @@ const LandingPage: React.FC = () => {
     audio.preservesPitch = true;
     introAudioRef.current = audio;
     setIntroAudioState("preloading");
+    emitDevelopmentStartupTrace("selected_intro", { intro_id: introVariant.id });
+    const requiredLines = introVariant.cues.length ? introVariant.cues.map((cue) => cue.text) : [introVariant.text || ""];
+    requiredLines.forEach((line, index) => emitDevelopmentStartupTrace("intro_line_synthesis_requested", {
+      intro_id: introVariant.id, line_number: index + 1, line_count: requiredLines.length, text: line,
+      source: introVariant.asset ? "recorded_asset" : "kokoro",
+    }));
+
+    const recordLineStarted = (lineIndex: number) => {
+      const lineNumber = lineIndex + 1;
+      if (lineIndex < 0 || lineIndex >= requiredLines.length || startedLineNumbers.has(lineNumber)) return;
+      startedLineNumbers.add(lineNumber);
+      activeLineIndex = lineIndex;
+      emitDevelopmentStartupTrace("intro_line_playback_started", {
+        intro_id: introVariant.id, line_number: lineNumber, line_count: requiredLines.length,
+      });
+    };
+
+    const recordLineEnded = (lineIndex: number) => {
+      const lineNumber = lineIndex + 1;
+      if (lineIndex < 0 || lineIndex >= requiredLines.length || endedLineNumbers.has(lineNumber)) return;
+      endedLineNumbers.add(lineNumber);
+      emitDevelopmentStartupTrace("intro_line_playback_ended", {
+        intro_id: introVariant.id, line_number: lineNumber, line_count: requiredLines.length,
+      });
+    };
     emitIntro("INTRO_AUDIO_REQUESTED", {
       provider: introVariant.id === "kokoro-host" ? "kokoro" : "recorded",
       voice: introVariant.id,
@@ -192,6 +226,10 @@ const LandingPage: React.FC = () => {
       const cueIndex = introVariant.cues.findIndex(
         (cue) => cueTime >= cue.start && cueTime < cue.end,
       );
+      if (cueIndex >= 0 && cueIndex !== activeLineIndex) {
+        recordLineEnded(activeLineIndex);
+        recordLineStarted(cueIndex);
+      }
       const cue = cueIndex >= 0 ? introVariant.cues[cueIndex] : null;
       const nextCaption = cue
         ? currentSpeechCaption(cue.text, cueTime - cue.start, cue.end - cue.start)
@@ -208,14 +246,10 @@ const LandingPage: React.FC = () => {
       emitIntro("INTRO_CAPTION", { text: null });
       setIntroAudioState(phase === "INTRO_AUTOPLAY_BLOCKED" ? "autoplay_blocked" : "error");
       emitIntro(phase, { ...detail });
-      if (phase === "INTRO_AUTOPLAY_BLOCKED") {
-        // Browser autoplay is not completion. Keep this fresh-session intro
-        // staged over the live page until the existing speaker control gives
-        // us a real visitor gesture.
-        return;
-      }
-      finishIntroVisual();
-      completeStartup(true);
+      // Playback denial and source/synthesis errors are not completion. Keep
+      // the real failure visible in state and let the existing speaker control
+      // retry without releasing startup or admitting the tour early.
+      return;
     };
 
     const startPlayback = () => {
@@ -233,6 +267,7 @@ const LandingPage: React.FC = () => {
           duration: Number.isFinite(audio.duration) ? audio.duration : null,
           playResolved: true,
         });
+        recordLineStarted(0);
       }).catch((error) => {
         const name = (error as Error)?.name;
         playbackRequested = false;
@@ -254,7 +289,15 @@ const LandingPage: React.FC = () => {
       startPlayback();
     };
 
-    audio.oncanplay = startPlayback;
+    audio.oncanplay = () => {
+      if (!audioReadyLogged) {
+        audioReadyLogged = true;
+        requiredLines.forEach((_line, index) => emitDevelopmentStartupTrace("intro_line_audio_ready", {
+          intro_id: introVariant.id, line_number: index + 1, line_count: requiredLines.length,
+        }));
+      }
+      startPlayback();
+    };
     audio.ontimeupdate = syncCaption;
     audio.onerror = () => fail("INTRO_AUDIO_ERROR", { error: "MediaError" });
     audio.onabort = () => {
@@ -264,8 +307,11 @@ const LandingPage: React.FC = () => {
       if (cancelled) return;
       emitIntro("INTRO_CAPTION", { text: null });
       emitIntro("INTRO_AUDIO_ENDED", { asset: audio.currentSrc, duration: audio.duration });
+      requiredLines.forEach((_line, index) => recordLineEnded(index));
+      emitDevelopmentStartupTrace("all_intro_lines_completed", { intro_id: introVariant.id, line_count: requiredLines.length });
       finishIntroVisual();
       window.sessionStorage.setItem(STARTUP_GREETING_SESSION_KEY, "1");
+      emitDevelopmentStartupTrace("intro_complete_set", { intro_id: introVariant.id });
       completeStartup();
     };
     void (async () => {

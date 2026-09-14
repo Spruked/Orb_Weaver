@@ -1,5 +1,68 @@
 # Orb Weaver Development Log
 
+## 2026-09-14 — Website Weaver startup-chain repair on 16667
+
+### Scope and root causes
+
+- Work remained on the isolated development lane (`127.0.0.1:16667` →
+  `127.0.0.1:16666`). Request-queueing work stayed paused. Site World,
+  Pointer/LiDAR, movement, Stage Governor, authorization, account ownership,
+  and customer data were not changed.
+- The incomplete-intro defect came from treating media/source failure as a
+  valid completion path: it hid the intro visual and released the startup gate
+  without an actual `HTMLMediaElement.ended` event. A separate 30-second gate
+  timeout then continued into another startup path. Together these paths could
+  report startup progress after incomplete or absent playback.
+- The authenticated-account rule then legitimately suppressed the governed
+  tour. That made Bryan's signed-in development session unable to exercise the
+  new-visitor chain, even when the intro succeeded.
+
+### Repair
+
+- Intro playback failure and browser autoplay denial now leave startup held.
+  The existing Weaver speaker control is the recovery gesture; only complete
+  playback releases the gate. A readiness timeout records a blocked state and
+  stops instead of manufacturing a second/fallback intro handoff.
+- Added development-only query controls:
+  `orbIntroVariant=am-echo|am-michael|kokoro-host` selects a known intro for a
+  repeatable fresh-start test, and `orbDevFullTour=1` admits an authenticated
+  current-session account to the governed tour. Both controls are inert in a
+  production build. The full-tour flag affects only tour eligibility; the
+  account remains authenticated and all backend permissions remain unchanged.
+- Added development-only timestamped startup events for landing/ORB mount,
+  selected intro, each required line's request/readiness/playback boundaries,
+  true all-lines completion, account/override eligibility, tour initialization,
+  first governed request, first tour audio readiness, and first tour media
+  playback. Recorded intro variants remain one complete prerecorded asset;
+  their line boundaries are observed through the existing timed caption cues.
+- Replaced the stale browser startup script with a repeatable matrix covering
+  all three intro variants, one mounted ORB, actual intro media completion,
+  deliberate autoplay denial followed by the existing speaker control,
+  authenticated override enabled, and authenticated override disabled.
+
+### Verification
+
+- Focused frontend tests: **30/30 passed** across startup controls, login
+  handoff, voice lifecycle, tour evaluator, Stage Governor, and interaction.
+- Frontend TypeScript no-emit check passed; `git diff --check` passed.
+- The development backend health endpoint and frontend document both returned
+  HTTP **200** on `16666` and `16667`.
+- Browser matrix **passed 5/5 cases** on `16667`: `am-echo` (6/6 cue lines),
+  `am-michael` (6/6), and `kokoro-host` (1/1 synthesized line) each reached
+  actual media `ended` before `introComplete`, retained exactly one ORB,
+  detected the authenticated development override, initialized the existing
+  governed Target One controller, and issued its first governed request. The
+  deliberate autoplay-denial case remained held, recovered through the
+  existing speaker control, then completed all 6/6 `am-echo` lines and made
+  the same governed handoff. With the override absent, the authenticated
+  session still received the complete intro and then skipped the tour.
+- Known external boundary: `127.0.0.1:16520` currently refuses connections.
+  This does not prevent proof of intro playback, override eligibility,
+  governed-controller initialization, or the first governed request, but a
+  first-tour audio/voice success is **not proven in this pass**: all four tour
+  cases reached the governed request, but none received a tour audio URL or
+  began first-tour speech while cognition was unavailable.
+
 ## 2026-09-11 — Intended local cognition service restored
 
 - Restored the supported local inference lane without Docker changes or a

@@ -40,6 +40,7 @@ import {
   shouldRunMountedStartupVoiceSequence,
 } from "../orb/voiceLifecycle";
 import { canAdvanceCaptionProgression, currentSpeechCaption } from "../orb/speechCaptions";
+import { developmentFullTourOverride, emitDevelopmentStartupTrace, tourEligibleForAccount } from "./startupDevelopment";
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, ms));
@@ -1533,7 +1534,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     return analyser;
   }, []);
 
-  const playDecodedSpeech = useCallback(async (audioUrl: string, captionText?: string) => {
+  const playDecodedSpeech = useCallback(async (audioUrl: string, captionText?: string, onPlaybackStarted?: () => void) => {
     const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextCtor) {
       throw new Error("AudioContext unavailable");
@@ -1577,6 +1578,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     try {
       audio.onerror = () => settlement.reject(new Error('Speech audio unavailable'));
       await audio.play();
+      onPlaybackStarted?.();
       if (captionText) {
         startSpeechCaptions(captionText, () => ({
           currentTime: audio.currentTime,
@@ -1623,7 +1625,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     text: string,
     audioUrl?: string | null,
     provider?: string | null,
-    options: { showTranscript?: boolean } = {},
+    options: { showTranscript?: boolean; onPlaybackStarted?: () => void } = {},
   ): Promise<boolean> => {
     const showTranscript = options.showTranscript !== false;
     if (showTranscript) {
@@ -1657,7 +1659,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         return false;
       }
       if (speakerBoostRef.current) {
-        await playDecodedSpeech(audioUrl, showTranscript ? text : undefined);
+        await playDecodedSpeech(audioUrl, showTranscript ? text : undefined, options.onPlaybackStarted);
         speechPlaybackRef.current = false;
         setVoiceState("idle");
         showStatus(1400);
@@ -1698,6 +1700,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       try {
         try {
           await audio.play();
+          options.onPlaybackStarted?.();
           if (showTranscript) {
             startSpeechCaptions(text, () => ({
               currentTime: audio.currentTime,
@@ -1740,7 +1743,12 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
   }, [connectSpeechMediaVisualizer, freezeOrbInPlace, playDecodedSpeech, showStatus, startSpeechCaptions, startSpeechVisualizer, stopSpeechCaptions, stopSpeechVisualizer]);
 
-  const speakWithGeneratedAudio = useCallback(async (text: string, audioUrl?: string | null, provider?: string | null) => {
+  const speakWithGeneratedAudio = useCallback(async (
+    text: string,
+    audioUrl?: string | null,
+    provider?: string | null,
+    options: { onPlaybackStarted?: () => void } = {},
+  ) => {
     const normalizedText = normalizeOrbDialogue(text);
     setStatusTitle("Preparing voice");
     setStatusLine(normalizedText);
@@ -1748,7 +1756,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     showStatus();
     freezeOrbInPlace(4200);
 
-    return speak(normalizedText, audioUrl, provider);
+    return speak(normalizedText, audioUrl, provider, options);
   }, [freezeOrbInPlace, showStatus, speak]);
 
   const diagnosticNarrationText = useCallback(() => {
@@ -1850,7 +1858,11 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, [bumpWorldStateSequence]);
 
   const runLandingTour = useCallback(async () => {
-    if (authStore.getToken()) {
+    const authenticated = Boolean(authStore.getToken());
+    const developmentOverride = developmentFullTourOverride();
+    const accountEligible = tourEligibleForAccount(authenticated, developmentOverride);
+    emitDevelopmentStartupTrace("tour_eligibility_result", { authenticated, development_full_tour_override: developmentOverride, eligible: accountEligible });
+    if (!accountEligible) {
       emitOrbRuntimeEvent('landing_tour_skipped_authenticated');
       return;
     }
@@ -1883,6 +1895,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       modelEndpoint: 'http://127.0.0.1:16520/api/generate',
       apiEndpoint: 'http://127.0.0.1:16666/api/orb/website-text',
     });
+    emitDevelopmentStartupTrace("tour_initialization", { stop_id: journey.currentStopId });
     landingTourRunningRef.current = true;
     let settleTour: () => void = () => undefined;
     landingTourSettledRef.current = new Promise<void>(resolve => { settleTour = resolve; });
@@ -1929,6 +1942,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           setStatusLine("Weaver is preparing this tour stop.");
           showStatus();
           emitOrbRuntimeEvent('tour_converse_started', { stopId: stop.id, evidenceAttempt: attempt, apiEndpoint: 'http://127.0.0.1:16666/api/orb/website-text' });
+          emitDevelopmentStartupTrace("first_governed_tour_request", { stop_id: stop.id, evidence_attempt: attempt });
           const interaction = websiteJourneyRef.current?.interaction || journey.interaction;
           const result = await api.websiteOrbText(`Explain the current landing tour stop: ${stop.id}.`, true, signal, {
             project_id: activeOrbContext?.project_id,
@@ -1958,6 +1972,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           });
           if (signal.aborted) throw new DOMException("Tour interrupted", "AbortError");
           emitOrbRuntimeEvent('tour_converse_received', { stopId: stop.id, hasAudio: Boolean(result.tts_audio_url), hasEvidence: Boolean(result.chapter_evaluation), llmSource: result.llm_source });
+          if (result.tts_audio_url) emitDevelopmentStartupTrace("first_tour_audio_ready", { stop_id: stop.id });
           emitOrbRuntimeEvent('tour_articulation_received', {
             stopId: stop.id,
             source_facts: sourceText.slice(0, 2500),
@@ -1982,7 +1997,13 @@ export const AutonomousOrb: React.FC<Props> = ({
           };
           signal.addEventListener('abort', cancelPlayback, { once: true });
           try {
-            const played = await speakWithGeneratedAudio(result.spoken_output, result.tts_audio_url, result.tts_provider);
+            const played = await speakWithGeneratedAudio(
+              result.spoken_output,
+              result.tts_audio_url,
+              result.tts_provider,
+              { onPlaybackStarted: () => emitDevelopmentStartupTrace("first_tour_speech_started", { stop_id: stop.id }) },
+            );
+            if (played) emitDevelopmentStartupTrace("first_tour_speech_completed", { stop_id: stop.id });
             if (signal.aborted) throw new DOMException("Tour interrupted", "AbortError");
             if (!played) throw new Error("Voice playback did not finish. Your tour position is saved.");
             const currentJourney = websiteJourneyRef.current;
@@ -2647,6 +2668,10 @@ export const AutonomousOrb: React.FC<Props> = ({
   const runStartupVoiceSequence = useCallback(async () => {
     const onLanding = isPublicLandingExperience();
     const authenticatedExistingAccount = Boolean(authStore.getToken());
+    const fullTourDevelopmentOverride = developmentFullTourOverride();
+    const accountTourEligible = tourEligibleForAccount(authenticatedExistingAccount, fullTourDevelopmentOverride);
+    emitDevelopmentStartupTrace("authenticated_account_detected", { authenticated: authenticatedExistingAccount });
+    emitDevelopmentStartupTrace("full_tour_development_override", { active: fullTourDevelopmentOverride });
     const greetingAlreadyPlayed =
       window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1";
 
@@ -2672,13 +2697,10 @@ export const AutonomousOrb: React.FC<Props> = ({
     updateStartupDiagnostics({ orb_readiness_state: onLanding ? "waiting_for_gate" : "mounting" });
     const startupReadiness = await waitForStartupGate();
     if (startupReadiness === "BLOCKED") {
-      // The splash has completed. Do not strand the visitor between the
-      // introduction and Target One because startup readiness timed out.
-      // The tour's own live calls remain responsible for surfacing an
-      // unavailable dependency at the exact operation that requires it.
-      emitOrbRuntimeEvent("startup_readiness_timeout_continuing_to_tour", {
+      emitOrbRuntimeEvent("startup_readiness_blocked", {
         reason: "startup_readiness_timeout",
       });
+      return;
     }
 
     // LandingPage owns the scripted splash introduction. Re-check after the
@@ -2732,16 +2754,16 @@ export const AutonomousOrb: React.FC<Props> = ({
 
       // The introduction hands directly into the persistent Website ORB tour.
       // Conversation remains available throughout; the tour is never an idle gate.
-      if (!authenticatedExistingAccount) void runLandingTour();
+      if (accountTourEligible) void runLandingTour();
       else emitOrbRuntimeEvent("landing_tour_skipped_authenticated");
     } else {
       updateStartupDiagnostics({ greeting_state: splashHandledGreeting || greetingAlreadyPlayed ? "skipped_session_once" : "waiting" });
-      if (onLanding && splashHandledGreeting && !greetingAlreadyPlayed && !authenticatedExistingAccount) {
+      if (onLanding && splashHandledGreeting && !greetingAlreadyPlayed && accountTourEligible) {
         // The scripted intro has ended. Tour progression must not wait for a
         // browser permission prompt that can remain open indefinitely.
         emitOrbRuntimeEvent("intro_handoff_to_landing_tour");
         void runLandingTour();
-      } else if (onLanding && authenticatedExistingAccount) {
+      } else if (onLanding && authenticatedExistingAccount && !accountTourEligible) {
         emitOrbRuntimeEvent("landing_tour_skipped_authenticated");
       }
       micReady = await requestStartupMicrophonePermission();
@@ -3252,7 +3274,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
     if (journey.stage === "LANDING_TOUR" && !journey.interruptionState.isInterrupted &&
       isPublicLandingExperience() && !onboardingSafeMode &&
-      !authStore.getToken() &&
+      tourEligibleForAccount(Boolean(authStore.getToken()), developmentFullTourOverride()) &&
       window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1") {
       const timer = window.setTimeout(() => void runLandingTour(), 180);
       return () => window.clearTimeout(timer);
@@ -3351,6 +3373,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     move.set(start);
 
     const run = async () => {
+      emitDevelopmentStartupTrace("orb_mounted");
       void runStartupVoiceSequenceRef.current();
 
       if (!reducedMotionRef.current) {

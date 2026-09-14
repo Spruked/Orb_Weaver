@@ -34,10 +34,36 @@ Generated speech cache remains under `vault_system/development/runtime/tts_cache
 because the canonical-Vault guard enforces that boundary. It is runtime output,
 not source material.
 
+## Repeatable startup diagnosis
+
+The following query controls exist only in a non-production frontend build:
+
+```text
+http://127.0.0.1:16667/?orbStartupReset=1&orbIntroVariant=am-echo&orbDevFullTour=1
+```
+
+- `orbStartupReset=1` clears only the current tab's startup/tour markers.
+- `orbIntroVariant` accepts `am-echo`, `am-michael`, or `kokoro-host` and
+  replays that selected intro for deterministic verification.
+- `orbDevFullTour=1` lets an authenticated development session exercise the
+  governed new-visitor tour after the intro. It changes only the frontend
+  tour-eligibility decision: it does not sign a visitor out, change backend
+  authorization, or persist account state.
+
+Development console events are prefixed `[Weaver startup]` and are also
+dispatched as `orbweaver:startup-trace`. In production builds the query
+controls and trace emitter are disabled.
+
+Run `npm run verify:weaver-startup` from `frontend/` to exercise all intro
+variants, deliberate autoplay denial/recovery through Weaver's existing
+speaker control, the authenticated override, and the normal authenticated
+tour-skip path. Set `REQUIRE_FIRST_TOUR_SPEECH=1` only when the local cognition
+gateway on `127.0.0.1:16520` is healthy; that mode fails unless the first
+governed tour audio actually begins playback.
+
 ## Acceptance boundary
 
 Passing local checks is development evidence. Gate approval additionally
 requires the exact release candidate's full regression, browser/voice,
 pointer, latency, deployment identity, and two-site evidence bundle described
 by the September 11 launch command sheet.
-
