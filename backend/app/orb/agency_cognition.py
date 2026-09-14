@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import settings
-from app.orb.aims_memory import _aims, _session_id, context_for_turn
+from app.orb.aims_memory import _aims, _session_id, context_for_agency
 from memory_core import OutcomeSignal
 
 logger = logging.getLogger(__name__)
@@ -86,8 +86,9 @@ async def agency_cognition(request: AgencyCognitionRequest, customer_id: Optiona
         return {"event_id": event["event_id"], "source": source, "payload_bytes": payload_bytes}
 
     transcript = str(payload.get("visitorResponse") or payload.get("visitor_context") or "Current governed tour objective")[:1500]
-    memory = context_for_turn(transcript, request.anonymous_session_id, customer_id, request.target_url)
-    # Purpose-built retrieval; never send the entire session cache.
+    memory = context_for_agency(transcript, request.anonymous_session_id, customer_id)
+    # Purpose-built retrieval; never send the entire session cache and never
+    # record cognition plumbing as if it were a new visitor utterance.
     relevant = []
     evidence_bytes = 0
     for event in memory.get("relevant_session_context", [])[:settings.ORB_AGENCY_EVIDENCE_MAX_ITEMS]:
