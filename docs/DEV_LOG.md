@@ -67,6 +67,13 @@
   first-tour audio/voice success is **not proven in this pass**: all four tour
   cases reached the governed request, but none received a tour audio URL or
   began first-tour speech while cognition was unavailable.
+- Docker runtime follow-up: the running `orb-weaver` container retained the
+  obsolete `172.18.176.1:8009/v1` llama.cpp default and therefore returned
+  governed-tour HTTP 503 after the intro. The verified local model endpoint is
+  reachable from Docker at `http://host.docker.internal:8080/v1/models`.
+  Docker's compose default now points there. Recreate `orb-weaver` after this
+  commit; no Site World, Pointer/LiDAR, movement, or Stage Governor logic was
+  changed.
 
 ## 2026-09-11 — Intended local cognition service restored
 
