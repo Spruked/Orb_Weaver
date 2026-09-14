@@ -915,3 +915,79 @@ The repository already contained many modified and untracked files before the gu
 * Account-session verification on the documented runtime (`127.0.0.1:16666` → `127.0.0.1:16667`): a fresh signed-in session showed the real landing hero and emitted `INTRO_AUDIO_REQUESTED`; the signed-in completed-intro handoff emitted `landing_tour_skipped_authenticated` without `target_one_tour_controller_initialized`; the signed-out handoff emitted `target_one_tour_controller_initialized` and `tour_converse_started`. A new browser context contained neither the session token nor a seeded legacy local-storage token. Both dev endpoints returned HTTP 200.
 * Login-handoff correction: a successful existing-account `/login` now routes to `/` by default, preserving Weaver's intro before the authenticated tour-skip branch. Explicit internal `?next=` routes remain honored; external values fall back to `/`. Focused `AuthPage.test.ts` coverage passed (3 tests).
 * Keep this entry current for the remainder of the active Codex session. Do not expand this task beyond the landing-content restoration without new direction.
+
+---
+
+## 2026-09-14 — A.I.M.S. session-memory integration foundation
+
+* Added a narrow A.I.M.S. adapter to the existing Website ORB text cognition
+  path. It retains the full active visit in process-local session memory while
+  sending Qwen only a relevance-selected slice for each turn.
+* A.I.M.S. is advisory context only. Site World/Vault/SKG evidence, governed
+  capabilities, Pointer behavior, movement, and Stage Governor authority were
+  not changed.
+* Responses, observed governed actions/results, and weak delivery
+  `OutcomeSignal`s are recorded. Delivery alone cannot reinforce retrieval;
+  later verified visitor/action evidence is the explicit reinforcement path.
+* Recognized visitors can retrieve explicit prior outcome packages through a
+  pseudonymous local key. Raw transcripts and active-session events are not
+  persisted as durable account memory.
+* GraphQLite 0.8.0 is installed as the optional derived-SKG accelerator; the
+  bridge prefers it and falls back to the Python derived backend if unavailable.
+* Validation: A.I.M.S. suite 20 passed, including GraphQLite replay/query;
+  Website ORB bridge tests 2 passed; backend compilation and whitespace checks
+  passed. Docker and public runtime were not rebuilt or restarted in this pass.
+
+## 2026-09-14 — Canonical Nine-of-Clubs registry and contract verification
+
+* Read the owner-supplied 50-question bank and inspected the existing journey
+  stages, semantic enums, chapter/stop contracts, destination scope checks, and
+  all three authored engagement questions before extending the Governor.
+* Preserved the canonical source in `docs/architecture/NINE_OF_CLUBS_CANONICAL_SOURCE.md`.
+  Formalized 50 selectable records with 150 semantic branches, candidate action
+  mappings, dimension/stage eligibility, confidence targets, ranking weights,
+  lexical slots, generation constraints, and deterministic fallback text.
+* Question dimensions are separate from existing journey stages. Scan and
+  configuration candidates require explicit consent; demonstration candidates
+  require live verification. Candidates do not authorize execution.
+* Moved the three existing two-choice questions into compatibility registry
+  records without changing their IDs, wording, meaning, or route mappings.
+  None is an exact three-choice-bank equivalent; related records are documented
+  explicitly instead of collapsing different topologies into an alias.
+* Added provider-neutral compile/classify contracts, strict branch and lexical
+  checks, bounded regeneration and fallback, and selection/candidate checks in
+  the existing Governor module. Covered dimensions collapse; unavailable
+  candidate actions, exhausted budgets, interruptions, pending interactions,
+  ambiguity, and stale question/stage/chapter/stop scopes fail closed.
+* Validation: 40 tests passed across seven suites (source-bank fidelity,
+  compiler/classifier rejection and fallback, selection, existing Governor,
+  interaction, concept evaluator, and journey persistence). Frontend
+  `npm run typecheck` passed. Provider tests use doubles; no live-model or
+  browser-navigation claim is made by these results.
+* The live curriculum consumes the preserved compatibility records. New bank
+  scheduling, AIMS evidence/confidence updates, concrete provider adapters,
+  lexical scan inputs, and single-use action execution remain runtime wiring
+  work. Existing scopes lack a nonce/movement epoch; candidate evaluation is
+  not an execution authorization. See `docs/architecture/NINE_OF_CLUBS_REGISTRY.md`.
+* No Docker build, service restart, deployment, commit, or push occurred in
+  this registry pass. Existing unrelated worktree changes were preserved.
+
+## 2026-09-14 — Agency Envelope implementation (in progress)
+
+* Scope follows the owner-supplied Agency Envelope specification. Extended the
+  existing Governor with coherent Candidate Moves, six optional legal vectors,
+  environment intersection, revision checks, explicit consequence tiers, and
+  single-use issuance/consumption. The registry and journey stages remain intact.
+* Connected the configured inference gateway through choose/compile/classify
+  contracts. Model output selects an ID; it cannot replace the Governor's move.
+* Added an agency callback to the existing tour scheduler and connected it to
+  the mounted Weaver, generated voice, semantic scan records, live Pointer
+  verification, and existing navigation. Added transcription-only handling for
+  agency voice turns to avoid a redundant answer-generation request.
+* Agency observations and inferred classifications use existing AIMS session
+  evidence with explicit source labels. Browser outcomes remain browser-reported
+  evidence and do not acquire server-verified status or materially reinforce
+  memory merely because execution was requested.
+* Current validation underway: focused envelope/authorization tests, existing
+  tour regressions, frontend typecheck, and dev runtime checks on 16666/16667.
+  No Docker build, deployment, or push is authorized for this pass.

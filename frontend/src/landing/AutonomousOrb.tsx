@@ -1,10 +1,9 @@
 import { createInitialJourneyState, loadJourneyState, migrateStoredJourneyState, saveJourneyState, WEBSITE_JOURNEY_STORAGE_KEY, type WebsiteJourneyStateV2 } from "../state/tourControllerStore";
 import { TOUR_POINTER_TARGETS, TOUR_STOP_SOURCE_SELECTORS } from "../tour/curriculum";
 import { runTourController, isTourDecisionReady } from "../tour/controller";
+import { createTourAgencyRuntime } from "../tour/agencyRuntime";
 import { parseChapterEvaluation } from "../tour/evaluator";
 import type { TourDecisionAction, TourEngagementQuestion } from "../types/tour";
-import { classifyEngagementAnswer, engagementById } from "../tour/interaction";
-import { resolveGovernedDestination } from "../tour/governor";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useAnimationControls } from "framer-motion";
 import { Volume2, VolumeX } from "lucide-react";
@@ -19,6 +18,7 @@ import {
   type PublicPreflightReport,
   type WebsiteOrbTtsResponse,
   type WebsiteOrbVoiceResponse,
+  type WebsiteOrbPageCapsule,
 } from "../services/api";
 import travelMorbAsset from "../assets/sound_files/travelmorb.mp3";
 import {
@@ -488,6 +488,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const landingTourSettledRef = useRef<Promise<void>>(Promise.resolve());
   const landingTourAbortControllerRef = useRef<AbortController | null>(null);
   const routeArrivalInFlightRef = useRef<string | null>(null);
+  const agencyRuntimeRef = useRef<ReturnType<typeof createTourAgencyRuntime> | null>(null);
   const handsFreeEnabledRef = useRef(false);
   const [pulse, setPulse] = useState<PulseState>(null);
   const [voiceState, setVoiceState] = useState<OrbVoiceState>("idle");
@@ -557,6 +558,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const saveWebsiteJourney = useCallback((next: WebsiteJourneyStateV2) => {
     if (!saveJourneyState(next)) throw new Error("Your tour progress could not be saved. Please enable session storage to continue.");
     websiteJourneyRef.current = next;
+    agencyRuntimeRef.current?.invalidatePosition();
     setTourState(next);
     emitOrbRuntimeEvent("website_journey_state", next as unknown as Record<string, unknown>);
     return next;
@@ -1857,6 +1859,36 @@ export const AutonomousOrb: React.FC<Props> = ({
     return verified;
   }, [bumpWorldStateSequence]);
 
+  const getAgencyRuntime = useCallback(() => {
+    if (!agencyRuntimeRef.current) agencyRuntimeRef.current = createTourAgencyRuntime({
+      read: () => websiteJourneyRef.current,
+      save: saveWebsiteJourney,
+      pointers: () => pointerRecordsRef.current,
+      capsule: () => pageCapsuleRef.current as WebsiteOrbPageCapsule | null,
+      targetUrl: contextTargetUrl,
+      worldRevision: () => worldStateSequenceRef.current,
+      speak: (text, audio, provider) => speakWithGeneratedAudio(text, audio, provider),
+      guide: (record, signal) => guideToPointerRecord(record, 'Demonstrate the authorized semantic target without activating it', { signal }),
+      navigate,
+      telemetry: emitOrbRuntimeEvent,
+    });
+    return agencyRuntimeRef.current;
+  }, [contextTargetUrl, guideToPointerRecord, navigate, saveWebsiteJourney, speakWithGeneratedAudio]);
+
+  useEffect(() => {
+    const observer = new MutationObserver(records => {
+      // Ignore Weaver's own animation/caption tree. Page content and controls
+      // invalidate agency on mutation; no millisecond polling is introduced.
+      if (records.some(record => {
+        const element = record.target instanceof Element ? record.target : record.target.parentElement;
+        return Boolean(element?.closest('main'));
+      })) agencyRuntimeRef.current?.invalidateDOM();
+    });
+    observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true,
+      attributeFilter: ['href', 'hidden', 'disabled', 'aria-hidden', 'class', 'style'] });
+    return () => observer.disconnect();
+  }, []);
+
   const runLandingTour = useCallback(async () => {
     const authenticated = Boolean(authStore.getToken());
     const developmentOverride = developmentFullTourOverride();
@@ -1906,6 +1938,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       await runTourController({
         read: () => websiteJourneyRef.current,
         save: saveWebsiteJourney,
+        agency: (_chapter, _stop, signal) => getAgencyRuntime().turn(signal),
         verifySection: async (stop, signal) => {
           if (signal.aborted) return false;
           emitOrbRuntimeEvent('target_one_governed_stop_activated', { stage: journey.stage, chapterId: websiteJourneyRef.current?.currentChapterId || null, stopId: stop.id });
@@ -2048,7 +2081,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       landingTourRunningRef.current = false;
       settleTour();
     }
-  }, [activeOrbContext?.project_id, contextTargetUrl, findPointerRecordById, guideToPointerRecord, onboardingSafeMode, saveWebsiteJourney, scrollToLandingTourSection, showStatus, speakWithGeneratedAudio, waitForPointerRecords]);
+  }, [activeOrbContext?.project_id, contextTargetUrl, findPointerRecordById, getAgencyRuntime, guideToPointerRecord, onboardingSafeMode, saveWebsiteJourney, scrollToLandingTourSection, showStatus, speakWithGeneratedAudio, waitForPointerRecords]);
 
   const resumeLandingTour = useCallback(async () => {
     await landingTourSettledRef.current;
@@ -2094,48 +2127,15 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
   }, [navigate, saveWebsiteJourney]);
 
-  const applyEngagementAnswer = useCallback((transcript: string): boolean => {
-    const state = websiteJourneyRef.current;
-    const question = engagementById(state?.interaction.pendingQuestionId || null);
-    if (!state || !question) return false;
-    const selection = classifyEngagementAnswer(question, transcript);
-    if (!selection) {
-      setTourNotice("I am keeping your place. Tell me which of the two directions matters more to you, or ask me a different question.");
-      return false;
+  const applyEngagementAnswer = useCallback(async (transcript: string, signal: AbortSignal): Promise<boolean> => {
+    if (websiteJourneyRef.current?.stage !== 'LANDING_TOUR') return false;
+    const handled = await getAgencyRuntime().answer(transcript, signal);
+    if (handled && !websiteJourneyRef.current?.interaction.pendingQuestionId &&
+      !websiteJourneyRef.current?.interaction.activeDestinationRoute) {
+      window.setTimeout(() => void resumeLandingTour(), 360);
     }
-    const destination = resolveGovernedDestination(state, question, selection.semanticCategory);
-    if (!destination) {
-      // An old or tampered persisted route list must not silently create a
-      // second navigation authority. Preserve the question for recovery.
-      setTourNotice("I am keeping your place while I recheck the available direction.");
-      emitOrbRuntimeEvent("tour_engagement_destination_blocked", {
-        questionId: question.id,
-        answerSignal: selection.optionId,
-        semanticCategory: selection.semanticCategory,
-      });
-      return false;
-    }
-    saveWebsiteJourney({
-      ...state,
-      interaction: {
-        ...state.interaction,
-        pendingQuestionId: null,
-        eligibleDestinationRoutes: [],
-        eligibleDestinationScope: null,
-        activeDestinationRoute: destination,
-        answerSignals: { ...state.interaction.answerSignals, [question.id]: selection.optionId },
-        visitedRoutes: [...new Set([...state.interaction.visitedRoutes, destination])],
-      },
-    });
-    emitOrbRuntimeEvent("tour_engagement_destination_selected", {
-      questionId: question.id,
-      answerSignal: selection.optionId,
-      semanticCategory: selection.semanticCategory,
-      destinationRoute: destination,
-    });
-    navigate(destination);
-    return true;
-  }, [navigate, saveWebsiteJourney]);
+    return handled;
+  }, [getAgencyRuntime, resumeLandingTour]);
 
   const processRecordedOrbAudio = useCallback(async (audio: Blob) => {
     markVisitorActivity();
@@ -2187,8 +2187,9 @@ export const AutonomousOrb: React.FC<Props> = ({
         project_id: activeOrbContext?.project_id,
         target_url: targetUrl,
         experience,
+        transcribe_only: websiteJourneyRef.current?.stage === 'LANDING_TOUR',
       });
-      if (applyEngagementAnswer(result.transcript || "")) return;
+      if (await applyEngagementAnswer(result.transcript || "", controller.signal)) return;
       const decisionAction = resolveTourDecisionAction(result.transcript || "");
       if (decisionAction && chooseTourDecision(decisionAction)) return;
       const spokenOutput = result.spoken_output;
@@ -3304,6 +3305,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         sourceLane: result.source_lane || result.llm_source,
         llmSource: result.llm_source,
       });
+      void api.websiteOrbAgency('observe', { source: 'LIVE_BEHAVIOR', outcome: 'route_arrived', route: destination }, contextTargetUrl());
       const played = await speakWithGeneratedAudio(result.spoken_output, result.tts_audio_url, result.tts_provider);
       if (!played || controller.signal.aborted) return;
       const current = websiteJourneyRef.current;
@@ -3316,6 +3318,7 @@ export const AutonomousOrb: React.FC<Props> = ({
             recentWeaverStatements: [...current.interaction.recentWeaverStatements, result.spoken_output].slice(-4),
           },
         });
+        await getAgencyRuntime().turn(controller.signal);
       }
     }).catch(() => {
       if (!controller.signal.aborted) setTourNotice("Your selected page is open. My conversational response is temporarily unavailable, and your place is saved.");
@@ -3323,7 +3326,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       if (routeArrivalInFlightRef.current === destination) routeArrivalInFlightRef.current = null;
     });
     return () => controller.abort();
-  }, [activeOrbContext?.project_id, contextTargetUrl, location.pathname, saveWebsiteJourney, speakWithGeneratedAudio]);
+  }, [activeOrbContext?.project_id, contextTargetUrl, getAgencyRuntime, location.pathname, saveWebsiteJourney, speakWithGeneratedAudio]);
 
   useEffect(() => () => {
     landingTourAbortControllerRef.current?.abort();

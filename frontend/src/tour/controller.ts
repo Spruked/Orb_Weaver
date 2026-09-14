@@ -23,6 +23,7 @@ interface TourRuntime {
   demonstrate(chapter: TourChapter, stop: TourStop, signal: AbortSignal): Promise<boolean>;
   // Must resolve only after the same spoken_output finished playing.
   converse(chapter: TourChapter, stop: TourStop, missing: TourConcept[], engagement: TourEngagementQuestion | null, signal: AbortSignal, attempt: number): Promise<ChapterEvaluation>;
+  agency?(chapter: TourChapter, stop: TourStop, signal: AbortSignal): Promise<'continue' | 'awaiting_visitor'>;
 }
 
 const checkAbort = (signal: AbortSignal) => {
@@ -44,7 +45,7 @@ export async function runTourController(runtime: TourRuntime, signal: AbortSigna
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const missing = requiredConcepts(chapter, stop, state);
       if (!missing.length) break;
-      const engagement: TourEngagementQuestion | null = stop.engagementQuestion && !state.interaction.askedQuestionIds.includes(stop.engagementQuestion.id)
+      const engagement: TourEngagementQuestion | null = !runtime.agency && stop.engagementQuestion && !state.interaction.askedQuestionIds.includes(stop.engagementQuestion.id)
         ? stop.engagementQuestion
         : null;
       const evaluation: ChapterEvaluation = await runtime.converse(chapter, stop, missing, engagement, signal, attempt + 1);
@@ -61,9 +62,18 @@ export async function runTourController(runtime: TourRuntime, signal: AbortSigna
       runtime.save(state);
       return 'decision';
     }
+    if (runtime.agency) {
+      runtime.save(state);
+      const outcome = await runtime.agency(chapter, stop, signal);
+      checkAbort(signal);
+      if (outcome === 'awaiting_visitor') return 'awaiting_visitor';
+      const updated = runtime.read();
+      if (!updated || updated.currentChapterId !== chapter.id || updated.currentStopId !== stop.id || updated.stage !== state.stage) return 'inactive';
+      state = updated;
+    }
     const nextStop = chapter.stops[chapter.stops.findIndex(item => item.id === stop.id) + 1];
     if (nextStop) {
-      const engagement: TourEngagementQuestion | null = stop.engagementQuestion && !state.interaction.askedQuestionIds.includes(stop.engagementQuestion.id)
+      const engagement: TourEngagementQuestion | null = !runtime.agency && stop.engagementQuestion && !state.interaction.askedQuestionIds.includes(stop.engagementQuestion.id)
         ? stop.engagementQuestion
         : null;
       const nextState = { ...state, currentStopId: nextStop.id, currentStopCoveredConceptIds: [] };
@@ -85,7 +95,7 @@ export async function runTourController(runtime: TourRuntime, signal: AbortSigna
       // The graph is authoritative; Weaver's suggested_transition is advisory only.
       const next = getTourChapterOpening(chapter.nextChapterId);
       if (!next) throw new Error('The next tour chapter is unavailable. Your progress has been preserved.');
-      const engagement: TourEngagementQuestion | null = stop.engagementQuestion && !state.interaction.askedQuestionIds.includes(stop.engagementQuestion.id)
+      const engagement: TourEngagementQuestion | null = !runtime.agency && stop.engagementQuestion && !state.interaction.askedQuestionIds.includes(stop.engagementQuestion.id)
         ? stop.engagementQuestion
         : null;
       const nextState = { ...state, currentChapterId: next.chapterId, currentStopId: next.stopId, currentStopCoveredConceptIds: [] };

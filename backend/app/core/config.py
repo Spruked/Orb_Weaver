@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 from typing import List, Optional
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     LOCAL_LLM_NUM_CTX: int = 512
     LOCAL_LLM_NUM_PREDICT: int = 32
     LOCAL_LLM_TEMPERATURE: float = 0.35
+    # Kmax bounds candidate count; B bounds complete active agency prompt bytes.
+    ORB_AGENCY_KMAX: int = Field(default=5, ge=1, le=64)
+    ORB_AGENCY_CONTEXT_MAX_BYTES: int = Field(default=32000, ge=4000, le=128000)
+    ORB_AGENCY_EVIDENCE_MAX_ITEMS: int = Field(default=8, ge=0, le=32)
+    ORB_AGENCY_EVIDENCE_MAX_BYTES: int = Field(default=6000, ge=0, le=32000)
     FASTER_WHISPER_STT_URL: str = "http://127.0.0.1:9000/stt"
     FASTER_WHISPER_STT_TIMEOUT_SECONDS: float = 60.0
     ORB_ASSISTANT_ROOT: str = "../Orb_Assistant"

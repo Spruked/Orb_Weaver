@@ -30,6 +30,11 @@ export interface TourInteractionState {
   answerSignals: Record<string, string>;
   visitedRoutes: string[];
   recentWeaverStatements: string[];
+  /** Session-only derived acquisition state; source observations are sent to AIMS. */
+  agency?: {
+    answers: Record<string, { semanticOutput: string; confidence: number }>;
+    acquisitions: number;
+  };
 }
 
 export interface WebsiteJourneyStateV2 {
@@ -147,6 +152,11 @@ const normalizeInteraction = (value: unknown): TourInteractionState | null => {
       !TOUR_DESTINATION_ROUTES.includes(value.activeDestinationRoute as TourDestinationRoute)) || !isIdList(value.askedQuestionIds) ||
     !isRecord(value.answerSignals) || !isIdList(value.visitedRoutes) || !isIdList(value.recentWeaverStatements) ||
     !Object.values(value.answerSignals).every(isId)) return null;
+  const agency = value.agency;
+  if (agency !== undefined && (!isRecord(agency) || !isRecord(agency.answers) ||
+    !Number.isInteger(agency.acquisitions) || Number(agency.acquisitions) < 0 ||
+    !Object.values(agency.answers).every(answer => isRecord(answer) && isId(answer.semanticOutput) &&
+      typeof answer.confidence === 'number' && Number.isFinite(answer.confidence) && answer.confidence >= 0 && answer.confidence <= 1))) return null;
   return {
     pendingQuestionId: value.pendingQuestionId as string | null,
     eligibleDestinationRoutes: value.eligibleDestinationRoutes === undefined
@@ -164,6 +174,7 @@ const normalizeInteraction = (value: unknown): TourInteractionState | null => {
     ),
     visitedRoutes: [...new Set(value.visitedRoutes)],
     recentWeaverStatements: value.recentWeaverStatements.slice(-4),
+    ...(agency ? { agency: JSON.parse(JSON.stringify(agency)) as NonNullable<TourInteractionState['agency']> } : {}),
   };
 };
 

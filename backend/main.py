@@ -99,6 +99,8 @@ from app.orb.governance import (
 )
 from app.orb.vault_glyph_trace import record_vault_object
 from app.orb.vault_skg_adapter import get_vault_skg_adapter, materialize_site_apriori
+from app.orb.aims_memory import context_for_turn as aims_context_for_turn, record_turn_result as record_aims_turn_result
+from app.orb.agency_cognition import AgencyCognitionRequest, agency_cognition
 from app.pack_generator import generate_pack_file
 from manufacturing.website_orb import manufacture_website_orb
 from app.services.chrome_devtools import ChromeDevToolsReviewRunner
@@ -534,6 +536,7 @@ class WebsiteOrbTextRequest(BaseModel):
     project_id: Optional[str] = None
     target_url: Optional[str] = Field(default=None, max_length=500)
     site_id: Optional[str] = Field(default=None, min_length=2, max_length=120)
+    anonymous_session_id: Optional[str] = Field(default=None, min_length=24, max_length=128)
     experience: Optional[WebsiteOrbExperienceContext] = None
 
 
@@ -1426,14 +1429,44 @@ def _serialize_orb_memory(item: OrbUserMemory) -> Dict[str, Any]:
     }
 
 
-def _orb_memory_summary(customer: Optional[Customer], db: Session) -> Dict[str, Any]:
+_ANONYMOUS_ORB_CONTEXT_TTL_SECONDS = 30 * 60
+_ANONYMOUS_ORB_CONTEXT_MAX_TURNS = 4
+_ANONYMOUS_ORB_CONTEXT_MAX_CHARS = 1800
+_anonymous_orb_contexts: Dict[str, Dict[str, Any]] = {}
+
+
+def _valid_anonymous_session_id(value: Optional[str]) -> Optional[str]:
+    candidate = str(value or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{24,128}", candidate):
+        return None
+    return candidate
+
+
+def _prune_anonymous_orb_contexts(now: Optional[float] = None) -> None:
+    current = now if now is not None else time.time()
+    for session_id, record in list(_anonymous_orb_contexts.items()):
+        if float(record.get("expires_at") or 0) <= current:
+            _anonymous_orb_contexts.pop(session_id, None)
+
+
+def _orb_memory_summary(
+    customer: Optional[Customer], db: Session, anonymous_session_id: Optional[str] = None,
+) -> Dict[str, Any]:
     if not customer:
+        session_id = _valid_anonymous_session_id(anonymous_session_id)
+        _prune_anonymous_orb_contexts()
+        recent = _anonymous_orb_contexts.get(session_id or "")
         return {
             "scope": "anonymous_session",
             "durable": False,
             "items": [],
-            "recent_context": None,
-            "policy": "Anonymous visitors receive only request/session context, not durable account memory.",
+            "recent_context": {
+                "summary": recent.get("summary"),
+                "turn_count": recent.get("turn_count"),
+                "expires_at": datetime.fromtimestamp(float(recent["expires_at"]), timezone.utc).isoformat(),
+                "source": "ephemeral_browser_session",
+            } if recent else None,
+            "policy": "Anonymous visitors receive bounded, process-local session context only; it is never durable account memory.",
         }
 
     now = datetime.utcnow()
@@ -1516,8 +1549,32 @@ def _upsert_orb_memory(customer: Customer, payload: OrbMemoryUpsert, db: Session
     return item
 
 
-def _update_orb_recent_context(customer: Optional[Customer], transcript: str, spoken_output: str, db: Session) -> None:
+def _update_orb_recent_context(
+    customer: Optional[Customer], transcript: str, spoken_output: str, db: Session,
+    anonymous_session_id: Optional[str] = None,
+) -> None:
     if not customer:
+        session_id = _valid_anonymous_session_id(anonymous_session_id)
+        if not session_id:
+            return
+        now_epoch = time.time()
+        _prune_anonymous_orb_contexts(now_epoch)
+        prior = _anonymous_orb_contexts.get(session_id) or {}
+        turns = list(prior.get("turns") or [])
+        turns.append({
+            "visitor": re.sub(r"\s+", " ", transcript).strip()[:360],
+            "weaver": re.sub(r"\s+", " ", spoken_output).strip()[:520],
+        })
+        turns = turns[-_ANONYMOUS_ORB_CONTEXT_MAX_TURNS:]
+        summary = "\n".join(
+            f"Visitor: {turn['visitor']}\nWeaver: {turn['weaver']}" for turn in turns
+        )[-_ANONYMOUS_ORB_CONTEXT_MAX_CHARS:]
+        _anonymous_orb_contexts[session_id] = {
+            "turns": turns,
+            "summary": summary,
+            "turn_count": len(turns),
+            "expires_at": now_epoch + _ANONYMOUS_ORB_CONTEXT_TTL_SECONDS,
+        }
         return
     now = datetime.utcnow()
     session_key = "website_orb"
@@ -3117,7 +3174,7 @@ def _build_website_weaver_envelope(
             "key_facts": (context.get("key_facts") or [])[:8],
             "route_hints": context.get("route_hints") or {},
             "pointer_matches": _lookup_pointer_context(context, transcript),
-            "retrieved_knowledge": _lookup_knowledge_context(context, transcript),
+            "evidence_bundle": _build_site_world_evidence_bundle(context, capsule, transcript),
         },
         "memory_architecture": {
             "site_world_skg": {
@@ -3159,6 +3216,114 @@ def _build_website_weaver_envelope(
     }
 
 
+def _build_site_world_evidence_bundle(
+    website_context: Dict[str, Any], page_capsule: Dict[str, Any], transcript: str,
+) -> Dict[str, Any]:
+    """Select bounded, provenance-carrying evidence from the compiled Site World.
+
+    The compiler already emits an inverted retrieval index.  This runtime uses
+    its postings first, with a current-route boost, then adds only the related
+    page, catalog, route, validation, and pointer records needed to articulate
+    the visitor's question.  It is evidence for language generation, never
+    action or route authority.
+    """
+    query_tokens = _tokenize_intent(transcript)
+    route = str(page_capsule.get("route") or "/")
+    chunks = [item for item in ((website_context.get("knowledge_chunks") or {}).get("chunks") or []) if isinstance(item, dict)]
+    by_id = {str(item.get("chunk_id") or item.get("content_hash") or ""): item for item in chunks}
+    scores: Counter = Counter()
+    postings = (website_context.get("retrieval_index") or {}).get("postings") or {}
+    for token in sorted(query_tokens):
+        for chunk_id in postings.get(token, []) or []:
+            if str(chunk_id) in by_id:
+                scores[str(chunk_id)] += 3
+    # Alias expansion is compiler-produced lexical evidence, not an invented
+    # synonym table.  It recovers meaningful label matches that postings miss.
+    aliases = (website_context.get("lexical_index") or {}).get("aliases") or {}
+    for label, values in aliases.items():
+        label_tokens = _tokenize_intent(str(label))
+        if not (query_tokens & label_tokens):
+            continue
+        for value in values if isinstance(values, list) else [values]:
+            value_tokens = _tokenize_intent(str(value))
+            for chunk_id, chunk in by_id.items():
+                if value_tokens & _tokenize_intent(f"{chunk.get('title', '')} {chunk.get('heading', '')} {chunk.get('text', '')}"):
+                    scores[chunk_id] += 1
+    for chunk_id, chunk in by_id.items():
+        if str(chunk.get("route") or "") == route:
+            scores[chunk_id] += 2
+    if not scores and route:
+        for chunk_id, chunk in by_id.items():
+            if str(chunk.get("route") or "") == route:
+                scores[chunk_id] = 1
+
+    selected_ids = [
+        chunk_id for chunk_id, _score in sorted(scores.items(), key=lambda item: (-item[1], item[0]))[:6]
+    ]
+    selected_chunks = []
+    for chunk_id in selected_ids:
+        chunk = by_id[chunk_id]
+        selected_chunks.append({
+            "evidence_id": f"chunk:{chunk_id}", "kind": "compiled_page_chunk",
+            "route": chunk.get("route"), "title": chunk.get("title"), "heading": chunk.get("heading"),
+            "text": str(chunk.get("text") or "")[:1100], "content_hash": chunk.get("content_hash"),
+            "provenance": (chunk.get("provenance") or [])[:4], "retrieval_score": scores[chunk_id],
+        })
+
+    selected_routes = {str(item.get("route") or "") for item in selected_chunks}
+    page_records = [item for item in (website_context.get("page_knowledge") or [])
+                    if isinstance(item, dict) and str(item.get("route") or _route_from_url(item.get("url"))) in selected_routes | {route}]
+    pages = [{
+        "evidence_id": f"page:{item.get('content_hash') or item.get('route')}", "route": item.get("route"),
+        "title": item.get("title"), "summary": item.get("summary"),
+        "classification": item.get("route_classification"), "content_hash": item.get("content_hash"),
+    } for item in page_records[:6]]
+
+    route_records = [item for item in ((website_context.get("route_classification") or {}).get("routes") or [])
+                     if isinstance(item, dict) and str(item.get("route") or "") in selected_routes | {route}]
+    authority_records = [item for item in ((website_context.get("authority_flow") or {}).get("pages") or [])
+                         if isinstance(item, dict) and _route_from_url(item.get("url")) in selected_routes | {route}]
+    graph = website_context.get("knowledge_graph") or {}
+    selected_urls = {str(by_id[chunk_id].get("source_url") or "") for chunk_id in selected_ids}
+    related_edges = [item for item in (graph.get("edges") or []) if isinstance(item, dict) and any(
+        candidate and candidate in " ".join(str(value) for value in item.values()) for candidate in selected_urls
+    )][:10]
+
+    catalog_entries = []
+    for entry in ((website_context.get("commercial_catalog") or {}).get("entries") or []):
+        if not isinstance(entry, dict):
+            continue
+        searchable = " ".join(str(entry.get(key) or "") for key in ("name", "description", "category", "url", "kind"))
+        if query_tokens & _tokenize_intent(searchable) or _route_from_url(entry.get("url")) in selected_routes:
+            catalog_entries.append({
+                "evidence_id": f"catalog:{entry.get('catalog_id')}", "name": entry.get("name"), "kind": entry.get("kind"),
+                "description": entry.get("description"), "url": entry.get("url"), "offers": entry.get("offers") or [],
+                "availability": entry.get("availability"), "confidence": entry.get("confidence"), "evidence": entry.get("evidence") or [],
+            })
+    validation_by_chunk = {str(item.get("chunk_id")): item for item in ((website_context.get("source_validation") or {}).get("checks") or []) if isinstance(item, dict)}
+    validation = [{"evidence_id": f"validation:{chunk_id}", "status": item.get("status"), "content_hash": item.get("content_hash")}
+                  for chunk_id, item in validation_by_chunk.items() if chunk_id in selected_ids]
+    preflight = None
+    if query_tokens & {"preflight", "scan", "readiness", "finding"}:
+        report = _load_json_if_present(client_root(str(website_context.get("domain") or "")) / "preflight" / "site_preflight_report.json") or {}
+        if report:
+            preflight = {"evidence_id": "preflight:latest", "scan_timestamp": report.get("scan_timestamp"),
+                         "confidence": report.get("confidence"), "detected": report.get("detected"), "warnings": (report.get("warnings") or [])[:8]}
+    pointer_targets = [_pointer_summary(item) for item in _lookup_pointer_context(website_context, transcript)[:4]]
+    bundle = {
+        "schema": "orb_weaver.site_world_evidence_bundle.v1", "selection": "compiled_retrieval_index_with_route_boost",
+        "query_tokens": sorted(query_tokens)[:32], "current_route": route, "current_page": page_capsule,
+        "chunks": selected_chunks, "pages": pages, "route_classification": route_records,
+        "authority_flow": authority_records[:6], "page_relationships": related_edges,
+        "commercial_catalog": catalog_entries[:5], "source_validation": validation,
+        "pointer_candidates": pointer_targets, "preflight": preflight,
+    }
+    encoded_size = len(json.dumps(bundle, ensure_ascii=False))
+    bundle["context_metrics"] = {"evidence_items": sum(len(value) for value in (selected_chunks, pages, route_records, authority_records, catalog_entries, validation, pointer_targets)), "approximate_characters": encoded_size}
+    logger.warning("Website ORB evidence bundle route=%s items=%s chars=%s", route, bundle["context_metrics"]["evidence_items"], encoded_size)
+    return bundle
+
+
 async def _llm_orb_spoken_output(
     transcript: str,
     pulse: Optional[Dict[str, Any]],
@@ -3193,7 +3358,12 @@ async def _llm_orb_spoken_output(
         "scope": (memory_context or {}).get("scope"),
         "durable": (memory_context or {}).get("durable"),
         "items": ((memory_context or {}).get("items") or [])[:6],
-        "recent_context": (memory_context or {}).get("recent_context") if (memory_context or {}).get("durable") else None,
+        # Anonymous turns are intentionally ephemeral, but still useful for a
+        # natural follow-up in the same browser session.
+        "recent_context": (memory_context or {}).get("recent_context"),
+        # A.I.M.S. has the full active visit, but only this selected slice is
+        # supplied to Qwen for the current turn.
+        "aims": (memory_context or {}).get("aims"),
     }
     weaver_envelope = _build_website_weaver_envelope(website_context, page_capsule, transcript)
     owner_policy = active_policy_directives(
@@ -3241,6 +3411,7 @@ async def _llm_orb_spoken_output(
             f"ACTIVE ACT: {json.dumps(experience_context, ensure_ascii=False)}\n"
             f"LIVE CONTEXT: {json.dumps(compact_live_context, ensure_ascii=False)}\n"
             f"VISITOR WORDS OR SITUATION: {transcript}\n"
+            f"RELEVANT SESSION CONTEXT: {json.dumps((memory_context or {}).get('aims') or {}, ensure_ascii=False)}\n"
             f"MANDATORY PHASE RULE: {phase_rule}\n"
             "Write one or two short natural spoken sentences only. No greeting, markdown, labels, stage directions, quoted script, or generic assistant language. "
             "Never say 'How can I help', 'What can I help', 'What can I assist', or 'Would you like'. "
@@ -8033,6 +8204,7 @@ async def _canonical_website_orb_turn(
     operating_policy: Optional[Dict[str, Any]],
     customer: Optional[Customer],
     db: Session,
+    anonymous_session_id: Optional[str] = None,
     experience_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     domain = _domain_from_url(context_target_url or target_url)
@@ -8144,7 +8316,7 @@ async def _canonical_website_orb_turn(
             governance_trace,
             session_key=(f"customer:{customer.id}" if customer else f"anonymous:{domain}"),
         )
-        _update_orb_recent_context(customer, transcript, generated["spoken_output"], db)
+        _update_orb_recent_context(customer, transcript, generated["spoken_output"], db, anonymous_session_id)
         result = {
             "transcript": transcript, "spoken_output": resolved["spoken_output"],
             "chapter_evaluation": evaluation, "llm_source": generated["llm_source"],
@@ -8257,7 +8429,7 @@ async def _canonical_website_orb_turn(
         operating_policy=operating_policy,
         learning_allowed=learning_allowed,
     )
-    _update_orb_recent_context(customer, transcript, spoken_output, db)
+    _update_orb_recent_context(customer, transcript, spoken_output, db, anonymous_session_id)
     cco_trace = _cco_trace_for_answer(
         site_id=site_id,
         transcript=transcript,
@@ -8331,6 +8503,7 @@ async def _canonical_website_orb_turn(
 @app.post("/api/orb/website-voice", response_model=WebsiteOrbVoiceResponse)
 async def website_orb_voice(
     audio: UploadFile = File(...),
+    transcribe_only: bool = Form(default=False),
     target_url: Optional[str] = Form(default=None),
     site_id: Optional[str] = Form(default=None),
     project_id: Optional[str] = Form(default=None),
@@ -8341,6 +8514,7 @@ async def website_orb_voice(
     experience_verified_target_id: Optional[str] = Form(default=None),
     experience_verified_target_label: Optional[str] = Form(default=None),
     experience_demonstrated_capabilities: Optional[str] = Form(default=None),
+    anonymous_session_id: Optional[str] = Form(default=None),
     authorization: Optional[str] = Header(default=None),
     origin: Optional[str] = Header(default=None),
     db: Session = Depends(get_db),
@@ -8363,6 +8537,8 @@ async def website_orb_voice(
     started = time.perf_counter()
     transcript = await _transcribe_with_faster_whisper(audio)
     mark("transcription", started)
+    if transcribe_only:
+        return {"transcript": transcript.strip(), "spoken_output": "", "llm_source": "transcription-only"}
     if not transcript.strip():
         timings["total"] = round((time.perf_counter() - route_started) * 1000, 1)
         logger.warning("ORB voice ignored empty transcript %s", json.dumps({
@@ -8382,7 +8558,7 @@ async def website_orb_voice(
         }
 
     started = time.perf_counter()
-    memory_context = _orb_memory_summary(customer, db)
+    memory_context = _orb_memory_summary(customer, db, anonymous_session_id)
     context_target_url = _orb_context_target_url(target_url, site_id, origin)
     website_context = _fresh_runtime_website_context(context_target_url, db)
     operating_policy = _published_dock_policy_for_target(context_target_url or target_url, db)
@@ -8440,6 +8616,7 @@ async def website_orb_voice(
         operating_policy=operating_policy,
         customer=customer,
         db=db,
+        anonymous_session_id=anonymous_session_id,
         experience_context=experience_context,
     )
     _require_governance_delivery_approval(semantic_result)
@@ -8689,6 +8866,16 @@ async def website_orb_voice(
     }
 
 
+@app.post("/api/orb/agency-cognition")
+async def website_orb_agency_cognition(
+    payload: AgencyCognitionRequest,
+    authorization: Optional[str] = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    customer = get_optional_customer(authorization=authorization, db=db)
+    return await agency_cognition(payload, str(customer.id) if customer else None)
+
+
 @app.post("/api/orb/website-text", response_model=WebsiteOrbVoiceResponse)
 async def website_orb_text(
     payload: WebsiteOrbTextRequest,
@@ -8698,7 +8885,7 @@ async def website_orb_text(
 ):
     customer = get_optional_customer(authorization=authorization, db=db)
     transcript = payload.transcript.strip()
-    memory_context = _orb_memory_summary(customer, db)
+    memory_context = _orb_memory_summary(customer, db, payload.anonymous_session_id)
     project = _owned_project(payload.project_id, customer, db) if customer and payload.project_id else None
     target_url = payload.target_url or (_project_target_url(project) if project else None)
     context_target_url = _orb_context_target_url(target_url, payload.site_id, origin)
@@ -8713,11 +8900,24 @@ async def website_orb_text(
         page_capsule["route"] = _route_from_url(target_url)
         page_capsule["context_domain"] = page_capsule.get("domain")
         page_capsule["domain"] = _domain_from_url(target_url)
+    # A.I.M.S. retains the complete active visit privately, then contributes a
+    # relevance-selected slice for this cognition turn. It is advisory context,
+    # never tool/route authority, and is removed from the public response.
+    aims_context: Optional[Dict[str, Any]] = None
+    try:
+        aims_context = aims_context_for_turn(
+            transcript, payload.anonymous_session_id,
+            str(customer.id) if customer else None, target_url,
+            payload.experience.model_dump() if payload.experience else None,
+        )
+        memory_context["aims"] = aims_context
+    except Exception:
+        logger.exception("AIMS session memory unavailable; continuing without it")
     # Tour acts remain on the governed curriculum path below. A non-tour
     # first-visitor act must instead use its choreography response before the
     # general resolver, which only accepts established factual lanes.
     if payload.experience and not payload.experience.tour:
-        return await _first_visitor_act_response(
+        response = await _first_visitor_act_response(
             transcript=transcript,
             experience_context=payload.experience.model_dump(),
             cognitive_pulse=_orb_cognitive_pulse(transcript),
@@ -8727,6 +8927,12 @@ async def website_orb_text(
             operating_policy=operating_policy,
             synthesize_tts=payload.synthesize_tts,
         )
+        try:
+            record_aims_turn_result(aims_context, response["spoken_output"])
+        except Exception:
+            logger.exception("AIMS could not record first-visitor response")
+        (response.get("memory_context") or {}).pop("aims", None)
+        return response
     semantic_result = await _canonical_website_orb_turn(
         transcript=transcript,
         site_id=payload.site_id,
@@ -8738,6 +8944,7 @@ async def website_orb_text(
         operating_policy=operating_policy,
         customer=customer,
         db=db,
+        anonymous_session_id=payload.anonymous_session_id,
         experience_context=payload.experience.model_dump() if payload.experience else None,
     )
     _require_governance_delivery_approval(semantic_result)
@@ -8750,6 +8957,14 @@ async def website_orb_text(
     semantic_result["resolution_diagnostics"]["cached_speech"] = (
         bool(tts_cache_before.get("hit")) if payload.synthesize_tts else False
     )
+    try:
+        record_aims_turn_result(
+            aims_context, semantic_result["spoken_output"],
+            semantic_result.get("control_action"), semantic_result.get("guidance"),
+        )
+    except Exception:
+        logger.exception("AIMS could not record Website ORB response")
+    (semantic_result.get("memory_context") or {}).pop("aims", None)
     return {**semantic_result, **tts_result}
     pointer_matches = _lookup_pointer_context(website_context, transcript)
     _queue_pointer_lock(pointer_matches, transcript)

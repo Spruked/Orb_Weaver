@@ -1434,10 +1434,11 @@ export const api = {
   websiteOrbVoice: (
     audio: Blob,
     signal?: AbortSignal,
-    context?: { project_id?: string | null; target_url?: string | null; site_id?: string | null; experience?: WebsiteOrbExperienceContext | null }
+    context?: { project_id?: string | null; target_url?: string | null; site_id?: string | null; experience?: WebsiteOrbExperienceContext | null; transcribe_only?: boolean }
   ) => {
     const formData = new FormData();
     formData.append('audio', audio, 'website-orb.webm');
+    if (context?.transcribe_only) formData.append('transcribe_only', 'true');
     if (context?.project_id) {
       formData.append('project_id', context.project_id);
     }
@@ -1478,6 +1479,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ text, ...(provider ? { provider } : {}) }),
       signal
+    }),
+  websiteOrbAgency: (operation: 'choose_candidate' | 'compile_question' | 'classify_response' | 'observe', payload: unknown, targetUrl: string, signal?: AbortSignal) =>
+    request<{ result?: unknown; event_id?: string; source: string }>('/api/orb/agency-cognition', {
+      method: 'POST', signal,
+      body: JSON.stringify({ operation, payload, target_url: targetUrl, anonymous_session_id: websiteOrbAnonymousSessionId() }),
     }),
   websiteOrbStartupReadiness: (targetUrl: string, signal?: AbortSignal) =>
     request<WebsiteOrbStartupReadiness>('/api/orb/startup-readiness', {
