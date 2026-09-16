@@ -27,6 +27,7 @@ describe('tour controller migration and persistence', () => {
     first.interruptionState.isInterrupted = true;
     expect(createInitialJourneyState().completedTourConceptIds).toEqual([]);
     expect(createInitialJourneyState().interruptionState.isInterrupted).toBe(false);
+    expect(createInitialJourneyState().salesPhase).toBe('ORIENT');
   });
 
   it('maps only known opening evidence and infers no accomplishments', () => {
@@ -108,6 +109,15 @@ describe('tour controller migration and persistence', () => {
     expect(loadJourneyState(storage)).toEqual({
       status: 'loaded',
       state: { ...state, interaction: { ...state.interaction, activeDestinationRoute: null } },
+    });
+  });
+
+  it('loads an earlier V2 journey safely at the new public ORIENT phase', () => {
+    const state = createInitialJourneyState();
+    const { salesPhase: _unused, ...earlierV2 } = state;
+    const storage = memoryStorage(JSON.stringify(earlierV2));
+    expect(loadJourneyState(storage)).toEqual({
+      status: 'loaded', state: { ...state, salesPhase: 'ORIENT' },
     });
   });
 

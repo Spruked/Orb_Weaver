@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import PublicHeader from "../components/PublicHeader";
 import PublicFooter from "../components/PublicFooter";
+import OrbBurst from "./OrbBurst";
 import { api, authStore } from "../services/api";
-import { currentSpeechCaption } from '../orb/speechCaptions';
+import { currentSpeechCaption } from "../orb/speechCaptions";
 import { trackOnboardingEvent } from "../services/analytics";
 import { createIntentGuestSession, LandingIntent } from "../onboarding/guestOnboarding";
 import { developmentIntroVariant, emitDevelopmentStartupTrace } from "./startupDevelopment";
@@ -13,15 +14,19 @@ const LANDING_SPLASH_COMPLETE_SESSION_KEY = "orbweaver-landing-splash-complete";
 const STARTUP_GREETING_SESSION_KEY = "orbweaver-startup-greeting-played";
 const FIRST_ENCOUNTER_STORAGE_KEY = "orbweaver-first-encounter-state";
 const LAST_INTRO_VARIANT_SESSION_KEY = "orbweaver-last-intro-variant";
+const INTRO_SPEECH_STATE_DATASET_KEY = "orbWeaverIntroVoiceState";
+// Historical OrbBurst arrival timing from df7144a. This is presentation time,
+// not a readiness or permission gate.
+const LANDING_SPLASH_DURATION_MS = 3800;
 const POST_INTRO_READINESS_ATTEMPTS = 4;
 const POST_INTRO_READINESS_RETRY_MS = 2000;
 const INTRO_CAPTION_CUES = [
-  { start: 0.429, end: 1.55, text: "Hello." },
-  { start: 1.55, end: 2.9, text: "I am Weaver." },
-  { start: 2.9, end: 5.8, text: "I can help you with anything you need. I am not a chatbot." },
-  { start: 5.8, end: 11.8, text: "I make this website intelligent, so you can find things easier, navigate faster, process your orders quicker, and resolve issues seamlessly." },
-  { start: 11.8, end: 14.9, text: "Feel free to ask a question in your normal way and I will answer." },
-  { start: 14.9, end: 15.775, text: "Let's get started." },
+  { start: 0, end: 1.325, text: "Hello." },
+  { start: 2.075, end: 5.8, text: "I am Weaver, the Orb Weaver Website Assistant." },
+  { start: 6.55, end: 10.75, text: "I can help you with anything you need. I am not a chatbot." },
+  { start: 11.5, end: 21.45, text: "I make this website intelligent, so you can find things easier, navigate faster, process your orders quicker, and resolve issues seamlessly." },
+  { start: 22.2, end: 27.925, text: "Just call me Weaver. Feel free to ask a question in your normal way and I will answer." },
+  { start: 28.675, end: 30.575, text: "Let's get started." },
 ];
 type IntroVariant = {
   id: string;
@@ -31,13 +36,9 @@ type IntroVariant = {
 };
 
 const INTRO_VARIANTS: readonly IntroVariant[] = [
-  { id: "am-echo", asset: "/orb/voice/weaver-showroom-intro-am-echo.wav", cues: INTRO_CAPTION_CUES },
+  // The historical showroom opening is one specific recorded performance;
+  // do not randomize or synthesize a substitute during startup.
   { id: "am-michael", asset: "/orb/voice/weaver-showroom-intro-am-michael.wav", cues: INTRO_CAPTION_CUES },
-  {
-    id: "kokoro-host",
-    text: "Welcome. I am Weaver, the intelligence that lives inside this website. I will show you what matters, guide you to what is real, and pause for your direction when it counts. Let’s begin together.",
-    cues: [],
-  },
 ] as const;
 
 type IntroAudioState = "preloading" | "playing" | "autoplay_blocked" | "error" | "warming" | "blocked";
@@ -59,7 +60,7 @@ const LandingPage: React.FC = () => {
   const [error, setError] = useState('');
   const [visibleBeats, setVisibleBeats] = useState<Record<string, boolean>>({ beat1: true });
   const [splashTrigger, setSplashTrigger] = useState(0);
-  const [introVisualActive, setIntroVisualActive] = useState(false);
+  const [introCaption, setIntroCaption] = useState<string | null>(null);
   const [introAudioState, setIntroAudioState] = useState<IntroAudioState>("preloading");
   const introAudioRef = useRef<HTMLAudioElement | null>(null);
   const selectedIntroRef = useRef<IntroVariant | null>(null);
@@ -131,7 +132,6 @@ const LandingPage: React.FC = () => {
 
     void beginStartupWarmup();
     emitDevelopmentStartupTrace("startup_begun");
-    setIntroVisualActive(true);
     setSplashTrigger(Date.now());
   }, []);
 
@@ -144,10 +144,27 @@ const LandingPage: React.FC = () => {
 
   useEffect(() => {
     if (!splashTrigger) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [splashTrigger]);
+
+  useEffect(() => {
+    if (!splashTrigger) return;
     let cancelled = false;
 
     const emitIntro = (phase: string, detail: Record<string, unknown> = {}) => {
       window.dispatchEvent(new CustomEvent("orbweaver:startup-intro", { detail: { phase, ...detail } }));
+    };
+    const setIntroSpeechState = (speaking: boolean) => {
+      // This is playback state, not caption state. It lets the already-mounted
+      // ORB recover the same normal voiceState if React effect ordering causes
+      // it to subscribe after the event is emitted.
+      if (speaking) {
+        document.documentElement.dataset[INTRO_SPEECH_STATE_DATASET_KEY] = "speaking";
+      } else {
+        delete document.documentElement.dataset[INTRO_SPEECH_STATE_DATASET_KEY];
+      }
     };
 
     const forcedVariantId = developmentIntroVariant(INTRO_VARIANTS.map((variant) => variant.id));
@@ -169,11 +186,9 @@ const LandingPage: React.FC = () => {
     const synthesisController = new AbortController();
     let synthesisTimer: number | undefined;
     audio.preload = "auto";
-    audio.playbackRate = 0.9;
-    audio.defaultPlaybackRate = 0.9;
-    audio.preservesPitch = true;
     introAudioRef.current = audio;
     setIntroAudioState("preloading");
+    setIntroCaption(null);
     emitDevelopmentStartupTrace("selected_intro", { intro_id: introVariant.id });
     const requiredLines = introVariant.cues.length ? introVariant.cues.map((cue) => cue.text) : [introVariant.text || ""];
     requiredLines.forEach((line, index) => emitDevelopmentStartupTrace("intro_line_synthesis_requested", {
@@ -213,7 +228,6 @@ const LandingPage: React.FC = () => {
     };
 
     const finishIntroVisual = () => {
-      setIntroVisualActive(false);
       emitIntro("INTRO_VISUAL_ENDED");
     };
 
@@ -221,7 +235,7 @@ const LandingPage: React.FC = () => {
       if (cancelled) return;
       // Recorded variants share wording, but have different audio durations.
       const cueTime = introVariant.cues.length && Number.isFinite(audio.duration)
-        ? audio.currentTime * INTRO_CAPTION_CUES[INTRO_CAPTION_CUES.length - 1].end / audio.duration
+        ? audio.currentTime * introVariant.cues[introVariant.cues.length - 1].end / audio.duration
         : audio.currentTime;
       const cueIndex = introVariant.cues.findIndex(
         (cue) => cueTime >= cue.start && cueTime < cue.end,
@@ -236,6 +250,7 @@ const LandingPage: React.FC = () => {
         : introVariant.text ? currentSpeechCaption(introVariant.text, audio.currentTime, audio.duration) : null;
       if (nextCaption !== lastCaption) {
         lastCaption = nextCaption;
+        setIntroCaption(nextCaption);
         emitIntro("INTRO_CAPTION", { text: nextCaption });
       }
     };
@@ -243,7 +258,9 @@ const LandingPage: React.FC = () => {
     const fail = (phase: "INTRO_AUTOPLAY_BLOCKED" | "INTRO_AUDIO_ERROR", detail: Record<string, unknown> = {}) => {
       if (cancelled || introFailed) return;
       introFailed = true;
+      setIntroSpeechState(false);
       emitIntro("INTRO_CAPTION", { text: null });
+      setIntroCaption(null);
       setIntroAudioState(phase === "INTRO_AUTOPLAY_BLOCKED" ? "autoplay_blocked" : "error");
       emitIntro(phase, { ...detail });
       // Playback denial and source/synthesis errors are not completion. Keep
@@ -255,14 +272,14 @@ const LandingPage: React.FC = () => {
     const startPlayback = () => {
       if (cancelled || introFailed || playbackRequested) return;
       playbackRequested = true;
-      audio.playbackRate = 0.9;
       void audio.play().then(() => {
         if (cancelled || introFailed) return;
+        setIntroSpeechState(true);
         setIntroAudioState("playing");
         syncCaption();
         emitIntro("INTRO_AUDIO_PLAYING", {
-          provider: "kokoro",
-          voice: "am_echo",
+          provider: "recorded",
+          voice: introVariant.id,
           asset: audio.currentSrc,
           duration: Number.isFinite(audio.duration) ? audio.duration : null,
           playResolved: true,
@@ -284,7 +301,6 @@ const LandingPage: React.FC = () => {
         return;
       }
       introFailed = false;
-      setIntroVisualActive(true);
       setIntroAudioState("preloading");
       startPlayback();
     };
@@ -305,14 +321,26 @@ const LandingPage: React.FC = () => {
     };
     audio.onended = () => {
       if (cancelled) return;
+      setIntroSpeechState(false);
       emitIntro("INTRO_CAPTION", { text: null });
+      setIntroCaption(null);
       emitIntro("INTRO_AUDIO_ENDED", { asset: audio.currentSrc, duration: audio.duration });
       requiredLines.forEach((_line, index) => recordLineEnded(index));
       emitDevelopmentStartupTrace("all_intro_lines_completed", { intro_id: introVariant.id, line_count: requiredLines.length });
       finishIntroVisual();
       window.sessionStorage.setItem(STARTUP_GREETING_SESSION_KEY, "1");
       emitDevelopmentStartupTrace("intro_complete_set", { intro_id: introVariant.id });
-      completeStartup();
+      // OrbBurst is both the original visible opening and the latency cover.
+      // Warmup began with the splash; do not release the existing handoff
+      // until the intro, the historical minimum burst time, and the existing
+      // live llama inference readiness proof have all completed.
+      void (async () => {
+        const elapsed = Date.now() - splashTrigger;
+        await new Promise<void>((resolve) => window.setTimeout(resolve, Math.max(0, LANDING_SPLASH_DURATION_MS - elapsed)));
+        const readiness = await beginStartupWarmup();
+        if (cancelled || !landingTourRuntimeReady(readiness)) return;
+        completeStartup();
+      })();
     };
     void (async () => {
       try {
@@ -334,6 +362,7 @@ const LandingPage: React.FC = () => {
 
     return () => {
       cancelled = true;
+      setIntroSpeechState(false);
       synthesisController.abort();
       window.clearTimeout(synthesisTimer);
       introAudioRef.current?.pause();
@@ -356,16 +385,13 @@ const LandingPage: React.FC = () => {
   }, [splashTrigger]);
 
   const completeStartupGate = async (voiceUnavailable = false) => {
-    // The spoken intro is the visitor-facing startup gate. Readiness warming
-    // may continue in the background, but it must never strand the visitor on
-    // “Weaver is getting ready...” after the intro has ended.
-    if (!voiceUnavailable) setIntroAudioState("warming");
-    void beginStartupWarmup();
+    // Call only after the splash-side readiness proof has completed. The gate
+    // is still the historical handoff point; it does not add a new screen.
     window.sessionStorage.setItem(LANDING_SPLASH_SESSION_KEY, "1");
     window.sessionStorage.setItem(LANDING_SPLASH_COMPLETE_SESSION_KEY, "1");
     setSplashTrigger(0);
     window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-complete", {
-      detail: { splash_state: "complete", readiness_state: voiceUnavailable ? "BLOCKED" : "WARMING", voice_unavailable: voiceUnavailable },
+      detail: { splash_state: "complete", readiness_state: voiceUnavailable ? "BLOCKED" : "READY", voice_unavailable: voiceUnavailable },
     }));
   };
   completeStartupGateRef.current = (voiceUnavailable = false) => {
@@ -417,16 +443,16 @@ const LandingPage: React.FC = () => {
 
   return (
     <main className="ow-cut-page">
-      <div className="ow-cut-grid" />
-      <div className="ow-cut-noise" />
-      {introVisualActive && (
-        <div className={`ow-cut-startup-presence ${introAudioState === "autoplay_blocked" ? "is-awaiting-audio" : ""}`} aria-hidden="true">
-          <span className="ow-cut-startup-presence-bloom" />
-          <span className="ow-cut-startup-presence-ring ow-cut-startup-presence-ring-a" />
-          <span className="ow-cut-startup-presence-ring ow-cut-startup-presence-ring-b" />
-          <span className="ow-cut-startup-presence-ring ow-cut-startup-presence-ring-c" />
+      {splashTrigger > 0 && (
+        <div className="ow-cut-startup-gate" aria-hidden="true">
+          {introCaption && <div className="ow-cut-startup-caption">{introCaption}</div>}
+          <div className="ow-cut-startup-burst">
+            <OrbBurst trigger={splashTrigger} size={260} color="blue" direction="out" onComplete={() => undefined} />
+          </div>
         </div>
       )}
+      <div className="ow-cut-grid" />
+      <div className="ow-cut-noise" />
 
       <PublicHeader theme="dark" />
 
@@ -446,9 +472,9 @@ const LandingPage: React.FC = () => {
             <h2>Meet Weaver.</h2>
             <div className="ow-cut-encounter-steps" aria-label="Weaver communication orientation">
               <p data-orb-target="what_weaver_does"><strong>What does Weaver do?</strong> He understands this website, answers from its verified knowledge, and guides you to the right place when showing is faster than explaining.</p>
-              <p data-orb-target="what_to_say"><strong>What do I say?</strong> Anything you would ask a person who knows the site. Click Weaver, speak naturally, finish your thought, and pause.</p>
+              <p data-orb-target="what_to_say"><strong>What do I say?</strong> Anything you would ask a person who knows the site. Speak naturally, finish your thought, and pause; Weaver listens hands-free.</p>
               <p id="watch-weaver-guide" data-orb-target="watch_weaver_guide"><strong>Watch Weaver guide.</strong> When pointing is useful, Weaver guides only to a verified target and pings the exact place it can prove is live.</p>
-              <p data-orb-target="interrupt_or_guide"><strong>You stay in control.</strong> Click Weaver while speaking to pause, then click again when you are ready to talk.</p>
+              <p data-orb-target="interrupt_or_guide"><strong>You stay in control.</strong> Weaver rearms listening after each turn, so the conversation continues naturally at your pace.</p>
             </div>
           </div>
         </div>

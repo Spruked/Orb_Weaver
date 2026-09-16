@@ -194,3 +194,7 @@ live before this work is called production-ready.
 
 No Docker rebuild or production deployment is implied by this architecture
 work.
+
+Candidate/inference scaling and the execution trust boundary are specified in
+[Agency Envelope](AGENCY_ENVELOPE.md). That document is normative for Kmax/B,
+site content as evidence, and model output as a non-authoritative proposal.

@@ -151,6 +151,7 @@ const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
 const LANDING_SPLASH_COMPLETE_SESSION_KEY = "orbweaver-landing-splash-complete";
 const AMBIENT_VANTAGE_STORAGE_KEY = "orbweaver-ambient-vantage";
 const STARTUP_GATE_COMPLETE_EVENT = "orbweaver:startup-gate-complete";
+const INTRO_SPEECH_STATE_DATASET_KEY = "orbWeaverIntroVoiceState";
 const startupUnresolved = () => isPublicLandingExperience() && window.sessionStorage.getItem(LANDING_SPLASH_COMPLETE_SESSION_KEY) !== '1';
 type StartupDiagnostics = {
   splash_state: "waiting" | "playing" | "complete" | "skipped_session_once";
@@ -360,7 +361,9 @@ const readAmbientVantagePreference = (): AmbientVantagePreference | null => {
 };
 
 const startupGreetingText = (): string => {
-  return "Hello. I am Weaver. I make this website intelligent, so you can find what matters, move with confidence, and get things done without hunting through pages. I will lead us one step at a time, and I will check in when your direction matters. You can speak naturally at any point; if I miss you, tap me to interrupt. Let’s begin.";
+  // The splash is a neutral entry point. The governed ORIENT turn provides
+  // the contextual, naturally worded product orientation that follows.
+  return "Welcome. I am Weaver. Let’s begin together.";
 };
 
 const normalizeOrbDialogue = (text: string): string => text
@@ -474,7 +477,13 @@ export const AutonomousOrb: React.FC<Props> = ({
   const firstEncounterVisitorTurnRef = useRef(0);
   const firstEncounterRunningRef = useRef(false);
   const navigate = useNavigate();
-  const [journeyBoot] = useState(() => loadJourneyState());
+  // The documented dev reset must reset the journey as well as the splash.
+  // Otherwise a prior pending question or paused state survives the visual
+  // reset and blocks the fresh ORIENT -> DISCOVER handoff.
+  const startupResetRequestedRef = useRef(new URLSearchParams(window.location.search).get('orbStartupReset') === '1');
+  const [journeyBoot] = useState(() => startupResetRequestedRef.current
+    ? { status: 'initial' as const, state: createInitialJourneyState() }
+    : loadJourneyState());
   const websiteJourneyRef = useRef<WebsiteJourneyStateV2 | null>(journeyBoot.state);
   const [, setTourState] = useState<WebsiteJourneyStateV2 | null>(journeyBoot.state);
   // This is visitor-facing operational state. It must not be silently dropped
@@ -566,6 +575,15 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   useEffect(() => {
     // The V1 reader/writer has now been retired. Only known mappings are promoted.
+    if (startupResetRequestedRef.current) {
+      try {
+        saveWebsiteJourney(createInitialJourneyState());
+        journeyReadyRef.current = true;
+      } catch (error) {
+        setTourNotice(error instanceof Error ? error.message : "Tour storage is unavailable.");
+      }
+      return;
+    }
     const loaded = migrateStoredJourneyState();
     if (!loaded.state) {
       setTourNotice("Your saved tour position is preserved, but cannot be resumed yet.");
@@ -1935,6 +1953,16 @@ export const AutonomousOrb: React.FC<Props> = ({
     landingTourAbortControllerRef.current = controller;
     setTourNotice('');
     try {
+      if (journey.salesPhase === 'ORIENT' || journey.salesPhase === 'DISCOVER') {
+        // The public Track A path is purpose-governed by sales phase, not by
+        // legacy technical curriculum coverage. Agency retains its existing
+        // bounded candidate authorization and execution revalidation.
+        const result = await getAgencyRuntime().beginSalesJourney(controller.signal);
+        if (result !== 'awaiting_visitor') {
+          throw new Error('Weaver could not prepare a governed discovery question. Your place is saved.');
+        }
+        return;
+      }
       await runTourController({
         read: () => websiteJourneyRef.current,
         save: saveWebsiteJourney,
@@ -2088,7 +2116,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     const state = websiteJourneyRef.current;
     if (!state || state.stage !== 'LANDING_TOUR' || state.preflightStatus === 'DEFERRED') return;
     if (voiceRequestInFlightRef.current || recorderRef.current) {
-      setTourNotice('Finish speaking or click Weaver to cancel recording, then continue the tour.');
+      setTourNotice('Finish speaking to continue the tour.');
       return;
     }
     try {
@@ -2863,6 +2891,11 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   useEffect(() => {
     if (!isPublicLandingExperience()) return;
+    const syncStoredIntroPresence = () => {
+      if (document.documentElement.dataset[INTRO_SPEECH_STATE_DATASET_KEY] !== "speaking") return;
+      setGreetingActive(true);
+      setVoiceState("speaking");
+    };
     const syncIntroPresence = (event: Event) => {
       const detail = (event as CustomEvent<{ phase?: string; text?: string | null }>).detail;
       const phase = detail?.phase;
@@ -2878,6 +2911,9 @@ export const AutonomousOrb: React.FC<Props> = ({
         if (!speechPlaybackRef.current) setVoiceState("idle");
       }
     };
+    // The LandingPage value is set only after audio.play() resolves. Reading it
+    // closes an event-subscription race without inventing a splash-only pulse.
+    syncStoredIntroPresence();
     window.addEventListener("orbweaver:startup-intro", syncIntroPresence);
     return () => window.removeEventListener("orbweaver:startup-intro", syncIntroPresence);
   }, []);
@@ -3275,6 +3311,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
     if (journey.stage === "LANDING_TOUR" && !journey.interruptionState.isInterrupted &&
       isPublicLandingExperience() && !onboardingSafeMode &&
+      !startupUnresolved() &&
       tourEligibleForAccount(Boolean(authStore.getToken()), developmentFullTourOverride()) &&
       window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1") {
       const timer = window.setTimeout(() => void runLandingTour(), 180);

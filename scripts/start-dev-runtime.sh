@@ -38,6 +38,14 @@ if [[ ! -x "${BACKEND_PYTHON}" ]]; then
   BACKEND_PYTHON="python3.12"
 fi
 
+# The landing splash warms the governed cognition path and hands directly to
+# ORIENT.  Bring up its existing supervised local profile before the frontend
+# and API so a power-cycle cannot leave 16666/16667 healthy but cognition gone.
+if ! curl -fsS "http://127.0.0.1:16520/health/live" >/dev/null 2>&1; then
+  bash "${ROOT_DIR}/tools/orb-inference-profile.sh" llama
+  bash "${ROOT_DIR}/tools/orb-inference-profile.sh" gateway
+fi
+
 cleanup() {
   if [[ -n "${BACKEND_PID:-}" ]] && kill -0 "${BACKEND_PID}" 2>/dev/null; then
     kill -- "-${BACKEND_PID}" 2>/dev/null || kill "${BACKEND_PID}" 2>/dev/null || true

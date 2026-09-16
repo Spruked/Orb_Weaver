@@ -51,9 +51,22 @@
   justify-content: center;
   background:
     radial-gradient(circle at 66% 37%, rgba(91, 200, 230, .22), transparent 31%),
-    rgba(2, 8, 18, .98);
+    rgba(2, 8, 18, .62);
   backdrop-filter: blur(10px);
-  cursor: wait;
+  /* This is the historical full-screen splash surface. It isolates the
+     opening from page scroll and interaction without adding a click action. */
+  pointer-events: auto;
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
+.ow-cut-startup-burst {
+  position: absolute;
+  left: 66vw;
+  top: 37vh;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
 }
 
 /* The opening is visible over the real page, never a page-covering gate. */

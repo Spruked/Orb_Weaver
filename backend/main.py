@@ -3399,7 +3399,7 @@ async def _llm_orb_spoken_output(
         }
         phase = str(experience_context.get("phase") or "")
         phase_rule = {
-            "orientation": "Explicitly tell the visitor to speak or talk naturally, finish the thought, and pause. Make no offer, recommendation, or question.",
+            "orientation": "Briefly explain what Orb Weaver does and why it helps visitors or businesses, grounded in the live site context. Use natural wording, not a fixed script. Do not teach speech mechanics or backstage implementation details. Do not discuss pricing, make an offer, or ask a question; discovery follows separately.",
             "understanding": "Name one or two useful things on this specific page from live context. Do not greet or ask a question.",
             "agency": "Connect the verified pointing proof to concrete request types the visitor can say. Invite an open request without generic help wording or a yes/no question.",
             "make_it_personal": "Respond directly to the visitor's actual words and make the next step personally relevant.",
@@ -3558,7 +3558,10 @@ async def _first_visitor_act_response(
             return False
         phase = str(experience_context.get("phase") or "")
         if phase == "orientation":
-            return any(term in normalized for term in ("speak", "talk", "voice")) and any(term in normalized for term in ("pause", "finish", "thought"))
+            # ORIENT is a product-outcome objective. Hands-free interaction is
+            # available at runtime, but it is not mandatory sales curriculum
+            # or a lexical prerequisite for advancing this act.
+            return True
         if phase == "agency" and experience_context.get("verification_state") == "verified":
             return any(term in normalized for term in ("point", "target", "show", "guide", "page"))
         return True

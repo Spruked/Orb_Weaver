@@ -7,11 +7,12 @@ declare const expect: any;
 const presenceConcept: TourConcept = {
   id: 'PRESENCE_AND_CONTROL',
   label: 'Presence & Visitor Control',
-  description: 'Visitors speak naturally to Weaver, can stop him at any time by clicking, and remain in control of the interaction.',
+  description: 'Visitors speak naturally and hands-free; Weaver listens after they pause and rearms for the next turn. They remain in control of the interaction.',
+  coverageRequirements: ['hands-free', 'speak naturally', 'remain in control'],
 };
 
-test('a natural-speech and click-to-stop excerpt proves visitor control', () => {
-  const excerpt = 'Speak naturally to Weaver, and click him whenever you want him to stop.';
+test('hands-free natural speech proves visitor control', () => {
+  const excerpt = 'Speak naturally, hands-free. You remain in control of the interaction.';
   const evaluation: ChapterEvaluation = {
     spoken_output: excerpt,
     covered_concepts: [{ concept_id: presenceConcept.id, supporting_excerpt: excerpt }],
@@ -21,18 +22,18 @@ test('a natural-speech and click-to-stop excerpt proves visitor control', () => 
   expect(verifiedConceptIds(evaluation, [presenceConcept])).toEqual([presenceConcept.id]);
 });
 
-test('asking a question and clicking to pause are valid equivalent instructions', () => {
-  const excerpt = 'You can ask your question, and click me while I am talking to pause me.';
+test('click-only speech cannot prove the hands-free conversation contract', () => {
+  const excerpt = 'Click me while I am talking to pause me.';
   const evaluation: ChapterEvaluation = {
     spoken_output: excerpt,
     covered_concepts: [{ concept_id: presenceConcept.id, supporting_excerpt: excerpt }],
     detected_visitor_intent: null,
     suggested_transition: null,
   };
-  expect(verifiedConceptIds(evaluation, [presenceConcept])).toEqual([presenceConcept.id]);
+  expect(verifiedConceptIds(evaluation, [presenceConcept])).toEqual([]);
 });
 
-test('a claimed required concept with an exact spoken excerpt advances the sequencing pass', () => {
+test('partial natural-speech instruction cannot advance the sequencing pass', () => {
   const excerpt = 'You can speak naturally to Weaver about this website.';
   const evaluation: ChapterEvaluation = {
     spoken_output: excerpt,
@@ -40,7 +41,7 @@ test('a claimed required concept with an exact spoken excerpt advances the seque
     detected_visitor_intent: null,
     suggested_transition: null,
   };
-  expect(verifiedConceptIds(evaluation, [presenceConcept])).toEqual([presenceConcept.id]);
+  expect(verifiedConceptIds(evaluation, [presenceConcept])).toEqual([]);
 });
 
 test('speech without verified concept evidence does not advance the sequencing pass', () => {

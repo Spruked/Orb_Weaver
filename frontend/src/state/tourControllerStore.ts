@@ -6,6 +6,17 @@ export type TourJourneyStage =
   | "ONBOARDING"
   | "PRODUCTION_SCAN";
 
+/** Public sales policy inside the existing outer journey lifecycle. */
+export type PublicSalesPhase =
+  | "ORIENT"
+  | "DISCOVER"
+  | "DEMONSTRATE"
+  | "PERSONALIZE"
+  | "VALUE"
+  | "OFFER"
+  | "COMMERCIAL"
+  | "CLOSE";
+
 export interface InterruptionState {
   isInterrupted: boolean;
   interruptedAtChapterId: string | null;
@@ -40,6 +51,8 @@ export interface TourInteractionState {
 export interface WebsiteJourneyStateV2 {
   version: 2;
   stage: TourJourneyStage;
+  /** Does not replace stage: it governs the public sales journey within LANDING_TOUR. */
+  salesPhase: PublicSalesPhase;
   currentChapterId: string | null;
   currentStopId: string | null;
   completedTourConceptIds: string[];
@@ -54,6 +67,7 @@ export function createInitialJourneyState(): WebsiteJourneyStateV2 {
   return {
     version: 2,
     stage: "LANDING_TOUR",
+    salesPhase: "ORIENT",
     currentChapterId: "chapter-meet-weaver",
     currentStopId: "stop-hero-meet",
     completedTourConceptIds: [],
@@ -139,6 +153,8 @@ const isDestinationRouteList = (value: unknown): value is TourDestinationRoute[]
   Array.isArray(value) && value.every((item) => TOUR_DESTINATION_ROUTES.includes(item as TourDestinationRoute));
 const isJourneyStage = (value: unknown): value is TourJourneyStage =>
   typeof value === 'string' && ['LANDING_TOUR', 'PREFLIGHT', 'ONBOARDING', 'PRODUCTION_SCAN'].includes(value);
+const isPublicSalesPhase = (value: unknown): value is PublicSalesPhase =>
+  typeof value === 'string' && ['ORIENT', 'DISCOVER', 'DEMONSTRATE', 'PERSONALIZE', 'VALUE', 'OFFER', 'COMMERCIAL', 'CLOSE'].includes(value);
 const isDestinationScope = (value: unknown): value is TourDestinationAuthorizationScope =>
   isRecord(value) && isId(value.questionId) && isJourneyStage(value.stage) &&
   isNullableId(value.chapterId) && isNullableId(value.stopId) &&
@@ -198,6 +214,10 @@ function normalizeV2(value: Record<string, unknown>): WebsiteJourneyStateV2 | nu
   // Explicit projection excludes utterances, derived flags, and unknown fields.
   const state = createInitialJourneyState();
   state.stage = value.stage as TourJourneyStage;
+  // Earlier V2 records retain their lifecycle/position data and enter the new
+  // public path at ORIENT instead of being rejected or treated as completed.
+  state.salesPhase = value.salesPhase === undefined ? 'ORIENT' : (isPublicSalesPhase(value.salesPhase) ? value.salesPhase : state.salesPhase);
+  if (value.salesPhase !== undefined && !isPublicSalesPhase(value.salesPhase)) return null;
   state.currentChapterId = state.stage === "LANDING_TOUR" ? value.currentChapterId as string | null : null;
   state.currentStopId = state.stage === "LANDING_TOUR" ? value.currentStopId as string | null : null;
   state.completedTourConceptIds = [...new Set(value.completedTourConceptIds)];

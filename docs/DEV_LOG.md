@@ -1,5 +1,101 @@
 # Orb Weaver Development Log
 
+## 2026-09-16 — Automatic splash → warmup → ORIENT handoff repair
+
+* After a power interruption, `16666` and `16667` could restart while the
+  separate Qwen/llama.cpp inference profile on `16520` remained down. The
+  splash greeting could then finish but its first governed ORIENT turn had no
+  live cognition path. This was a runtime-startup dependency failure, not a
+  Pointer, LiDAR, Governor, or tour-content failure.
+* `scripts/start-dev-runtime.sh` now starts the existing local inference
+  profile (`llama.cpp` then the inference gateway) when `16520` is absent,
+  before starting the API and frontend. It does not replace the existing
+  profile or change its model configuration.
+* The startup contract is frozen to the last known-good visitor lifecycle:
+  the full-screen historical `OrbBurst` splash starts immediately and covers
+  the original recorded Michael showroom introduction (including its existing
+  cue timing). The mounted ORB remains continuous. Existing llama inference
+  warmup starts in parallel, and the original handoff is released only after
+  the complete intro and a real cognition-ready proof. There is no readiness
+  screen, second intro, pause narration, or desktop activation step. The
+  speaker control remains a mobile browser audio-activation control only; it
+  is not part of desktop splash, warmup, curriculum, or tour handoff.
+* The splash intro now writes its real post-`audio.play()` playback state to a
+  short-lived document state before emitting the existing intro event. The
+  already-mounted `AutonomousOrb` reads that state if its event subscription
+  races the splash effect, then uses its existing `voiceState === "speaking"`
+  core animation. This preserves one ORB and one blue/white core visual across
+  the recorded splash intro, ORIENT, DISCOVER, and later speech; no
+  splash-only pulse was added.
+* Corrected the legacy landing-route callback that could see the intro-complete
+  session flag while the splash was still covering the page. It is now gated by
+  the existing splash-release state, so it cannot start ORIENT during the
+  intro. The mounted startup sequence remains the sole handoff and invokes the
+  governed tour immediately when the gate releases.
+* Aligned generated Website ORB speech with the historical showroom recording:
+  the existing Kokoro configuration now defaults to `am_michael` rather than
+  `am_echo`, including the example and Compose defaults. This is one existing
+  provider path, not a second voice system.
+* Verification: frontend TypeScript `--noEmit` passed; focused startup-control
+  tests passed (3/3); backend configuration compiled; and `git diff --check`
+  passed. Live browser acceptance remains pending after the restored inference
+  profile reaches `COGNITION_READY`; the TTS-default change requires the next
+  normal backend reload to become live.
+
+## 2026-09-16 — Crawl #3 canonical-Vault verification
+
+* Corrected an earlier path diagnosis: `substrate/clients` is a compatibility
+  symlink to `vault_system/clients`, not a second persistence root. Crawl #3
+  therefore wrote its 30-page semantic package into the canonical Vault as
+  required; no copy, migration, or storage-root code change is appropriate.
+* Read-only runtime verification on `16666` confirms the loader now consumes
+  Crawl #3 for `orbweaver.spruked.com`: Site World is loaded, the pointer-map
+  source crawl ID is `3`, the map has 740 runtime records after owner records
+  are merged, and the root page capsule has a summary, five likely tasks, and
+  three ranked targets. The compiled context contains page knowledge, lexical
+  and retrieval indexes, knowledge chunks, graph, route, validation, and
+  catalog fields.
+* The existing canonical-storage regression already asserts that
+  `substrate/clients` resolves to `vault_system/clients` in
+  `backend/tests/test_canonical_storage.py`. No backend reload was required
+  for Crawl #3 consumption. Pointer recovery remains separately blocked by
+  its reported route/locator conflicts; that is not a storage condition.
+
+## 2026-09-16 — Track A Milestone 2 live-evidence inventory (read-only)
+
+* Milestone 2 candidate-constructor work is paused pending evidence review. No
+  Pointer/LiDAR, Governor, Agency, A.I.M.S., Site World, deployment, Docker,
+  or runtime-service change was made in this inventory.
+* The live `16666` API path used by local `16667` currently resolves the
+  `orbweaver.spruked.com` Pointer map to six owner-showcase records on `/`.
+  Only three are guidance-eligible in the quality report: the suite logo,
+  `Run Free Preflight`, and `Launch Dashboard`. The other three are speech
+  orientation/reference material. There is no live support, lead-generation,
+  pricing, product-comparison, checkout, or form target in that runtime map.
+* Live Pointer records do carry useful spatial and identity evidence:
+  route, target type/class, visible-text-derived meaning, direct/intent/topic
+  aliases, semantic locator, structural context (landmark, parent locator,
+  nearest heading, ordinal, tag), content fingerprint, confidence/health,
+  and runtime policy. `validateOrbPointerTarget` rechecks locator, expected
+  text/tag, DOM attachment, visibility, and geometry immediately before
+  guidance. That proves live existence and position; it does not establish
+  commercial purpose on its own.
+* Correction after Crawl #3 verification: the active Site World loader does
+  consume this exact domain's canonical Vault package. It has page knowledge,
+  chunks, lexical/retrieval indexes, route classifications, entities, and
+  graph evidence. Agency candidate construction still receives only the
+  Pointer map plus a minimal page capsule; the richer records are used by
+  `/website-text` articulation retrieval and are not exposed as target-linked
+  evidence to `frontend/src/tour/agencyRuntime.ts`.
+* Therefore the present runtime cannot honestly derive meaningfully distinct
+  SUPPORT, LEAD_GENERATION, or PRICING demonstration sets without either
+  hardcoded labels/target IDs or new target-linked semantic evidence. The
+  smallest plausible next boundary is an evidence bridge that retrieves a
+  bounded current-page semantic slice from Site World and joins it to current
+  Pointer identities, while Pointer validation continues to certify live DOM
+  existence and the Governor continues to certify legality. That bridge is
+  deliberately not implemented in this pass.
+
 ## 2026-09-14 — Website Weaver startup-chain repair on 16667
 
 ### Scope and root causes
@@ -988,6 +1084,164 @@ The repository already contained many modified and untracked files before the gu
   evidence with explicit source labels. Browser outcomes remain browser-reported
   evidence and do not acquire server-verified status or materially reinforce
   memory merely because execution was requested.
-* Current validation underway: focused envelope/authorization tests, existing
-  tour regressions, frontend typecheck, and dev runtime checks on 16666/16667.
-  No Docker build, deployment, or push is authorized for this pass.
+* Clarified the operational scaling contract: site discovery is approximately
+  `O(P + E)`, while candidate decision cost is `O(k)` where `k <= Kmax`; the
+  active inference payload is bounded by working-state budget `B`, independent
+  of accumulated Vault history. The candidate count is capped before cognition
+  request construction. `Kmax`, B, and evidence caps are configurable in both
+  backend and frontend runtime configuration.
+* Froze the trust boundary in code and architecture: site/DOM content is
+  evidence rather than authority, and model output is a candidate-ID proposal
+  rather than execution authority. Execution still requires candidate validity,
+  current revision, permission, policy, and live environment checks. Candidate
+  schema now rejects raw selectors/coordinates and invalid enum types; a route
+  also requires live target evidence.
+* Added focused regression coverage for bounded Kmax/B handling, checked-out
+  scan labels without permission/policy authority, expired target evidence, and
+  malformed candidate identities. Validation passed: 56 frontend tests across
+  nine focused suites, 12 backend Agency/A.I.M.S. tests, and frontend TypeScript
+  typecheck. These are deterministic/provider-doubled checks, not a live-model
+  acceptance claim. No Docker build, service restart, deployment, commit, or
+  push occurred in this pass.
+* Read-only availability check on 2026-09-16 found no listener on dev frontend
+  `16667`, backend `16666`, or configured inference gateway `16520`. No runtime
+  was restarted under this pass, so live end-to-end acceptance remains pending
+  restoration of the normal development lane.
+* Restarted the project normal development runtime on 2026-09-16 at owner
+  request. Backend `http://127.0.0.1:16666/openapi.json` and frontend
+  `http://127.0.0.1:16667` both returned HTTP 200; the frontend compiled
+  successfully. Backend startup still reports unavailable local inference
+  gateway `16520`, so model-backed Agency acceptance remains separately pending.
+* Follow-up gateway inspection found the inference gateway running and recent
+  `/api/generate` requests returning HTTP 200. Its current log has no timing
+  fields, so it proves request reachability but does not yet attribute observed
+  tour latency between generation, TTS, and frontend sequencing. No movement,
+  Pointer/LiDAR, or Governor changes were made for this inspection.
+* Timing ledger inspection provides a partial latency attribution: recent
+  llama.cpp generations took 8.8–19.1 seconds for roughly 959–1,162 prompt
+  tokens, while one request encountered llama.cpp HTTP 400 and then completed
+  through Ollama fallback in 14.0 seconds. This explains material portions of
+  the observed pause, but not a full minute by itself; TTS and continuation
+  sequencing still need correlated timing before changing behavior. `llama.log`
+  currently contains no additional diagnostic entries. No runtime behavior was
+  changed during this inspection.
+* Product-status correction: the landing splash/intro remains a required
+  Website ORB experience. It is not a parked or removed feature. Its intended
+  acceptance chain is visible splash/intro over the real landing page -> same
+  mounted Weaver -> concurrent inference/A.I.M.S./TTS warmup -> clean governed
+  tour handoff, with no duplicate ORB, idle gap, or excursion replay. This
+  corrects implementation-history wording only; no startup behavior changed in
+  this entry.
+* Surgical hands-free conversation repair: removed click-to-talk and
+  click-again-to-talk doctrine from landing copy, startup text, and
+  `PRESENCE_AND_CONTROL`. The normal contract is now: speak naturally -> pause
+  -> Weaver listens hands-free -> responds -> rearms, while visitor control
+  remains an outcome rather than a taught click workflow. The existing optional
+  runtime click/interrupt implementation was not changed.
+* `PRESENCE_AND_CONTROL` now requires hands-free natural speech and visitor
+  control proof; click-only or partial natural-speech excerpts cannot complete
+  the stop. Removed prerecorded intro variants that contained obsolete
+  question/answer chatbot wording; the remaining Kokoro intro uses the same
+  hands-free contract. Added a controller regression proving
+  `stop-how-to-talk` completes once and hands the next interaction to governed
+  Agency selection rather than re-conversing the stop. Focused validation:
+  frontend evaluator/runtime suites 10/10 passing, backend tour-evaluation
+  suite 18/18 passing, and frontend TypeScript typecheck passing. No Pointer,
+  movement, Governor, A.I.M.S., or Agency Envelope behavior changed.
+* Added `docs/architecture/ORB_WEAVER_SALES_JOURNEY_CONTRACT.md` to reconcile
+  the public commercial objective with the existing Governor/Agency/A.I.M.S./
+  Site World/Pointer boundaries before another implementation pass. Direct
+  source review confirms the current mismatch: the public curriculum retains
+  technical `mustUnderstand` stops and Agency discovery eligibility filters
+  canonical Nine-of-Clubs actions to `EXPLAIN`, although the registry contains
+  verified `DEMONSTRATE` actions. The contract records this as future rewiring,
+  not an implementation change; no runtime code changed in this reconciliation
+  pass.
+* Completed the requested read-only Track A audit in
+  `docs/architecture/TRACK_A_GAP_AUDIT.md`. It traces startup through the
+  public curriculum/controller, Agency candidate construction, Pointer-backed
+  demonstrations/excursions, Preflight/onboarding, and commercial authority.
+  It identifies the smallest coherent boundary: sales-state policy, public
+  objectives, semantic-answer candidate bindings, showroom route policy, and a
+  current-commercial adapter—while retaining Governor/Agency safety, A.I.M.S.,
+  Site World, Pointer/LiDAR, excursion return, and lifecycle state. It also
+  confirms old `$488.88 Basic Visitor ORB` material is present in compiled
+  Site World/pointer artifacts and can enter Website ORB context through an
+  active manufactured vault; the audit does not claim the checked-in template
+  is active for the dev domain. It is therefore a conditional retrieval risk
+  until commercial speech is source-isolated. No code,
+  test, Docker, deployment, or data change occurred in the audit pass.
+* Track A Task 1 implemented the approved public sales-state cutover only.
+  `WebsiteJourneyStateV2` now carries `salesPhase` inside—not instead of—the
+  existing outer lifecycle, with the complete explicit phase vocabulary
+  `ORIENT -> DISCOVER -> DEMONSTRATE -> PERSONALIZE -> VALUE -> OFFER ->
+  COMMERCIAL -> CLOSE`. A fresh journey begins in `LANDING_TOUR/ORIENT`; an
+  older V2 record without the new field safely normalizes to `ORIENT` without
+  discarding its stored lifecycle or position facts.
+* The fresh public path now bypasses legacy technical controller/evaluator
+  coverage: Agency performs one authorized `ORIENT` explanation from verified
+  context, persists `DISCOVER` only after successful speech, then constructs a
+  bounded, canonical Nine-of-Clubs question set. The orientation is an
+  objective passed to live cognition, not a fixed sales script. The intro is
+  reduced to a neutral welcome so it does not teach backstage mechanics before
+  that governed orientation.
+* Task 1 did not alter Governor legality, Agency authorization/revalidation,
+  Nine-of-Clubs registry/compiler, Pointer/LiDAR, excursions, A.I.M.S.,
+  hands-free runtime, Preflight, authentication, movement, Site World,
+  commercial catalog/pricing, checkout, or legacy curriculum data. In
+  particular, it did not widen demonstration eligibility or routing.
+* Focused frontend evidence for Task 1: the journey-store, Agency-runtime,
+  and Governor suites passed 22/22 tests; the new Agency test proves
+  `ORIENT -> DISCOVER`, no completed technical concepts, no legacy stop
+  advance, a live-cognition orientation objective rather than a fixed dialogue
+  string, and a legal `NOC_*` pending question. Frontend `tsc --noEmit` also
+  passed. No Docker rebuild, service restart, deployment, commit, or push was
+  performed in this pass.
+* Dev startup handoff repair: the explicit `?orbStartupReset=1` diagnostic
+  path previously cleared only splash/first-encounter markers. It left the
+  saved Website Journey in place, so a previous pending question, active
+  destination, interruption, or paused state could make `runLandingTour`
+  correctly refuse a supposedly fresh run. `AutonomousOrb` now boots and
+  persists `createInitialJourneyState()` when that explicit dev-only query is
+  present, and skips the normal migration read for that one boot. Normal
+  session resume remains unchanged. Frontend TypeScript typecheck passed; no
+  Docker rebuild, service restart, deployment, commit, or push was performed.
+* Live dev handoff diagnosis after the splash completed without ORIENT: backend
+  `16666` logs proved the startup did reach Agency candidate selection and the
+  ORIENT `website-text` request, but that request returned HTTP 503. The exact
+  blocker was `_first_visitor_act_response` retaining obsolete ORIENT lexical
+  requirements for `speak/talk/voice` plus `pause/finish/thought`. This
+  contradicted Track A Task 1, which makes ORIENT an outcome-focused product
+  objective rather than interaction training. The stale lexical gate is now
+  removed; generic-help rejection, live cognition, TTS availability, Agency
+  authorization, and all later tour systems remain unchanged. New focused
+  backend regression test passed (1/1). The running `16666` Uvicorn process is
+  non-reloading and therefore still needs its normal dev-runtime reload before
+  browser acceptance can observe this source change; no restart was performed
+  under the Task 1 boundary.
+* Task 1 refinement (2026-09-16): removed a second stale instruction in the
+  actual backend generation prompt, which still mandated speech/turn-taking
+  training even after the output validator was corrected. ORIENT now asks
+  for concise product outcomes in natural wording; no new keyword coverage
+  requirement or canned speech was introduced. The provider-boundary test
+  exercises prompt construction and delivery together and confirms that an
+  outcome-oriented response succeeds on its first generation. Negative tests
+  retain rejection of empty/fallback cognition, generic help questions, and
+  missing synthesized audio.
+* Tightened the existing sales adapter: duplicate startup calls cannot reset
+  the mode of a running turn; cancelled speech cannot advance the phase;
+  lifecycle, route, position, interruptions and pending interactions are
+  checked before recording ORIENT completion. DISCOVER is admitted only after
+  the persisted phase reaches DISCOVER. Completed orientation wording joins
+  the existing recent-statement window so the next question has that context.
+  Governor/authorization and excursion implementations remain unchanged.
+* Evidence correction to the preceding diagnosis: an access-log HTTP 503 alone
+  does not identify which backend rejection occurred, and the previously
+  inspected URL also contained the malformed value
+  `orbDevFullTour=1orbDevFullTour=1`. The stale validator and prompt are proven
+  code defects; those logs do not prove they explain every reported browser
+  stop. This refinement therefore makes no live end-to-end success claim.
+  Validation: 34/34 frontend tests across Agency runtime, authorization,
+  excursions and journey persistence; 6/6 backend ORIENT tests; frontend
+  TypeScript typecheck and `git diff --check` passed. No restart,
+  Docker build, deployment, commit or push was performed.

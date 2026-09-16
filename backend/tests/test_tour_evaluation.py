@@ -75,7 +75,8 @@ def test_prompt_requires_exact_spoken_evidence_without_mechanical_enumeration():
 
     prompt = tour_prompt({
         'required_concepts': [
-            {'id': 'PRESENCE_AND_CONTROL', 'description': 'Speak naturally and click to stop.'},
+            {'id': 'PRESENCE_AND_CONTROL', 'description': 'Speak naturally and hands-free; visitors remain in control.',
+             'coverage_requirements': ['hands-free', 'speak naturally', 'remain in control']},
             {'id': 'VERIFIED_GUIDANCE', 'description': 'Point only to verified live targets.'},
         ],
     })

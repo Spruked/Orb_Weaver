@@ -38,7 +38,8 @@ export const LANDING_TOUR_CHAPTERS: TourChapter[] = [
           {
             "id": "PRESENCE_AND_CONTROL",
             "label": "Presence & Visitor Control",
-            "description": "Visitors speak naturally to Weaver, can stop him at any time by clicking, and remain in control of the interaction."
+            "description": "Visitors speak naturally and hands-free: Weaver listens after they pause and rearms for the next turn. They remain in control of the interaction.",
+            "coverageRequirements": ["hands-free", "speak naturally", "remain in control"]
           },
           {
             "id": "VERIFIED_GUIDANCE",

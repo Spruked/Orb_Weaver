@@ -2,8 +2,8 @@
 import { api, authStore } from '../services/api';
 import type { WebsiteOrbPageCapsule, WebsiteOrbPointerRecord, WebsiteOrbTtsResponse } from '../services/api';
 import type { WebsiteJourneyStateV2 } from '../state/tourControllerStore';
-import type { AgencyBinding, AgencyEnvironment, CandidateMove } from '../types/agency';
-import type { DiscoveryCognitionAdapter, DiscoveryDimension, DiscoveryPattern } from '../types/discovery';
+import type { AgencyBinding, AgencyEnvironment } from '../types/agency';
+import type { DiscoveryCognitionAdapter, DiscoveryPattern } from '../types/discovery';
 import { createAgencyEnvelope, eligibleDiscoveryPatterns, legalTourNavigationRoutes, resolveGovernedDestination } from './governor';
 import { DISCOVERY_PATTERNS, discoveryPatternById } from './discovery/registry';
 import { compileQuestion, interpretResponse } from './discovery/compiler';
@@ -48,6 +48,10 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
   let visitorContext = readAgencySessionCache().visitorContext;
   let requestedRoute: string | null = null;
   let busy = false;
+  // Task 1 sales cutover: each mode constrains the legal objective, not the
+  // wording. DISCOVER admits only canonical questions; neither mode broadens
+  // demonstrations, routes, or commercial capabilities.
+  let salesTurn: 'normal' | 'orient' | 'discover' = 'normal';
   const check = (signal: AbortSignal) => { if (signal.aborted) throw new DOMException('Agency interrupted', 'AbortError'); };
 
   const observe = async (payload: Record<string, unknown>, signal?: AbortSignal) => {
@@ -88,8 +92,11 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
         env.acquisition.confidenceByDimension[pattern.dimension] = Math.max(env.acquisition.confidenceByDimension[pattern.dimension] || 0, answer.confidence);
       }
     }
-    if (journey.stage !== 'LANDING_TOUR' || (!sectionExists && !pageIsCurrent)) return env;
-    env.validEvidenceIds.push(pageEvidence);
+    if (journey.stage !== 'LANDING_TOUR') return env;
+    if (salesTurn !== 'normal' && (
+      journey.salesPhase !== (salesTurn === 'orient' ? 'ORIENT' : 'DISCOVER') ||
+      journey.interaction.pendingQuestionId || journey.interaction.activeDestinationRoute
+    )) return env;
     const add = (binding: AgencyBinding, scan: boolean, live: boolean, policy = true) => {
       env.bindings.push(binding);
       env.universalCapabilities.push(binding.binding_id);
@@ -98,16 +105,38 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
       if (live) env.liveAffordances.push(binding.binding_id);
       if (policy) env.policyCapabilities.push(binding.binding_id);
     };
-    const common = { permission_tier: 'OBSERVE' as const, requires_confirmation: false, evidence_basis: [pageEvidence], preconditions: ['tour_active'] };
-    add({ ...common, binding_id: 'explain-current', purpose: 'Explain the current context or clarify the visitor’s concern without asking a question.', cognitive_action: 'EXPLAIN', choreography: 'EXPLAIN_IN_PLACE' }, sectionExists || pageIsCurrent, true);
+    const conversationOnly = salesTurn === 'orient' || salesTurn === 'discover';
+    const common = { permission_tier: 'OBSERVE' as const, requires_confirmation: false,
+      evidence_basis: conversationOnly ? ['capability:website_host'] : [pageEvidence], preconditions: ['tour_active'] };
+    if (conversationOnly) {
+      if (salesTurn === 'orient') {
+        add({ ...common, binding_id: 'sales-orient',
+          purpose: 'Briefly explain what Orb Weaver does and why it helps visitors or businesses. Discovery follows separately.',
+          cognitive_action: 'EXPLAIN', choreography: 'EXPLAIN_IN_PLACE' }, true, true);
+      } else {
+        for (const pattern of eligibleDiscoveryPatterns(journey, env.acquisition).slice(0, AGENCY_BUDGET.maxCandidates)) {
+          add({ ...common, binding_id: `question:${pattern.id}`, pattern_id: pattern.id, decision_dimension: pattern.dimension,
+            purpose: pattern.intent, cognitive_action: 'REFINE', choreography: 'EXPLAIN_IN_PLACE' }, true, true);
+        }
+      }
+      return env;
+    }
+    if (!sectionExists && !pageIsCurrent) return env;
+    env.validEvidenceIds.push(pageEvidence);
+    if (salesTurn !== 'discover') {
+      add({ ...common, binding_id: 'explain-current', purpose: salesTurn === 'orient'
+        ? 'Briefly explain what Orb Weaver does and why it helps visitors or businesses. Discovery follows separately.'
+        : 'Explain the current context or clarify the visitor’s concern without asking a question.', cognitive_action: 'EXPLAIN', choreography: 'EXPLAIN_IN_PLACE' }, sectionExists || pageIsCurrent, true);
+    }
     const legacy = section?.engagementQuestion;
-    if (legacy && !requestedRoute && !journey.interaction.pendingQuestionId && env.acquisition.remainingAcquisitions > 0) {
+    if (salesTurn === 'normal' && legacy && !requestedRoute && !journey.interaction.pendingQuestionId && env.acquisition.remainingAcquisitions > 0) {
       add({ ...common, binding_id: `question:${legacy.id}`, pattern_id: legacy.id, purpose: legacy.intent, cognitive_action: 'DISCOVER', choreography: 'EXPLAIN_IN_PLACE' }, true, sectionExists);
     }
-    for (const pattern of (requestedRoute ? [] : eligibleDiscoveryPatterns(journey, env.acquisition).slice(0, AGENCY_BUDGET.maxCandidates))) {
+    for (const pattern of ((salesTurn === 'orient' || requestedRoute) ? [] : eligibleDiscoveryPatterns(journey, env.acquisition).slice(0, AGENCY_BUDGET.maxCandidates))) {
       add({ ...common, binding_id: `question:${pattern.id}`, pattern_id: pattern.id, decision_dimension: pattern.dimension,
         purpose: pattern.intent, cognitive_action: 'REFINE', choreography: 'EXPLAIN_IN_PLACE' }, true, true);
     }
+    if (salesTurn !== 'normal') return env;
     const allowedRoutes = legalTourNavigationRoutes(journey);
     for (const pointer of host.pointers().filter(item => item.page_route === route).slice(0, 60)) {
       const verified = validateOrbPointerTarget(pointer, { logger: quiet });
@@ -155,7 +184,15 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
         });
       }
       const envelope = authority.refresh();
-      if (!envelope.candidates.length) return 'continue';
+      if (!envelope.candidates.length) {
+        if (salesTurn === 'orient' || salesTurn === 'discover') {
+          host.telemetry('sales_turn_no_legal_candidate', {
+            salesTurn, salesPhase: startingState.salesPhase, stage: startingState.stage, route: window.location.pathname,
+          });
+          throw new Error('Weaver cannot continue the guided introduction yet. Your place is saved.');
+        }
+        return 'continue';
+      }
       host.telemetry('agency_envelope', envelope as unknown as Record<string, unknown>);
       const currentEnv = environment();
       const cache = readAgencySessionCache();
@@ -192,8 +229,19 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
         if (!text) throw new Error('The selected question has no validated rendering');
         audio = await api.websiteOrbTts(text, signal);
       } else if (selected.cognitive_action === 'EXPLAIN') {
-        const result = await api.websiteOrbText(visitorContext || 'Explain the current page briefly using the verified site context.', true, signal, {
-          target_url: host.targetUrl(), experience: { phase: 'understanding', objective: 'Give one relevant explanation without asking a question, claiming an action or announcing navigation.', verification_state: 'not_applicable' },
+        const isSalesOrientation = salesTurn === 'orient' && startingState.salesPhase === 'ORIENT';
+        const result = await api.websiteOrbText(
+          isSalesOrientation
+            ? 'Give a concise, outcome-focused orientation to what Orb Weaver can do for a visitor or business. Do not teach interaction mechanics or backstage implementation details. Do not ask a question; the governed discovery question follows separately.'
+            : visitorContext || 'Explain the current page briefly using the verified site context.',
+          true, signal, {
+          target_url: host.targetUrl(), experience: {
+            phase: isSalesOrientation ? 'orientation' : 'understanding',
+            objective: isSalesOrientation
+              ? 'Express the ORIENT objective naturally from verified website context, without a fixed script or a discovery question.'
+              : 'Give one relevant explanation without asking a question, claiming an action or announcing navigation.',
+            verification_state: 'not_applicable',
+          },
         });
         text = result.spoken_output;
         audio = result;
@@ -222,7 +270,9 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
           const target = environment().spatialTargets[move.semantic_target!];
           const pointer = host.pointers().find(item => item.target_id === target?.targetId);
           if (!pointer || !validateOrbPointerTarget(pointer, { logger: quiet }).ok) return false;
-          return host.guide(pointer, signal);
+          const guided = await host.guide(pointer, signal);
+          check(signal);
+          return guided;
         }
         if (move.choreography === 'NAVIGATE_TO') {
           const destination = environment().destinations[move.semantic_destination!];
@@ -258,7 +308,21 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
           awaiting = true;
           return true; // Route request only; arrival and destination work are reverified after remount.
         }
-        return host.speak(text, audio?.tts_audio_url, audio?.tts_provider);
+        const spoken = await host.speak(text, audio?.tts_audio_url, audio?.tts_provider);
+        if (spoken && salesTurn === 'orient') {
+          check(signal);
+          const state = host.read();
+          if (!state || state.stage !== 'LANDING_TOUR' || state.salesPhase !== 'ORIENT' ||
+            state.interruptionState.isInterrupted || state.preflightStatus === 'DEFERRED' ||
+            state.currentChapterId !== startingState.currentChapterId || state.currentStopId !== startingState.currentStopId ||
+            window.location.pathname !== envelope.position.route ||
+            state.interaction.pendingQuestionId || state.interaction.activeDestinationRoute) return false;
+          host.save({ ...state, salesPhase: 'DISCOVER', interaction: { ...state.interaction,
+            recentWeaverStatements: [...state.interaction.recentWeaverStatements, text].slice(-4),
+          } });
+          host.telemetry('sales_phase_advanced', { from: 'ORIENT', to: 'DISCOVER', reason: 'speech_completed' });
+        }
+        return spoken;
       });
       await observe({ source: selected.cognitive_action === 'DEMONSTRATE' ? 'DEMONSTRATION_RESULT' : 'LIVE_BEHAVIOR',
         candidate_id: selected.candidate_id, bounded_set_revision: envelope.bounded_set_revision,
@@ -343,7 +407,40 @@ export function createTourAgencyRuntime(host: TourAgencyHost) {
     return true;
   };
 
-  return { turn, answer, authority,
+  const beginSalesJourney = async (signal: AbortSignal): Promise<'continue' | 'awaiting_visitor'> => {
+    check(signal);
+    // A duplicate startup callback must not change the mode of an in-flight turn.
+    if (busy || salesTurn !== 'normal') return 'awaiting_visitor';
+    const state = host.read();
+    if (!state || state.stage !== 'LANDING_TOUR' ||
+      !['ORIENT', 'DISCOVER'].includes(state.salesPhase) ||
+      state.interruptionState.isInterrupted || state.preflightStatus === 'DEFERRED') return 'continue';
+    if (state.interaction.pendingQuestionId || state.interaction.activeDestinationRoute) return 'awaiting_visitor';
+    const currentSalesTurn = async () => {
+      for (let attempt = 0; ; attempt += 1) {
+        try { return await turn(signal); }
+        catch (error) {
+          check(signal);
+          const message = error instanceof Error ? error.message : '';
+          if (attempt >= 2 || !/legal context changed|move expired while preparing speech/.test(message)) throw error;
+          host.telemetry('sales_turn_rechecking', { phase: salesTurn, attempt: attempt + 1 });
+        }
+      }
+    };
+    try {
+      if (host.read()?.salesPhase === 'ORIENT') {
+        salesTurn = 'orient';
+        const orientation = await currentSalesTurn();
+        if (orientation !== 'continue') return orientation;
+      }
+      check(signal);
+      if (host.read()?.stage !== 'LANDING_TOUR' || host.read()?.salesPhase !== 'DISCOVER') return 'continue';
+      salesTurn = 'discover';
+      return await currentSalesTurn();
+    } finally { salesTurn = 'normal'; }
+  };
+
+  return { turn, beginSalesJourney, answer, authority,
     invalidatePosition: () => { positionRevision += 1; authority.invalidate('position'); },
     invalidateDOM: () => { domRevision += 1; authority.invalidate('dom'); },
   };
