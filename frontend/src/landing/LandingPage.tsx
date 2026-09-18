@@ -44,6 +44,11 @@ const INTRO_VARIANTS: readonly IntroVariant[] = [
 type IntroAudioState = "preloading" | "playing" | "autoplay_blocked" | "error" | "warming" | "blocked";
 type StartupReadinessResult = { ready: boolean; error?: string; [key: string]: unknown };
 
+// React Strict Mode deliberately remounts development components.  Startup
+// readiness exercises live inference and speech services, so share the one
+// in-flight proof instead of starting a second competing warmup.
+let sharedStartupReadiness: Promise<StartupReadinessResult> | null = null;
+
 // A fresh customer crawl is not a prerequisite for Weaver to host Orb
 // Weaver's own landing page.  The opening only needs the proven live voice
 // path and the landing page's verified guidance map; Preflight later obtains
@@ -70,12 +75,16 @@ const LandingPage: React.FC = () => {
 
   const beginStartupWarmup = () => {
     if (startupReadinessRef.current) return startupReadinessRef.current;
+    if (sharedStartupReadiness) {
+      startupReadinessRef.current = sharedStartupReadiness;
+      return sharedStartupReadiness;
+    }
 
     window.dispatchEvent(new CustomEvent("orbweaver:startup-intro", {
       detail: { phase: "STARTUP_WARMUP_STARTED" },
     }));
 
-    startupReadinessRef.current = (async () => {
+    const warmup = (async () => {
       let lastResult: StartupReadinessResult | null = null;
       let lastError: unknown = null;
       for (let attempt = 1; attempt <= POST_INTRO_READINESS_ATTEMPTS; attempt += 1) {
@@ -109,7 +118,9 @@ const LandingPage: React.FC = () => {
       }));
       return failure;
     })();
-    return startupReadinessRef.current;
+    sharedStartupReadiness = warmup;
+    startupReadinessRef.current = warmup;
+    return warmup;
   };
 
   useEffect(() => {

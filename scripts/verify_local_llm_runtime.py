@@ -34,6 +34,7 @@ RUNTIME_MODEL = os.getenv("LOCAL_LLM_MODEL", "orb-auto")
 LLAMACPP_MODEL_PATH = Path(os.path.expandvars(os.path.expanduser(
     os.getenv("LLAMACPP_MODEL_PATH", "$HOME/models/qwen2.5-1.5b-instruct-q4_k_m.gguf")
 )))
+LLAMACPP_BASE_URL = os.getenv("LLAMACPP_BASE_URL", "http://127.0.0.1:8080/v1")
 
 
 def base_url() -> str:
@@ -50,6 +51,8 @@ def http_json(method: str, url: str, payload: dict | None = None, timeout: int =
 
 def main() -> int:
     gateway = base_url()
+    llama_host = (urlparse(LLAMACPP_BASE_URL).hostname or "").lower()
+    remote_llamacpp = llama_host not in {"", "localhost", "127.0.0.1", "::1"}
     result = {
         "provider": "llamacpp",
         "expected_model_lock": EXPECTED_MODEL_LOCK,
@@ -57,6 +60,7 @@ def main() -> int:
         "runtime_model": RUNTIME_MODEL,
         "model_path": str(LLAMACPP_MODEL_PATH),
         "model_file_exists": LLAMACPP_MODEL_PATH.is_file(),
+        "remote_llamacpp": remote_llamacpp,
         "gateway_reachable": False,
         "generate_ok": False,
         "response_text": "",
@@ -104,7 +108,7 @@ def main() -> int:
             result["errors"].append(f"nvidia-smi: {exc}")
 
     print(json.dumps(result, indent=2))
-    if not result["model_file_exists"]:
+    if not remote_llamacpp and not result["model_file_exists"]:
         print(f"FAIL: GGUF model file is missing: {LLAMACPP_MODEL_PATH}", file=sys.stderr)
         return 2
     if not result["gateway_reachable"]:

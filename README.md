@@ -221,7 +221,16 @@ Component folders such as `backend/`, `Orb_Assistant/`, and legacy `substrate/` 
 
 ## Current Implementation Checkpoint
 
-Current integration marker: [`d9e4387`](https://github.com/Spruked/Orb_Weaver/commit/d9e4387) (`Complete Target One vault and guidance integration`)
+Current source handoff: [`c48fc29`](https://github.com/Spruked/Orb_Weaver/commit/c48fc29) (`Restore governed startup handoff and document agency path`) on `development/startup-account-session-16667`.
+
+The landing startup remains a single, governed visitor handoff: the historical
+splash introduction finishes before ORIENT may begin, while cognition warmup
+and the Kokoro probe run concurrently. Development-only React Strict Mode
+remounts reuse one in-flight readiness proof rather than starting duplicate
+inference or speech warmups. A LiDAR coordinate cache also skips a redundant
+rebuild when its pointer records are unchanged. These changes preserve the
+existing Pointer/LiDAR and Stage Governor authority; they do not add automatic
+tour advancement.
 
 Orb Weaver now includes:
 
@@ -257,7 +266,10 @@ The broader ORBS customer path is:
 
 ### Verification status
 
-The historical checkpoint is preserved in commit `7f65f5a`. The current integrated Target One and manufactured-Vault marker is `d9e4387`; see the development log for later acceptance work that remains intentionally unclaimed.
+The historical checkpoint is preserved in commit `7f65f5a`. The Target One and
+manufactured-Vault marker is `d9e4387`; the current governed-startup handoff is
+`c48fc29`. See the development log for later acceptance work that remains
+intentionally unclaimed.
 
 Current commercial stance as of 2026-07-30:
 
@@ -356,6 +368,16 @@ curl -fsS http://127.0.0.1:16666/health
 curl -fsS http://127.0.0.1:16667/
 cd frontend && npm run verify:weaver-startup
 ```
+
+When diagnosing the optional local cognition lane, run the same profile's
+read-only readiness check:
+
+```bash
+python3 scripts/verify_local_llm_runtime.py
+```
+
+The check accepts a remote `LLAMACPP_BASE_URL` without requiring a local GGUF
+file; a local llama.cpp endpoint still requires its configured model file.
 
 The dev launcher does not build, restart, or modify Docker services.
 

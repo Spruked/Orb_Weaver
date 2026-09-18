@@ -38,7 +38,10 @@ start_bg() {
     echo "$name already running (PID $(cat "$(pid_file "$name")"))"
     return
   fi
-  nohup "$@" >"$LOG_DIR/$name.log" 2>&1 &
+  # This launcher is often invoked from a short-lived shell (including WSL
+  # automation).  A new session prevents its inference service from receiving
+  # that shell's hangup when the caller exits.
+  setsid nohup "$@" >"$LOG_DIR/$name.log" 2>&1 < /dev/null &
   echo $! >"$(pid_file "$name")"
   echo "$name started (PID $!, log $LOG_DIR/$name.log)"
 }

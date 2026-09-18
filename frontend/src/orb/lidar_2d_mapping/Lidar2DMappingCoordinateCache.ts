@@ -40,6 +40,15 @@ export class Lidar2DMappingCoordinateCache {
 
   load(records: LidarPointerRecord[]): void {
     if (this.state.status === 'scanning') return;
+    const recordsMatchCache = this.state.status === 'ready'
+      && records.length === this.state.rawRecords.length
+      && records.every((record, index) => {
+        const current = this.state.rawRecords[index];
+        return current?.target_id === record.target_id
+          && current?.semantic_locator === record.semantic_locator
+          && current?.anchor_strategy === record.anchor_strategy;
+      });
+    if (recordsMatchCache) return;
 
     this.state.status = this.state.cache.size > 0 ? 'rebuilding' : 'scanning';
     this.state.rawRecords = [...records];

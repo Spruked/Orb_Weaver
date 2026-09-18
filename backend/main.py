@@ -9419,13 +9419,10 @@ async def website_orb_startup_readiness(
     route = _route_from_url(payload.target_url)
     proofs: Dict[str, Dict[str, Any]] = {}
 
-    await _warm_local_llm()
-    proofs["COGNITION_READY"] = {
-        "ready": bool(LLM_WARM_STATUS.get("ready")),
-        "runtime": LLM_WARM_STATUS.get("provider"),
-        "model": LLM_WARM_STATUS.get("model"),
-        "error": LLM_WARM_STATUS.get("error"),
-    }
+    # Cognition and the voice probe are independent.  Run their cold-start
+    # work together so a visitor is not held at the opening gate for their
+    # combined latency.
+    cognition_warmup = asyncio.create_task(_warm_local_llm())
 
     probe_audio: Optional[bytes] = None
     try:
@@ -9449,6 +9446,14 @@ async def website_orb_startup_readiness(
         }
     except Exception as exc:
         proofs["KOKORO_READY"] = {"ready": False, "error": str(exc)[:240]}
+
+    await cognition_warmup
+    proofs["COGNITION_READY"] = {
+        "ready": bool(LLM_WARM_STATUS.get("ready")),
+        "runtime": LLM_WARM_STATUS.get("provider"),
+        "model": LLM_WARM_STATUS.get("model"),
+        "error": LLM_WARM_STATUS.get("error"),
+    }
 
     try:
         if not probe_audio:

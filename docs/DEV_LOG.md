@@ -1,5 +1,27 @@
 # Orb Weaver Development Log
 
+## 2026-09-17 — Startup-proof deduplication and local inference portability
+
+* The startup-readiness endpoint now overlaps independent local-LLM warmup and
+  the Kokoro probe, then records cognition proof after the warmup completes.
+  This reduces opening-gate latency without changing readiness criteria,
+  Pointer/LiDAR authority, tour progression, or fallback behavior.
+* `LandingPage` shares one in-flight startup-readiness promise across React
+  Strict Mode development remounts. A remount therefore observes the same
+  proof instead of issuing a competing live inference/speech warmup.
+* The LiDAR coordinate cache now leaves a ready cache intact when the incoming
+  Pointer records have the same ordered identity, semantic locator, and anchor
+  strategy. Changed records still trigger the existing rebuild path.
+* Local inference tooling now supports an explicitly remote
+  `LLAMACPP_BASE_URL`: `verify_local_llm_runtime.py` does not require a local
+  GGUF in that configuration, and `orb-inference-profile.sh` launches managed
+  services in a detached session so they survive a short-lived WSL/automation
+  shell.
+* Scope: source and documentation only. The untracked
+  `tour_dialogue_transcript.txt` is a local runtime artifact and is deliberately
+  excluded from the repository. Focused validation and GitHub publication are
+  recorded with the corresponding commit.
+
 ## 2026-09-16 — Automatic splash → warmup → ORIENT handoff repair
 
 * After a power interruption, `16666` and `16667` could restart while the

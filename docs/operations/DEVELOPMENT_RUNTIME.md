@@ -25,6 +25,16 @@ curl -fsS http://127.0.0.1:16667/
 cd frontend && npm run verify:weaver-startup
 ```
 
+To inspect the configured local or remote llama.cpp lane without changing its
+state, run from the repository root:
+
+```bash
+python3 scripts/verify_local_llm_runtime.py
+```
+
+When `LLAMACPP_BASE_URL` names a remote host, this check validates that remote
+endpoint and does not require a GGUF file on the development machine.
+
 The launcher supplies `REACT_APP_API_URL=http://127.0.0.1:16666`. It creates
 disposable database, log, and PID state under a fresh `/tmp/orb-weaver-dev.*`
 directory by default. Set `ORB_WEAVER_DEV_RUNTIME_ROOT` only when deliberately
