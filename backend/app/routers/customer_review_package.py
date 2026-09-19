@@ -1,8 +1,10 @@
 """Paid customer review-package export for completed Orb Weaver projects.
 
 Package 1 ($49) and Package 2 ($99) unlock the full customer review bundle.
-The bundle is generated only from authoritative Vault/database evidence and is
-stored beneath the project's canonical client Vault.
+Entitlement is derived only from an active project-bound ORBS entitlement whose
+verified checkout line item matches a canonical package SKU, USD price, and USD
+currency. The bundle is generated only from authoritative Vault/database
+evidence and is stored beneath the project's canonical client Vault.
 """
 
 from __future__ import annotations
@@ -11,6 +13,9 @@ import csv
 import hashlib
 import html
 import json
+import os
+import tempfile
+import threading
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +34,7 @@ from app.models.database import (
     CrawledPage,
     Customer,
     CustomerSession,
+    OrbsEntitlement,
     Project,
     get_engine,
     get_session_maker,
@@ -38,11 +44,37 @@ from app.orb.pointer_plot import pointer_plot_map_from_pages
 
 router = APIRouter(tags=["customer-review-package"])
 
+PACKAGE_PRODUCTS = {
+    "OW-FULL-REVIEW-PACKAGE-1": {
+        "tier": "package_1",
+        "price_cents": 4900,
+        "currency": "usd",
+    },
+    "OW-FULL-REVIEW-PACKAGE-2": {
+        "tier": "package_2",
+        "price_cents": 9900,
+        "currency": "usd",
+    },
+}
+# Retained as descriptive pricing metadata only. Price is never authority.
 PACKAGE_PRICE_TIERS = {
-    4900: "package_1",
-    9900: "package_2",
+    definition["price_cents"]: definition["tier"]
+    for definition in PACKAGE_PRODUCTS.values()
 }
 PACKAGE_SCHEMA = "orb_weaver.customer_review_package.v1"
+PACKAGE_FILES = (
+    "report.html",
+    "manifest.json",
+    "crawl.csv",
+    "crawl.json",
+    "audit.csv",
+    "audit.json",
+    "website_context.json",
+    "pointer_map.json",
+)
+
+_PACKAGE_LOCKS_GUARD = threading.Lock()
+_PACKAGE_LOCKS: Dict[str, threading.Lock] = {}
 
 _DATABASE_URL = canonical_database_url(settings.DATABASE_URL)
 _ENGINE = get_engine(
@@ -93,54 +125,88 @@ def _owned_project(project_id: str, customer: Customer, db: Session) -> Project:
     return project
 
 
+def _normalized_currency(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
 def _line_item_paid_tier(line_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    sku = str(line_item.get("sku") or "").strip()
+    product = PACKAGE_PRODUCTS.get(sku)
+    if not product:
+        return None
     try:
         unit_amount = int(line_item.get("unit_amount_cents") or 0)
-        quantity = int(line_item.get("quantity") or 1)
+        raw_quantity = line_item["quantity"] if "quantity" in line_item else 1
+        quantity = int(raw_quantity)
     except (TypeError, ValueError):
         return None
-    if quantity < 1 or unit_amount not in PACKAGE_PRICE_TIERS:
+    currency = _normalized_currency(line_item.get("currency"))
+    if (
+        quantity < 1
+        or unit_amount != int(product["price_cents"])
+        or currency != str(product["currency"])
+    ):
         return None
     return {
-        "tier": PACKAGE_PRICE_TIERS[unit_amount],
+        "tier": str(product["tier"]),
         "price_cents": unit_amount,
-        "sku": line_item.get("sku"),
+        "currency": currency,
+        "quantity": quantity,
+        "sku": sku,
         "name": line_item.get("name"),
     }
 
 
 def _paid_review_entitlement(customer: Customer, project: Project, db: Session) -> Optional[Dict[str, Any]]:
-    orders = (
-        db.query(CheckoutOrder)
+    """Return only governor-issued, project-bound entitlement evidence.
+
+    Generic cart orders are intentionally non-qualifying. The authority chain is:
+    active OrbsEntitlement -> exact project/customer -> verified CheckoutOrder ->
+    canonical review-package SKU + USD price/currency.
+    """
+    grants = (
+        db.query(OrbsEntitlement)
         .filter(
-            CheckoutOrder.customer_id == customer.id,
-            CheckoutOrder.payment_verified_at.isnot(None),
+            OrbsEntitlement.customer_id == customer.id,
+            OrbsEntitlement.project_id == project.id,
+            OrbsEntitlement.status == "active",
         )
-        .order_by(CheckoutOrder.payment_verified_at.desc(), CheckoutOrder.id.desc())
+        .order_by(OrbsEntitlement.id.desc())
         .all()
     )
-    for order in orders:
-        if order.project_id is not None and order.project_id != project.id:
+    for grant in grants:
+        product = PACKAGE_PRODUCTS.get(str(grant.package_sku or ""))
+        if not product:
             continue
+        order = db.get(CheckoutOrder, grant.checkout_order_id)
+        if (
+            not order
+            or order.customer_id != customer.id
+            or order.project_id != project.id
+            or not order.build_order_id
+            or order.payment_verified_at is None
+            or _normalized_currency(order.currency) != str(product["currency"])
+        ):
+            continue
+        qualifying_items = []
         for item in order.line_items or []:
             if not isinstance(item, dict):
                 continue
             paid_tier = _line_item_paid_tier(item)
-            if paid_tier:
-                return {
-                    **paid_tier,
-                    "checkout_order_id": str(order.id),
-                    "payment_verified_at": order.payment_verified_at.isoformat() if order.payment_verified_at else None,
-                }
-        if int(order.amount_cents or 0) in PACKAGE_PRICE_TIERS:
-            return {
-                "tier": PACKAGE_PRICE_TIERS[int(order.amount_cents)],
-                "price_cents": int(order.amount_cents),
-                "sku": None,
-                "name": None,
-                "checkout_order_id": str(order.id),
-                "payment_verified_at": order.payment_verified_at.isoformat() if order.payment_verified_at else None,
-            }
+            if paid_tier and paid_tier["sku"] == grant.package_sku:
+                qualifying_items.append(paid_tier)
+        if len(qualifying_items) != 1:
+            continue
+        paid_tier = qualifying_items[0]
+        expected_total = int(paid_tier["price_cents"]) * int(paid_tier["quantity"])
+        if int(order.amount_cents or 0) != expected_total:
+            continue
+        return {
+            **paid_tier,
+            "checkout_order_id": str(order.id),
+            "orbs_entitlement_id": str(grant.id),
+            "payment_verified_at": order.payment_verified_at.isoformat(),
+        }
     return None
 
 
@@ -313,6 +379,61 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _package_lock(package_root: Path) -> threading.Lock:
+    key = str(package_root)
+    with _PACKAGE_LOCKS_GUARD:
+        lock = _PACKAGE_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _PACKAGE_LOCKS[key] = lock
+        return lock
+
+
+def _package_result(
+    package_root: Path,
+    zip_path: Path,
+    crawl: CrawlJob,
+    audit: AuditReport,
+    *,
+    cached: bool,
+) -> Dict[str, Any]:
+    return {
+        "ready": True,
+        "cached": cached,
+        "crawl_id": str(crawl.id),
+        "audit_id": str(audit.id),
+        "package_dir": str(package_root),
+        "archive_path": str(zip_path),
+        "files": list(PACKAGE_FILES),
+    }
+
+
+def _cached_package(
+    package_root: Path,
+    zip_path: Path,
+    crawl: CrawlJob,
+    audit: AuditReport,
+    customer: Customer,
+    entitlement: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    manifest_path = package_root / "manifest.json"
+    if not manifest_path.is_file() or not zip_path.is_file():
+        return None
+    manifest = _json_read(manifest_path, {})
+    if (
+        manifest.get("schema") != PACKAGE_SCHEMA
+        or str(manifest.get("customer_id")) != str(customer.id)
+        or str((manifest.get("source") or {}).get("crawl_id")) != str(crawl.id)
+        or str((manifest.get("source") or {}).get("audit_id")) != str(audit.id)
+        or str((manifest.get("entitlement") or {}).get("checkout_order_id")) != str(entitlement.get("checkout_order_id"))
+        or str((manifest.get("entitlement") or {}).get("sku")) != str(entitlement.get("sku"))
+    ):
+        return None
+    if any(not (package_root / name).is_file() for name in PACKAGE_FILES):
+        return None
+    return _package_result(package_root, zip_path, crawl, audit, cached=True)
+
+
 def _build_package(project: Project, customer: Customer, db: Session, entitlement: Dict[str, Any]) -> Dict[str, Any]:
     crawl = (
         db.query(CrawlJob)
@@ -328,112 +449,119 @@ def _build_package(project: Project, customer: Customer, db: Session, entitlemen
         .filter(AuditReport.project_id == project.id, AuditReport.crawl_job_id == crawl.id)
         .order_by(AuditReport.id.desc())
         .first()
-        or db.query(AuditReport).filter(AuditReport.project_id == project.id).order_by(AuditReport.id.desc()).first()
     )
     if not audit or not audit.report_data:
         return {"ready": False, "reason": "completed_audit_required", "crawl_id": str(crawl.id)}
 
-    pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl.id).order_by(CrawledPage.id.asc()).all()
     package_root = require_vault_path(
-        client_root(project.domain) / "customer_review_packages" / f"crawl_{crawl.id}_audit_{audit.id}",
+        client_root(project.domain)
+        / "customer_review_packages"
+        / f"crawl_{crawl.id}_audit_{audit.id}_order_{entitlement['checkout_order_id']}",
         "customer review package",
     )
     package_root.mkdir(parents=True, exist_ok=True)
-
-    context_root = client_root(project.domain) / "website_orb_context"
-    context_payload = _json_read(
-        context_root / "latest_context.json",
-        _fallback_context(project, crawl, pages),
-    )
-    pointer_payload = _json_read(
-        context_root / "pointer_plot_map.json",
-        pointer_plot_map_from_pages(pages),
+    zip_path = require_vault_path(
+        package_root / f"orb-weaver-review-{project.id}.zip",
+        "customer review package archive",
     )
 
-    crawl_payload = {
-        "schema": "orb_weaver.customer_crawl_export.v1",
-        "project": {"id": str(project.id), "name": project.name, "domain": project.domain},
-        "crawl": {
-            "id": str(crawl.id),
-            "status": crawl.status,
-            "pages_crawled": crawl.pages_crawled,
-            "pages_found": crawl.pages_found,
-            "errors_count": crawl.errors_count,
-            "start_time": crawl.start_time.isoformat() if crawl.start_time else None,
-            "end_time": crawl.end_time.isoformat() if crawl.end_time else None,
-            "config": crawl.config or {},
-        },
-        "pages": [_page_record(page) for page in pages],
-    }
-    audit_payload = {
-        "schema": "orb_weaver.customer_audit_export.v1",
-        "project_id": str(project.id),
-        "crawl_id": str(crawl.id),
-        "audit_id": str(audit.id),
-        "created_at": audit.created_at.isoformat() if audit.created_at else None,
-        "report": audit.report_data or {},
-    }
+    with _package_lock(package_root):
+        cached = _cached_package(package_root, zip_path, crawl, audit, customer, entitlement)
+        if cached:
+            return cached
 
-    files = {
-        "report.html": package_root / "report.html",
-        "crawl.csv": package_root / "crawl.csv",
-        "crawl.json": package_root / "crawl.json",
-        "audit.csv": package_root / "audit.csv",
-        "audit.json": package_root / "audit.json",
-        "website_context.json": package_root / "website_context.json",
-        "pointer_map.json": package_root / "pointer_map.json",
-    }
+        pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl.id).order_by(CrawledPage.id.asc()).all()
+        context_root = client_root(project.domain) / "website_orb_context"
+        context_payload = _json_read(
+            context_root / "latest_context.json",
+            _fallback_context(project, crawl, pages),
+        )
+        pointer_payload = _json_read(
+            context_root / "pointer_plot_map.json",
+            pointer_plot_map_from_pages(pages),
+        )
 
-    files["report.html"].write_text(
-        _render_html_report(project, crawl, audit, pages, entitlement),
-        encoding="utf-8",
-    )
-    _write_crawl_csv(files["crawl.csv"], pages)
-    _write_json(files["crawl.json"], crawl_payload)
-    _write_audit_csv(files["audit.csv"], audit.report_data or {})
-    _write_json(files["audit.json"], audit_payload)
-    _write_json(files["website_context.json"], context_payload)
-    _write_json(files["pointer_map.json"], pointer_payload)
+        crawl_payload = {
+            "schema": "orb_weaver.customer_crawl_export.v1",
+            "project": {"id": str(project.id), "name": project.name, "domain": project.domain},
+            "crawl": {
+                "id": str(crawl.id),
+                "status": crawl.status,
+                "pages_crawled": crawl.pages_crawled,
+                "pages_found": crawl.pages_found,
+                "errors_count": crawl.errors_count,
+                "start_time": crawl.start_time.isoformat() if crawl.start_time else None,
+                "end_time": crawl.end_time.isoformat() if crawl.end_time else None,
+                "config": crawl.config or {},
+            },
+            "pages": [_page_record(page) for page in pages],
+        }
+        audit_payload = {
+            "schema": "orb_weaver.customer_audit_export.v1",
+            "project_id": str(project.id),
+            "crawl_id": str(crawl.id),
+            "audit_id": str(audit.id),
+            "created_at": audit.created_at.isoformat() if audit.created_at else None,
+            "report": audit.report_data or {},
+        }
 
-    manifest = {
-        "schema": PACKAGE_SCHEMA,
-        "generated_at": datetime.utcnow().isoformat(),
-        "customer_id": str(customer.id),
-        "project": {"id": str(project.id), "name": project.name, "domain": project.domain},
-        "source": {"crawl_id": str(crawl.id), "audit_id": str(audit.id)},
-        "entitlement": entitlement,
-        "files": [
-            {
-                "name": name,
-                "sha256": _file_sha256(path),
-                "bytes": path.stat().st_size,
-            }
-            for name, path in files.items()
-        ],
-        "manifest_note": "manifest.json is the integrity index and therefore does not self-hash.",
-    }
-    manifest_path = package_root / "manifest.json"
-    _write_json(manifest_path, manifest)
+        files = {
+            "report.html": package_root / "report.html",
+            "crawl.csv": package_root / "crawl.csv",
+            "crawl.json": package_root / "crawl.json",
+            "audit.csv": package_root / "audit.csv",
+            "audit.json": package_root / "audit.json",
+            "website_context.json": package_root / "website_context.json",
+            "pointer_map.json": package_root / "pointer_map.json",
+        }
 
-    zip_path = require_vault_path(package_root / f"orb-weaver-review-{project.id}.zip", "customer review package archive")
-    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for name in [
-            "report.html", "manifest.json", "crawl.csv", "crawl.json",
-            "audit.csv", "audit.json", "website_context.json", "pointer_map.json",
-        ]:
-            archive.write(package_root / name, arcname=name)
+        files["report.html"].write_text(
+            _render_html_report(project, crawl, audit, pages, entitlement),
+            encoding="utf-8",
+        )
+        _write_crawl_csv(files["crawl.csv"], pages)
+        _write_json(files["crawl.json"], crawl_payload)
+        _write_audit_csv(files["audit.csv"], audit.report_data or {})
+        _write_json(files["audit.json"], audit_payload)
+        _write_json(files["website_context.json"], context_payload)
+        _write_json(files["pointer_map.json"], pointer_payload)
 
-    return {
-        "ready": True,
-        "crawl_id": str(crawl.id),
-        "audit_id": str(audit.id),
-        "package_dir": str(package_root),
-        "archive_path": str(zip_path),
-        "files": [
-            "report.html", "manifest.json", "crawl.csv", "crawl.json",
-            "audit.csv", "audit.json", "website_context.json", "pointer_map.json",
-        ],
-    }
+        manifest = {
+            "schema": PACKAGE_SCHEMA,
+            "generated_at": datetime.utcnow().isoformat(),
+            "customer_id": str(customer.id),
+            "project": {"id": str(project.id), "name": project.name, "domain": project.domain},
+            "source": {"crawl_id": str(crawl.id), "audit_id": str(audit.id)},
+            "entitlement": entitlement,
+            "files": [
+                {
+                    "name": name,
+                    "sha256": _file_sha256(path),
+                    "bytes": path.stat().st_size,
+                }
+                for name, path in files.items()
+            ],
+            "manifest_note": "manifest.json is the integrity index and therefore does not self-hash.",
+        }
+        manifest_path = package_root / "manifest.json"
+        _write_json(manifest_path, manifest)
+
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{zip_path.name}.",
+            suffix=".tmp",
+            dir=str(package_root),
+        )
+        os.close(fd)
+        temp_path = Path(temp_name)
+        try:
+            with zipfile.ZipFile(temp_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for name in PACKAGE_FILES:
+                    archive.write(package_root / name, arcname=name)
+            os.replace(temp_path, zip_path)
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+        return _package_result(package_root, zip_path, crawl, audit, cached=False)
 
 
 @router.get("/api/projects/{project_id}/customer-review-package")
@@ -450,8 +578,8 @@ async def customer_review_package_status(
             "eligible": False,
             "ready": False,
             "required_paid_packages": [
-                {"tier": "package_1", "price_cents": 4900},
-                {"tier": "package_2", "price_cents": 9900},
+                {"sku": sku, **definition}
+                for sku, definition in PACKAGE_PRODUCTS.items()
             ],
         }
     result = _build_package(project, customer, db, entitlement)
@@ -474,7 +602,7 @@ async def download_customer_review_package(
     if not entitlement:
         raise HTTPException(
             status_code=403,
-            detail="Full Review Package requires a verified Package 1 ($49) or Package 2 ($99) purchase.",
+            detail="Full Review Package requires a verified, project-bound canonical Package 1 ($49) or Package 2 ($99) purchase.",
         )
     result = _build_package(project, customer, db, entitlement)
     if not result.get("ready"):
