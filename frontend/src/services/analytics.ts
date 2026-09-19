@@ -18,6 +18,7 @@ type SafeEventParameters = {
   step?: string;
   action?: string;
   outcome?: string;
+  return_to_login_opt_in?: string;
 };
 
 const forbiddenParameter = /name|email|password|website|url|token|session|customer|project|address|phone|credential/i;
@@ -28,4 +29,3 @@ export function trackOnboardingEvent(name: OnboardingEventName, parameters: Safe
   );
   window.gtag?.('event', name, safeParameters);
 }
-
