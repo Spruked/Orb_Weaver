@@ -89,7 +89,8 @@ function App() {
       window.location.replace('/login');
     };
 
-    if (window.sessionStorage.getItem(LANDING_SPLASH_COMPLETE_SESSION_KEY) === '1') {
+    const startupResetRequested = new URLSearchParams(location.search).get('orbStartupReset') === '1';
+    if (!startupResetRequested && window.sessionStorage.getItem(LANDING_SPLASH_COMPLETE_SESSION_KEY) === '1') {
       openLogin();
       return undefined;
     }
@@ -97,7 +98,7 @@ function App() {
     const handleStartupComplete = () => openLogin();
     window.addEventListener(STARTUP_GATE_COMPLETE_EVENT, handleStartupComplete, { once: true });
     return () => window.removeEventListener(STARTUP_GATE_COMPLETE_EVENT, handleStartupComplete);
-  }, [customer, location.pathname]);
+  }, [customer, location.pathname, location.search]);
 
   const handleLogout = async () => {
     try {
