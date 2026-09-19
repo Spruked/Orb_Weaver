@@ -105,7 +105,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
     setReturningAccountShortcut(returnToLoginShortcut);
     trackOnboardingEvent('account_created', {
       intent: intent.intent,
-      return_to_login_opt_in: returnToLoginShortcut,
+      return_to_login_opt_in: returnToLoginShortcut ? 'true' : 'false',
     });
 
     try {
