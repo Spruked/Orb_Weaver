@@ -1,10 +1,11 @@
 """Paid customer review-package export for completed Orb Weaver projects.
 
 Package 1 ($49) and Package 2 ($99) unlock the full customer review bundle.
-Entitlement is derived only from an active project-bound ORBS entitlement whose
-verified checkout line item matches a canonical package SKU, USD price, and USD
-currency. The bundle is generated only from authoritative Vault/database
-evidence and is stored beneath the project's canonical client Vault.
+Entitlement is derived only from a verified, project-bound CheckoutOrder whose
+line item matches the dedicated review-package source, canonical SKU, USD price,
+and USD currency. Website ORBS build orders and entitlements are deliberately
+outside this payment boundary. The bundle is generated only from authoritative
+Vault/database evidence and is stored beneath the project's canonical client Vault.
 """
 
 from __future__ import annotations
@@ -34,7 +35,6 @@ from app.models.database import (
     CrawledPage,
     Customer,
     CustomerSession,
-    OrbsEntitlement,
     Project,
     get_engine,
     get_session_maker,
@@ -44,6 +44,7 @@ from app.orb.pointer_plot import pointer_plot_map_from_pages
 
 router = APIRouter(tags=["customer-review-package"])
 
+PACKAGE_SOURCE = "customer_review_package"
 PACKAGE_PRODUCTS = {
     "OW-FULL-REVIEW-PACKAGE-1": {
         "tier": "package_1",
@@ -130,6 +131,8 @@ def _normalized_currency(value: Any) -> str:
 
 
 def _line_item_paid_tier(line_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if str(line_item.get("source") or "").strip() != PACKAGE_SOURCE:
+        return None
     sku = str(line_item.get("sku") or "").strip()
     product = PACKAGE_PRODUCTS.get(sku)
     if not product:
@@ -154,57 +157,48 @@ def _line_item_paid_tier(line_item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "quantity": quantity,
         "sku": sku,
         "name": line_item.get("name"),
+        "source": PACKAGE_SOURCE,
     }
 
 
 def _paid_review_entitlement(customer: Customer, project: Project, db: Session) -> Optional[Dict[str, Any]]:
-    """Return only governor-issued, project-bound entitlement evidence.
+    """Return only dedicated, verified review-package payment evidence.
 
-    Generic cart orders are intentionally non-qualifying. The authority chain is:
-    active OrbsEntitlement -> exact project/customer -> verified CheckoutOrder ->
-    canonical review-package SKU + USD price/currency.
+    Review packages are deliberately not Website ORBS build orders. The authority
+    chain is exact customer/project -> no ORBS build-order binding -> verified
+    CheckoutOrder -> dedicated source marker -> canonical SKU + USD price/currency.
     """
-    grants = (
-        db.query(OrbsEntitlement)
+    orders = (
+        db.query(CheckoutOrder)
         .filter(
-            OrbsEntitlement.customer_id == customer.id,
-            OrbsEntitlement.project_id == project.id,
-            OrbsEntitlement.status == "active",
+            CheckoutOrder.customer_id == customer.id,
+            CheckoutOrder.project_id == project.id,
+            CheckoutOrder.build_order_id.is_(None),
+            CheckoutOrder.payment_verified_at.isnot(None),
         )
-        .order_by(OrbsEntitlement.id.desc())
+        .order_by(CheckoutOrder.id.desc())
         .all()
     )
-    for grant in grants:
-        product = PACKAGE_PRODUCTS.get(str(grant.package_sku or ""))
-        if not product:
-            continue
-        order = db.get(CheckoutOrder, grant.checkout_order_id)
-        if (
-            not order
-            or order.customer_id != customer.id
-            or order.project_id != project.id
-            or not order.build_order_id
-            or order.payment_verified_at is None
-            or _normalized_currency(order.currency) != str(product["currency"])
-        ):
-            continue
+    for order in orders:
         qualifying_items = []
         for item in order.line_items or []:
             if not isinstance(item, dict):
                 continue
             paid_tier = _line_item_paid_tier(item)
-            if paid_tier and paid_tier["sku"] == grant.package_sku:
+            if paid_tier:
                 qualifying_items.append(paid_tier)
         if len(qualifying_items) != 1:
             continue
         paid_tier = qualifying_items[0]
+        product = PACKAGE_PRODUCTS.get(str(paid_tier["sku"]))
+        if not product or _normalized_currency(order.currency) != str(product["currency"]):
+            continue
         expected_total = int(paid_tier["price_cents"]) * int(paid_tier["quantity"])
         if int(order.amount_cents or 0) != expected_total:
             continue
         return {
             **paid_tier,
             "checkout_order_id": str(order.id),
-            "orbs_entitlement_id": str(grant.id),
             "payment_verified_at": order.payment_verified_at.isoformat(),
         }
     return None
