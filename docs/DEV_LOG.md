@@ -6,6 +6,39 @@ Update this file after meaningful code, configuration, runtime, testing, or doct
 
 ---
 
+## 2026-09-12 — Paid customer Full Review Package
+
+### Product decision
+
+* CSV-only output is not considered a complete paid customer deliverable.
+* Verified **Package 1 ($49)** and **Package 2 ($99)** purchases unlock the complete customer review bundle.
+* Unpaid/basic users keep the existing individual CSV/PDF report exports, but they do not receive the full eight-file customer package.
+* The entitlement is backend-authoritative: the browser cannot unlock the package by setting local state. Orb Weaver requires a verified checkout record (`payment_verified_at`) and matches the paid $49/$99 package price.
+
+### Implemented in source
+
+* Added `backend/app/routers/customer_review_package.py`.
+* Added authenticated package-status and ZIP-download routes:
+  * `GET /api/projects/{project_id}/customer-review-package`
+  * `GET /api/projects/{project_id}/customer-review-package/download`
+* The status request materializes the package when entitlement, completed crawl, and completed audit evidence are all present.
+* Package output is written only beneath the canonical Vault at `vault_system/clients/<domain>/customer_review_packages/crawl_<crawl_id>_audit_<audit_id>/`.
+* The generated customer bundle contains `report.html`, `manifest.json`, `crawl.csv`, `crawl.json`, `audit.csv`, `audit.json`, `website_context.json`, and `pointer_map.json`.
+* `website_context.json` uses canonical `latest_context.json` when present and otherwise emits an explicit crawl-derived review context.
+* `pointer_map.json` uses the canonical stored map when present and otherwise rebuilds through the existing `pointer_plot_map_from_pages` contract.
+* Refactored `backend/app/routers/orb_telemetry.py` so `/ws/orb-pointer` and `/ws/lidar-2d-mapping` retain their existing URLs while the already-mounted router also exposes the customer-review HTTP routes.
+* Added `frontend/src/services/customerReviewPackage.ts` and wired `frontend/src/pages/ReportCompiler.tsx` to show paid readiness and `Download Full Review Package`.
+* Renamed the existing report controls on that screen to `Basic Exports` so the customer-facing boundary is explicit.
+* Added `docs/CUSTOMER_REVIEW_PACKAGE.md` and updated the root `README.md` with entitlement, contents, API, storage, and native-development-before-Docker policy.
+
+### Validation boundary
+
+* Source is committed on the `paid-customer-review-package` branch.
+* No Docker image was built and no running reviewed service was restarted.
+* Runtime acceptance still requires backend compile/tests, frontend typecheck/build, paid/unpaid entitlement checks, ownership isolation, ZIP-content/hash review, and a real verified-payment acceptance pass in the native development runtime.
+
+---
+
 ## 2026-09-06 — Target One curriculum alignment and GitHub handoff
 
 - Aligned the active landing tour to the supplied five chapters, nine stops and twelve canonical concept IDs. Trust is separate; removed the four-chapter taxonomy and extra beat-by-beat lessons.
