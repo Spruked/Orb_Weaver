@@ -228,8 +228,11 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
         </section>
 
         <aside className="weaver-guide" aria-live="polite">
-          <button type="button" className="weaver-guide-orb" onClick={activateWeaver} aria-label="Activate Weaver voice guidance"><span /></button>
-          <p className="weaver-guide-label">WEAVER · OPTIONAL GUIDANCE</p>
+          <button type="button" className="weaver-guide-morb-mark" onClick={activateWeaver} aria-label="Activate Weaver voice guidance">
+            <img src="/orb-morbs/purplemorb50px.png" alt="" aria-hidden="true" />
+            <span>MORBS</span>
+          </button>
+          <p className="weaver-guide-label">MORBS · OPTIONAL GUIDANCE</p>
           <h2>{isSignup ? `Step ${step} of 2` : 'Resume your workspace'}</h2>
           <p>{guidance}</p>
           <p className="weaver-guide-footnote">Click Weaver whenever you want more help. Voice begins only when you activate it.</p>

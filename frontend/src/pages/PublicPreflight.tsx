@@ -141,6 +141,7 @@ const PublicPreflight: React.FC = () => {
 
               <form onSubmit={handleSubmit} className="mt-8 flex max-w-2xl flex-col gap-3 sm:flex-row">
                 <input
+                  data-orb-target="preflight-website-url"
                   className="min-h-[48px] flex-1 rounded-lg border border-cyan-300/20 bg-white px-4 text-slate-950 outline-none ring-cyan-300/40 focus:ring-4"
                   type="text"
                   value={websiteUrl}
@@ -151,6 +152,7 @@ const PublicPreflight: React.FC = () => {
                 />
 
                 <button
+                  data-orb-target="run-preflight-scan"
                   className="min-h-[48px] rounded-lg bg-cyan-300 px-6 font-bold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
                   type="submit"
                   disabled={isRunning}

@@ -7,6 +7,8 @@ export type ScriptedOrientationStep = {
   auditTaskCount?: 3 | 5 | 7 | 11;
   /** Ends authored narration and returns control to the guest-led ORB. */
   handoffToLiveConversation?: boolean;
+  /** Scroll the page independently while this stop is being narrated. */
+  scrollToEndDuringSpeech?: boolean;
   text?: string;
 };
 
@@ -62,7 +64,7 @@ export const LANDING_FULL_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
   },
   {
     selector: '#beat-10',
-    pointerTargetIds: ['run-free-preflight', 'launch-dashboard'],
+    pointerTargetIds: ['run-free-preflight'],
     text: 'The first step for any site is Preflight: a free readiness scan that inspects what can be woven, identifies gaps, and shows the operator what intelligence is possible before any full assembly begins. It is safe, non-invasive, and evidence-based. From here I will take you through the rest of the public site so you can see the system in context, right up to account creation when you are ready.',
   },
 ];
@@ -130,8 +132,9 @@ export const SITE_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
   },
   {
     route: '/preflight',
-    pointerTargetIds: ['tour-preflight'],
-    text: 'Now we have arrived at Preflight — the first practical checkpoint for any website considering an ORB. A readiness scan identifies what can already be woven, what needs attention, and where a full Website ORB assembly would have the strongest foundation. It is approachable, free, and evidence-based: inspect the site, see the findings, and decide the next step without obligation or hidden commitment.',
+    pointerTargetIds: ['preflight-website-url', 'run-preflight-scan'],
+    scrollToEndDuringSpeech: true,
+    text: 'Here is Preflight, the first practical check for a website considering an ORB. I have highlighted the website field and the Run Preflight button. Enter a public site you own or are authorized to review, then choose Run Preflight yourself. I will never submit a scan for you. The results appear here quickly. While the scan works, I will keep moving through the tour. Account creation comes next; after that, we can optionally review your Preflight together before you decide whether a deeper full-site scan is worthwhile.',
   },
   {
     route: '/privacy',

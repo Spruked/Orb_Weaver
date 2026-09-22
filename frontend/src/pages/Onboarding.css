@@ -61,8 +61,10 @@
 
 .weaver-guide { position: sticky; top: 28px; padding: 30px; overflow: hidden; background: linear-gradient(155deg, #06111f, #0a2231); color: #e8f7fd; }
 .weaver-guide::after { content: ""; position: absolute; right: -80px; bottom: -100px; width: 220px; height: 220px; border-radius: 50%; background: rgba(24, 207, 227, .12); filter: blur(8px); }
-.weaver-guide-orb { position: relative; width: 68px; height: 68px; border: 1px solid rgba(91, 200, 230, .5); border-radius: 50%; background: radial-gradient(circle at 38% 32%, #e8f7fd, #18cfe3 20%, #0e7490 52%, #06111f 74%); box-shadow: 0 0 34px rgba(24, 207, 227, .38); cursor: pointer; }
-.weaver-guide-orb span { position: absolute; inset: 19px; border-radius: 50%; background: #020711; box-shadow: inset 0 0 12px #18cfe3; }
+.weaver-guide-morb-mark { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 12px; border: 0; padding: 0; background: transparent; color: #e8f7fd; cursor: pointer; }
+.weaver-guide-morb-mark img { width: 58px; height: 58px; object-fit: contain; filter: drop-shadow(0 0 14px rgba(168, 85, 247, .56)); }
+.weaver-guide-morb-mark span { font-size: 18px; font-weight: 950; letter-spacing: .18em; text-shadow: 0 0 16px rgba(168, 85, 247, .55); }
+.weaver-guide-morb-mark:focus-visible { outline: 2px solid #5bc8e6; outline-offset: 6px; border-radius: 8px; }
 .weaver-guide-label { margin: 24px 0 8px; color: #5bc8e6; font-size: 10px; font-weight: 900; letter-spacing: .16em; }
 .weaver-guide h2 { margin: 0; font-size: 24px; }
 .weaver-guide > p:not(.weaver-guide-label) { color: #b8cbd4; font-size: 14px; line-height: 1.7; }
@@ -71,8 +73,9 @@
 @media (max-width: 820px) {
   .onboarding-layout { grid-template-columns: 1fr; width: min(100% - 24px, 680px); padding: 22px 0 110px; }
   .weaver-guide { position: static; order: -1; padding: 20px; }
-  .weaver-guide-orb { width: 46px; height: 46px; float: left; margin-right: 14px; }
-  .weaver-guide-orb span { inset: 13px; }
+  .weaver-guide-morb-mark { float: left; margin-right: 14px; gap: 8px; }
+  .weaver-guide-morb-mark img { width: 46px; height: 46px; }
+  .weaver-guide-morb-mark span { font-size: 14px; }
   .weaver-guide-label { margin-top: 2px; }
   .weaver-guide h2 { font-size: 19px; }
   .weaver-guide > p:not(.weaver-guide-label) { margin-bottom: 0; }

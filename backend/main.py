@@ -5053,6 +5053,22 @@ ORB_WEAVER_SHOWCASE_POINTERS: List[Dict[str, Any]] = [
         "content_fingerprint": "owner-launch-dashboard-v1", "semantic_locator": '[data-orb-target="launch-dashboard"]',
         "structural_context": {"tag": "button"},
     },
+    {
+        "target_id": "preflight-website-url", "page_route": "/preflight", "target_type": "form_field",
+        "meaning": "Website URL field for a visitor-authorized public Preflight scan",
+        "intent_aliases": ["website url", "my website", "scan my site", "site address"],
+        "direct_aliases": ["Website URL"], "topic_aliases": ["website scan", "preflight"],
+        "content_fingerprint": "owner-preflight-website-url-v1", "semantic_locator": '[data-orb-target="preflight-website-url"]',
+        "structural_context": {"tag": "input"},
+    },
+    {
+        "target_id": "run-preflight-scan", "page_route": "/preflight", "target_type": "button",
+        "meaning": "Run the visitor-authorized public Preflight scan",
+        "intent_aliases": ["run preflight", "start scan", "scan this site"],
+        "direct_aliases": ["Run Preflight"], "topic_aliases": ["website scan", "preflight"],
+        "content_fingerprint": "owner-run-preflight-scan-v1", "semantic_locator": '[data-orb-target="run-preflight-scan"]',
+        "structural_context": {"tag": "button"},
+    },
 ]
 
 # Authored tour targets are owner-approved locators for the public route that

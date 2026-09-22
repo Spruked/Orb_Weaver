@@ -12,7 +12,7 @@ describe('scripted orientation', () => {
     expect(LANDING_FULL_TOUR_SCRIPT.at(-1)?.text).toMatch(/rest of the public site/i);
     expect(LANDING_FULL_TOUR_SCRIPT.flatMap((step) => step.pointerTargetIds || [])).toEqual([
       'orb-weaver-suite-logo', 'what_weaver_does', 'what_to_say', 'watch_weaver_guide',
-      'interrupt_or_guide', 'run-free-preflight', 'launch-dashboard',
+      'interrupt_or_guide', 'run-free-preflight',
     ]);
   });
 
@@ -38,6 +38,16 @@ describe('scripted orientation', () => {
     expect(SITE_TOUR_SCRIPT.find((step) => step.simulation === 'product_price_research')?.route).toBeUndefined();
     expect(SITE_TOUR_SCRIPT.at(-1)?.route).toBe('/signup');
     expect(scriptedPageOrientation('/signup')).toBeNull();
+  });
+
+  test('guides an owner-controlled Preflight scan and defers review until after account creation', () => {
+    const preflight = SITE_TOUR_SCRIPT.find((step) => step.route === '/preflight');
+    expect(preflight).toMatchObject({
+      pointerTargetIds: ['preflight-website-url', 'run-preflight-scan'],
+      scrollToEndDuringSpeech: true,
+    });
+    expect(preflight?.text).toMatch(/account creation comes next/i);
+    expect(preflight?.text).toMatch(/optionally review.*before.*full-site scan/i);
   });
 
   test('uses single-function MORBs only for prime-sized research and diagnostic audits', () => {

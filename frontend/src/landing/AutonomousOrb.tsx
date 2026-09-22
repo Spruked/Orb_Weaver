@@ -840,7 +840,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       ? Math.min(...candidates.map((candidate) => candidate.textCollisions))
       : 0;
     const viableCandidates = candidates.filter((candidate) => (
-      candidate.textCollisions <= lowestTextCollision + 8
+      candidate.textCollisions <= lowestTextCollision + 0.5
     ));
     const best = viableCandidates.reduce<typeof candidates[number] | null>(
       (selected, candidate) => !selected || candidate.score > selected.score ? candidate : selected,
@@ -1924,9 +1924,12 @@ export const AutonomousOrb: React.FC<Props> = ({
         }
         if (step.handoffToLiveConversation) {
           const ready = liveTourReadyRef.current;
+          const preflightReady = Boolean(preflightNarratedReportRef.current);
           setStatusTitle(ready ? "Weaver is ready" : "Weaver is preparing");
           setStatusLine(ready
-            ? "The guided tour ends here. Tap Weaver to create your account or ask a question."
+            ? (preflightReady
+              ? "Create your account, then we can optionally review your ready Preflight before a full-site scan."
+              : "The guided tour ends here. Tap Weaver to create your account or ask a question.")
             : "The guided tour ends here. Account creation is ready while Weaver completes question readiness.");
           showStatus(6200);
           emitOrbRuntimeEvent("scripted_orientation_account_handoff", {
@@ -1934,6 +1937,7 @@ export const AutonomousOrb: React.FC<Props> = ({
             index,
             route: step.route || window.location.pathname,
             readiness: ready ? "ready" : "warming",
+            preflight_ready_for_optional_post_account_review: preflightReady,
           });
           continue;
         }
@@ -1982,7 +1986,14 @@ export const AutonomousOrb: React.FC<Props> = ({
           try {
             const tts = await api.websiteOrbTts(step.text);
             played = await speakWithGeneratedAudio(step.text, tts.tts_audio_url, tts.tts_provider, {
-              onPlaybackStarted: () => emitOrbRuntimeEvent("scripted_orientation_step_started", { orientationId, index, attempt }),
+              onPlaybackStarted: () => {
+                emitOrbRuntimeEvent("scripted_orientation_step_started", { orientationId, index, attempt });
+                if (!step.scrollToEndDuringSpeech) return;
+                window.requestAnimationFrame(() => {
+                  window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+                  emitOrbRuntimeEvent("scripted_orientation_scroll_to_end_started", { orientationId, index });
+                });
+              },
             });
           } catch (error) {
             emitOrbRuntimeEvent("scripted_orientation_tts_attempt_failed", {
@@ -3271,6 +3282,19 @@ export const AutonomousOrb: React.FC<Props> = ({
       const detail = (event as CustomEvent<PublicPreflightReport>).detail;
       if (!detail?.generated_at || preflightNarratedReportRef.current === detail.generated_at) return;
       preflightNarratedReportRef.current = detail.generated_at;
+      // During the authored tour, a scan is the visitor's explicit action but
+      // its explanation belongs after account creation.  Do not interrupt the
+      // tour or make the account handoff compete with result narration.
+      if (scriptedOrientationRunningRef.current) {
+        setStatusTitle('Preflight result ready');
+        setStatusLine('Your result is ready. We can optionally review it after account creation, before a full-site scan.');
+        showStatus(7000);
+        emitOrbRuntimeEvent('preflight_review_deferred_until_post_account', {
+          generated_at: detail.generated_at,
+          site_url: detail.site_url || null,
+        });
+        return;
+      }
       preflightWalkthroughAbortRef.current?.abort();
       const walkthroughController = new AbortController();
       preflightWalkthroughAbortRef.current = walkthroughController;
