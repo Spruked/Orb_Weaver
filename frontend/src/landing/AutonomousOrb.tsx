@@ -42,7 +42,7 @@ import {
 import { canAdvanceCaptionProgression, currentSpeechCaption } from "../orb/speechCaptions";
 import { SITE_TOUR_SCRIPT, scriptedPageOrientation, type ScriptedOrientationStep } from "../orb/scriptedOrientation";
 import { resolveDirectRouteNavigation, type VerifiedRouteNavigation } from "../orb/directRouteNavigation";
-import { developmentFullTourOverride, emitDevelopmentStartupTrace, tourEligibleForAccount } from "./startupDevelopment";
+import { developmentFullTourOverride, developmentLlmScriptedTourOverride, emitDevelopmentStartupTrace, tourEligibleForAccount } from "./startupDevelopment";
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, ms));
@@ -1906,6 +1906,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     if (window.sessionStorage.getItem(SCRIPTED_ORIENTATION_SESSION_KEY) === orientationId) return true;
     scriptedOrientationRunningRef.current = true;
     handsFreeEnabledRef.current = false;
+    const llmScriptedTourEvaluation = developmentLlmScriptedTourOverride();
     emitOrbRuntimeEvent("scripted_orientation_started", { orientationId, stepCount: steps.length });
     try {
       for (const [index, step] of steps.entries()) {
@@ -1981,11 +1982,79 @@ export const AutonomousOrb: React.FC<Props> = ({
             showStatus(4200);
           }
         }
+        let spokenText = step.text;
+        let suppliedAudioUrl: string | null | undefined;
+        let suppliedAudioProvider: string | null | undefined;
+        if (llmScriptedTourEvaluation) {
+          const nearbyScript = steps
+            .slice(Math.max(0, index - 1), Math.min(steps.length, index + 2))
+            .map((candidate, candidateIndex) => {
+              const absoluteIndex = Math.max(0, index - 1) + candidateIndex + 1;
+              return `Stop ${absoluteIndex}${candidate.route ? ` (${candidate.route})` : ""}: ${candidate.text || "[silent handoff]"}`;
+            })
+            .join("\n\n");
+          try {
+            const generated = await api.websiteOrbText(
+              [
+                "Development evaluation: deliver only the current authored guided-tour stop in Weaver's first-person voice.",
+                "Use the supplied authored script as factual authority. Preserve its claims, visitor-control boundary, and next-step order.",
+                "Do not describe this evaluation, do not invent capabilities, do not add a question, and do not initiate any action.",
+                `Current authored stop: ${step.text}`,
+                `Nearby authored tour context:\n${nearbyScript}`,
+              ].join("\n\n"),
+              true,
+              undefined,
+              {
+                target_url: contextTargetUrl(),
+                experience: {
+                  phase: "understanding",
+                  objective: "Faithfully articulate one authored tour stop using only the supplied scripted context.",
+                  verification_state: "verified",
+                  tour: {
+                    chapter_id: "scripted-tour-llm-evaluation",
+                    stop_id: `${orientationId}-${index + 1}`,
+                    purpose: "Evaluate whether the local model can faithfully deliver the authored tour stop.",
+                    required_concepts: [{ id: "authored-script", description: step.text }],
+                    avoid: ["Do not invent facts or capabilities.", "Do not take or promise actions.", "Do not ask the visitor a question."],
+                    presentation_guidance: ["Speak only the current authored stop in first person."],
+                    visible_section_text: nearbyScript.slice(0, 7000),
+                    evidence_attempt: 1,
+                  },
+                },
+              },
+            );
+            const candidate = generated.spoken_output?.replace(/\s+/g, " ").trim();
+            // A missing evaluation or implausibly short response is not a
+            // successful test. Keep the visitor on the exact authored copy.
+            if (generated.chapter_evaluation && candidate && candidate.length >= 48) {
+              spokenText = candidate;
+              suppliedAudioUrl = generated.tts_audio_url;
+              suppliedAudioProvider = generated.tts_provider;
+              emitOrbRuntimeEvent("scripted_orientation_llm_context_accepted", {
+                orientationId,
+                index,
+                llmSource: generated.llm_source,
+                authoredLength: step.text.length,
+                generatedLength: candidate.length,
+              });
+            } else {
+              emitOrbRuntimeEvent("scripted_orientation_llm_context_rejected", { orientationId, index, reason: "incomplete_or_empty_evaluation" });
+            }
+          } catch (error) {
+            emitOrbRuntimeEvent("scripted_orientation_llm_context_fallback", {
+              orientationId,
+              index,
+              error: error instanceof Error ? error.message : "unknown_llm_error",
+            });
+          }
+        }
         let played = false;
         for (let attempt = 1; attempt <= 2 && !played; attempt += 1) {
           try {
-            const tts = await api.websiteOrbTts(step.text);
-            played = await speakWithGeneratedAudio(step.text, tts.tts_audio_url, tts.tts_provider, {
+            const tts = suppliedAudioUrl
+              ? { tts_audio_url: suppliedAudioUrl, tts_provider: suppliedAudioProvider }
+              : await api.websiteOrbTts(spokenText);
+            played = await speakWithGeneratedAudio(spokenText, tts.tts_audio_url, tts.tts_provider, {
               onPlaybackStarted: () => {
                 emitOrbRuntimeEvent("scripted_orientation_step_started", { orientationId, index, attempt });
                 if (!step.scrollToEndDuringSpeech) return;

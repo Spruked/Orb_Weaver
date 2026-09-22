@@ -1,5 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
-import { developmentFullTourOverride, developmentIntroVariant, tourEligibleForAccount } from './startupDevelopment';
+import { developmentFullTourOverride, developmentIntroVariant, developmentLlmScriptedTourOverride, tourEligibleForAccount } from './startupDevelopment';
 
 describe('development startup controls', () => {
   test('allows an authenticated account into the tour only under the development override', () => {
@@ -18,5 +18,10 @@ describe('development startup controls', () => {
     expect(developmentIntroVariant(ids, '?orbIntroVariant=kokoro-af-bella', 'development')).toBe('kokoro-af-bella');
     expect(developmentIntroVariant(ids, '?orbIntroVariant=unknown', 'development')).toBeNull();
     expect(developmentIntroVariant(ids, '?orbIntroVariant=kokoro-af-bella', 'production')).toBeNull();
+  });
+
+  test('enables the authored-context LLM tour evaluation only in development', () => {
+    expect(developmentLlmScriptedTourOverride('?orbLlmScriptedTour=1', 'development')).toBe(true);
+    expect(developmentLlmScriptedTourOverride('?orbLlmScriptedTour=1', 'production')).toBe(false);
   });
 });
