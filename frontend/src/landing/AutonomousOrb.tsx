@@ -60,6 +60,23 @@ const ABSOLUTE_RECORDING_LIMIT_MS = 22000;
 const SPEECH_LEVEL_THRESHOLD = 0.018;
 const LIDAR_DRIFT_THRESHOLD_PX = 12;
 const ORB_SPEECH_PLAYBACK_RATE = 0.9;
+const ACCOUNT_CREATION_GUIDE_PROTOCOL = [
+  "You are Weaver at the account-creation handoff after the guided tour.",
+  "Guide the visitor calmly, enthusiastically, and one decision at a time.",
+  "First establish whether they want to create a workspace or sign in to an existing one; do not assume.",
+  "For a new workspace, guide the visible form in order: name, business name, email, then the private password, then website confirmation and required agreements.",
+  "Ask one short question or give one next-field instruction per turn. Point to the live field when guidance is useful.",
+  "Never ask the visitor to say, reveal, repeat, or transmit a password or other credentials aloud. Tell them to type a private password directly into the visible field.",
+  "Never type, check a box, create an account, submit a form, buy a scan, or navigate without the visitor's explicit action.",
+  "After account creation, if Preflight is ready, offer its optional review before suggesting a full-site scan. Otherwise explain that a full-site scan is the next available deeper review only when the visitor asks for it.",
+  "Keep the account-creation purpose clear: a verified workspace lets the visitor keep their Preflight and choose the next review step with control.",
+].join(" ");
+const TOUR_INTERRUPTION_GUIDE_PROTOCOL = [
+  "The visitor explicitly paused the authored tour to ask a question or choose a different destination.",
+  "Answer their question directly from verified website context; do not resume narration unless they explicitly ask to continue.",
+  "If they ask to join the Founding Beta or speak with an investor, acknowledge the choice and guide only to the verified requested page.",
+  "Never claim enrollment, contact submission, or account creation is complete until the visitor completes the visible form themselves.",
+].join(" ");
 
 const resolveTourDecisionAction = (text: string): TourDecisionAction | null => {
   const normalized = text.toLowerCase().replace(/[’']/g, "'").replace(/[^a-z0-9\s']/g, " ").replace(/\s+/g, " ").trim();
@@ -505,6 +522,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const landingTourSettledRef = useRef<Promise<void>>(Promise.resolve());
   const landingTourAbortControllerRef = useRef<AbortController | null>(null);
   const scriptedOrientationRunningRef = useRef(false);
+  const scriptedOrientationInterruptedRef = useRef(false);
   const scriptedLandingOpeningCompleteRef = useRef(false);
   const liveTourReadyRef = useRef(window.sessionStorage.getItem(LANDING_STARTUP_READINESS_SESSION_KEY) === "READY");
   const routeArrivalInFlightRef = useRef<string | null>(null);
@@ -1905,11 +1923,19 @@ export const AutonomousOrb: React.FC<Props> = ({
     if (scriptedOrientationRunningRef.current) return false;
     if (window.sessionStorage.getItem(SCRIPTED_ORIENTATION_SESSION_KEY) === orientationId) return true;
     scriptedOrientationRunningRef.current = true;
+    scriptedOrientationInterruptedRef.current = false;
     handsFreeEnabledRef.current = false;
     const llmScriptedTourEvaluation = developmentLlmScriptedTourOverride();
     emitOrbRuntimeEvent("scripted_orientation_started", { orientationId, stepCount: steps.length });
     try {
       for (const [index, step] of steps.entries()) {
+        if (scriptedOrientationInterruptedRef.current) {
+          emitOrbRuntimeEvent("scripted_orientation_interrupted_by_visitor", { orientationId, index });
+          setStatusTitle("Tour paused for your question");
+          setStatusLine("Weaver is listening. Ask a question, join the Founding Beta, or start an investor conversation.");
+          showStatus(6200);
+          return false;
+        }
         if (step.route && window.location.pathname !== step.route) {
           emitOrbRuntimeEvent("scripted_tour_navigation_started", { orientationId, index, route: step.route });
           navigate(step.route);
@@ -1950,6 +1976,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         // explanation. The movement controller performs a live DOM refresh,
         // launches the pointer, and pings without ever clicking the target.
         for (const targetId of step.pointerTargetIds || []) {
+          if (scriptedOrientationInterruptedRef.current) break;
           const pointersReady = await waitForPointerRecords();
           const target = pointersReady ? findPointerRecordById(targetId) : null;
           if (!target) {
@@ -1982,6 +2009,7 @@ export const AutonomousOrb: React.FC<Props> = ({
             showStatus(4200);
           }
         }
+        if (scriptedOrientationInterruptedRef.current) continue;
         let spokenText = step.text;
         let suppliedAudioUrl: string | null | undefined;
         let suppliedAudioProvider: string | null | undefined;
@@ -2050,6 +2078,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         }
         let played = false;
         for (let attempt = 1; attempt <= 2 && !played; attempt += 1) {
+          if (scriptedOrientationInterruptedRef.current) break;
           try {
             const tts = suppliedAudioUrl
               ? { tts_audio_url: suppliedAudioUrl, tts_provider: suppliedAudioProvider }
@@ -2065,6 +2094,7 @@ export const AutonomousOrb: React.FC<Props> = ({
               },
             });
           } catch (error) {
+            if (scriptedOrientationInterruptedRef.current) break;
             emitOrbRuntimeEvent("scripted_orientation_tts_attempt_failed", {
               orientationId,
               index,
@@ -2073,6 +2103,7 @@ export const AutonomousOrb: React.FC<Props> = ({
             });
           }
         }
+        if (scriptedOrientationInterruptedRef.current) continue;
         if (!played) {
           // A spoken step can be retried, but it must never strand the visitor
           // on the current page. Record a visible controlled skip and advance.
@@ -2083,6 +2114,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           showStatus(4200);
           continue;
         }
+        if (scriptedOrientationInterruptedRef.current) continue;
         if (step.simulation) {
           const auditTaskCount = step.auditTaskCount || (step.simulation === "product_price_research" ? 3 : 5);
           await runMorbWorkSimulation(step.simulation, auditTaskCount);
@@ -2537,7 +2569,15 @@ export const AutonomousOrb: React.FC<Props> = ({
       const visitorTurn = firstEncounterVisitorTurnRef.current + 1;
       firstEncounterVisitorTurnRef.current = visitorTurn;
       const inFirstEncounter = isPublicLandingExperience() && !firstEncounterComplete();
-      const experience: WebsiteOrbExperienceContext | null = inFirstEncounter
+      const experience: WebsiteOrbExperienceContext | null = scriptedOrientationInterruptedRef.current
+        ? {
+            phase: "agency",
+            objective: TOUR_INTERRUPTION_GUIDE_PROTOCOL,
+            visitor_turn: visitorTurn,
+            verification_state: "verified",
+            demonstrated_capabilities: ["verified tour context", "visitor-directed navigation", "Founding Beta and investor routing"],
+          }
+        : inFirstEncounter
         ? visitorTurn === 1
           ? {
               phase: "make_it_personal",
@@ -2553,7 +2593,17 @@ export const AutonomousOrb: React.FC<Props> = ({
               verification_state: "pending",
               demonstrated_capabilities: ["voice turn-taking", "contextual reasoning", "verified visual guidance"],
             }
-        : null;
+        : location.pathname === ONBOARDING_ROUTE
+          ? {
+              phase: "agency",
+              objective: ACCOUNT_CREATION_GUIDE_PROTOCOL,
+              visitor_turn: visitorTurn,
+              verification_state: "verified",
+              verified_target_id: onboardingLiveRecordRef.current?.target_id || null,
+              verified_target_label: onboardingLiveRecordRef.current?.meaning || null,
+              demonstrated_capabilities: ["verified visual guidance", "visitor-controlled account setup", "optional Preflight review"],
+            }
+          : null;
       const result = await api.websiteOrbVoice(audio, controller.signal, {
         project_id: activeOrbContext?.project_id,
         target_url: targetUrl,
@@ -3182,7 +3232,17 @@ export const AutonomousOrb: React.FC<Props> = ({
   const handleOrbClick = useCallback(() => {
     markVisitorActivity();
     if (scriptedOrientationRunningRef.current) {
-      // The opening is a linear orientation, not a pause/click-through UI.
+      // A tour is guided, never locked. The visitor may pause it to ask a
+      // question or request a verified alternate destination at any moment.
+      scriptedOrientationInterruptedRef.current = true;
+      interruptOrbSpeech();
+      setStatusTitle("Tour paused");
+      setStatusLine("Ask Weaver a question, ask about the Founding Beta, or request an investor conversation.");
+      showStatus(6200);
+      emitOrbRuntimeEvent("scripted_orientation_pause_requested", { route: location.pathname });
+      window.setTimeout(() => {
+        if (!voiceRequestInFlightRef.current && !recorderRef.current) void startOrbRecording();
+      }, 180);
       return;
     }
     if (voiceState === "speaking" || landingTourRunningRef.current) {
@@ -3196,7 +3256,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
 
     void startOrbRecording();
-  }, [interruptOrbSpeech, markVisitorActivity, startOrbRecording, stopOrbRecording, voiceState]);
+  }, [interruptOrbSpeech, location.pathname, markVisitorActivity, showStatus, startOrbRecording, stopOrbRecording, voiceState]);
 
   const resetStartupSequence = useCallback(() => {
     window.sessionStorage.removeItem(LANDING_SPLASH_SESSION_KEY);
