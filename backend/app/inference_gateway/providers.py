@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 import uuid
@@ -14,6 +15,11 @@ from .contracts import GenerationResult, ProviderHealth
 
 class ProviderError(RuntimeError):
     pass
+
+
+def _error_detail(exc: Exception) -> str:
+    message = str(exc).strip()
+    return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
 
 
 def _content_to_text(content: Any) -> str:
@@ -154,7 +160,7 @@ class OpenAICompatibleProvider(BaseProvider):
             items = payload.get("data", []) if isinstance(payload, dict) else []
             return [str(item.get("id")) for item in items if isinstance(item, dict) and item.get("id")]
         except Exception as exc:
-            raise ProviderError(f"{self.name} model discovery failed: {exc}") from exc
+            raise ProviderError(f"{self.name} model discovery failed: {_error_detail(exc)}") from exc
         finally:
             await self._close_if_owned(client)
 
@@ -172,7 +178,17 @@ class OpenAICompatibleProvider(BaseProvider):
                 error="provider disabled",
             )
         try:
-            model = await self.resolved_model()
+            # A configured model name alone is not proof that a remote OpenAI-
+            # compatible server is reachable.  Probe its model endpoint so a
+            # Windows CUDA llama.cpp outage is reported as warming/degraded
+            # before the ORB attempts a handoff.
+            if self.config.model.lower() == "auto":
+                model = await self.resolved_model()
+            else:
+                await asyncio.wait_for(
+                    self.list_models(), timeout=min(5.0, self.config.timeout_seconds)
+                )
+                model = self.config.model
             return ProviderHealth(
                 name=self.name,
                 enabled=True,
@@ -191,7 +207,7 @@ class OpenAICompatibleProvider(BaseProvider):
                 base_url=self.config.base_url,
                 checked_at=checked_at,
                 latency_ms=round((time.perf_counter() - started) * 1000, 2),
-                error=str(exc)[:300],
+                error=_error_detail(exc)[:300],
             )
 
     async def complete(
@@ -249,7 +265,7 @@ class OpenAICompatibleProvider(BaseProvider):
         except Exception as exc:
             if isinstance(exc, ProviderError):
                 raise
-            raise ProviderError(f"{self.name} completion failed: {exc}") from exc
+            raise ProviderError(f"{self.name} completion failed: {_error_detail(exc)}") from exc
         finally:
             await self._close_if_owned(client)
 

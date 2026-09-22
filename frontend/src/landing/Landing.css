@@ -930,7 +930,7 @@
 }
 
 .ow-v2-orb-position.is-greeting .ow-v2-orb-body {
-  animation: ow-v2-greeting-ping 1.8s ease-in-out infinite;
+  animation: none;
 }
 
 .ow-v2-local-pulse {
@@ -1019,9 +1019,19 @@
   border-radius: 50%;
   background: radial-gradient(circle, rgba(8, 39, 122, .64) 0%, rgba(2, 18, 73, .48) 38%, rgba(1, 5, 20, 0) 72%);
   filter: blur(14px);
-  opacity: .86;
+  opacity: .36;
   transform: scale(.98);
-  animation: ow-v2-gold-heartbeat 3.4s ease-in-out infinite;
+  /* The housing itself never fades.  This separate halo is the speech cue. */
+  animation: none;
+}
+
+/* A restrained, audio-driven halo makes speech readable at a glance without
+   changing the required .96 opacity of the ORB shell or moving it over copy. */
+.ow-v2-orb-body.has-red-eye-skin.speaking::before {
+  opacity: calc(.16 + var(--ow-speech-amplitude, 0) * .68);
+  transform: scale(calc(.96 + var(--ow-speech-amplitude, 0) * .18));
+  filter: blur(calc(13px + var(--ow-speech-amplitude, 0) * 10px));
+  transition: opacity 70ms linear, transform 70ms linear, filter 70ms linear;
 }
 
 .ow-v2-orb-body:hover {
@@ -1069,8 +1079,9 @@
 }
 
 .ow-v2-orb-body.speaking::before {
-  opacity: var(--ow-speech-core-opacity, .56);
-  transform: scale(var(--ow-speech-core-scale, .98));
+  /* Never use the outer halo as an audio meter. */
+  opacity: .86;
+  transform: scale(.98);
   animation: none;
 }
 
@@ -1203,7 +1214,7 @@
 }
 
 .ow-v2-orb-body.speaking .ow-v2-orb-core-pulse {
-  opacity: var(--ow-speech-core-opacity, .72);
+  opacity: calc(.72 + var(--ow-speech-amplitude, 0) * .28);
   background: radial-gradient(circle, rgba(250, 255, 255, .98) 0%, rgba(174, 230, 255, .9) 18%, rgba(37, 136, 255, .7) 45%, rgba(6, 62, 196, .26) 68%, transparent 76%);
   box-shadow:
     0 0 20px rgba(205, 247, 255, .96),
@@ -1941,3 +1952,180 @@
 }
 
 /* === end Weaver Living Core v2 === */
+
+/* Speech visualisation: only the blue cavity and its white eye react to audio.
+   This applies to the intro, scripted tour, and live conversation because they
+   all render the same Orb component and supply the measured speech amplitude. */
+.ow-v2-orb-body.speaking {
+  /* Keep the shell and its surrounding glow spatially stable while speaking. */
+  transform: perspective(760px) rotateX(2deg) rotateY(-3deg) translateZ(0);
+}
+
+.ow-v2-orb-body.speaking .ow-v2-orb-core-pulse {
+  transform: translate(-50%, -50%) scale(var(--ow-speech-core-scale, .98)) !important;
+  opacity: var(--ow-speech-core-opacity, .72);
+  animation: none !important;
+  transition: transform 70ms linear, opacity 70ms linear;
+}
+
+.ow-v2-orb-body.speaking .ow-v2-orb-core-fold,
+.ow-v2-orb-body.speaking .ow-v2-orb-core-recess {
+  animation: none !important;
+}
+
+.ow-v2-orb-body.speaking .ow-v2-orb-core-nucleus {
+  transform: scale(calc(.86 + var(--ow-speech-amplitude, 0) * .92)) !important;
+  transform-origin: center;
+  opacity: calc(.68 + var(--ow-speech-amplitude, 0) * .32);
+  animation: none !important;
+  transition: transform 70ms linear, opacity 70ms linear;
+}
+
+/* The eye remains solid when Weaver is not speaking as well. */
+.ow-v2-orb-core-pulse {
+  opacity: .96;
+  animation: none !important;
+}
+
+.ow-v2-orb-core-fold,
+.ow-v2-orb-core-nucleus {
+  animation: none !important;
+}
+
+.ow-v2-orb-core-nucleus {
+  opacity: .96;
+}
+
+/* A quiet eyelid gives the central eye a living, readable presence without
+   moving the shell. It closes only briefly, then the speech-driven nucleus
+   remains fully visible. */
+.ow-v2-orb-core-eyelid {
+  position: absolute;
+  inset: 27%;
+  z-index: 6;
+  pointer-events: none;
+  border-radius: 50%;
+  transform: scaleY(0);
+  transform-origin: center;
+  background: radial-gradient(circle at 50% 38%, rgba(5, 44, 130, .98) 0 38%, rgba(1, 15, 70, .99) 72%, rgba(0, 5, 28, 1) 100%);
+  box-shadow: inset 0 2px 6px rgba(116, 208, 255, .18);
+  animation: ow-v2-center-eye-blink 8.6s ease-in-out infinite;
+}
+
+.ow-v2-orb-core-lashes,
+.ow-v2-orb-core-lashes::before,
+.ow-v2-orb-core-lashes::after {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Deliberately short, fine lashes: they frame the eye instead of obscuring it. */
+.ow-v2-orb-core-lashes {
+  inset: 25% 22%;
+  z-index: 7;
+}
+
+.ow-v2-orb-core-lashes::before,
+.ow-v2-orb-core-lashes::after {
+  content: "";
+  left: 7%;
+  width: 86%;
+  height: 14%;
+  border-radius: 50%;
+  opacity: .86;
+  background: repeating-linear-gradient(
+    72deg,
+    transparent 0 7px,
+    rgba(0, 7, 34, .96) 8px 10px,
+    transparent 11px 16px
+  );
+}
+
+.ow-v2-orb-core-lashes::before {
+  top: -7%;
+  border-top: 2px solid rgba(0, 7, 34, .94);
+  transform: perspective(18px) rotateX(32deg);
+  transform-origin: bottom;
+}
+
+.ow-v2-orb-core-lashes::after {
+  bottom: -7%;
+  border-bottom: 2px solid rgba(0, 7, 34, .9);
+  transform: perspective(18px) rotateX(-26deg);
+  transform-origin: top;
+}
+
+@keyframes ow-v2-center-eye-blink {
+  0%, 88%, 100% { transform: scaleY(0); }
+  90%, 94% { transform: scaleY(1); }
+  92% { transform: scaleY(.18); }
+}
+
+/* Exactly two outer-opacity states: active and ten-minute sleep. */
+.ow-v2-orb-position { opacity: .96 !important; }
+.ow-v2-orb-position[data-orb-resting="true"] { opacity: .60 !important; }
+
+/* Red-eye skin: the supplied artwork is the actual eye.  The overlay is only
+   a localized speech glow and a curved lid, never an animation of the shell. */
+.ow-v2-orb-body.has-red-eye-skin .ow-v2-orb-eye-pulse {
+  position: absolute;
+  left: 27%;
+  top: 33%;
+  width: 46%;
+  height: 30%;
+  z-index: 5;
+  overflow: hidden;
+  border-radius: 50% / 46%;
+  pointer-events: none;
+  transform: scale(1);
+  transform-origin: center;
+  box-shadow: inset 0 0 0 rgba(79, 182, 255, 0);
+  transition: transform 70ms linear, box-shadow 70ms linear, filter 70ms linear;
+}
+
+.ow-v2-orb-body.has-red-eye-skin .ow-v2-orb-eye-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 8% 12%;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(225, 249, 255, .96) 0 12%, rgba(77, 188, 255, .68) 34%, rgba(24, 96, 255, .18) 59%, transparent 76%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  transform: scale(.7);
+  transition: opacity 70ms linear, transform 70ms linear;
+}
+
+.ow-v2-orb-body.has-red-eye-skin.speaking .ow-v2-orb-eye-pulse {
+  transform: scale(calc(1 + var(--ow-speech-amplitude, 0) * .22));
+  filter: brightness(calc(1 + var(--ow-speech-amplitude, 0) * .32));
+  box-shadow:
+    inset 0 0 22px rgba(91, 195, 255, calc(var(--ow-speech-amplitude, 0) * .58)),
+    0 0 24px rgba(56, 160, 255, calc(var(--ow-speech-amplitude, 0) * .52));
+}
+
+.ow-v2-orb-body.has-red-eye-skin.speaking .ow-v2-orb-eye-pulse::after {
+  opacity: calc(.12 + var(--ow-speech-amplitude, 0) * .78);
+  transform: scale(calc(.78 + var(--ow-speech-amplitude, 0) * .48));
+}
+
+.ow-v2-orb-eye-lid {
+  position: absolute;
+  inset: -9% -5% auto;
+  height: 112%;
+  border-radius: 0 0 50% 50% / 0 0 36% 36%;
+  transform: translateY(-104%);
+  transform-origin: top center;
+  background:
+    radial-gradient(ellipse at 50% 92%, rgba(21, 79, 171, .96) 0 38%, rgba(5, 31, 94, .99) 63%, rgba(1, 10, 47, 1) 100%);
+  border-bottom: 2px solid rgba(9, 21, 65, .94);
+  box-shadow: 0 4px 7px rgba(0, 4, 25, .72);
+  animation: ow-v2-natural-eye-blink 9.4s cubic-bezier(.32, 0, .2, 1) infinite;
+}
+
+@keyframes ow-v2-natural-eye-blink {
+  0%, 87%, 100% { transform: translateY(-104%); }
+  89% { transform: translateY(-20%); }
+  91%, 93% { transform: translateY(0); }
+  95% { transform: translateY(-42%); }
+}

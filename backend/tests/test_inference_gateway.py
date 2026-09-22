@@ -119,6 +119,34 @@ async def test_provider_failure_falls_through_without_rewriting_orb(tmp_path: Pa
 
 
 @pytest.mark.asyncio
+async def test_configured_provider_order_is_a_strict_allow_list(tmp_path: Path) -> None:
+    base_config = make_config(tmp_path)
+    config = GatewayConfig(**{**base_config.__dict__, "provider_order": ("llamacpp",)})
+    providers = {
+        "llamacpp": FakeProvider("llamacpp", ready=False),
+        "aphrodite": FakeProvider("aphrodite"),
+        "tensorrt": FakeProvider("tensorrt"),
+        "ollama": FakeProvider("ollama"),
+    }
+    gateway = InferenceGateway(config, providers, VaultTelemetry(config.telemetry_path))
+
+    assert gateway.provider_order("fallback") == ["llamacpp"]
+    status = await gateway.status(force=True)
+    assert status["ready"] is False
+    assert status["providers"]["ollama"]["ready"] is True
+
+    with pytest.raises(ProviderError, match="llamacpp: offline"):
+        await gateway.generate(
+            [{"role": "user", "content": "hello"}],
+            lane="fallback",
+            temperature=0.2,
+            max_tokens=20,
+        )
+
+    assert providers["ollama"].calls == 0
+
+
+@pytest.mark.asyncio
 async def test_prompt_limit_is_enforced_before_provider_call(tmp_path: Path) -> None:
     config = make_config(tmp_path)
     config = GatewayConfig(**{**config.__dict__, "max_prompt_chars": 5})

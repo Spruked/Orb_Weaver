@@ -21,7 +21,7 @@ const WebWeave: React.FC = () => {
     <div className="space-y-6">
       <section className="rounded-xl bg-brand-dark p-6 text-white">
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-200">Site Update</p>
-        <h1 className="mt-2 max-w-4xl text-3xl font-bold">Website updates guided by scan evidence</h1>
+        <h1 data-orb-target="tour-web-weave" className="mt-2 max-w-4xl text-3xl font-bold">Website updates guided by scan evidence</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
           Site Update uses Orb Weaver evidence to identify useful website changes, separate recommendations from
           approved work, verify the result, and refresh ORB site knowledge after the public website changes.

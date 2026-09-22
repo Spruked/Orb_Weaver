@@ -265,8 +265,9 @@ ORB_TOOL_ID_ALIASES = {
 LLM_WARM_STATUS: Dict[str, Any] = {
     "configured": bool(settings.LOCAL_LLM_URL and settings.LOCAL_LLM_MODEL),
     "ready": False,
+    "state": "warming",
     "model": settings.LOCAL_LLM_MODEL,
-    "model_lock": "Qwen 2.5 1.5B Instruct Q4_K_M via llama.cpp",
+    "model_lock": "Substrate Llama 3.2 3B Instruct Q4_K_M via llama.cpp",
     "provider": "llamacpp",
     "endpoint": settings.LOCAL_LLM_URL,
     "checked_at": None,
@@ -326,7 +327,7 @@ async def _warm_local_llm() -> None:
             LLM_WARM_STATUS.update({
                 "ready": False,
                 "checked_at": datetime.utcnow().isoformat(),
-                "error": "Website ORB cognition model is locked to llama.cpp Qwen 2.5 1.5B Instruct Q4_K_M.",
+                "error": "Website ORB cognition model is locked to Substrate llama.cpp Llama 3.2 3B Instruct Q4_K_M.",
             })
         return
     try:
@@ -344,12 +345,14 @@ async def _warm_local_llm() -> None:
             response.raise_for_status()
         LLM_WARM_STATUS.update({
             "ready": True,
+            "state": "ready",
             "checked_at": datetime.utcnow().isoformat(),
             "error": None,
         })
     except Exception as exc:
         LLM_WARM_STATUS.update({
             "ready": False,
+            "state": "degraded",
             "checked_at": datetime.utcnow().isoformat(),
             "error": str(exc)[:240],
         })
@@ -1965,8 +1968,10 @@ def _local_llm_is_locked_llamacpp() -> bool:
         return False
     return "11434" not in url and model in {
         "orb-auto",
-        "qwen2.5-1.5b-instruct-q4_k_m",
-        "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        "substrate-llama-3.2-3b",
+        "llama-3.2-3b-instruct-q4_k_m",
+        "llama-3.2-3b-instruct-q4_k_m.gguf",
+        "./llm/models/Llama-3.2-3B-Instruct-GGUF/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
     }
 
 
@@ -2516,7 +2521,7 @@ def _orb_capabilities() -> Dict[str, Any]:
         "local_llm": dict(LLM_WARM_STATUS),
         "local_cognition_model_lock": {
             "provider": "llamacpp",
-            "model": "Qwen 2.5 1.5B Instruct Q4_K_M",
+            "model": "Substrate Llama 3.2 3B Instruct Q4_K_M",
             "endpoint": settings.LOCAL_LLM_URL,
             "runtime_model": settings.LOCAL_LLM_MODEL,
             "locked": _local_llm_is_locked_llamacpp(),
@@ -3515,7 +3520,7 @@ async def _llm_orb_spoken_output(
         spoken = _clean_spoken_output(raw_output)
         return {
             "spoken_output": spoken or fallback,
-            "llm_source": "llamacpp-qwen2.5-1.5b-instruct-q4_k_m",
+            "llm_source": "llamacpp-substrate-llama-3.2-3b-instruct-q4_k_m",
             "governance_trace": initial_governance_trace(governance_context) if governance_context else None,
         }
     except Exception as exc:
@@ -5007,18 +5012,18 @@ ORB_WEAVER_SHOWCASE_POINTERS: List[Dict[str, Any]] = [
         "semantic_locator": '[data-orb-target="orb-weaver-suite-logo"]', "structural_context": {"tag": "a"},
     },
     {
-        "target_id": "speak_naturally", "page_route": "/", "target_type": "paragraph",
-        "meaning": "Just talk. Use the words you would use with a person who knows the site.",
-        "intent_aliases": ["speak naturally", "just talk"], "direct_aliases": ["Just talk"],
-        "topic_aliases": ["voice orientation"], "content_fingerprint": "owner-speak-naturally-v1",
-        "semantic_locator": '[data-orb-target="speak_naturally"]', "structural_context": {"tag": "p"},
+        "target_id": "what_weaver_does", "page_route": "/", "target_type": "paragraph",
+        "meaning": "What Weaver does: understand this website, answer from verified knowledge, and guide visitors to the right place.",
+        "intent_aliases": ["what weaver does", "verified knowledge"], "direct_aliases": ["What does Weaver do?"],
+        "topic_aliases": ["weaver orientation"], "content_fingerprint": "owner-what-weaver-does-v1",
+        "semantic_locator": '[data-orb-target="what_weaver_does"]', "structural_context": {"tag": "p"},
     },
     {
-        "target_id": "pause_when_finished", "page_route": "/", "target_type": "paragraph",
-        "meaning": "Finish the thought, then pause. Weaver takes the turn when your voice settles.",
-        "intent_aliases": ["pause when finished", "finish your thought"], "direct_aliases": ["Finish the thought, then pause"],
-        "topic_aliases": ["voice turn taking"], "content_fingerprint": "owner-pause-when-finished-v1",
-        "semantic_locator": '[data-orb-target="pause_when_finished"]', "structural_context": {"tag": "p"},
+        "target_id": "what_to_say", "page_route": "/", "target_type": "paragraph",
+        "meaning": "The guided opening introduces the website before Weaver opens a live conversation.",
+        "intent_aliases": ["guided opening", "what to say"], "direct_aliases": ["First, take the guided opening."],
+        "topic_aliases": ["tour orientation"], "content_fingerprint": "owner-what-to-say-v1",
+        "semantic_locator": '[data-orb-target="what_to_say"]', "structural_context": {"tag": "p"},
     },
     {
         "target_id": "watch_weaver_guide", "page_route": "/", "target_type": "paragraph",
@@ -5026,6 +5031,13 @@ ORB_WEAVER_SHOWCASE_POINTERS: List[Dict[str, Any]] = [
         "intent_aliases": ["watch weaver guide", "verified target"], "direct_aliases": ["Watch Weaver guide"],
         "topic_aliases": ["visual guidance"], "content_fingerprint": "owner-watch-weaver-guide-v2",
         "semantic_locator": '[data-orb-target="watch_weaver_guide"]', "structural_context": {"tag": "p"},
+    },
+    {
+        "target_id": "interrupt_or_guide", "page_route": "/", "target_type": "paragraph",
+        "meaning": "Visitors remain in control and can start a conversation when ready.",
+        "intent_aliases": ["stay in control", "start a conversation"], "direct_aliases": ["You stay in control."],
+        "topic_aliases": ["visitor control"], "content_fingerprint": "owner-interrupt-or-guide-v1",
+        "semantic_locator": '[data-orb-target="interrupt_or_guide"]', "structural_context": {"tag": "p"},
     },
     {
         "target_id": "run-free-preflight", "page_route": "/", "target_type": "button",
@@ -5042,6 +5054,38 @@ ORB_WEAVER_SHOWCASE_POINTERS: List[Dict[str, Any]] = [
         "structural_context": {"tag": "button"},
     },
 ]
+
+# Authored tour targets are owner-approved locators for the public route that
+# contains them.  They still require live DOM and geometry validation before
+# the Morb may travel or Ping; this registry never grants click authority.
+for _target_id, _page_route, _meaning, _tag in (
+    ("tour-features", "/features", "Features page introduction", "main"),
+    ("tour-lidar-guidance", "/lidar-guidance", "LiDAR guidance page introduction", "main"),
+    ("tour-how-it-works", "/how-it-works", "How it works page introduction", "main"),
+    ("tour-security", "/security", "Security page introduction", "main"),
+    ("tour-weaving", "/weaving", "Weaving page introduction", "main"),
+    ("tour-web-weave", "/web-weave", "Web Weave page introduction", "h1"),
+    ("tour-desktop-orb", "/now/desktop-orb", "Desktop ORB page introduction", "main"),
+    ("tour-founding-beta", "/founding-beta", "Founding Beta page introduction", "main"),
+    ("tour-investor-contact", "/investor-contact", "Investor contact page introduction", "main"),
+    ("tour-preflight", "/preflight", "Preflight page introduction", "main"),
+    ("tour-privacy", "/privacy", "Privacy page introduction", "main"),
+    ("tour-terms", "/terms", "Terms page introduction", "main"),
+    ("tour-account-creation", "/signup", "Account creation page introduction", "main"),
+    ("full-name-field", "/signup", "Full name field", "input"),
+):
+    ORB_WEAVER_SHOWCASE_POINTERS.append({
+        "target_id": _target_id,
+        "page_route": _page_route,
+        "target_type": "form_field" if _tag == "input" else "page_section",
+        "meaning": _meaning,
+        "intent_aliases": [_meaning.lower(), _target_id.replace("-", " ")],
+        "direct_aliases": [_meaning],
+        "topic_aliases": ["scripted site tour"],
+        "content_fingerprint": f"owner-{_target_id}-v1",
+        "semantic_locator": f'[data-orb-target="{_target_id}"]',
+        "structural_context": {"tag": _tag},
+    })
 
 
 def _owner_showcase_pointer_records(domain: str) -> List[Dict[str, Any]]:
@@ -8195,6 +8239,32 @@ def _canonical_runtime_artifacts(domain: str, website_context: Optional[Dict[str
     }
 
 
+_VERIFIED_VOICE_ROUTE_REQUESTS: Tuple[Tuple[str, Tuple[str, ...], str], ...] = (
+    ("/lidar-guidance", ("navigation page", "lidar navigation", "lidar guidance", "visual navigation"), "LiDAR guidance"),
+    ("/features", ("features page", "orb features", "website orb features"), "Website ORB features"),
+    ("/how-it-works", ("how it works", "how does it work"), "how it works"),
+    ("/security", ("security page", "security"), "security"),
+    ("/weaving", ("weaving page", "weaving"), "weaving"),
+    ("/web-weave", ("web weave",), "Web Weave"),
+    ("/now/desktop-orb", ("desktop orb", "diagnostics"), "Desktop ORB"),
+    ("/preflight", ("preflight", "readiness scan"), "Preflight"),
+    ("/privacy", ("privacy page", "privacy"), "privacy"),
+    ("/terms", ("terms page", "terms"), "terms"),
+)
+_VOICE_ROUTE_VERB = re.compile(r"\b(take me|bring me|go to|navigate to|open|show me|visit)\b", re.IGNORECASE)
+
+
+def _verified_voice_route_request(transcript: str) -> Optional[Tuple[str, str]]:
+    """Resolve only explicit visitor navigation to an authored public route."""
+    normalized = re.sub(r"\s+", " ", transcript.lower()).strip()
+    if not _VOICE_ROUTE_VERB.search(normalized):
+        return None
+    for route, aliases, label in _VERIFIED_VOICE_ROUTE_REQUESTS:
+        if any(alias in normalized for alias in aliases):
+            return route, label
+    return None
+
+
 async def _canonical_website_orb_turn(
     *,
     transcript: str,
@@ -8226,6 +8296,68 @@ async def _canonical_website_orb_turn(
         pointer_matches=pointer_matches,
         experience_context=experience_context,
     )
+
+    # Navigation is an explicit visitor request, not an inference claim. Keep
+    # it on the deterministic control lane so a healthy microphone can still
+    # speak and guide even when free-form model correspondence is fail-closed.
+    # The browser separately revalidates the destination target against live
+    # DOM geometry before the pointer is allowed to present it.
+    direct_route = _verified_voice_route_request(transcript)
+    if direct_route:
+        destination_route, destination_label = direct_route
+        spoken_output = f"Absolutely. I will take you to {destination_label} now, then point out the verified place to begin."
+        resolved = {
+            "source_lane": "control",
+            "answer": spoken_output,
+            "answer_hash": hashlib.sha256(spoken_output.encode("utf-8")).hexdigest(),
+            "evidence_ids": [f"verified_route:{destination_route}"],
+            "query_correspondence_verified": True,
+            "verification_state": "verified",
+            "answer_state": "resolved",
+            "confidence": 1.0,
+            "route_context": {"destination_route": destination_route},
+            "guidance": {"destination_route": destination_route, "requires_live_dom_validation": True},
+            "escalation_used": None,
+            "learning_eligible": False,
+        }
+        doctrine = articulate(resolved)
+        governance_trace = finalize_governance_trace(
+            governance_context,
+            resolved=resolved,
+            doctrine_trace=doctrine["trace"],
+        )
+        governance_trace["glyph_trace_refs"] = persist_governance_artifacts(
+            governance_context,
+            governance_trace,
+            session_key=(f"customer:{customer.id}" if customer else f"anonymous:{domain}"),
+        )
+        result = {
+            "transcript": transcript,
+            "spoken_output": doctrine["spoken_text"],
+            "cognitive_pulse": cognitive_pulse,
+            "memory_context": memory_context,
+            "llm_source": "verified_route_control",
+            "source_lane": "control",
+            "answer_state": "resolved",
+            "confidence": 1.0,
+            "evidence_ids": resolved["evidence_ids"],
+            "route_context": resolved["route_context"],
+            "guidance": resolved["guidance"],
+            "escalation_used": None,
+            "learning_eligible": False,
+            "resolution_trace": {"source": "verified_route_control", "destination_route": destination_route},
+            "governance_trace": governance_trace,
+            "resolution_diagnostics": {
+                "resolution_source": "verified_route_control",
+                "confidence": 1.0,
+                "governance_status": governance_trace["status"],
+                "tpc_state": governance_trace["tpc_state"],
+                "doctrine_checksum": governance_trace["doctrine_checksum"],
+            },
+            "control_action": None,
+        }
+        _require_governance_delivery_approval(result)
+        return result
 
     if (experience_context or {}).get("tour"):
         # Resolve supplied presentation facts before asking the model to
@@ -9450,6 +9582,7 @@ async def website_orb_startup_readiness(
     await cognition_warmup
     proofs["COGNITION_READY"] = {
         "ready": bool(LLM_WARM_STATUS.get("ready")),
+        "state": str(LLM_WARM_STATUS.get("state") or "warming"),
         "runtime": LLM_WARM_STATUS.get("provider"),
         "model": LLM_WARM_STATUS.get("model"),
         "error": LLM_WARM_STATUS.get("error"),
@@ -9529,9 +9662,14 @@ async def website_orb_startup_readiness(
 
     required = ("STT_READY", "COGNITION_READY", "KOKORO_READY", "SITE_WORLD_READY", "POINTER_READY", "GOVERNANCE_READY")
     all_ready = all(bool(proofs.get(name, {}).get("ready")) for name in required)
+    non_cognition_ready = all(
+        bool(proofs.get(name, {}).get("ready"))
+        for name in required
+        if name != "COGNITION_READY"
+    )
     return {
         "schema": "orb_weaver.website_orb_startup_readiness.v1",
-        "state": "READY" if all_ready else "WARMING",
+        "state": "READY" if all_ready else ("DEGRADED" if non_cognition_ready else "WARMING"),
         "ready": all_ready,
         "required": list(required),
         "proofs": proofs,

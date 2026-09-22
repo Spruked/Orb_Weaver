@@ -14,9 +14,9 @@ describe('development startup controls', () => {
   });
 
   test('forces only a known intro variant in development', () => {
-    const ids = ['am-echo', 'am-michael', 'kokoro-host'] as const;
-    expect(developmentIntroVariant(ids, '?orbIntroVariant=am-michael', 'development')).toBe('am-michael');
+    const ids = ['am-echo', 'kokoro-af-bella', 'kokoro-host'] as const;
+    expect(developmentIntroVariant(ids, '?orbIntroVariant=kokoro-af-bella', 'development')).toBe('kokoro-af-bella');
     expect(developmentIntroVariant(ids, '?orbIntroVariant=unknown', 'development')).toBeNull();
-    expect(developmentIntroVariant(ids, '?orbIntroVariant=am-michael', 'production')).toBeNull();
+    expect(developmentIntroVariant(ids, '?orbIntroVariant=kokoro-af-bella', 'production')).toBeNull();
   });
 });

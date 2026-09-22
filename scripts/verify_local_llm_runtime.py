@@ -28,11 +28,11 @@ def load_repo_inference_env() -> None:
 
 load_repo_inference_env()
 
-EXPECTED_MODEL_LOCK = "Qwen 2.5 1.5B Instruct Q4_K_M"
+EXPECTED_MODEL_LOCK = "Substrate Llama 3.2 3B Instruct Q4_K_M"
 GENERATE_URL = os.getenv("LOCAL_LLM_URL", "http://127.0.0.1:16520/api/generate")
 RUNTIME_MODEL = os.getenv("LOCAL_LLM_MODEL", "orb-auto")
 LLAMACPP_MODEL_PATH = Path(os.path.expandvars(os.path.expanduser(
-    os.getenv("LLAMACPP_MODEL_PATH", "$HOME/models/qwen2.5-1.5b-instruct-q4_k_m.gguf")
+    os.getenv("LLAMACPP_MODEL_PATH", "$HOME/substrate/llm/models/Llama-3.2-3B-Instruct-GGUF/Llama-3.2-3B-Instruct-Q4_K_M.gguf")
 )))
 LLAMACPP_BASE_URL = os.getenv("LLAMACPP_BASE_URL", "http://127.0.0.1:8080/v1")
 

@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     ORB_AGENCY_CONTEXT_MAX_BYTES: int = Field(default=32000, ge=4000, le=128000)
     ORB_AGENCY_EVIDENCE_MAX_ITEMS: int = Field(default=8, ge=0, le=32)
     ORB_AGENCY_EVIDENCE_MAX_BYTES: int = Field(default=6000, ge=0, le=32000)
-    FASTER_WHISPER_STT_URL: str = "http://127.0.0.1:9000/stt"
+    FASTER_WHISPER_STT_URL: str = "http://127.0.0.1:13000/api/stt/transcribe"
     FASTER_WHISPER_STT_TIMEOUT_SECONDS: float = 60.0
     ORB_ASSISTANT_ROOT: str = "../Orb_Assistant"
     ORB_TTS_CACHE_DIR: str = "../vault_system/runtime/tts_cache"
@@ -93,8 +93,8 @@ class Settings(BaseSettings):
     ORB_TTS_KOKORO_URL: Optional[str] = "http://127.0.0.1:8880/speak"
     ORB_TTS_KOKORO_API_KEY: Optional[str] = None
     ORB_TTS_KOKORO_MODEL: str = "kokoro"
-    # Match the recorded showroom introduction used by the public landing.
-    ORB_TTS_KOKORO_VOICE: str = "am_michael"
+    # The local public host uses a warm American female voice by default.
+    ORB_TTS_KOKORO_VOICE: str = "af_bella"
     ORB_TTS_KOKORO_FORMAT: str = "wav"
     ORB_TTS_KOKORO_SPEED: float = 1.05
     ORB_TTS_KOKORO_PAYLOAD_MODE: str = "kokoro-direct"

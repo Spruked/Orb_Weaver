@@ -14,29 +14,28 @@ export const Orb: React.FC<{
   state = "idle",
   speechAmplitude = 0,
   onClick,
-  skinSrc = "/orb-skins/weaver-red-blue-center.png",
+  skinSrc = "/orb-skins/weaver-red-eye.png",
 }) => {
   const normalizedAmplitude = Math.min(1, Math.max(0, speechAmplitude));
   return (
     <button
       type="button"
-      className={`ow-v2-orb-body ${state} has-image-skin`}
+      className={`ow-v2-orb-body ${state} has-image-skin has-red-eye-skin`}
       style={{
         width: size,
         height: size,
-        "--ow-speech-core-opacity": String(0.56 + normalizedAmplitude * 0.42),
-        "--ow-speech-core-scale": String(0.98 + normalizedAmplitude * 0.1),
+        // The center remains visually solid.  Amplitude controls its motion,
+        // not a distracting fade in and out.
+        "--ow-speech-core-opacity": String(0.96 + normalizedAmplitude * 0.04),
+        "--ow-speech-core-scale": String(1 + normalizedAmplitude * 0.48),
+        "--ow-speech-amplitude": String(normalizedAmplitude),
       } as React.CSSProperties}
       aria-label="Orb Weaver intelligence orb"
       onClick={onClick}
     >
       <img className="ow-v2-orb-skin-image" src={skinSrc} alt="Website ORB visual representation" draggable={false} />
-      <div className="ow-v2-orb-core-pulse" aria-hidden="true">
-        <span className="ow-v2-orb-core-recess" />
-        <span className="ow-v2-orb-core-fold ow-v2-orb-core-fold-one" />
-        <span className="ow-v2-orb-core-fold ow-v2-orb-core-fold-two" />
-        <span className="ow-v2-orb-core-fold ow-v2-orb-core-fold-three" />
-        <span className="ow-v2-orb-core-nucleus" />
+      <div className="ow-v2-orb-eye-pulse" aria-hidden="true">
+        <span className="ow-v2-orb-eye-lid" />
       </div>
     </button>
   );

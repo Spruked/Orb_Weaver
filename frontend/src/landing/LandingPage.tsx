@@ -11,6 +11,8 @@ import "./Landing.css";
 
 const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
 const LANDING_SPLASH_COMPLETE_SESSION_KEY = "orbweaver-landing-splash-complete";
+const LANDING_STARTUP_READINESS_SESSION_KEY = "orbweaver-landing-startup-readiness";
+const SCRIPTED_ORIENTATION_SESSION_KEY = "orbweaver-scripted-orientation-v1";
 const STARTUP_GREETING_SESSION_KEY = "orbweaver-startup-greeting-played";
 const FIRST_ENCOUNTER_STORAGE_KEY = "orbweaver-first-encounter-state";
 const LAST_INTRO_VARIANT_SESSION_KEY = "orbweaver-last-intro-variant";
@@ -20,6 +22,9 @@ const INTRO_SPEECH_STATE_DATASET_KEY = "orbWeaverIntroVoiceState";
 const LANDING_SPLASH_DURATION_MS = 3800;
 const POST_INTRO_READINESS_ATTEMPTS = 4;
 const POST_INTRO_READINESS_RETRY_MS = 2000;
+// Keep the Windows llama.cpp server actively warming while the recorded and
+// scripted opening is speaking, without blocking that visitor-facing cadence.
+const BACKGROUND_READINESS_RETRY_MS = 750;
 const INTRO_CAPTION_CUES = [
   { start: 0, end: 1.325, text: "Hello." },
   { start: 2.075, end: 5.8, text: "I am Weaver, the Orb Weaver Website Assistant." },
@@ -36,9 +41,9 @@ type IntroVariant = {
 };
 
 const INTRO_VARIANTS: readonly IntroVariant[] = [
-  // The historical showroom opening is one specific recorded performance;
-  // do not randomize or synthesize a substitute during startup.
-  { id: "am-michael", asset: "/orb/voice/weaver-showroom-intro-am-michael.wav", cues: INTRO_CAPTION_CUES },
+  // Use the same local Kokoro voice as the tour. This keeps the introduction,
+  // guided route narration, and account handoff as one coherent female host.
+  { id: "kokoro-af-bella", text: "Hello. I am Weaver, the Orb Weaver Website Assistant. I can help you with anything you need. I am not a chatbot. I make this website intelligent, so you can find things easier, navigate faster, process your orders quicker, and resolve issues seamlessly. Just call me Weaver. Feel free to ask a question in your normal way and I will answer. Let's get started.", cues: INTRO_CAPTION_CUES },
 ] as const;
 
 type IntroAudioState = "preloading" | "playing" | "autoplay_blocked" | "error" | "warming" | "blocked";
@@ -72,6 +77,7 @@ const LandingPage: React.FC = () => {
   const introPlaybackRequestRef = useRef<(() => void) | null>(null);
   const completeStartupGateRef = useRef<(voiceUnavailable?: boolean) => void>(() => undefined);
   const startupReadinessRef = useRef<Promise<StartupReadinessResult> | null>(null);
+  const startupRetryTimerRef = useRef<number | null>(null);
 
   const beginStartupWarmup = () => {
     if (startupReadinessRef.current) return startupReadinessRef.current;
@@ -97,9 +103,14 @@ const LandingPage: React.FC = () => {
           )) };
           lastResult = readiness;
           if (landingTourRuntimeReady(readiness)) {
+            if (startupRetryTimerRef.current !== null) {
+              window.clearTimeout(startupRetryTimerRef.current);
+              startupRetryTimerRef.current = null;
+            }
             const readyForLandingTour = readiness.ready
               ? readiness
               : { ...readiness, ready: true, state: "LANDING_TOUR_READY" };
+            window.sessionStorage.setItem(LANDING_STARTUP_READINESS_SESSION_KEY, "READY");
             window.dispatchEvent(new CustomEvent("orbweaver:startup-intro", {
               detail: { phase: "STARTUP_WARMUP_READY", readiness: readyForLandingTour },
             }));
@@ -116,6 +127,17 @@ const LandingPage: React.FC = () => {
       window.dispatchEvent(new CustomEvent("orbweaver:startup-intro", {
         detail: { phase: "STARTUP_WARMUP_BLOCKED", readiness: failure },
       }));
+      // Inference readiness is a background concern. It gates the governed
+      // tour, never the visitor's access to the landing page. Retry a fresh
+      // bounded probe without creating overlapping warmup requests.
+      if (startupRetryTimerRef.current === null) {
+        startupRetryTimerRef.current = window.setTimeout(() => {
+          startupRetryTimerRef.current = null;
+          startupReadinessRef.current = null;
+          sharedStartupReadiness = null;
+          void beginStartupWarmup();
+        }, BACKGROUND_READINESS_RETRY_MS);
+      }
       return failure;
     })();
     sharedStartupReadiness = warmup;
@@ -129,12 +151,17 @@ const LandingPage: React.FC = () => {
     if (params.get("orbStartupReset") === "1" || forcedDevelopmentVariant) {
       window.sessionStorage.removeItem(LANDING_SPLASH_SESSION_KEY);
       window.sessionStorage.removeItem(LANDING_SPLASH_COMPLETE_SESSION_KEY);
+      window.sessionStorage.removeItem(LANDING_STARTUP_READINESS_SESSION_KEY);
+      window.sessionStorage.removeItem(SCRIPTED_ORIENTATION_SESSION_KEY);
       window.sessionStorage.removeItem(STARTUP_GREETING_SESSION_KEY);
       window.sessionStorage.removeItem(FIRST_ENCOUNTER_STORAGE_KEY);
     }
 
     if (window.sessionStorage.getItem(LANDING_SPLASH_SESSION_KEY) === "1") {
       window.sessionStorage.setItem(LANDING_SPLASH_COMPLETE_SESSION_KEY, "1");
+      if (window.sessionStorage.getItem(LANDING_STARTUP_READINESS_SESSION_KEY) !== "READY") {
+        void beginStartupWarmup();
+      }
       window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-complete", {
         detail: { splash_state: "skipped_session_once" },
       }));
@@ -144,6 +171,12 @@ const LandingPage: React.FC = () => {
     void beginStartupWarmup();
     emitDevelopmentStartupTrace("startup_begun");
     setSplashTrigger(Date.now());
+
+    return () => {
+      // The scripted site tour immediately moves beyond this component. Keep
+      // a blocked inference probe retrying there so llama.cpp can be ready at
+      // the final account-creation handoff.
+    };
   }, []);
 
   useEffect(() => {
@@ -226,7 +259,7 @@ const LandingPage: React.FC = () => {
       });
     };
     emitIntro("INTRO_AUDIO_REQUESTED", {
-      provider: introVariant.id === "kokoro-host" ? "kokoro" : "recorded",
+      provider: introVariant.asset ? "recorded" : "kokoro",
       voice: introVariant.id,
       variant: introVariant.id,
       asset: introVariant.asset || null,
@@ -289,7 +322,7 @@ const LandingPage: React.FC = () => {
         setIntroAudioState("playing");
         syncCaption();
         emitIntro("INTRO_AUDIO_PLAYING", {
-          provider: "recorded",
+          provider: introVariant.asset ? "recorded" : "kokoro",
           voice: introVariant.id,
           asset: audio.currentSrc,
           duration: Number.isFinite(audio.duration) ? audio.duration : null,
@@ -341,16 +374,15 @@ const LandingPage: React.FC = () => {
       finishIntroVisual();
       window.sessionStorage.setItem(STARTUP_GREETING_SESSION_KEY, "1");
       emitDevelopmentStartupTrace("intro_complete_set", { intro_id: introVariant.id });
-      // OrbBurst is both the original visible opening and the latency cover.
-      // Warmup began with the splash; do not release the existing handoff
-      // until the intro, the historical minimum burst time, and the existing
-      // live llama inference readiness proof have all completed.
+      // The authored intro owns the visual gate. Release it immediately when
+      // that performance ends; llama.cpp readiness continues in background
+      // and must never leave the landing page blurred.
       void (async () => {
         const elapsed = Date.now() - splashTrigger;
         await new Promise<void>((resolve) => window.setTimeout(resolve, Math.max(0, LANDING_SPLASH_DURATION_MS - elapsed)));
-        const readiness = await beginStartupWarmup();
-        if (cancelled || !landingTourRuntimeReady(readiness)) return;
-        completeStartup();
+        if (cancelled) return;
+        await completeStartup(true);
+        void beginStartupWarmup();
       })();
     };
     void (async () => {
@@ -400,6 +432,7 @@ const LandingPage: React.FC = () => {
     // is still the historical handoff point; it does not add a new screen.
     window.sessionStorage.setItem(LANDING_SPLASH_SESSION_KEY, "1");
     window.sessionStorage.setItem(LANDING_SPLASH_COMPLETE_SESSION_KEY, "1");
+    window.sessionStorage.setItem(LANDING_STARTUP_READINESS_SESSION_KEY, voiceUnavailable ? "BLOCKED" : "READY");
     setSplashTrigger(0);
     window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-complete", {
       detail: { splash_state: "complete", readiness_state: voiceUnavailable ? "BLOCKED" : "READY", voice_unavailable: voiceUnavailable },
@@ -483,9 +516,9 @@ const LandingPage: React.FC = () => {
             <h2>Meet Weaver.</h2>
             <div className="ow-cut-encounter-steps" aria-label="Weaver communication orientation">
               <p data-orb-target="what_weaver_does"><strong>What does Weaver do?</strong> He understands this website, answers from its verified knowledge, and guides you to the right place when showing is faster than explaining.</p>
-              <p data-orb-target="what_to_say"><strong>What do I say?</strong> Anything you would ask a person who knows the site. Speak naturally, finish your thought, and pause; Weaver listens hands-free.</p>
-              <p id="watch-weaver-guide" data-orb-target="watch_weaver_guide"><strong>Watch Weaver guide.</strong> When pointing is useful, Weaver guides only to a verified target and pings the exact place it can prove is live.</p>
-              <p data-orb-target="interrupt_or_guide"><strong>You stay in control.</strong> Weaver rearms listening after each turn, so the conversation continues naturally at your pace.</p>
+              <p data-orb-target="what_to_say"><strong>First, take the guided opening.</strong> Weaver will walk through the foundation of the site before opening the live tour.</p>
+              <p id="watch-weaver-guide" data-orb-target="watch_weaver_guide"><strong>Then, explore in real time.</strong> When pointing is useful, Weaver guides only to a verified target and pings the exact place it can prove is live.</p>
+              <p data-orb-target="interrupt_or_guide"><strong>You stay in control.</strong> After the first explanation, start a conversation whenever you are ready.</p>
             </div>
           </div>
         </div>

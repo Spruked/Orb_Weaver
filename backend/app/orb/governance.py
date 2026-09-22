@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 INCULCATION_PATH = REPO_ROOT / "artifacts" / "inculcation.md"
 INCULCATION_VERSION = "artifacts/inculcation.md"
 ARTICULATION_RUNTIME = "llama.cpp"
-ARTICULATION_MODEL = "Qwen 2.5 1.5B Instruct Q4_K_M"
+ARTICULATION_MODEL = "Substrate Llama 3.2 3B Instruct Q4_K_M"
 
 
 def _hash(value: Any) -> str:

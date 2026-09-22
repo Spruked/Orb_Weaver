@@ -52,9 +52,15 @@ class InferenceGateway:
     def provider_order(self, lane: Optional[str]) -> List[str]:
         normalized = self._normalize_lane(lane)
         preferred = list(LANE_PRIORITY[normalized])
-        configured = list(self.config.provider_order)
+        configured = set(self.config.provider_order)
         ordered: List[str] = []
-        for name in preferred + configured:
+        # The configured provider order is an allow-list.  It must be possible
+        # to lock a Website ORB to Windows CUDA llama.cpp without silently
+        # falling through to another local model merely because that provider
+        # appears in the lane's general-purpose preference list.
+        for name in preferred:
+            if name not in configured:
+                continue
             if name in self.providers and name not in ordered:
                 ordered.append(name)
         return ordered
@@ -97,6 +103,7 @@ class InferenceGateway:
             return_exceptions=True,
         )
         providers: Dict[str, Dict[str, Any]] = {}
+        eligible_providers = set(self.provider_order(self.config.default_lane))
         ready = False
         for name, item in zip(self.providers, health_items):
             if isinstance(item, Exception):
@@ -108,7 +115,7 @@ class InferenceGateway:
                 }
                 continue
             providers[name] = asdict(item)
-            ready = ready or item.ready
+            ready = ready or (name in eligible_providers and item.ready)
         return {
             "ready": ready,
             "default_lane": self.config.default_lane,

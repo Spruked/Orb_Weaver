@@ -55,7 +55,9 @@ services:
       - ORB_DESKTOP_MCP_TOKEN=${ORB_DESKTOP_MCP_TOKEN:-}
       - TESSERACT_CMD=/usr/bin/tesseract
       - ORB_ASSISTANT_ROOT=/app/Orb_Assistant
-      - FASTER_WHISPER_STT_URL=http://host.docker.internal:9000/stt
+      # Faster Whisper's active Substrate service is exposed on 13000 and
+      # accepts the same multipart endpoint used by the development runtime.
+      - FASTER_WHISPER_STT_URL=${FASTER_WHISPER_STT_URL:-http://host.docker.internal:13000/api/stt/transcribe}
       - ORB_TTS_CACHE_DIR=/app/vault_system/runtime/tts_cache
       - ORB_TTS_TIMEOUT_SECONDS=${ORB_TTS_TIMEOUT_SECONDS:-45}
       - ORB_TTS_QWEN_TIMEOUT_SECONDS=${ORB_TTS_QWEN_TIMEOUT_SECONDS:-220}
@@ -70,7 +72,7 @@ services:
       - ORB_TTS_KOKORO_URL=${ORB_TTS_KOKORO_URL:-http://host.docker.internal:8880/speak}
       - ORB_TTS_KOKORO_API_KEY=${ORB_TTS_KOKORO_API_KEY:-}
       - ORB_TTS_KOKORO_MODEL=${ORB_TTS_KOKORO_MODEL:-kokoro}
-      - ORB_TTS_KOKORO_VOICE=${ORB_TTS_KOKORO_VOICE:-am_michael}
+      - ORB_TTS_KOKORO_VOICE=${ORB_TTS_KOKORO_VOICE:-af_bella}
       - ORB_TTS_KOKORO_FORMAT=${ORB_TTS_KOKORO_FORMAT:-wav}
       - ORB_TTS_KOKORO_SPEED=${ORB_TTS_KOKORO_SPEED:-1.05}
       - ORB_TTS_KOKORO_PAYLOAD_MODE=${ORB_TTS_KOKORO_PAYLOAD_MODE:-kokoro-direct}

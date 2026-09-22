@@ -21,12 +21,16 @@ export PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-http://127.0.0.1:16667}"
 export LOCAL_LLM_URL="${LOCAL_LLM_URL:-http://127.0.0.1:16520/api/generate}"
 export LOCAL_LLM_MODEL="${LOCAL_LLM_MODEL:-orb-auto}"
 export ORB_TTS_CACHE_DIR="${ORB_TTS_CACHE_DIR:-${VAULT_ROOT}/development/runtime/tts_cache}"
-export FASTER_WHISPER_STT_URL="${FASTER_WHISPER_STT_URL:-http://127.0.0.1:9000/stt}"
+export FASTER_WHISPER_STT_URL="${FASTER_WHISPER_STT_URL:-http://127.0.0.1:13000/api/stt/transcribe}"
 export ORB_TTS_QWEN_URL="${ORB_TTS_QWEN_URL:-http://127.0.0.1:9880/speak}"
 export ORB_TTS_TIMEOUT_SECONDS="${ORB_TTS_TIMEOUT_SECONDS:-180}"
-export ORB_TTS_QWEN_VOICE="${ORB_TTS_QWEN_VOICE:-OrbWeaver}"
+# CALI is retained as the preferred Qwen profile when that optional service is
+# available. The always-on local Kokoro path uses its warm American female
+# voice, so the public host never falls back to the old male showroom voice.
+export ORB_TTS_QWEN_VOICE="${ORB_TTS_QWEN_VOICE:-cali_voice_profile}"
 export ORB_TTS_QWEN_PAYLOAD_MODE="${ORB_TTS_QWEN_PAYLOAD_MODE:-qwen-voice-clone}"
 export ORB_TTS_KOKORO_URL="${ORB_TTS_KOKORO_URL:-http://127.0.0.1:8880/speak}"
+export ORB_TTS_KOKORO_VOICE="${ORB_TTS_KOKORO_VOICE:-af_bella}"
 export ORB_WEAVER_SITE_ORB_SOURCE_CRAWL_ID="${ORB_WEAVER_SITE_ORB_SOURCE_CRAWL_ID:-59}"
 export BACKEND_PORT="${BACKEND_PORT:-16666}"
 export FRONTEND_PORT="${FRONTEND_PORT:-16667}"

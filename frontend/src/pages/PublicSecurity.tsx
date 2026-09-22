@@ -86,7 +86,7 @@ const PublicSecurity: React.FC = () => {
   }, []);
 
   return (
-    <main className="min-h-screen overflow-hidden bg-slate-950 text-white">
+    <main data-orb-target="tour-security" className="min-h-screen overflow-hidden bg-slate-950 text-white">
       <PublicHeader theme="dark" />
 
       <div className="pointer-events-none fixed inset-0 opacity-70" aria-hidden="true">

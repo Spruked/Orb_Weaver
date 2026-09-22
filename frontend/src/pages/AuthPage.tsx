@@ -151,7 +151,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
   return (
     <div className="onboarding-shell">
       <PublicHeader theme="light" />
-      <main className="onboarding-layout">
+      <main data-orb-target="tour-account-creation" className="onboarding-layout">
         <section className="onboarding-card" aria-labelledby="onboarding-title">
           <div className="onboarding-brand">
             <img src="/orbweaverlogo1024.png" alt="Orb Weaver logo - intelligent website host" />

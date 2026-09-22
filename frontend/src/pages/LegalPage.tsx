@@ -22,7 +22,7 @@ const LegalPage: React.FC<LegalPageProps> = ({ type }) => {
     <div className="min-h-screen bg-[#F2FBFD] text-slate-900">
       <PublicHeader theme="light" />
       <div className="px-4 py-10 sm:px-6 lg:px-8">
-      <main className="mx-auto max-w-3xl rounded-lg border border-slate-200 bg-white p-7 shadow-sm sm:p-9">
+      <main data-orb-target={`tour-${type}`} className="mx-auto max-w-3xl rounded-lg border border-slate-200 bg-white p-7 shadow-sm sm:p-9">
         <h1 className="mt-5 text-3xl font-bold text-slate-950">
           {getTitle()}
         </h1>

@@ -135,7 +135,7 @@ const prohibited = [
 
 const DesktopOrbNow: React.FC = () => {
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
+    <main data-orb-target="tour-desktop-orb" className="min-h-screen bg-slate-950 text-white">
       <PublicHeader theme="dark" />
 
       <section className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(6,182,212,0.16),_transparent_38%),radial-gradient(circle_at_top_right,_rgba(249,115,22,0.12),_transparent_34%)] px-5 py-20 sm:px-8 lg:px-16">
