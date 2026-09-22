@@ -141,8 +141,10 @@ const EDGE = 8;
 // speaking over the visitor, or compromising the LiDAR-safe movement path.
 const AMBIENT_TRAVEL_PX_PER_SECOND = 26;
 const AMBIENT_INITIAL_DWELL_MS = 5200;
-const AMBIENT_SETTLE_MIN_MS = 7800;
-const AMBIENT_SETTLE_VARIANCE_MS = 4600;
+// Weaver is a host, not a parked overlay. Keep its LiDAR-approved ambient
+// cadence visible enough to leave reading space clear without becoming noisy.
+const AMBIENT_SETTLE_MIN_MS = 2800;
+const AMBIENT_SETTLE_VARIANCE_MS = 2200;
 // After a page change, clear reading content promptly.  The LiDAR map chooses
 // the destination; this is a short settle, not a decorative hover delay.
 const AMBIENT_POST_INTERACTION_DWELL_MS = 800;
@@ -768,7 +770,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     const minimumTravel = Math.max(56, Math.min(92, size * 0.45));
     // A route can place the ORB directly over a paragraph.  Permit one
     // deliberate relocation to a clear edge instead of trapping it in copy.
-    const maximumTravel = Math.max(280, Math.min(520, Math.max(window.innerWidth, window.innerHeight) * .58));
+    const maximumTravel = Math.hypot(window.innerWidth, window.innerHeight);
     const lidarMap = buildLidarGuidanceMap({
       orbPosition: { x: current.x + size / 2, y: current.y + size / 2 },
     });
@@ -786,33 +788,64 @@ export const AutonomousOrb: React.FC<Props> = ({
       Math.max(0, Math.min(a.right, b.x + b.width) - Math.max(a.left, b.x)) *
       Math.max(0, Math.min(a.bottom, b.y + b.height) - Math.max(a.top, b.y));
 
-    let best: { point: { x: number; y: number }; score: number; collisions: number } | null = null;
-    for (let row = 0; row < 5; row += 1) {
-      for (let column = 0; column < 7; column += 1) {
+    const candidates: Array<{
+      point: { x: number; y: number };
+      score: number;
+      collisions: number;
+      textCollisions: number;
+      interactiveCollisions: number;
+    }> = [];
+    for (let row = 0; row < 7; row += 1) {
+      for (let column = 0; column < 9; column += 1) {
         const candidate = clampPosition(
-          minX + (maxX - minX) * (column / 6),
-          minY + (maxY - minY) * (row / 4),
+          minX + (maxX - minX) * (column / 8),
+          minY + (maxY - minY) * (row / 6),
         );
-      const actualTravel = Math.hypot(candidate.x - current.x, candidate.y - current.y);
-      const candidateCenter = { x: candidate.x + size / 2, y: candidate.y + size / 2 };
-      const rect = { left: candidate.x - 12, top: candidate.y - 12, right: candidate.x + size + 12, bottom: candidate.y + size + 12 };
-      const collisions = relevantFeatures.reduce((total, feature) => total + intersects(rect, feature.rect), 0);
-      const recentDistance = ambientPoseHistoryRef.current.length
-        ? Math.min(...ambientPoseHistoryRef.current.map((pose) => Math.hypot(candidate.x - pose.x, candidate.y - pose.y)))
-        : minimumTravel;
-      if (actualTravel < minimumTravel * 0.72 || actualTravel > maximumTravel || recentDistance < Math.max(72, size * 0.46)) continue;
-      const normalized = { x: candidateCenter.x / window.innerWidth, y: candidateCenter.y / window.innerHeight };
-      const preferenceScore = preference
-        ? Math.max(0, 150 - Math.hypot(normalized.x - preference.x, normalized.y - preference.y) * 360) * preference.confidence
-        : 0;
-      const edgeVantage = Math.min(candidateCenter.x, window.innerWidth - candidateCenter.x, candidateCenter.y, window.innerHeight - candidateCenter.y);
-      // Text blocks are hard obstacles for ambient presence. Interactive
-      // controls receive the same treatment so the ORB never masks copy or a
-      // possible action while it is merely waiting.
-      const score = preferenceScore + recentDistance * 0.5 - collisions * 18 - actualTravel * 0.08 - edgeVantage * 0.12;
-      if (!best || score > best.score) best = { point: candidate, score, collisions };
+        const actualTravel = Math.hypot(candidate.x - current.x, candidate.y - current.y);
+        const candidateCenter = { x: candidate.x + size / 2, y: candidate.y + size / 2 };
+        const rect = { left: candidate.x - 12, top: candidate.y - 12, right: candidate.x + size + 12, bottom: candidate.y + size + 12 };
+        const collisions = relevantFeatures.reduce((total, feature) => total + intersects(rect, feature.rect), 0);
+        const textCollisions = relevantFeatures
+          .filter((feature) => feature.kind === "text_block")
+          .reduce((total, feature) => total + intersects(rect, feature.rect), 0);
+        const interactiveCollisions = relevantFeatures
+          .filter((feature) => feature.kind === "interactive")
+          .reduce((total, feature) => total + intersects(rect, feature.rect), 0);
+        const recentDistance = ambientPoseHistoryRef.current.length
+          ? Math.min(...ambientPoseHistoryRef.current.map((pose) => Math.hypot(candidate.x - pose.x, candidate.y - pose.y)))
+          : minimumTravel;
+        if (actualTravel < minimumTravel * 0.72 || actualTravel > maximumTravel || recentDistance < Math.max(72, size * 0.46)) continue;
+        const normalized = { x: candidateCenter.x / window.innerWidth, y: candidateCenter.y / window.innerHeight };
+        const preferenceScore = preference
+          ? Math.max(0, 150 - Math.hypot(normalized.x - preference.x, normalized.y - preference.y) * 360) * preference.confidence
+          : 0;
+        const edgeVantage = Math.min(candidateCenter.x, window.innerWidth - candidateCenter.x, candidateCenter.y, window.innerHeight - candidateCenter.y);
+        candidates.push({
+          point: candidate,
+          collisions,
+          textCollisions,
+          interactiveCollisions,
+          // Text and controls are exclusion zones. The small edge preference
+          // deliberately gives Weaver a readable margin when several clear
+          // places are available.
+          score: preferenceScore + recentDistance * .35 - textCollisions * 90 - interactiveCollisions * 65 - collisions * 12 - actualTravel * .04 - edgeVantage * .10,
+        });
       }
     }
+
+    // Never trade readable copy for an old ambient preference. If a truly
+    // clear pose exists, only clear poses may be chosen; otherwise select the
+    // least-overlapping pose and keep moving rather than parking on a word.
+    const lowestTextCollision = candidates.length
+      ? Math.min(...candidates.map((candidate) => candidate.textCollisions))
+      : 0;
+    const viableCandidates = candidates.filter((candidate) => (
+      candidate.textCollisions <= lowestTextCollision + 8
+    ));
+    const best = viableCandidates.reduce<typeof candidates[number] | null>(
+      (selected, candidate) => !selected || candidate.score > selected.score ? candidate : selected,
+      null,
+    );
 
     if (best) {
       lastAutonomousDestinationRef.current = best.point;
@@ -830,6 +863,8 @@ export const AutonomousOrb: React.FC<Props> = ({
         featureCount: lidarMap.features.length,
         dynamicObstacleCount: lidarMap.dynamicObstacleCount,
         collisions: Math.round(best.collisions),
+        textCollisions: Math.round(best.textCollisions),
+        interactiveCollisions: Math.round(best.interactiveCollisions),
         ambientVelocity: AMBIENT_TRAVEL_PX_PER_SECOND,
         destination: best.point,
       });
@@ -847,7 +882,6 @@ export const AutonomousOrb: React.FC<Props> = ({
   const resumeAutonomousPresence = useCallback(async () => {
     const blockers = {
       inactive: !activeRef.current,
-      startup: startupUnresolved(),
       speech: speechPlaybackRef.current,
       guidance: guidanceActiveRef.current,
       control: controlMotionActiveRef.current,
@@ -3706,6 +3740,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     ).matches;
 
     const start = isPublicLandingExperience() ? splashAlignedPosition() : nextDestination();
+    const ambientStartupReleaseAt = Date.now() + 12_000;
 
     positionRef.current = start;
     move.set(start);
@@ -3721,7 +3756,10 @@ export const AutonomousOrb: React.FC<Props> = ({
       await wait(AMBIENT_INITIAL_DWELL_MS);
 
       while (activeRef.current) {
-        if (startupUnresolved()) {
+        // A warming or degraded model must never turn Weaver into a static
+        // obstruction. Preserve the opening composition briefly, then let
+        // LiDAR keep the host out of the visitor's reading path.
+        if (startupUnresolved() && Date.now() < ambientStartupReleaseAt) {
           await wait(160);
           continue;
         }
