@@ -1183,6 +1183,7 @@ export type WebsiteOrbExperiencePhase =
   | 'relevant_continuation';
 
 export interface WebsiteOrbExperienceContext {
+  guidance_mode?: 'tour_question' | 'account_setup';
   tour?: {
     chapter_id: string;
     stop_id: string;
@@ -1452,6 +1453,7 @@ export const api = {
     if (anonymousSessionId) formData.append('anonymous_session_id', anonymousSessionId);
     if (context?.experience) {
       formData.append('experience_phase', context.experience.phase);
+      if (context.experience.guidance_mode) formData.append('experience_guidance_mode', context.experience.guidance_mode);
       formData.append('experience_objective', context.experience.objective);
       formData.append('experience_turn', String(context.experience.visitor_turn || 0));
       formData.append('experience_verification_state', context.experience.verification_state || 'not_applicable');

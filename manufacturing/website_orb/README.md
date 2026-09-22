@@ -26,6 +26,7 @@ vault_system/clients/<domain>/manufacturing/
       ontology.json
       qa.json
       policies.json
+      site_skg.json
     verification_manifest.json
   history/<build_id>/...
 ```
@@ -53,6 +54,13 @@ vault_system/clients/<domain>/manufacturing/
 - `ontology.json` — verified business/site entities and relationships.
 - `qa.json` — verified question/answer correspondences and phrasing aliases.
 - `policies.json` — owner-approved policy and rule text with source provenance.
+- `site_skg.json` — mandatory site-specific graph, witnesses, lexical alias
+  index and approved-goal next hops. This artifact participates in owner
+  verification, package integrity and clone startup checks. It is not a copy
+  of Weaver's host-site Nine of Clubs policy.
+
+See [Site SKG and Lexicon](../../docs/architecture/SITE_SKG_AND_LEXICON.md)
+for the host/customer separation, source contract and lexical safety rules.
 
 The A Priori Vault is read-only at customer runtime. It is refreshed only by a new Orb Weaver build/rescan and owner approval.
 

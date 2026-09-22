@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import httpx
+import json
 
-from .config import POINTER_MAP_PATH, RUNTIME_LANGUAGE_PATH, SITE_WORLD_PATH, TOOL_CACHE_PATH
+from .config import PACKAGE_ROOT, COMPILED_ORB_ROOT, POINTER_MAP_PATH, RUNTIME_LANGUAGE_PATH, SITE_WORLD_PATH, TOOL_CACHE_PATH
+from .integrity import validate_payload
 from .cognition.answer_engine import answer_from_world
 from .cognition.tpc_runtime import tpc_runtime
 from .dock_adapter.dockstation_adapter import DockStationAdapter
@@ -13,10 +16,15 @@ from .pointer.pointer_index import route_pointer_targets
 from .runtime.route_lookup import lookup_route
 from .runtime.site_world import SiteWorld
 from .storage import canonical_vault_root, record_runtime_audit
+from .skg.runtime import load_site_graph, site_guidance_context
 from .voice_runtime import VOICE_CACHE, speak, transcribe
 
 
 app = FastAPI(title="Website ORB Runtime", version="0.1.0")
+MANIFEST = validate_payload()
+CONFIG = json.loads((COMPILED_ORB_ROOT / "site_config.json").read_text())
+app.add_middleware(CORSMiddleware, allow_origins=CONFIG["allowed_origins"],
+                   allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
 WORLD = SiteWorld.load(SITE_WORLD_PATH, POINTER_MAP_PATH, RUNTIME_LANGUAGE_PATH, TOOL_CACHE_PATH)
 DOCK = DockStationAdapter()
 
@@ -25,6 +33,21 @@ DOCK = DockStationAdapter()
 def require_manufactured_canonical_vault() -> None:
     """Fail closed instead of allowing SKG to create a package-local vault."""
     canonical_vault_root()
+    load_site_graph()
+    validate_payload()
+
+
+@app.get("/orb/bootstrap")
+def bootstrap() -> dict:
+    return {"site_id": MANIFEST["site_id"], "build_id": MANIFEST["build_id"],
+            "site_name": CONFIG["site_name"], "orb_name": CONFIG["orb_name"],
+            "allowed_origins": CONFIG["allowed_origins"],
+            "routes": list(WORLD.routes)}
+
+
+@app.get("/orb/widget.js")
+def widget():
+    return FileResponse(PACKAGE_ROOT / "assets/widget.js", media_type="text/javascript")
 
 
 @app.get("/health")
@@ -49,7 +72,8 @@ def site_world() -> dict:
 @app.get("/orb/route-context", response_model=RouteContextResponse)
 def route_context(route: str = "/") -> RouteContextResponse:
     matched_route, record = lookup_route(WORLD, route)
-    return RouteContextResponse(route=route, matched_route=matched_route, record=record)
+    return RouteContextResponse(route=route, matched_route=matched_route,
+                                record={**record, "semantic_guidance": site_guidance_context(route)})
 
 
 @app.get("/orb/pointer-map")
@@ -91,8 +115,10 @@ def _require_delivery_approval(answer: AnswerResponse) -> None:
 
 
 @app.post("/orb/website-voice")
-async def website_voice(audio: UploadFile = File(...), route: str = "/") -> dict:
-    content = await audio.read()
+async def website_voice(audio: UploadFile = File(...), route: str = Form("/")) -> dict:
+    content = await audio.read(8 * 1024 * 1024 + 1)
+    if len(content) > 8 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Audio upload is too large")
     if not content:
         raise HTTPException(status_code=400, detail="No audio was received")
     try:
@@ -117,4 +143,4 @@ def voice_audio(audio_id: str):
 
 @app.post("/orb/dock/action")
 def dock_action(payload: DockActionRequest) -> dict:
-    return DOCK.call(payload.action, payload.arguments)
+    raise HTTPException(status_code=403, detail="Desktop actions are outside this website runtime's permission envelope")

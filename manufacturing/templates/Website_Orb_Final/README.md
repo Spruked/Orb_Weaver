@@ -41,6 +41,10 @@ The physical site-knowledge containers in an installed package are only under:
 - `ontology.json` - structured site entities and relationships / SKG-oriented knowledge.
 - `qa.json` - verified question/answer correspondences.
 - `policies.json` - site and business policy knowledge.
+- `site_skg.json` - **required** site-agnostic semantic graph and serialized
+  lexicon, bound to this site's scan and payload manifest. Compilation and
+  read-only runtime lookup live in `backend/skg/`. Missing or invalid graphs
+  block package startup; aliases remain advisory, never execution grants.
 
 The A Priori path is `runtime/vault_system/payload/apriori/` and is intended for fast deterministic resolution before heavier cognition.
 

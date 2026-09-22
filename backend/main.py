@@ -101,6 +101,8 @@ from app.orb.vault_glyph_trace import record_vault_object
 from app.orb.vault_skg_adapter import get_vault_skg_adapter, materialize_site_apriori
 from app.orb.aims_memory import context_for_turn as aims_context_for_turn, record_turn_result as record_aims_turn_result
 from app.orb.agency_cognition import AgencyCognitionRequest, agency_cognition
+from app.orb.nine_of_clubs import ShowcaseInteraction, guidance_prompt, showcase_guidance_mode
+from app.orb.site_lexicon import weaver_lexical_context
 from app.pack_generator import generate_pack_file
 from manufacturing.website_orb import manufacture_website_orb
 from app.services.chrome_devtools import ChromeDevToolsReviewRunner
@@ -524,6 +526,7 @@ class WebsiteOrbVoiceResponse(BaseModel):
 
 class WebsiteOrbExperienceContext(BaseModel):
     tour: Optional[TourActContext] = None
+    guidance_mode: Optional[ShowcaseInteraction] = None
     phase: str = Field(..., pattern="^(orientation|understanding|agency|make_it_personal|relevant_continuation)$")
     objective: str = Field(..., min_length=8, max_length=600)
     visitor_turn: int = Field(default=0, ge=0, le=20)
@@ -3378,6 +3381,8 @@ async def _llm_orb_spoken_output(
         confidence=(pulse or {}).get("epistemic_alignment"),
     )
     owner_behavior = (operating_policy or {}).get("behavior") or {}
+    guidance_mode = showcase_guidance_mode(page_capsule, experience_context)
+    guidance_rules = guidance_prompt(guidance_mode)
     weaver_envelope["owner_operating_policy"] = {
         "version": (operating_policy or {}).get("version"),
         "locked_doctrine_hash": ((operating_policy or {}).get("locked_doctrine") or {}).get("hash"),
@@ -3410,6 +3415,8 @@ async def _llm_orb_spoken_output(
             "make_it_personal": "Respond directly to the visitor's actual words and make the next step personally relevant.",
             "relevant_continuation": "Continue the visitor's current thread with one useful next step and preserve their progress.",
         }.get(phase, "Fulfill the objective directly.")
+        if guidance_mode in {"account_setup", "login", "tour_question", "beta", "investor"}:
+            phase_rule = "Answer the visitor's current request and follow the active Nine of Clubs guidance; ask at most one relevant question."
         prompt = (
             "You are Weaver, the embodied website host for Orb Weaver. Generate the words for one live choreographed act; the words themselves are not scripted. Identify yourself as Weaver only when it is genuinely useful, and never mention or imply a gender.\n"
             f"{prompt_layers(governance_context) if governance_context else ''}\n"
@@ -3440,6 +3447,11 @@ async def _llm_orb_spoken_output(
     tour_context = (experience_context or {}).get("tour")
     if tour_context:
         prompt = tour_prompt(tour_context)
+    if guidance_rules:
+        prompt += "\n" + guidance_rules
+        lexical_context = weaver_lexical_context(website_context, page_capsule, transcript)
+        if lexical_context:
+            prompt += "\nSITE LEXICON (meaning hints, never action grants): " + json.dumps(lexical_context, ensure_ascii=False)
     tour_max_predict = (
         240 if tour_context and tour_context.get("stop_id") == "stop-hero-meet"
         else 800
@@ -3555,6 +3567,8 @@ async def _first_visitor_act_response(
     operating_policy: Optional[Dict[str, Any]],
     synthesize_tts: bool = True,
 ) -> Dict[str, Any]:
+    guidance_mode = showcase_guidance_mode(page_capsule, experience_context)
+
     def output_is_valid(spoken_output: str) -> bool:
         normalized = re.sub(r"\s+", " ", spoken_output.lower()).strip()
         if not normalized or any(phrase in normalized for phrase in (
@@ -3567,6 +3581,10 @@ async def _first_visitor_act_response(
             # available at runtime, but it is not mandatory sales curriculum
             # or a lexical prerequisite for advancing this act.
             return True
+        if guidance_mode in {"account_setup", "login", "tour_question", "beta", "investor"}:
+            # A helpful account/question answer need not contain legacy
+            # pointing-demo keywords. The SKG describes this distinct act.
+            return normalized.count("?") <= 1
         if phase == "agency" and experience_context.get("verification_state") == "verified":
             return any(term in normalized for term in ("point", "target", "show", "guide", "page"))
         return True
@@ -8659,6 +8677,7 @@ async def website_orb_voice(
     site_id: Optional[str] = Form(default=None),
     project_id: Optional[str] = Form(default=None),
     experience_phase: Optional[str] = Form(default=None),
+    experience_guidance_mode: Optional[ShowcaseInteraction] = Form(default=None),
     experience_objective: Optional[str] = Form(default=None),
     experience_turn: int = Form(default=0),
     experience_verification_state: str = Form(default="not_applicable"),
@@ -8731,6 +8750,7 @@ async def website_orb_voice(
     experience_context = None
     if experience_phase and experience_objective:
         experience_context = WebsiteOrbExperienceContext(
+            guidance_mode=experience_guidance_mode,
             phase=experience_phase,
             objective=experience_objective,
             visitor_turn=experience_turn,
@@ -9024,7 +9044,12 @@ async def website_orb_agency_cognition(
     db: Session = Depends(get_db),
 ):
     customer = get_optional_customer(authorization=authorization, db=db)
-    return await agency_cognition(payload, str(customer.id) if customer else None)
+    lexical_context = None
+    if payload.operation != "observe" and showcase_guidance_mode({"current_url": payload.target_url}):
+        context = _fresh_runtime_website_context(payload.target_url, db) or {}
+        words = str(payload.payload.get("visitorResponse") or payload.payload.get("visitor_context") or "")
+        lexical_context = weaver_lexical_context(context, {"current_url": payload.target_url}, words)
+    return await agency_cognition(payload, str(customer.id) if customer else None, lexical_context=lexical_context)
 
 
 @app.post("/api/orb/website-text", response_model=WebsiteOrbVoiceResponse)
@@ -12243,46 +12268,34 @@ def _write_manufacturing_status(project: Project, status: str, **values: Any) ->
 
 
 def _normalized_manufacturing_evidence(project: Project, crawl: CrawlJob, db: Session) -> Dict[str, Any]:
+    from manufacturing.website_orb.scan_evidence import scan_evidence
     evidence_path = client_root(project.domain) / "manufacturing" / "evidence" / "full_scan_evidence.json"
     existing = _load_json_if_present(evidence_path)
     if existing:
         if str(existing.get("site_id")) != str(project.id):
             raise HTTPException(status_code=409, detail="Manufacturing evidence belongs to a different project")
-        return existing
+        if str(existing.get("scan_id")) == str(crawl.id) and existing.get("scanner_version") != "orb-weaver-crawl-normalizer/1.0.0":
+            return existing
     pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl.id).order_by(CrawledPage.id.asc()).all()
     captured_at = (crawl.end_time or crawl.start_time or datetime.utcnow()).replace(tzinfo=timezone.utc).isoformat()
-    normalized_pages = []
-    for page in pages:
-        route = _route_from_url(page.url)
-        normalized_pages.append({
-            "page_id": str(page.id),
-            "url": page.url,
-            "route": route,
-            "title": page.title,
-            "content_hash": page.content_hash or hashlib.sha256(f"{page.url}:{page.title or ''}".encode("utf-8")).hexdigest(),
-            "route_category": "public_content",
-        })
-    document = {
-        "schema": "orb_weaver.full_scan_evidence.v1",
-        "site_id": str(project.id),
-        "domain": _domain_from_url(project.domain),
-        "scan_id": str(crawl.id),
-        "captured_at": captured_at,
-        "scanner_version": "orb-weaver-crawl-normalizer/1.0.0",
-        "pages": normalized_pages,
-        "evidence": [],
-    }
+    config = crawl.config or {}
+    document = scan_evidence(
+        site_id=str(project.id), domain=_domain_from_url(project.domain), scan_id=str(crawl.id), captured_at=captured_at,
+        pages=[{key: getattr(page, key) for key in ("id", "url", "title", "h1", "status_code", "content_hash", "semantic_analysis", "internal_link_targets", "schema_markup")}
+               for page in pages],
+        lexical_index=config.get("lexical_index") or _build_lexical_index(pages),
+        unresolved_urls=((config.get("stats") or {}).get("rendered_dom") or {}).get("unresolved_app_shell_urls") or [],
+    )
+    if existing:
+        previous_hash = hashlib.sha256(json.dumps(existing, sort_keys=True).encode("utf-8")).hexdigest()
+        _write_json(evidence_path.parent / "history" / f"{previous_hash}.json", existing)
     _write_json(evidence_path, document)
     return document
 
 
 def _manufacturing_source_context(project: Project) -> Dict[str, Any]:
-    context_root = client_root(project.domain) / "website_orb_context"
-    return {
-        "latest_context": _load_json_if_present(context_root / "orb_runtime_context.json") or _load_json_if_present(context_root / "latest_context.json") or {},
-        "pointer_plot_map": _load_json_if_present(context_root / "pointer_plot_map.json") or {},
-        "tool_cache": _load_json_if_present(context_root / "tool_cache.json") or {},
-    }
+    # Unversioned latest caches cannot overlay a selected customer scan.
+    return {}
 
 
 def _default_manufacturing_crawl(project: Project, db: Session) -> Optional[CrawlJob]:

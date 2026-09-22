@@ -44,6 +44,7 @@ class TPCWebsiteRuntime:
             "page_purpose": route_record.get("page_purpose") or "",
             "summary": route_record.get("summary") or runtime_language.get("site_summary", ""),
             "pointer_target_count": len(pointer_targets or []),
+            "semantic_guidance": route_record.get("semantic_guidance") or {},
             "intensity": self._estimate_intensity(message, pointer_targets or []),
             "velocity": min(len(message) / 160.0, 2.0),
         }

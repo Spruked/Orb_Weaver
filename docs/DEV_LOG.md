@@ -1,5 +1,41 @@
 # Orb Weaver Development Log
 
+## 2026-09-22 — Separate host/customer SKGs and shared lexical layer
+
+* Revised the supplied Nine of Clubs draft into a bounded, host-only guidance
+  contract consumed by live speech and Agency prompts. Preserved the canonical
+  discovery registry and Governor. Account setup is distinct from the earlier
+  pointer-proof act; interruptions and signup use short typed guidance cues.
+* Added the agnostic graph compiler and lexicon to the golden clone template.
+  All manufactured payloads now require `apriori/site_skg.json`, including its
+  source fingerprint, witnesses, serialized alias index and per-route context.
+  Owner-approved goals get precompiled next hops; destination popularity is
+  advisory. Unknown evidence, unmatched language and disconnected goals stay
+  explicit rather than generating fictitious choices or actions.
+* Wired actual stored scan text/links/pointers and lexical data into canonical
+  manufacturing evidence. Stale evidence from a different scan is no longer
+  silently reused. Populated `site_world.routes` from the same graph so the
+  installed runtime can look up each compiled route.
+* The clone validates the required graph at startup and uses lexical context
+  in route lookup, TPC input and answer fallback. Host and clone vocabularies
+  remain site-scoped; alias collisions preserve all candidate identities.
+* Corrected frontend API-boundary issues: oversized account objectives and
+  duplicate tour text in the short transcript, and signup/paused-tour voice
+  being diverted to legacy transcription-only handling.
+* Validation: 35 backend tests passed (compiler, guidance, lexicon, package
+  runtime and existing sales/Agency), plus 34 frontend discovery, Agency and
+  journey-store tests. The package probe exercised real route lookup, lexical
+  context in answers, required-graph startup rejection and TTS governance.
+  A read-only in-memory compile of the stored 30-page Weaver crawl produced
+  22 eligible visitor routes. Its lexical source contains 114 canonical terms,
+  320 alias keys and 3,797 alias phrases; no draft estimates were treated as
+  measured results. Ambiguous/unmatched keys and alias-cap truncation remain
+  reported, not silently resolved. The evidence snapshots were not rewritten.
+* Deployment boundary:
+  No inference-model change, Docker rebuild/restart, deployment, commit or
+  push was performed. Source changes are not a claim of live browser-tour
+  acceptance. Detailed contract: `docs/architecture/SITE_SKG_AND_LEXICON.md`.
+
 ## 2026-09-17 — Startup-proof deduplication and local inference portability
 
 * The startup-readiness endpoint now overlaps independent local-LLM warmup and

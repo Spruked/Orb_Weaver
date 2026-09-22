@@ -92,6 +92,7 @@ def generate_pack_file(
     output_dir: Path | str,
     *,
     assembled_dock_station: Optional[Path | str] = None,
+    assembled_website_orb: Optional[Path | str] = None,
     manufacturing_result: Optional[Dict[str, Any]] = None,
     ephemeral: bool = False,
 ) -> Dict:
@@ -108,10 +109,15 @@ def generate_pack_file(
     pack_path = output_root / filename
     client_key = _safe_name(domain)
     dock_station = Path(assembled_dock_station).resolve() if assembled_dock_station else None
+    website_orb = Path(assembled_website_orb).resolve() if assembled_website_orb else None
+    if website_orb and dock_station:
+        raise ValueError("Choose one installation layout")
+    if website_orb and not (website_orb / "runtime/vault_system/payload/payload_manifest.json").is_file():
+        raise ValueError("Website ORB has no manufactured payload")
     embedded_vault = dock_station / "app" / "orb" / "template" / "runtime" / "vault_system" if dock_station else None
     if dock_station and (not dock_station.is_dir() or not embedded_vault.is_dir()):
         raise ValueError("Assembled Dock Station must contain its manufactured vault_system")
-    vault_root = "dock-station/app/orb/template/runtime/vault_system" if dock_station else "vault_system"
+    vault_root = "website-orb/runtime/vault_system" if website_orb else "dock-station/app/orb/template/runtime/vault_system" if dock_station else "vault_system"
     manifest = {
         "schema": "orb_weaver.tpc_pack.v1",
         "site_id": site_id,
@@ -123,17 +129,25 @@ def generate_pack_file(
             "schema": "orb_weaver.single_vault.v1",
             "root": vault_root,
             "single_storage_authority": True,
-            "client_root": f"{vault_root}/clients/{client_key}",
+            "client_root": vault_root if website_orb else f"{vault_root}/clients/{client_key}",
             "rule": "No component may create a second vault_system or persist outside this root.",
         },
         "site_learning_loop": learning_loop_template(site_id, domain),
         "delivery": {
+            "website_runtime": bool(website_orb),
             "assembled_dock_station": bool(dock_station),
             "delivery_ready": bool((manufacturing_result or {}).get("delivery_ready")),
             "build_id": (manufacturing_result or {}).get("build_id"),
-            "manufacturing_manifest": "dock-station/deployment/manufacturing-result.json" if dock_station else None,
+            "manufacturing_manifest": "website-orb/runtime/vault_system/payload/payload_manifest.json" if website_orb else "dock-station/deployment/manufacturing-result.json" if dock_station else None,
         },
     }
+    if website_orb:
+        payload = json.loads((website_orb / "runtime/vault_system/payload/payload_manifest.json").read_text())
+        manifest["build_lineage"] = {"site_id": payload["site_id"], "domain": payload["domain"],
+                                     "build_id": payload["build_id"], "scan": payload["source"],
+                                     "manufacturer_version": payload["manufacturer_version"],
+                                     "compiler_version": payload["compiler_version"], "artifacts": payload["artifacts"]}
+        manifest["installation"] = {"root": "website-orb", "instructions": "website-orb/INSTALL.md", "entrypoint": "website-orb/run.py"}
     vault_manifest = {
         "schema": "orb_weaver.single_vault.v1",
         "vault_id": f"orb-vault-{site_id}",
@@ -147,7 +161,9 @@ def generate_pack_file(
     vault_readme = """# ORB Vault System\n\nThis is the downloaded ORB's only storage authority.\n\nAll scans and site-specific data belong under `clients/<domain>/`. Runtime, cognition, reports, indexes, manifests, databases, and backups remain separate namespaces inside this same `vault_system/` directory. No adapter or component may create another vault system elsewhere.\n"""
     with zipfile.ZipFile(pack_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("manifest.json", json.dumps(manifest, indent=2, default=str))
-        if dock_station:
+        if website_orb:
+            _archive_directory(archive, website_orb, "website-orb")
+        elif dock_station:
             _archive_directory(archive, dock_station, "dock-station")
         else:
             archive.writestr("vault_system/README.md", vault_readme)
@@ -172,4 +188,5 @@ def generate_pack_file(
         "tier": tier,
         "domain": domain,
         "assembled_dock_station": bool(dock_station),
+        "assembled_website_orb": bool(website_orb),
     }

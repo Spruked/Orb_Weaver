@@ -18,6 +18,7 @@ def _evidence():
         "scan_id": "scan-1",
         "captured_at": "2026-08-20T12:00:00+00:00",
         "scanner_version": "test-scanner/1.0",
+        "lexical_index": {"aliases": {"nav: Home": ["welcome page"]}},
         "pages": [{"page_id": "home", "url": "https://example.com/", "route": "/", "title": "Home", "content_hash": "page-hash"}],
         "evidence": [
             {
@@ -64,7 +65,7 @@ def test_manufacturer_builds_complete_delivery_ready_package(tmp_path):
     assert dock_manifest["manufacturing_pass"]["delivery_ready"] is True
     orb_template = Path(result["package_paths"]["dock_station"]) / "app" / "orb" / "template"
     assert (orb_template / "backend" / "app.py").is_file()
-    assert (orb_template / "frontend" / "src" / "WebsiteORB.tsx").is_file()
+    assert (orb_template / "assets" / "widget.js").is_file()
     runtime_vault = orb_template / "runtime" / "vault_system"
     assert json.loads((runtime_vault / "payload" / "apriori" / "catalog.json").read_text())["entries"][0]["entity_id"] == "product-1"
     assert not (orb_template / "Orb_Vault_System" / "orb_vault_skg" / "vaults").exists()
@@ -80,6 +81,7 @@ from backend import app as runtime
 from backend.models import AnswerResponse
 from fastapi.testclient import TestClient
 answer = answer_from_world('How much is Known Product?', '/', {'route': '/'}, {}, [])
+lexical_answer = answer_from_world('where is welcome page?', '/', {'route': '/'}, {}, [])
 coordinator = _get_vault_coordinator()
 tts_calls = []
 async def fake_transcribe(*_args, **_kwargs):
@@ -93,8 +95,11 @@ runtime.transcribe = fake_transcribe
 runtime.speak = fake_speak
 runtime.answer_text = unapproved_answer
 client = TestClient(runtime.app)
+route_context = client.get('/orb/route-context', params={'route': '/product'}).json()
+assert route_context['matched_route'] == '/product'
+assert route_context['record']['semantic_guidance']['route_status'] == 'known'
 blocked = client.post('/orb/website-voice', files={'audio': ('test.webm', b'audio', 'audio/webm')})
-print(json.dumps({'answer': answer['answer'], 'priori': coordinator.priori_dir, 'posteriori': coordinator.posteriori_dir, 'governance': answer['governance_trace'], 'blocked_status': blocked.status_code, 'tts_calls': tts_calls}))
+print(json.dumps({'answer': answer['answer'], 'priori': coordinator.priori_dir, 'posteriori': coordinator.posteriori_dir, 'governance': answer['governance_trace'], 'blocked_status': blocked.status_code, 'tts_calls': tts_calls, 'skg_context': lexical_answer['skg_context']}))
 """
     first = subprocess.run([sys.executable, "-c", package_probe], env=package_env, text=True, capture_output=True, check=True)
     first_payload = json.loads(first.stdout.strip().splitlines()[-1])
@@ -104,6 +109,9 @@ print(json.dumps({'answer': answer['answer'], 'priori': coordinator.priori_dir, 
     assert first_payload["governance"]["doctrine_checksum"] is True
     assert first_payload["blocked_status"] == 409
     assert first_payload["tts_calls"] == []
+    assert first_payload["skg_context"]["lexical_status"] == "matched"
+    assert first_payload["skg_context"]["matched_candidates"][0]["route"] == "/"
+    assert first_payload["skg_context"]["authority"] == "advisory_only"
     delivery_audit = runtime_vault / "audit" / "glyph_trace" / "website_orb_runtime.jsonl"
     assert delivery_audit.is_file()
     withheld_event = json.loads(delivery_audit.read_text().splitlines()[-1])
@@ -120,6 +128,18 @@ print(json.dumps({'answer': answer['answer'], 'priori': coordinator.priori_dir, 
     second = subprocess.run([sys.executable, "-c", package_probe], env=package_env, text=True, capture_output=True, check=True)
     second_payload = json.loads(second.stdout.strip().splitlines()[-1])
     assert second_payload["answer"] == first_payload["answer"]
+
+    # A missing mandatory graph is an integrity failure, never a TPC fallback.
+    graph_path = runtime_vault / "payload" / "apriori" / "site_skg.json"
+    backup = graph_path.with_suffix(".test-backup")
+    graph_path.rename(backup)
+    try:
+        missing_skg = subprocess.run([sys.executable, "-c", "from backend.app import require_manufactured_canonical_vault; require_manufactured_canonical_vault()"],
+                                     env=package_env, text=True, capture_output=True)
+        assert missing_skg.returncode != 0
+        assert "site_skg.json" in missing_skg.stderr
+    finally:
+        backup.rename(graph_path)
 
     fail_closed_env = {key: value for key, value in package_env.items() if key != "ORB_WEAVER_VAULT_ROOT"}
     missing_root = subprocess.run([sys.executable, "-c", "from backend.cognition.answer_engine import answer_from_world; answer_from_world('How much is Known Product?', '/', {'route': '/'}, {}, [])"], env=fail_closed_env, text=True, capture_output=True)
@@ -154,14 +174,16 @@ print(json.dumps({'answer': answer['answer'], 'priori': coordinator.priori_dir, 
     assert "must not be a symbolic link" in symlinked_root.stderr
     with zipfile.ZipFile(result["package_paths"]["orbpack"]) as archive:
         names = archive.namelist()
-    assert "dock-station/app/orb/template/runtime/vault_system/payload/catalog.db" in names
-    assert "dock-station/app/orb/template/backend/app.py" in names
-    assert "dock-station/app/orb/template/Orb_Vault_System/orb_vault_skg/vault/orb_assistant/vault_coordinator.py" in names
+    assert "website-orb/runtime/vault_system/payload/catalog.db" in names
+    assert "website-orb/backend/app.py" in names
+    assert "website-orb/Orb_Vault_System/orb_vault_skg/vault/orb_assistant/vault_coordinator.py" in names
     assert sum(name.endswith("payload/payload_manifest.json") for name in names) == 1
     assert not any("Orb_Vault_System/orb_vault_skg/vaults/" in name for name in names)
     assert not any("vendor/TPC_Triple_Predicate_Cubed/results/" in name for name in names)
     assert not any("vendor/TPC_Triple_Predicate_Cubed/vaults/" in name for name in names)
     assert not any("vendor/TPC_Triple_Predicate_Cubed/api/" in name for name in names)
+    assert "website-orb/runtime/vault_system/payload/apriori/site_skg.json" in names
+    assert "website-orb/backend/skg/lexicon.py" in names
 
 
 def test_manufacturer_blocks_unverified_delivery(tmp_path):
@@ -175,6 +197,16 @@ def test_manufacturer_blocks_unverified_delivery(tmp_path):
     assert result["delivery_ready"] is False
     assert result["package_paths"]["orbpack"] is None
     assert any("owner_verification_incomplete" in reason for reason in result["failure_reasons"])
+
+
+def test_required_skg_cannot_be_omitted_from_owner_approval(tmp_path):
+    result = manufacture_website_orb(
+        evidence=_evidence(), output_root=tmp_path, build_id="skg-not-approved", ephemeral=True,
+        owner_verification={"owner": "owner-1", "approved_artifacts": ["*"], "rejected_artifacts": ["apriori/site_skg.json"]},
+    )
+    assert result["delivery_ready"] is False
+    assert result["package_paths"]["orbpack"] is None
+    assert any("apriori/site_skg.json" in reason for reason in result["failure_reasons"])
 
 
 def test_manufacturer_reports_lifecycle_and_invalid_evidence_failure(tmp_path):

@@ -15,12 +15,5 @@ def lookup_route(world: SiteWorld, route: str) -> Tuple[str, Dict[str, Any]]:
     if alias and alias in routes:
         return alias, routes[alias]
 
-    segments = [part for part in normalized.split("/") if part]
-    while segments:
-        candidate = "/" + "/".join(segments)
-        if candidate in routes:
-            return candidate, routes[candidate]
-        segments.pop()
-
-    return "/", routes.get("/", {})
-
+    # Unknown pages never borrow the home page's coordinates or authority.
+    return normalized, {}

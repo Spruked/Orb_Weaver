@@ -8,6 +8,7 @@ from .doctrine_gate import apply_doctrine_gate
 from .tpc_pipeline import run_tpc
 from ..storage import record_skg_provenance, skg_storage_paths
 from ..runtime.intent_router import classify_intent
+from ..skg.runtime import site_guidance_context
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +119,8 @@ def answer_from_world(
 
     # A Priori/A Posteriori may supply the factual answer, but every returned
     # visitor answer still travels through TPC and the final doctrine boundary.
+    skg_context = site_guidance_context(route, message)
+    route_record = {**route_record, "semantic_guidance": skg_context}
     vault_result = _try_vault(message)
     intent, _score = classify_intent(message, route_record)
     if vault_result is not None:
@@ -158,6 +161,7 @@ def answer_from_world(
             "gate": gate,
         },
         "governance_trace": governance_trace,
+        "skg_context": skg_context,
     }
     if vault_result is not None:
         result["vault_trace"] = {
@@ -212,6 +216,18 @@ def _compose_answer(
             or route_record.get("page_purpose")
             or runtime_language.get("site_summary")
         )
+
+    semantic = route_record.get("semantic_guidance") or {}
+    candidates = semantic.get("matched_candidates") or []
+    if semantic.get("lexical_status") == "ambiguous" and candidates:
+        labels = list(dict.fromkeys(f"{item['label']} on {item.get('route') or 'this site'}" for item in candidates))
+        return "Which do you mean: " + "; or ".join(labels[:3]) + "?"
+    if semantic.get("lexical_status") == "matched" and candidates:
+        match = candidates[0]
+        if match.get("excerpt"):
+            return match["excerpt"]
+        if match.get("route"):
+            return f"You can find {match['label']} on {match['route']}."
 
     if pointer_targets:
         label = (

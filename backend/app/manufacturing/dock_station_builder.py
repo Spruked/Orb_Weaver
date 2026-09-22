@@ -69,7 +69,9 @@ def _copy_template(template_root: Path, build_root: Path) -> None:
 def _copy_website_orb_template(template_root: Path, destination: Path) -> Dict[str, Any]:
     required = [
         {"path": "backend/app.py", "type": "file"},
-        {"path": "frontend/src/WebsiteORB.tsx", "type": "file"},
+        {"path": "frontend/widget.js", "type": "file"},
+        {"path": "run.py", "type": "file"},
+        {"path": "INSTALL.md", "type": "file"},
         {"path": "Orb_Vault_System/orb_vault_skg/vault/orb_assistant/vault_coordinator.py", "type": "file"},
     ]
     validation = validate_required_paths(template_root, required)
@@ -83,11 +85,21 @@ def _copy_website_orb_template(template_root: Path, destination: Path) -> Dict[s
         raise ValueError(f"Website ORB golden template is invalid: {validation}")
     if destination.exists():
         shutil.rmtree(destination)
-    shutil.copytree(
-        template_root,
-        destination,
-        ignore=shutil.ignore_patterns(".git", "__pycache__", "*.pyc", "*.pyo", "node_modules", ".venv", "venv", "dist"),
-    )
+    destination.mkdir(parents=True)
+    # Positive runtime allowlist: do not copy historical compiled_orb data,
+    # source archives, old Vaults, recorded speech, or factory documents.
+    for relative in ("backend", "Orb_Vault_System/orb_vault_skg/vault"):
+        source = template_root / relative
+        if source.is_dir():
+            shutil.copytree(source, destination / relative,
+                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo", "*.test.*", "*_test.py"))
+    for relative in ("run.py", "INSTALL.md"):
+        source = template_root / relative
+        if source.is_file():
+            shutil.copy2(source, destination / relative)
+    primitive = Path("vendor/TPC_Triple_Predicate_Cubed/core/geometric_primitives.py")
+    (destination / primitive).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(template_root / primitive, destination / primitive)
     # The SKG implementation is shipped as code, not as a second package-local
     # persistence authority.  The manufactured runtime receives its one Vault
     # below runtime/vault_system during payload injection.
@@ -107,6 +119,7 @@ def _copy_website_orb_template(template_root: Path, destination: Path) -> Dict[s
             candidate.unlink()
     (destination / "deployment").mkdir(exist_ok=True)
     (destination / "assets").mkdir(exist_ok=True)
+    shutil.copy2(template_root / "frontend/widget.js", destination / "assets/widget.js")
     return hash_package_tree(destination)
 
 
@@ -117,22 +130,8 @@ def _inject_website_orb_payload(payload_root: Path, orb_template: Path) -> None:
     runtime_vault.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(payload_root, runtime_vault, symlinks=True)
 
-    compiled_orb = orb_template / "compiled_orb"
-    compiled_orb.mkdir(parents=True, exist_ok=True)
-    compiled_mapping = {
-        "payload/site_world.json": "site_world.json",
-        "payload/pointers.json": "pointer_plot_map.json",
-        "payload/pointer_correspondence.json": "pointer_correspondence.json",
-        "payload/runtime_language.json": "runtime_language.json",
-        "payload/tool_cache.json": "tool_cache.json",
-        "payload/site_config.json": "site_config.json",
-        "payload/catalog.db": "catalog.db",
-    }
-    for source_name, destination_name in compiled_mapping.items():
-        shutil.copy2(payload_root / source_name, compiled_orb / destination_name)
-
-    # Deliberately do not mirror A Priori or A Posteriori state into the copied
-    # SKG code tree.  runtime/vault_system is the package's sole authority.
+    # All operating and knowledge artifacts are read from this one Vault.
+    # There is no compiled_orb mirror or fall-through to source fixtures.
 
 
 def _build_required_paths(required_paths: list[Any]) -> list[Any]:

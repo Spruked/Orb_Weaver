@@ -2,12 +2,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
+if not __package__:
+    # Preserve direct CLI execution as well as package/module imports.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-COMPILER_VERSION = "website-orb-vault-compiler/1.0.0"
+from manufacturing.templates.Website_Orb_Final.backend.skg.graph import build_graph
+from manufacturing.website_orb.site_payload import compile_site_intelligence
+
+
+COMPILER_VERSION = "website-orb-vault-compiler/1.2.0"
 COMMERCIAL_TYPES = {"product", "service", "plan", "fee"}
 
 
@@ -18,7 +26,11 @@ def _now() -> str:
 def _verified_evidence(document: Dict[str, Any], kinds: Iterable[str] | None = None) -> List[Dict[str, Any]]:
     allowed = set(kinds or [])
     results: List[Dict[str, Any]] = []
+    excluded = {page["url"] for page in document.get("pages", [])
+                if page.get("usable") is False or page.get("route_category") in {"private", "admin", "system"}}
     for item in document.get("evidence", []):
+        if item.get("source_url") in excluded:
+            continue
         if item.get("verified") is not True:
             continue
         if allowed and item.get("evidence_type") not in allowed:
@@ -32,6 +44,7 @@ def _header(document: Dict[str, Any], schema: str) -> Dict[str, Any]:
         "schema": schema,
         "site_id": str(document["site_id"]),
         "domain": document["domain"],
+        "source_scan_id": str(document["scan_id"]),
         "generated_at": _now(),
         "compiler_version": COMPILER_VERSION,
     }
@@ -107,7 +120,7 @@ def compile_ontology(document: Dict[str, Any]) -> Dict[str, Any]:
     nodes: List[Dict[str, Any]] = []
     edges: List[Dict[str, Any]] = []
 
-    for item in _verified_evidence(document, COMMERCIAL_TYPES | {"business_fact", "contact"}):
+    for item in _verified_evidence(document, COMMERCIAL_TYPES | {"business_fact", "contact", "structured_data"}):
         payload = item.get("payload", {})
         label = payload.get("name") or payload.get("title") or payload.get("label") or payload.get("value")
         if not label:
@@ -239,12 +252,15 @@ def compile_pointer_correspondence(document: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def compile_all(document: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    graph = build_graph(document)
     return {
         "catalog": compile_catalog(document),
         "ontology": compile_ontology(document),
         "qa": compile_qa(document),
         "policies": compile_policies(document),
         "pointer_correspondence": compile_pointer_correspondence(document),
+        "site_skg": graph,
+        **compile_site_intelligence(document, graph),
     }
 
 
@@ -262,6 +278,10 @@ def write_build(document: Dict[str, Any], output_root: Path) -> Dict[str, str]:
         "qa": apriori / "qa.json",
         "policies": apriori / "policies.json",
         "pointer_correspondence": compiled_orb / "pointer_correspondence.json",
+        "site_skg": apriori / "site_skg.json",
+        "lexical_index": compiled_orb / "lexical_index.json",
+        "knowledge_chunks": compiled_orb / "knowledge_chunks.json",
+        "retrieval_index": compiled_orb / "retrieval_index.json",
     }
     for name, path in destinations.items():
         path.write_text(json.dumps(artifacts[name], indent=2, ensure_ascii=False) + "\n", encoding="utf-8")

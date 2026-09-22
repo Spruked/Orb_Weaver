@@ -61,21 +61,12 @@ const SPEECH_LEVEL_THRESHOLD = 0.018;
 const LIDAR_DRIFT_THRESHOLD_PX = 12;
 const ORB_SPEECH_PLAYBACK_RATE = 0.9;
 const ACCOUNT_CREATION_GUIDE_PROTOCOL = [
-  "You are Weaver at the account-creation handoff after the guided tour.",
-  "Guide the visitor calmly, enthusiastically, and one decision at a time.",
-  "First establish whether they want to create a workspace or sign in to an existing one; do not assume.",
-  "For a new workspace, guide the visible form in order: name, business name, email, then the private password, then website confirmation and required agreements.",
-  "Ask one short question or give one next-field instruction per turn. Point to the live field when guidance is useful.",
-  "Never ask the visitor to say, reveal, repeat, or transmit a password or other credentials aloud. Tell them to type a private password directly into the visible field.",
-  "Never type, check a box, create an account, submit a form, buy a scan, or navigate without the visitor's explicit action.",
-  "After account creation, if Preflight is ready, offer its optional review before suggesting a full-site scan. Otherwise explain that a full-site scan is the next available deeper review only when the visitor asks for it.",
-  "Keep the account-creation purpose clear: a verified workspace lets the visitor keep their Preflight and choose the next review step with control.",
+  "Guide the current account form one relevant question or field at a time using the server-owned Nine of Clubs policy.",
+  "Preserve visitor control and keep credentials private.",
 ].join(" ");
 const TOUR_INTERRUPTION_GUIDE_PROTOCOL = [
-  "The visitor explicitly paused the authored tour to ask a question or choose a different destination.",
-  "Answer their question directly from verified website context; do not resume narration unless they explicitly ask to continue.",
-  "If they ask to join the Founding Beta or speak with an investor, acknowledge the choice and guide only to the verified requested page.",
-  "Never claim enrollment, contact submission, or account creation is complete until the visitor completes the visible form themselves.",
+  "Answer the visitor's question or chosen next step using the server-owned Nine of Clubs policy.",
+  "The authored tour is paused; do not resume it without their request.",
 ].join(" ");
 
 const resolveTourDecisionAction = (text: string): TourDecisionAction | null => {
@@ -2023,13 +2014,7 @@ export const AutonomousOrb: React.FC<Props> = ({
             .join("\n\n");
           try {
             const generated = await api.websiteOrbText(
-              [
-                "Development evaluation: deliver only the current authored guided-tour stop in Weaver's first-person voice.",
-                "Use the supplied authored script as factual authority. Preserve its claims, visitor-control boundary, and next-step order.",
-                "Do not describe this evaluation, do not invent capabilities, do not add a question, and do not initiate any action.",
-                `Current authored stop: ${step.text}`,
-                `Nearby authored tour context:\n${nearbyScript}`,
-              ].join("\n\n"),
+              "Deliver only the current authored tour stop in first person, using the supplied tour context. Preserve its meaning; do not ask a question or initiate actions.",
               true,
               undefined,
               {
@@ -2042,10 +2027,10 @@ export const AutonomousOrb: React.FC<Props> = ({
                     chapter_id: "scripted-tour-llm-evaluation",
                     stop_id: `${orientationId}-${index + 1}`,
                     purpose: "Evaluate whether the local model can faithfully deliver the authored tour stop.",
-                    required_concepts: [{ id: "authored-script", description: step.text }],
+                    required_concepts: [{ id: "authored-script", description: step.text.slice(0, 1000) }],
                     avoid: ["Do not invent facts or capabilities.", "Do not take or promise actions.", "Do not ask the visitor a question."],
                     presentation_guidance: ["Speak only the current authored stop in first person."],
-                    visible_section_text: nearbyScript.slice(0, 7000),
+                    visible_section_text: `Current authored stop: ${step.text}\n\nNearby context:\n${nearbyScript}`.slice(0, 8000),
                     evidence_attempt: 1,
                   },
                 },
@@ -2566,12 +2551,14 @@ export const AutonomousOrb: React.FC<Props> = ({
     try {
       logVoice("website-voice", turnId);
       const targetUrl = contextTargetUrl();
-      const visitorTurn = firstEncounterVisitorTurnRef.current + 1;
+      const visitorTurn = Math.min(20, firstEncounterVisitorTurnRef.current + 1);
       firstEncounterVisitorTurnRef.current = visitorTurn;
       const inFirstEncounter = isPublicLandingExperience() && !firstEncounterComplete();
+      const guidedConversation = scriptedOrientationInterruptedRef.current || window.location.pathname === ONBOARDING_ROUTE;
       const experience: WebsiteOrbExperienceContext | null = scriptedOrientationInterruptedRef.current
         ? {
             phase: "agency",
+            guidance_mode: "tour_question",
             objective: TOUR_INTERRUPTION_GUIDE_PROTOCOL,
             visitor_turn: visitorTurn,
             verification_state: "verified",
@@ -2593,9 +2580,10 @@ export const AutonomousOrb: React.FC<Props> = ({
               verification_state: "pending",
               demonstrated_capabilities: ["voice turn-taking", "contextual reasoning", "verified visual guidance"],
             }
-        : location.pathname === ONBOARDING_ROUTE
+        : window.location.pathname === ONBOARDING_ROUTE
           ? {
               phase: "agency",
+              guidance_mode: "account_setup",
               objective: ACCOUNT_CREATION_GUIDE_PROTOCOL,
               visitor_turn: visitorTurn,
               verification_state: "verified",
@@ -2608,11 +2596,11 @@ export const AutonomousOrb: React.FC<Props> = ({
         project_id: activeOrbContext?.project_id,
         target_url: targetUrl,
         experience,
-        transcribe_only: websiteJourneyRef.current?.stage === 'LANDING_TOUR',
+        transcribe_only: !guidedConversation && websiteJourneyRef.current?.stage === 'LANDING_TOUR',
       });
-      if (await applyEngagementAnswer(result.transcript || "", controller.signal)) return;
+      if (!guidedConversation && await applyEngagementAnswer(result.transcript || "", controller.signal)) return;
       const decisionAction = resolveTourDecisionAction(result.transcript || "");
-      if (decisionAction && chooseTourDecision(decisionAction)) return;
+      if (!guidedConversation && decisionAction && chooseTourDecision(decisionAction)) return;
       const spokenOutput = result.spoken_output;
       setRuntimeAnswerDiagnostics(result.resolution_diagnostics || null);
       setStatusTitle("Voice response");

@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field
 
 
 class AnswerRequest(BaseModel):
-    message: str = Field(..., min_length=1)
-    route: str = "/"
+    message: str = Field(..., min_length=1, max_length=8000)
+    route: str = Field("/", max_length=2048)
     want_pointer: bool = True
 
 
@@ -21,6 +21,7 @@ class AnswerResponse(BaseModel):
     source: str = "tpc_website_runtime"
     tpc_trace: Dict[str, Any] = Field(default_factory=dict)
     governance_trace: Dict[str, Any] = Field(default_factory=dict)
+    skg_context: Dict[str, Any] = Field(default_factory=dict)
 
 
 class RouteContextResponse(BaseModel):

@@ -13,6 +13,15 @@ Target One is the full Home / Landing Page walkthrough. Future targets are Featu
 
 ## Features
 
+### Site-specific SKGs and lexical understanding
+
+- Weaver's own Nine of Clubs guidance stays separate from customer-site logic.
+- Each newly manufactured Website ORB requires an evidence-bound site SKG and
+  lexical alias index generated from its site's scan, with owner approval and
+  package-integrity checks.
+- Both use the shared bounded lexical layer; ambiguous words remain candidates,
+  not action grants. See [SKG and lexicon architecture](docs/architecture/SITE_SKG_AND_LEXICON.md).
+
 ### Website ORB Crawler Engine
 
 - Async crawling with configurable page limits, crawl depth, delay, sitemap discovery, and context seed URLs.

@@ -12,6 +12,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional
 
 from .compile_vaults import COMPILER_VERSION, compile_all
+from .site_payload import validate_site_inputs
+from .package_audit import audit_package
+from manufacturing.templates.Website_Orb_Final.backend.skg.graph import validate_graph
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -26,7 +29,7 @@ from app.orb.catalog_repository import CatalogRepository, create_catalog_databas
 from app.pack_generator.generator import generate_pack_file  # noqa: E402
 
 
-MANUFACTURER_VERSION = "website-orb-manufacturer/1.0.0"
+MANUFACTURER_VERSION = "website-orb-manufacturer/1.2.0"
 PAYLOAD_SCHEMA = "orb_weaver.website_orb_payload.v1"
 RESULT_SCHEMA = "orb_weaver.website_orb_manufacturing_result.v1"
 SCHEMA_ROOT = Path(__file__).resolve().parent / "schemas"
@@ -39,8 +42,13 @@ REQUIRED_PAYLOAD_FILES = (
     "payload/pointer_correspondence.json",
     "payload/runtime_language.json",
     "payload/tool_cache.json",
+    "payload/lexical_index.json",
+    "payload/knowledge_chunks.json",
+    "payload/retrieval_index.json",
+    "payload/permissions.json",
     "payload/apriori/catalog.json",
     "payload/apriori/ontology.json",
+    "payload/apriori/site_skg.json",
     "payload/apriori/qa.json",
     "payload/apriori/policies.json",
     "manifests/verification_manifest.json",
@@ -151,14 +159,35 @@ def _validate_named_schema(document: Dict[str, Any], filename: str) -> list[str]
     return validate_schema(document, schema)
 
 
-def _compile_site_world(evidence: Dict[str, Any], source_context: Dict[str, Any]) -> Dict[str, Any]:
-    existing = source_context.get("site_world") or source_context.get("latest_context") or {}
-    pages = evidence.get("pages") or []
-    route_hints = dict(existing.get("route_hints") or {})
+def _compile_site_world(evidence: Dict[str, Any], source_context: Dict[str, Any], site_skg: Dict[str, Any]) -> Dict[str, Any]:
+    # No context overlay: even same-site latest caches can contain old defaults.
+    pages = [page for page in evidence.get("pages", []) if page["route"] in site_skg["route_index"]]
+    route_hints = {}
     for page in pages:
         if page.get("route"):
             route_hints.setdefault(str(page.get("title") or page["route"]), page["route"])
-    key_facts = list(existing.get("key_facts") or [])
+    key_facts = []
+    routes = {}
+    for route, context in site_skg["route_index"].items():
+        route_node = site_skg["nodes"][context["node_id"]]
+        candidates = [site_skg["nodes"][nid] for nid in context["node_ids"]]
+        targets = [{"target_id": node["target_id"], "meaning": node["label"]}
+                   for node in candidates if node["kind"] == "pointer"]
+        summary = next((node["text"] for node in candidates if node.get("text")), route_node["label"])
+        routes[route] = {
+            "route": route, "page_purpose": route_node["label"], "summary": summary,
+            "target_tiering": {"top_value_targets": targets[:8], "secondary_targets": targets[8:24],
+                               "full_route_scoped_targets": [target["target_id"] for target in targets]},
+            "permitted_action_boundaries": ["voice_answer", "point_only_after_live_dom_resolution",
+                                            "cross_page_navigation_requires_explicit_confirmation",
+                                            "no_site_modification_without_owner_confirmation"],
+            "doctrine_conditions": {"canonical_hash_status": "scan_evidence",
+                                    "conditions": ["resolve_pointer_before_visual_guidance", "voice_only_when_target_unresolved"]},
+            "tpc_output_classes": {"precleared": ["answer", "point_if_resolved", "explain_current_route"],
+                                   "requires_escalation": ["navigate_cross_page", "site_modification", "desktop_tool"]},
+            "playbooks": [], "guiderails": ["No alias or graph edge grants action authority."],
+            "skg_source_fingerprint": site_skg["source_fingerprint"],
+        }
     for item in evidence.get("evidence") or []:
         if item.get("verified") is True and item.get("evidence_type") == "business_fact":
             payload = item.get("payload") or {}
@@ -169,26 +198,25 @@ def _compile_site_world(evidence: Dict[str, Any], source_context: Dict[str, Any]
         "schema": "orb_weaver.website_orb_site_world.v1",
         "site_id": str(evidence["site_id"]),
         "domain": evidence["domain"],
-        "site_name": existing.get("site_name") or existing.get("brand") or evidence["domain"],
-        "base_url": existing.get("base_url") or f"https://{evidence['domain']}",
-        "site_summary": existing.get("site_summary"),
+        "site_name": evidence.get("site_name") or evidence["domain"],
+        "base_url": f"https://{evidence['domain']}",
+        "site_summary": routes.get("/", {}).get("summary"),
         "source": "manufactured_verified_evidence",
         "source_scan_id": evidence["scan_id"],
         "generated_at": _now(),
         "pages": pages,
+        "routes": routes,
+        "runtime_contract": "precompiled_skg_lookup_only",
         "route_hints": route_hints,
         "key_facts": list(dict.fromkeys(key_facts)),
-        "primary_user_tasks": existing.get("primary_user_tasks") or [],
-        "visitor_tools": existing.get("visitor_tools") or [],
-        "knowledge_chunks": existing.get("knowledge_chunks") or {"chunks": []},
-        "answer_boundaries": existing.get("answer_boundaries") or [],
+        "primary_user_tasks": site_skg["goals"],
+        "visitor_tools": [],
+        "knowledge_chunks_ref": "payload/knowledge_chunks.json",
+        "answer_boundaries": ["Use only this site's approved scan evidence; acknowledge missing facts."],
     }
 
 
 def _compile_pointers(evidence: Dict[str, Any], source_context: Dict[str, Any]) -> Dict[str, Any]:
-    existing = source_context.get("pointer_plot_map") or source_context.get("pointers") or {}
-    if existing.get("records"):
-        return {**existing, "site_id": str(evidence["site_id"]), "domain": evidence["domain"]}
     records = []
     for item in evidence.get("evidence") or []:
         target_id = item.get("pointer_target_id")
@@ -201,7 +229,13 @@ def _compile_pointers(evidence: Dict[str, Any], source_context: Dict[str, Any]) 
             "target_type": payload.get("target_type") or item.get("evidence_type") or "content",
             "meaning": payload.get("name") or payload.get("title") or payload.get("label") or str(target_id),
             "intent_aliases": payload.get("intent_aliases") or payload.get("aliases") or [],
+            "direct_aliases": payload.get("aliases") or [],
             "semantic_locator": item.get("selector"),
+            "structural_context": payload.get("structural_context") or {},
+            "anchor_strategy": payload.get("anchor_strategy") or "element_center",
+            "allowed_actions": ["point"],
+            "status": "active",
+            "source": "scan",
             "confidence": float(item.get("confidence", 1.0)),
             "confidence_class": "VERIFIED",
             "pointer_health": "OWNER_VERIFIED",
@@ -227,8 +261,7 @@ def _compile_runtime_language(catalog: Dict[str, Any], qa: Dict[str, Any]) -> Di
 
 
 def _compile_tool_cache(catalog: Dict[str, Any], qa: Dict[str, Any], source_context: Dict[str, Any]) -> Dict[str, Any]:
-    existing = source_context.get("tool_cache") or {}
-    entries = list(existing.get("entries") or [])
+    entries = []
     entries.extend({
         "id": f"qa:{entry['qa_id']}",
         "intents": [entry["question"], *(entry.get("aliases") or [])],
@@ -245,7 +278,9 @@ def _default_site_config(evidence: Dict[str, Any], overrides: Dict[str, Any]) ->
         "site_id": str(evidence["site_id"]),
         "domain": evidence["domain"],
         "base_url": f"https://{evidence['domain']}",
-        "orb_name": "Weaver",
+        "orb_name": "Website ORB",
+        "site_name": evidence.get("site_name") or evidence["domain"],
+        "allowed_origins": [f"https://{evidence['domain']}"],
         "voice": {"provider": "kokoro", "voice": "am_echo", "format": "wav", "sample_rate_hz": 24000},
         "providers": {
             "routing_mode": "local_only",
@@ -344,6 +379,19 @@ def validate_delivery_readiness(
     failures.extend(f"payload:{item}" for item in path_validation.get("missing", []))
     failures.extend(f"forbidden:{item}" for item in path_validation.get("forbidden_payloads", []))
     failures.extend(f"symlink:{item}" for item in path_validation.get("symlinks", []))
+    try:
+        manifest = json.loads((vault_root / "payload" / "payload_manifest.json").read_text(encoding="utf-8"))
+        graph_path = vault_root / "payload" / "apriori" / "site_skg.json"
+        graph = json.loads(graph_path.read_text(encoding="utf-8"))
+        validate_graph(graph, str(manifest["site_id"]), manifest["domain"])
+        if graph["status"] != "ready":
+            failures.append("site_skg:no_usable_site_evidence")
+        if manifest["artifacts"]["apriori/site_skg.json"]["sha256"] != _sha256(graph_path):
+            failures.append("site_skg:artifact_hash_mismatch")
+        if graph["source_scan_id"] != str(manifest["source"]["scan_id"]):
+            failures.append("site_skg:stale_source_scan")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        failures.append(f"site_skg:invalid_required_graph:{type(exc).__name__}")
 
     schema_files = {
         "catalog": "catalog.v1.json",
@@ -398,6 +446,11 @@ def validate_delivery_readiness(
         if not package_path.is_file() or package_result.get("sha256") != _sha256(package_path):
             failures.append("orbpack_integrity_failed")
         else:
+            evidence = json.loads((vault_root / "audit/full_scan_evidence.json").read_text())
+            config = json.loads((vault_root / "payload/site_config.json").read_text())
+            isolation = audit_package(package_path, evidence, config)
+            if not isolation["passed"]:
+                failures.append("customer_package_contamination")
             with zipfile.ZipFile(package_path) as archive:
                 vault_roots = {name.split("/vault_system/", 1)[0] for name in archive.namelist() if "/vault_system/" in name}
                 if len(vault_roots) != 1:
@@ -415,6 +468,7 @@ def validate_delivery_readiness(
         "catalog_validation": catalog_validation,
         "dock_station_validation": dock_result,
         "package_validation": package_result,
+        "isolation_audit": isolation if package_result is not None and 'isolation' in locals() else None,
     }
 
 
@@ -450,6 +504,8 @@ def manufacture_website_orb(
     report_status("preparing")
     document = _load_document(evidence)
     evidence_failures = _validate_named_schema(document, "full_scan_evidence.v1.json")
+    if not evidence_failures:
+        evidence_failures = validate_site_inputs(document, dict(source_context or {}), dict(site_config or {}))
     if evidence_failures:
         result = {
             "schema": RESULT_SCHEMA,
@@ -474,7 +530,8 @@ def manufacture_website_orb(
 
     compiled = compile_all(document)
     context = dict(source_context or {})
-    site_world = _compile_site_world(document, context)
+    site_world = _compile_site_world(document, context, compiled["site_skg"])
+    site_world["knowledge_chunks"] = compiled["knowledge_chunks"]
     pointers = _compile_pointers(document, context)
     runtime_language = _compile_runtime_language(compiled["catalog"], compiled["qa"])
     tool_cache = _compile_tool_cache(compiled["catalog"], compiled["qa"], context)
@@ -487,8 +544,18 @@ def manufacture_website_orb(
         "pointer_correspondence.json": compiled["pointer_correspondence"],
         "runtime_language.json": runtime_language,
         "tool_cache.json": tool_cache,
+        "lexical_index.json": compiled["lexical_index"],
+        "knowledge_chunks.json": compiled["knowledge_chunks"],
+        "retrieval_index.json": compiled["retrieval_index"],
+        "permissions.json": {"schema": "website_orb.permissions.v1", "site_id": str(document["site_id"]),
+                             "source_scan_id": str(document["scan_id"]),
+                             "allowed": ["answer", "point_after_live_validation", "propose_verified_route"],
+                             "confirmation_required": ["navigate"],
+                             "denied": ["click", "submit_form", "site_modification", "desktop_tool"],
+                             "lexical_matches_grant_authority": False},
         "apriori/catalog.json": compiled["catalog"],
         "apriori/ontology.json": compiled["ontology"],
+        "apriori/site_skg.json": compiled["site_skg"],
         "apriori/qa.json": compiled["qa"],
         "apriori/policies.json": compiled["policies"],
     }
@@ -514,8 +581,11 @@ def manufacture_website_orb(
         "site_id": str(document["site_id"]),
         "domain": document["domain"],
         "generated_at": _now(),
-        "source": {"scan_id": document["scan_id"], "scanner_version": document["scanner_version"], "captured_at": document["captured_at"]},
-        "artifacts": {name: {"path": f"payload/{name}", "sha256": _sha256(path)} for name, path in artifacts.items()},
+        "source": {"scan_id": document["scan_id"], "scanner_version": document["scanner_version"], "captured_at": document["captured_at"],
+                   "evidence_path": "audit/full_scan_evidence.json", "evidence_sha256": _sha256(evidence_path)},
+        "artifacts": {name: {"path": f"payload/{name}", "sha256": _sha256(path),
+                             "schema": artifact_documents.get(name, {}).get("schema", "orb_weaver.catalog.sqlite.v1")}
+                      for name, path in artifacts.items()},
         "verification": {"path": "manifests/verification_manifest.json", "sha256": _sha256(verification_path), "approved": verification["shipping_gate"]["package_allowed"]},
         "required_runtime_capabilities": resolved_site_config["runtime_lanes"],
     }
@@ -552,8 +622,8 @@ def manufacture_website_orb(
         "generated_at": _now(),
         "delivery_ready": False,
         "failure_reasons": preliminary["failures"],
-        "payload_manifest": "app/orb/template/runtime/vault_system/payload/payload_manifest.json",
-        "verification_manifest": "app/orb/template/runtime/vault_system/manifests/verification_manifest.json",
+        "payload_manifest": "website-orb/runtime/vault_system/payload/payload_manifest.json",
+        "verification_manifest": "website-orb/runtime/vault_system/manifests/verification_manifest.json",
     }
     if dock_station:
         _set_dock_delivery_state(dock_station, False, summary)
@@ -566,7 +636,7 @@ def manufacture_website_orb(
             domain=document["domain"],
             tier=tier,
             output_dir=build_root / "packages",
-            assembled_dock_station=dock_station,
+            assembled_website_orb=dock_station / "app/orb/template",
             manufacturing_result=summary,
             ephemeral=ephemeral,
         )
@@ -588,7 +658,7 @@ def manufacture_website_orb(
                 domain=document["domain"],
                 tier=tier,
                 output_dir=build_root / "packages",
-                assembled_dock_station=dock_station,
+                assembled_website_orb=dock_station / "app/orb/template",
                 manufacturing_result=summary,
                 ephemeral=ephemeral,
             )
