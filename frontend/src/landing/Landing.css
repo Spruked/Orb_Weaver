@@ -67,6 +67,8 @@
   width: 1px;
   height: 1px;
   pointer-events: none;
+  border-radius: 50%;
+  box-shadow: 0 0 90px 42px rgba(255, 255, 255, .16);
 }
 
 /* The opening is visible over the real page, never a page-covering gate. */
@@ -1011,6 +1013,34 @@
   transform: perspective(760px) rotateX(2deg) rotateY(-3deg) translateZ(0);
 }
 
+/* The supplied Weaver artwork is the body. Do not place it inside another
+   circular housing or make a second blue ring around it. */
+.ow-v2-orb-body.has-blue-eye-skin {
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.ow-v2-orb-body.has-blue-eye-skin::after {
+  display: none;
+}
+
+.ow-v2-orb-body.has-blue-eye-skin:hover {
+  transform: scale(1.025);
+}
+
+.ow-v2-orb-body.has-blue-eye-skin::before {
+  background: radial-gradient(circle, rgba(255, 255, 255, .9) 0%, rgba(255, 255, 255, .58) 26%, rgba(224, 242, 255, .22) 52%, transparent 74%);
+  opacity: .68;
+  filter: blur(18px);
+  transform: scale(1.04);
+}
+
+.ow-v2-orb-body.has-blue-eye-skin.speaking::before {
+  opacity: calc(.58 + var(--ow-speech-amplitude, 0) * .3);
+  transform: scale(calc(1.04 + var(--ow-speech-amplitude, 0) * .12));
+}
+
 .ow-v2-orb-body::before {
   content: "";
   position: absolute;
@@ -1085,6 +1115,19 @@
   animation: none;
 }
 
+/* Audio response belongs to the camera eye only. The Weaver shell and its
+   white presence glow stay steady while she speaks. */
+.ow-v2-orb-body.has-blue-eye-skin.listening,
+.ow-v2-orb-body.has-blue-eye-skin.speaking {
+  box-shadow: none;
+}
+
+.ow-v2-orb-body.has-blue-eye-skin.speaking::before {
+  opacity: .68;
+  transform: scale(1.04);
+  filter: blur(18px);
+}
+
 .ow-v2-orb-skin-image {
   position: absolute;
   inset: 0;
@@ -1097,6 +1140,136 @@
   z-index: 1;
   transform: translateZ(7px) scale(1.012);
   filter: saturate(1.12) contrast(1.12) brightness(1.12) drop-shadow(0 18px 22px rgba(0,0,0,.44));
+}
+
+/* Weaver is the supplied transparent PNG itself. The root is only the
+   accessible interaction target; it contributes no housing, ring, or shell. */
+.weaver-root {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible;
+  cursor: pointer;
+  perspective: 800px;
+  transform-style: preserve-3d;
+}
+
+.weaver-root::before {
+  content: "";
+  position: absolute;
+  inset: -10%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, .78) 0%, rgba(255, 255, 255, .34) 34%, transparent 72%);
+  filter: blur(18px);
+  pointer-events: none;
+}
+
+.weaver-body {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  user-select: none;
+  pointer-events: none;
+  filter: saturate(1.08) contrast(1.06) brightness(1.04) drop-shadow(0 18px 22px rgba(0, 0, 0, .36));
+}
+
+.weaver-eye-director {
+  position: absolute;
+  left: 34%;
+  top: 24%;
+  width: 32%;
+  height: 32%;
+  z-index: 2;
+  border: 1px solid rgba(76, 224, 255, .28);
+  border-radius: 50%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: .48;
+  transform: translateZ(24px);
+  box-shadow: 0 0 12px rgba(35, 201, 255, .2), inset 0 0 8px rgba(35, 201, 255, .14);
+}
+
+.weaver-eye-director-pupil {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 27%;
+  height: 27%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 32%, #ecffff 0 9%, #65eaff 22%, #16bfff 48%, #0860d8 72%, #032b81 100%);
+  box-shadow: 0 0 8px rgba(68, 225, 255, .94), 0 0 20px rgba(15, 133, 255, .66);
+  transform: translate(calc(-50% + var(--ow-eye-x, 0) * 27%), calc(-50% + var(--ow-eye-y, 0) * 27%)) scale(calc(1 + var(--ow-speech-amplitude, 0) * .22));
+  transition: transform 220ms cubic-bezier(.22, .8, .32, 1), filter 90ms linear;
+  will-change: transform;
+}
+
+.weaver-root.speaking .weaver-eye-director-pupil {
+  filter: brightness(calc(1 + var(--ow-speech-amplitude, 0) * .34));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .weaver-eye-director-pupil { transition: none; }
+}
+
+/* Weaver's blue camera-eye is a live attention signal, not a decorative
+   widget.  The target direction is supplied by the already-authorized
+   Phase Zero stance and remains local to the skin. */
+.ow-v2-orb-body.has-blue-eye-skin .ow-v2-orb-eye-director {
+  position: absolute;
+  left: 34%;
+  top: 24%;
+  width: 32%;
+  height: 32%;
+  z-index: 4;
+  border: 1px solid rgba(76, 224, 255, .34);
+  border-radius: 50%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: .58;
+  transform: translateZ(24px);
+  box-shadow: 0 0 14px rgba(35, 201, 255, .24), inset 0 0 10px rgba(35, 201, 255, .18);
+  transition: opacity 180ms ease, box-shadow 180ms ease;
+}
+
+.ow-v2-orb-body.has-blue-eye-skin .ow-v2-orb-eye-director-pupil {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 27%;
+  height: 27%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 32%, #ecffff 0 9%, #65eaff 22%, #16bfff 48%, #0860d8 72%, #032b81 100%);
+  box-shadow: 0 0 8px rgba(68, 225, 255, .94), 0 0 20px rgba(15, 133, 255, .66);
+  transform: translate(calc(-50% + var(--ow-eye-x, 0) * 27%), calc(-50% + var(--ow-eye-y, 0) * 27%)) scale(calc(1 + var(--ow-speech-amplitude, 0) * .22));
+  transition: transform 220ms cubic-bezier(.22, .8, .32, 1), filter 90ms linear;
+  will-change: transform;
+}
+
+.ow-v2-orb-body.has-blue-eye-skin.speaking .ow-v2-orb-eye-director {
+  opacity: calc(.62 + var(--ow-speech-amplitude, 0) * .28);
+  box-shadow: 0 0 18px rgba(35, 201, 255, calc(.34 + var(--ow-speech-amplitude, 0) * .42)), inset 0 0 14px rgba(35, 201, 255, .24);
+}
+
+.ow-v2-orb-body.has-blue-eye-skin.speaking .ow-v2-orb-eye-director-pupil {
+  filter: brightness(calc(1 + var(--ow-speech-amplitude, 0) * .34));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ow-v2-orb-body.has-blue-eye-skin .ow-v2-orb-eye-director-pupil {
+    transition: none;
+  }
 }
 
 
@@ -1386,7 +1559,7 @@
 .ow-v2-deploy-effect {
   position: absolute;
   inset: -24%;
-  z-index: -1;
+  z-index: 0;
   border-radius: 50%;
   pointer-events: none;
   animation: ow-v2-orbit-spin 12s linear infinite;
@@ -1419,27 +1592,16 @@
 }
 
 .ow-v2-deploy-effect::after {
-  content: "";
-  position: absolute;
-  top: 45%;
-  right: 55%;
-  width: 180%;
-  height: 18%;
-  transform: translateY(-50%) rotate(-8deg);
-  border-radius: 999px;
-  background: linear-gradient(90deg, transparent, rgba(91, 220, 255, .16), rgba(255, 232, 126, .34), transparent);
-  filter: blur(12px);
-  opacity: .36;
-  animation: ow-v2-stage-trail 7.4s ease-in-out infinite;
+  display: none;
 }
 
 .ow-v2-deploy-effect span {
   position: absolute;
-  width: 7px;
-  height: 7px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  background: rgba(17, 76, 172, .86);
-  box-shadow: 0 0 14px rgba(12, 72, 184, .72), 0 0 34px rgba(3, 20, 84, .42);
+  background: rgba(255, 255, 255, .92);
+  box-shadow: 0 0 14px rgba(255, 255, 255, .96), 0 0 34px rgba(120, 220, 255, .86);
 }
 
 .ow-v2-deploy-effect span:nth-child(1) {

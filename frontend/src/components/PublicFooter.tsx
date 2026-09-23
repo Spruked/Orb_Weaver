@@ -74,7 +74,6 @@ const PublicFooter: React.FC = () => {
           </nav>
         </div>
 
-        {/* Legal Column */}
         <div>
           <h3 style={{
             fontSize: '13px',
@@ -83,10 +82,8 @@ const PublicFooter: React.FC = () => {
             color: '#6cd7ee',
             textTransform: 'uppercase',
             marginBottom: '16px'
-          }}>Legal</h3>
+          }}>Practice</h3>
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <a href="/privacy" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Privacy Policy</a>
-            <a href="/terms" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Terms of Service</a>
             <a href="/weaving" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Practice of Weaving</a>
           </nav>
         </div>

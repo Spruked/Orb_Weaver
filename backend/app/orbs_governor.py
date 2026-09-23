@@ -340,7 +340,7 @@ def _allowed_actions(db: Session, project: Project, stage: str, evidence: Mappin
     if stage == "review_required":
         return [_action("view_required_reviews", "View Required Reviews", destination_route=project_route, reason_available="Open review items must be resolved before package generation.")]
     if stage == "package_generation":
-        return [_action("generate_entitled_orbpack", "Generate Entitled ORB Pack", confirmation_required=True, destination_route=f"/orbs/{project.id}", reason_available="Payment, entitlement, and review gates are satisfied.")]
+        return [_action("generate_entitled_orbpack", "Approve scan artifacts and build Website ORB", confirmation_required=True, destination_route=f"/orbs/{project.id}", reason_available="Payment, entitlement, and review gates are satisfied. Confirmation approves this scan's compiled customer artifacts for download.")]
     if stage == "installation":
         return [_action(
             "submit_installation_evidence",
@@ -413,6 +413,7 @@ def _stage_evidence(db: Session, project: Project, stage: str, evidence: Mapping
             "payment_status": order.payment_status,
             "fulfillment_status": order.fulfillment_status,
             "has_package_artifact": bool(order.package_artifact),
+            "package_build_id": (order.package_artifact or {}).get("build_id"),
             "installation_status": (order.installation or {}).get("status"),
             "launch_verification_status": (order.launch_verification or {}).get("status"),
         }

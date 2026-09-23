@@ -9,7 +9,7 @@ REQUIRED = {"site_config.json", "site_world.json", "pointers.json", "catalog.db"
             "pointer_correspondence.json", "runtime_language.json", "tool_cache.json",
             "lexical_index.json", "knowledge_chunks.json", "retrieval_index.json", "permissions.json",
             "apriori/catalog.json", "apriori/ontology.json", "apriori/site_skg.json",
-            "apriori/qa.json", "apriori/policies.json"}
+            "apriori/qa.json", "apriori/policies.json", "apriori/elimination_graph.json"}
 
 
 def validate_payload() -> dict:
@@ -26,6 +26,7 @@ def validate_payload() -> dict:
         return data
 
     verification = manifest["verification"]
+    checked(manifest["source"]["evidence_path"], manifest["source"]["evidence_sha256"])
     approval = json.loads(checked(verification["path"], verification["sha256"]))
     for key in ("site_id", "domain", "build_id"):
         if str(approval.get(key)) != str(manifest[key]):

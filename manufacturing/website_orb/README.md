@@ -1,5 +1,12 @@
 # Website ORB Manufacturing Contract
 
+Customer downloads now contain the isolated `website-orb/` runtime, not the
+factory's Dock Station app or seeded sample world. See
+[the package audit](../../docs/architecture/CUSTOMER_ORB_PACKAGE_AUDIT.md) for
+exact inputs, compilation, offline verification, contamination tests and
+remaining live-install acceptance. Customer instructions are shipped as
+`website-orb/INSTALL.md`; knowledge comes only from its approved selected scan.
+
 This directory contains **manufacturing code and contracts only**. It is not a second Vault System.
 
 Orb Weaver remains the manufacturer. `Website_Orb_Final` remains the golden runtime template. A customer ORB is created only after a fresh site scan has been compiled, owner-verified, injected into a clean runtime clone, validated, and packaged.

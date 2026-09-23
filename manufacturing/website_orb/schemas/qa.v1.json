@@ -5,6 +5,7 @@
   "type": "object",
   "required": ["schema", "site_id", "domain", "generated_at", "compiler_version", "entries"],
   "properties": {
+    "source_scan_id": {"type": "string", "minLength": 1},
     "schema": {"const": "orb_weaver.website_orb.qa.v1"},
     "site_id": {"type": "string", "minLength": 1},
     "domain": {"type": "string", "minLength": 1},

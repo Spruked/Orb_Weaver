@@ -80,7 +80,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
       throw new Error('Enter the website twice so Weaver can confirm the correct project.');
     }
     if (!legal.terms || !legal.privacy) {
-      throw new Error('Accept the Terms and Privacy Policy to create the account.');
+      throw new Error('Confirm both required account acknowledgements to create the account.');
     }
 
     const guest = await createIntentGuestSession(
@@ -200,8 +200,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
               <label htmlFor="onboarding-website-confirmation">Confirm website</label>
               <input id="onboarding-website-confirmation" type="url" inputMode="url" placeholder="Enter the same website again" value={form.website_confirmation} onChange={(event) => update('website_confirmation', event.target.value)} />
               <div className="onboarding-legal">
-                <label><input type="checkbox" checked={legal.terms} onChange={(event) => setLegal({ ...legal, terms: event.target.checked })} /> I agree to the <a href="/terms">Terms</a>.</label>
-                <label><input type="checkbox" checked={legal.privacy} onChange={(event) => setLegal({ ...legal, privacy: event.target.checked })} /> I agree to the <a href="/privacy">Privacy Policy</a>.</label>
+                <label><input type="checkbox" checked={legal.terms} onChange={(event) => setLegal({ ...legal, terms: event.target.checked })} /> I confirm the account and authorized-use requirements.</label>
+                <label><input type="checkbox" checked={legal.privacy} onChange={(event) => setLegal({ ...legal, privacy: event.target.checked })} /> I confirm the data-handling acknowledgement.</label>
               </div>
             </div>
           )}

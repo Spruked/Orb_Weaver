@@ -12198,13 +12198,14 @@ async def submit_orbs_stage_action(
             ).first()
             if open_review:
                 raise GovernorRejection("review_required", "Required reviews remain open")
-            report = generate_pack_file(
-                scan_data=_build_tpc_pack_scan_data(project, db),
-                site_id=str(project.id),
-                domain=project.domain,
-                tier=str(order.package_tier),
-                output_dir=_tpc_pack_output_dir(project),
-            )
+            # This explicit, governor-confirmed action approves the selected
+            # scan artifacts and builds the installable runtime, not a data ZIP.
+            status = await manufacture_project_website_orb(
+                str(project.id), WebsiteOrbManufacturingRequest(approve_all_artifacts=True,
+                    tier=str(order.package_tier), site_config={"site_name": project.name}), db, customer)
+            if not isinstance(status, dict) or not status.get("delivery_ready"):
+                raise GovernorRejection("manufacturing_failed", "Customer runtime did not pass manufacturing checks")
+            report = _approved_website_orb_report(project, str(order.package_tier), db)
             record_package_artifact(db, order, customer, report)
             apply_transition_action(db, project, customer, snapshot, request_payload)
         else:
@@ -12274,7 +12275,7 @@ def _normalized_manufacturing_evidence(project: Project, crawl: CrawlJob, db: Se
     if existing:
         if str(existing.get("site_id")) != str(project.id):
             raise HTTPException(status_code=409, detail="Manufacturing evidence belongs to a different project")
-        if str(existing.get("scan_id")) == str(crawl.id) and existing.get("scanner_version") != "orb-weaver-crawl-normalizer/1.0.0":
+        if str(existing.get("scan_id")) == str(crawl.id) and existing.get("scanner_version") not in {"orb-weaver-crawl-normalizer/1.0.0", "orb-weaver-crawl-normalizer/1.1.0"}:
             return existing
     pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl.id).order_by(CrawledPage.id.asc()).all()
     captured_at = (crawl.end_time or crawl.start_time or datetime.utcnow()).replace(tzinfo=timezone.utc).isoformat()
@@ -12396,12 +12397,27 @@ async def download_manufactured_website_orb(
     safe_build_id = re.sub(r"[^a-z0-9._-]+", "", build_id.lower())
     build_root = require_vault_path(client_root(project.domain) / "manufacturing" / "builds" / safe_build_id, "Website ORB build download")
     result = _load_json_if_present(build_root / "manufacturing-result.json") or {}
-    if not result.get("delivery_ready"):
+    if not result.get("delivery_ready") or str(result.get("site_id")) != str(project.id):
         raise HTTPException(status_code=409, detail="Website ORB delivery is not ready")
     pack_path = Path((result.get("package_paths") or {}).get("orbpack") or "").resolve()
     if build_root not in pack_path.parents or not pack_path.is_file():
         raise HTTPException(status_code=404, detail="Manufactured Website ORB package not found")
+    if hashlib.sha256(pack_path.read_bytes()).hexdigest() != (result.get("hashes") or {}).get("orbpack"):
+        raise HTTPException(status_code=409, detail="Manufactured Website ORB package integrity check failed")
     return FileResponse(pack_path, media_type="application/zip", headers=_content_disposition(pack_path.name, "attachment"))
+
+
+def _approved_website_orb_report(project: Project, tier: str, db: Session) -> Dict[str, Any]:
+    status = _load_json_if_present(_manufacturing_status_path(project)) or {}
+    result = status.get("result") or {}
+    crawl = _default_manufacturing_crawl(project, db)
+    report = (result.get("validation_results") or {}).get("package_validation") or {}
+    if (not result.get("delivery_ready") or str(result.get("site_id")) != str(project.id)
+            or not crawl or str(result.get("source_scan_id")) != str(crawl.id)
+            or report.get("tier") != tier or report.get("assembled_website_orb") is not True):
+        raise HTTPException(status_code=409, detail="Build and explicitly approve a current Website ORB runtime before downloading")
+    return {**report, "build_id": result["build_id"], "source_scan_id": result["source_scan_id"],
+            "download_url": f"/api/projects/{project.id}/website-orb/download/{result['build_id']}"}
 
 
 @app.post("/api/projects/{project_id}/tpc-pack")
@@ -12426,20 +12442,16 @@ async def create_tpc_pack(
             "code": "precondition_failed",
             "detail": "Requested pack tier does not match the entitled package",
         })
-    report = generate_pack_file(
-        scan_data=_build_tpc_pack_scan_data(project, db),
-        site_id=str(project.id),
-        domain=project.domain,
-        tier=payload.tier,
-        output_dir=_tpc_pack_output_dir(project),
-    )
+    # Legacy clients may collect an approved runtime, never silently create
+    # a data-only pack or approve artifacts without owner confirmation.
+    report = _approved_website_orb_report(project, payload.tier, db)
     record_package_artifact(db, order, customer, report)
     db.commit()
     return {
         "status": "created",
         "project": _serialize_project(project, db),
         "pack": report,
-        "download_url": f"/api/projects/{project.id}/tpc-pack/download/{report['filename']}",
+        "download_url": report["download_url"],
     }
 
 

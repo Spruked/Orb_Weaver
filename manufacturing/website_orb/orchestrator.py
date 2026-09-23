@@ -15,6 +15,7 @@ from .compile_vaults import COMPILER_VERSION, compile_all
 from .site_payload import validate_site_inputs
 from .package_audit import audit_package
 from manufacturing.templates.Website_Orb_Final.backend.skg.graph import validate_graph
+from manufacturing.templates.Website_Orb_Final.backend.skg.funnel import compile_funnels
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -46,6 +47,7 @@ REQUIRED_PAYLOAD_FILES = (
     "payload/knowledge_chunks.json",
     "payload/retrieval_index.json",
     "payload/permissions.json",
+    "payload/apriori/elimination_graph.json",
     "payload/apriori/catalog.json",
     "payload/apriori/ontology.json",
     "payload/apriori/site_skg.json",
@@ -189,7 +191,8 @@ def _compile_site_world(evidence: Dict[str, Any], source_context: Dict[str, Any]
             "skg_source_fingerprint": site_skg["source_fingerprint"],
         }
     for item in evidence.get("evidence") or []:
-        if item.get("verified") is True and item.get("evidence_type") == "business_fact":
+        if (item.get("verified") is True and item.get("evidence_type") == "business_fact"
+                and item.get("route") in site_skg["route_index"]):
             payload = item.get("payload") or {}
             value = payload.get("value") or payload.get("text") or payload.get("label")
             if value:
@@ -218,9 +221,11 @@ def _compile_site_world(evidence: Dict[str, Any], source_context: Dict[str, Any]
 
 def _compile_pointers(evidence: Dict[str, Any], source_context: Dict[str, Any]) -> Dict[str, Any]:
     records = []
+    excluded = {page["url"] for page in evidence.get("pages", [])
+                if page.get("usable") is False or page.get("route_category") in {"admin", "private", "system"}}
     for item in evidence.get("evidence") or []:
         target_id = item.get("pointer_target_id")
-        if not target_id or item.get("verified") is not True:
+        if not target_id or item.get("verified") is not True or item.get("source_url") in excluded:
             continue
         payload = item.get("payload") or {}
         records.append({
@@ -238,7 +243,7 @@ def _compile_pointers(evidence: Dict[str, Any], source_context: Dict[str, Any]) 
             "source": "scan",
             "confidence": float(item.get("confidence", 1.0)),
             "confidence_class": "VERIFIED",
-            "pointer_health": "OWNER_VERIFIED",
+            "pointer_health": "SCAN_VERIFIED",
             "runtime_policy": {"may_point": True, "requires_live_verification": True},
             "content_fingerprint": item["content_hash"],
         })
@@ -556,6 +561,7 @@ def manufacture_website_orb(
         "apriori/catalog.json": compiled["catalog"],
         "apriori/ontology.json": compiled["ontology"],
         "apriori/site_skg.json": compiled["site_skg"],
+        "apriori/elimination_graph.json": compile_funnels(compiled["site_skg"]),
         "apriori/qa.json": compiled["qa"],
         "apriori/policies.json": compiled["policies"],
     }

@@ -359,3 +359,37 @@ def test_pack_generation_requires_matching_entitlement_and_state_survives_new_se
     authoritative = client.get(f"/api/projects/{project['id']}/orbs-stage", headers=headers).json()
     assert authoritative["current_stage"] == "package_generation"
     assert [item["name"] for item in authoritative["allowed_actions"]] == ["generate_entitled_orbpack"]
+
+    # The confirmed entitled action must deliver a runtime, not the legacy
+    # scan-data ZIP. All customer/payment records here are isolated fixtures.
+    from app.models.database import OrbsEntitlement
+    with main.SessionLocal() as db:
+        order = db.query(main.OrbsBuildOrder).filter(main.OrbsBuildOrder.project_id == int(project['id'])).one()
+        checkout = main.CheckoutOrder(customer_id=int(customer['id']), project_id=int(project['id']),
+                                      build_order_id=order.id, provider='test', amount_cents=25000, status='paid')
+        db.add(checkout)
+        db.flush()
+        order.checkout_order_id = checkout.id
+        db.add(OrbsEntitlement(build_order_id=order.id, project_id=order.project_id, customer_id=order.customer_id,
+                              checkout_order_id=checkout.id, package_sku=order.package_sku, package_tier=order.package_tier))
+        crawl = db.query(main.CrawlJob).filter(main.CrawlJob.project_id == int(project['id'])).first()
+        db.add(main.CrawledPage(crawl_job_id=crawl.id, url='https://pack.example.com/', title='Orchid House',
+                               content_hash='verified-fixture-content', status_code=200,
+                               semantic_analysis={'content_excerpt': 'Orchid House supplies garden tools.'}))
+        db.commit()
+    fresh = client.get(f"/api/projects/{project['id']}/orbs-stage", headers=headers).json()
+    unapproved = client.post(f"/api/projects/{project['id']}/tpc-pack", headers=headers, json={'tier': 'basic'})
+    assert unapproved.status_code == 409
+    built = submit(client, headers, fresh, 'generate_entitled_orbpack', confirmed=True, key='customer-runtime-build')
+    assert built.status_code == 200, built.text
+    assert built.json()['current_stage'] == 'installation'
+    build_id = built.json()['approved_stage_evidence']['build_order']['package_build_id']
+    downloaded = client.get(f"/api/projects/{project['id']}/website-orb/download/{build_id}", headers=headers)
+    assert downloaded.status_code == 200
+    import io
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(downloaded.content)) as archive:
+        assert 'website-orb/run.py' in archive.namelist()
+        assert 'website-orb/assets/widget.js' in archive.namelist()
+        assert json.loads(archive.read('manifest.json'))['delivery']['website_runtime'] is True
+        assert not any(name.startswith('dock-station/') for name in archive.namelist())

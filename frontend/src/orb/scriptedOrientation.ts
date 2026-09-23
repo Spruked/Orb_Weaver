@@ -137,16 +137,6 @@ export const SITE_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
     text: 'Here is Preflight, the first practical check for a website considering an ORB. I have highlighted the website field and the Run Preflight button. Enter a public site you own or are authorized to review, then choose Run Preflight yourself. I will never submit a scan for you. The results appear here quickly. While the scan works, I will keep moving through the tour. Account creation comes next; after that, we can optionally review your Preflight together before you decide whether a deeper full-site scan is worthwhile.',
   },
   {
-    route: '/privacy',
-    pointerTargetIds: ['tour-privacy'],
-    text: 'This privacy page makes the data boundary explicit. Visitors and operators should be able to understand how information is handled, why it is needed, and where their control begins and ends. Clear privacy practices are essential when guidance is built around real website context rather than generic conversation. Ambiguity here would undermine the trust model the rest of the system is designed to uphold.',
-  },
-  {
-    route: '/terms',
-    pointerTargetIds: ['tour-terms'],
-    text: 'These terms define the shared operating agreement for Orb Weaver. They clarify how the service is used, what responsibilities remain with the operator, and the boundaries that keep an assisted website experience dependable for everyone involved. Governance is not only technical; it is also contractual, so both sides know the rules under which the ORB operates.',
-  },
-  {
     route: '/signup',
     // Arrival is intentionally silent: from here, Weaver responds to the
     // visitor and helps with account creation rather than continuing a script.
@@ -171,10 +161,6 @@ const PAGE_ORIENTATIONS: Record<string, string> = {
     'This page explains the Desktop ORB — the deeper operator workspace for approved diagnostic and guidance tools. It complements the visitor-facing Website ORB by giving the team visibility and control over system health.',
   '/web-weave':
     'This page explains the Web Weave workflow and the approval boundary for making website changes. Changes remain accountable so the site stays understandable and the ORB’s knowledge stays aligned with reality.',
-  '/privacy':
-    'This page explains Orb Weaver privacy practices and how visitor and customer data are handled, with explicit boundaries so control remains clear.',
-  '/terms':
-    'This page explains the terms that govern use of Orb Weaver, defining responsibilities and operating limits for both operators and the system.',
   '/weaving':
     'This page explains the principles behind weaving website intelligence from verified relationships rather than isolated pages. The weave is what turns a site into a coherent guided environment.',
   '/founding-beta':

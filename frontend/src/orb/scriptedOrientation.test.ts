@@ -24,7 +24,7 @@ describe('scripted orientation', () => {
     expect(SITE_TOUR_SCRIPT.map((step) => step.route).filter(Boolean)).toEqual([
       '/features', '/lidar-guidance', '/how-it-works', '/security', '/weaving',
       '/web-weave', '/now/desktop-orb', '/founding-beta', '/investor-contact',
-      '/preflight', '/privacy', '/terms', '/signup',
+      '/preflight', '/signup',
     ]);
     expect(SITE_TOUR_SCRIPT.at(-1)).toMatchObject({ route: '/signup', handoffToLiveConversation: true });
     expect(SITE_TOUR_SCRIPT.at(-1)?.text).toBeUndefined();

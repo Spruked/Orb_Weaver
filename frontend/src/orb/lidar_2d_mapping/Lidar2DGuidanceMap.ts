@@ -39,6 +39,8 @@ export interface LidarSemanticFeature {
   tesseractResourceUrl?: string;
   distanceFromOrb?: number;
   guidancePotential?: number;
+  /** Phase Zero hard exclusion: the ORB footprint may not overlap this feature. */
+  hardExclusion: boolean;
 }
 
 export interface LidarGuidanceMap {
@@ -96,11 +98,25 @@ const elementUrl = (element: Element) => {
   return undefined;
 };
 
-const featureKind = (element: Element): LidarFeatureKind => {
+const isHardInteractiveExclusion = (element: Element): boolean => {
+  if (element.matches(
+    'button, a, input, select, textarea, [role="button"], [role="link"], [contenteditable="true"], [tabindex]:not([tabindex="-1"])'
+  )) return true;
+  if (element.matches(':focus')) return true;
+  if (element instanceof HTMLLabelElement) {
+    const labelledControl = element.htmlFor
+      ? document.getElementById(element.htmlFor)
+      : element.querySelector('input, select, textarea, button, [contenteditable="true"]');
+    return Boolean(labelledControl);
+  }
+  return false;
+};
+
+const featureKind = (element: Element, hardInteractiveExclusion: boolean): LidarFeatureKind => {
   if (element instanceof HTMLImageElement) return 'image';
   if (element instanceof HTMLCanvasElement) return 'canvas';
   if (element instanceof HTMLAnchorElement && /\.(pdf|docx?|xlsx?|pptx?)(?:$|[?#])/i.test(element.href)) return 'document_link';
-  if (element.matches('button, a, input, select, textarea, [role="button"], [tabindex]')) return 'interactive';
+  if (hardInteractiveExclusion) return 'interactive';
   if (element.matches('p, h1, h2, h3, h4, h5, h6, article')) return 'text_block';
   return 'container';
 };
@@ -136,6 +152,7 @@ export function buildLidarGuidanceMap(options: BuildLidarGuidanceMapOptions = {}
     );
     const occluded = Boolean(topElement && topElement !== element && !element.contains(topElement));
     const dynamic = isDynamicObstacle(element, style);
+    const hardInteractiveExclusion = isHardInteractiveExclusion(element);
     const id = `lidar-${stackingOrder++}`;
 
     occupancy.push({
@@ -156,7 +173,7 @@ export function buildLidarGuidanceMap(options: BuildLidarGuidanceMapOptions = {}
     features.push({
       id,
       targetId: options.targetIdByElement?.get(element),
-      kind: featureKind(element),
+      kind: featureKind(element, hardInteractiveExclusion),
       rect: rectFromClientRect(rect),
       documentRect: documentRect(rect),
       tagName: element.tagName.toLowerCase(),
@@ -173,6 +190,7 @@ export function buildLidarGuidanceMap(options: BuildLidarGuidanceMapOptions = {}
       tesseractResourceUrl: preflightStatus !== 'unknown' ? url : undefined,
       distanceFromOrb: distance,
       guidancePotential: distance === undefined ? undefined : 1 / Math.max(distance, 1),
+      hardExclusion: hardInteractiveExclusion,
     });
   }
 

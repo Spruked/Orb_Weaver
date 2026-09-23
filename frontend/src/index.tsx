@@ -17,7 +17,7 @@ root.render(
   <React.StrictMode>
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <App />
-      <AutonomousOrb size={156} />
+      <AutonomousOrb size={240} />
     </BrowserRouter>
   </React.StrictMode>
 );

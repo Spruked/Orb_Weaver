@@ -1,5 +1,26 @@
 # Orb Weaver Development Log
 
+## 2026-09-22 — Customer download isolation and installable runtime
+
+* Removed unversioned context overlays and excluded seeded template data,
+  factory examples/audio and the Dock Station app from customer downloads.
+  Packages contain their own canonical Vault, standalone widget, launcher and
+  installation instructions; the existing host runtime remains separate.
+* Added manifest-bound chunks/index/lexicon, permission envelope and witnessed
+  site-goal topic choices. Startup validates all required approved artifacts,
+  identities and hashes. Unknown routes cannot borrow home-page pointers.
+* Wired the explicit customer approval/build action and authenticated download
+  to the manufactured runtime; legacy pack creation cannot silently substitute
+  a data-only ZIP. Kept payment/entitlement/review gates.
+* Verified two unrelated customer archives, zero known factory marker findings,
+  independent offline text runtime, modified-payload rejection, no-click DOM
+  pointer behavior, and confirmed build/download through the API. Focused
+  backend suite: 41 passed; follow-up isolation/SKG: 13 passed; widget DOM test
+  and frontend TypeScript check passed.
+* This is package/runtime verification, not production browser/voice acceptance.
+  No Docker operation or model change. Exact inputs, archive contents, lineage,
+  evidence and limitations: `docs/architecture/CUSTOMER_ORB_PACKAGE_AUDIT.md`.
+
 ## 2026-09-22 — Separate host/customer SKGs and shared lexical layer
 
 * Revised the supplied Nine of Clubs draft into a bounded, host-only guidance

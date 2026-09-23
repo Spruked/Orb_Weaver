@@ -1762,6 +1762,8 @@ export const api = {
     request<WebsiteOrbManufacturingStatus>(`/api/projects/${projectId}/website-orb/manufacturing-status`),
   manufacturedWebsiteOrbUrl: (projectId: string, buildId: string) =>
     `${API_BASE_URL}/api/projects/${projectId}/website-orb/download/${encodeURIComponent(buildId)}`,
+  downloadManufacturedWebsiteOrb: (projectId: string, buildId: string) =>
+    downloadAuto(`/api/projects/${projectId}/website-orb/download/${encodeURIComponent(buildId)}`),
   createTPCPack: (projectId: string, tier: 'basic' | 'enhanced' | 'premium') =>
     request<{ status: string; project: Project; pack: Record<string, any>; download_url: string }>(
       `/api/projects/${projectId}/tpc-pack`,

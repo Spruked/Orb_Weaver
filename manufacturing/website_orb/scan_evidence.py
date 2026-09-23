@@ -73,5 +73,5 @@ def scan_evidence(*, site_id: str, domain: str, scan_id: str, captured_at: str,
             }, pointer)
             evidence[-1]["confidence"] = float(pointer.get("confidence", 0.55))
     return {"schema": "orb_weaver.full_scan_evidence.v1", "site_id": site_id, "domain": domain,
-            "scan_id": scan_id, "captured_at": captured_at, "scanner_version": "orb-weaver-crawl-normalizer/1.1.0",
+            "scan_id": scan_id, "captured_at": captured_at, "scanner_version": "orb-weaver-crawl-normalizer/1.2.0",
             "pages": normalized, "evidence": evidence, "lexical_index": lexical_index}

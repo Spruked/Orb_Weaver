@@ -17,6 +17,7 @@ from .runtime.route_lookup import lookup_route
 from .runtime.site_world import SiteWorld
 from .storage import canonical_vault_root, record_runtime_audit
 from .skg.runtime import load_site_graph, site_guidance_context
+from .skg.funnel import present_step
 from .voice_runtime import VOICE_CACHE, speak, transcribe
 
 
@@ -52,7 +53,7 @@ def widget():
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True, "world": WORLD.stats(), "dock": DOCK.status(), "cognition": tpc_runtime.status()}
+    return {"ok": True, "world": WORLD.stats(), "dock": {"enabled": False}, "cognition": tpc_runtime.status()}
 
 
 @app.get("/orb/tpc-status")
@@ -84,6 +85,18 @@ def pointer_map(route: str = "/", limit: int = 20) -> dict:
         "matched_route": matched_route,
         "records": route_pointer_targets(WORLD, matched_route, limit=limit),
     }
+
+
+@app.get("/orb/goal-guidance")
+def goal_guidance(goal_id: str, entry: str = "/", answers: str = "") -> dict:
+    data = json.loads((COMPILED_ORB_ROOT / "apriori/elimination_graph.json").read_text())
+    funnel = data["funnels"].get(goal_id + ":" + entry)
+    if not funnel:
+        raise HTTPException(status_code=404, detail="No approved site goal path for this entry")
+    try:
+        return present_step(funnel, answers.split(",") if answers else [])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/orb/answer-text", response_model=AnswerResponse)

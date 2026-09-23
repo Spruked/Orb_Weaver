@@ -15,6 +15,10 @@ Target One is the full Home / Landing Page walkthrough. Future targets are Featu
 
 ### Site-specific SKGs and lexical understanding
 
+Customer download layout, scan-to-build lineage, independent-runtime evidence
+and negative contamination checks are documented in the
+[customer ORB package audit](docs/architecture/CUSTOMER_ORB_PACKAGE_AUDIT.md).
+
 - Weaver's own Nine of Clubs guidance stays separate from customer-site logic.
 - Each newly manufactured Website ORB requires an evidence-bound site SKG and
   lexical alias index generated from its site's scan, with owner approval and

@@ -65,6 +65,12 @@ with TestClient(app) as client:
     assert answer['governance_trace']['status'] == 'approved'
     assert client.get('/orb/pointer-map', params={'route': '/unknown'}).json()['records'] == []
     assert client.post('/orb/dock/action', json={'action': 'open_app'}).status_code == 403
+    import backend.app as runtime
+    async def local_transcript(*args): return 'How much is Orchid Atlas?'
+    async def local_speech(text): return {'tts_audio_url': None}
+    runtime.transcribe, runtime.speak = local_transcript, local_speech
+    spoken = client.post('/orb/website-voice', data={'route': '/product'}, files={'audio': ('voice.webm', b'audio', 'audio/webm')})
+    assert spoken.status_code == 200 and spoken.json()['route'] == '/product'
     assert client.get('/orb/bootstrap', headers={'Origin': 'https://unrelated.example'}).headers.get('access-control-allow-origin') is None
 print('independent runtime passed')
 '''

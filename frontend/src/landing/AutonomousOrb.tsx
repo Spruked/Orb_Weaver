@@ -60,6 +60,11 @@ const ABSOLUTE_RECORDING_LIMIT_MS = 22000;
 const SPEECH_LEVEL_THRESHOLD = 0.018;
 const LIDAR_DRIFT_THRESHOLD_PX = 12;
 const ORB_SPEECH_PLAYBACK_RATE = 0.9;
+// Give the browser and the visitor a short, explicit boundary between the
+// authored landing introduction and the first governed tour action. The
+// startup gate still owns permission/readiness; this is only presentation
+// settling after the intro's audio-ended proof.
+const INTRO_TO_TOUR_SETTLE_MS = 650;
 const ACCOUNT_CREATION_GUIDE_PROTOCOL = [
   "Guide the current account form one relevant question or field at a time using the server-owned Nine of Clubs policy.",
   "Preserve visitor control and keep credentials private.",
@@ -147,7 +152,7 @@ const ORB_OVERLAY_Z_INDEX = 2147483640;
 const EDGE = 8;
 // Keep Weaver visibly alive between guided actions without entering a target,
 // speaking over the visitor, or compromising the LiDAR-safe movement path.
-const AMBIENT_TRAVEL_PX_PER_SECOND = 26;
+const AMBIENT_TRAVEL_PX_PER_SECOND = 42;
 const AMBIENT_INITIAL_DWELL_MS = 5200;
 // Weaver is a host, not a parked overlay. Keep its LiDAR-approved ambient
 // cadence visible enough to leave reading space clear without becoming noisy.
@@ -156,6 +161,12 @@ const AMBIENT_SETTLE_VARIANCE_MS = 2200;
 // After a page change, clear reading content promptly.  The LiDAR map chooses
 // the destination; this is a short settle, not a decorative hover delay.
 const AMBIENT_POST_INTERACTION_DWELL_MS = 800;
+const LIDAR_SAFETY_PADDING_PX = 16;
+const LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX = 20;
+// Weaver is a website presence, never a corner widget. Keep every legal
+// pose substantially inside the page so the visitor reads her as an active
+// host rather than a chat bubble docked to an edge.
+const CORNER_EXCLUSION_MARGIN_PX = 160;
 const REST_AFTER_INACTIVITY_MS = 10 * 60 * 1000;
 const ACTIVE_ORB_OPACITY = 0.96;
 const REST_ORB_OPACITY = 0.60;
@@ -179,21 +190,6 @@ type StartupDiagnostics = {
   orb_readiness_state: "mounting" | "waiting_for_gate" | "voice_ready" | "intro_playing" | "ready";
 };
 type RuntimeAnswerDiagnostics = NonNullable<WebsiteOrbVoiceResponse["resolution_diagnostics"]>;
-const SUITE_LOGO_POINTER_RECORD: WebsiteOrbPointerRecord = {
-  target_id: "orb-weaver-suite-logo",
-  page_route: "/",
-  target_type: "logo",
-  meaning: "ORB Weaver suite logo",
-  intent_aliases: ["orb weaver", "orb weaver suite", "suite logo"],
-  direct_aliases: ["logo"],
-  topic_aliases: ["suite"],
-  content_fingerprint: "orb-weaver-suite-logo-v1",
-  semantic_locator: '[data-orb-target="orb-weaver-suite-logo"]',
-  confidence: 1,
-  confidence_class: "VERIFIED",
-  pointer_health: "OWNER_VERIFIED",
-  runtime_policy: { may_point: true, requires_live_verification: true },
-};
 const ONBOARDING_CONTINUATION_STORAGE_KEY = "orbweaver-onboarding-continuation";
 const ONBOARDING_ROUTE = "/signup";
 const ONBOARDING_FIRST_TARGET_ID = "full-name-field";
@@ -412,11 +408,13 @@ export const AutonomousOrb: React.FC<Props> = ({
   const location = useLocation();
   const onboardingSafeMode = ['/signup', '/login'].includes(location.pathname);
   const move = useAnimationControls();
+  const orbSpin = useAnimationControls();
   const glow = useAnimationControls();
   const presence = useAnimationControls();
   const activeRef = useRef(true);
   const reducedMotionRef = useRef(false);
   const positionRef = useRef({ x: 0, y: 0 });
+  const orbRotationRef = useRef(0);
   const orbElementRef = useRef<HTMLDivElement | null>(null);
   const motionInterruptionSequenceRef = useRef(0);
   const idleHeadingRef = useRef(-Math.PI / 2);
@@ -523,6 +521,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const [pulse, setPulse] = useState<PulseState>(null);
   const [voiceState, setVoiceState] = useState<OrbVoiceState>("idle");
   const [speechAmplitude, setSpeechAmplitude] = useState(0);
+  const [orbEyeDirection, setOrbEyeDirection] = useState({ x: 0, y: 0 });
   const [voiceRearmSequence, setVoiceRearmSequence] = useState(0);
   const [statusVisible, setStatusVisible] = useState(false);
   const [statusTitle, setStatusTitle] = useState("ORB online");
@@ -656,12 +655,18 @@ export const AutonomousOrb: React.FC<Props> = ({
   }
 
   const minY = HEADER_SAFE + EDGE;
+  const interiorX = Math.min(CORNER_EXCLUSION_MARGIN_PX, Math.max(EDGE, Math.floor((window.innerWidth - size) / 2) - EDGE));
+  const interiorY = Math.min(CORNER_EXCLUSION_MARGIN_PX, Math.max(EDGE, Math.floor((window.innerHeight - size) / 2) - EDGE));
+  const boundedMinX = Math.max(minX, interiorX);
+  const boundedMinY = Math.max(minY, interiorY);
+  const boundedMaxX = Math.max(boundedMinX, window.innerWidth - size - interiorX);
+  const boundedMaxY = Math.max(boundedMinY, window.innerHeight - size - interiorY);
 
   return {
-    minX,
-    minY,
-    maxX: Math.max(minX, window.innerWidth - size - EDGE),
-    maxY: Math.max(minY, window.innerHeight - size - EDGE),
+    minX: boundedMinX,
+    minY: boundedMinY,
+    maxX: boundedMaxX,
+    maxY: boundedMaxY,
   };
 }, [size]);
   const clampPosition = useCallback((x: number, y: number) => {
@@ -672,6 +677,99 @@ export const AutonomousOrb: React.FC<Props> = ({
       y: Math.max(minY, Math.min(y, maxY)),
     };
   }, [bounds]);
+
+  const travelOrbAlongCurve = useCallback(async (
+    destination: { x: number; y: number },
+    mode: "glide" | "swirl",
+    signal?: AbortSignal,
+    safeControlPoint?: { x: number; y: number } | null,
+  ) => {
+    const current = positionRef.current;
+    const dx = destination.x - current.x;
+    const dy = destination.y - current.y;
+    const distance = Math.hypot(dx, dy);
+    const duration = mode === "swirl"
+      ? Math.max(1.8, Math.min(5.8, distance / 118))
+      : Math.max(2.4, Math.min(7.2, distance / 92));
+    const pathLength = Math.max(1, distance);
+    const normalX = -dy / pathLength;
+    const normalY = dx / pathLength;
+    const bend = mode === "swirl"
+      ? Math.min(180, Math.max(72, distance * 0.24))
+      : Math.min(112, Math.max(42, distance * 0.18));
+    const direction = ((Math.round(current.x + current.y) + guidanceSequenceRef.current) % 2 === 0) ? 1 : -1;
+    const midpoint = {
+      x: (current.x + destination.x) / 2 + normalX * bend * direction,
+      y: (current.y + destination.y) / 2 + normalY * bend * direction,
+    };
+    const control = safeControlPoint || clampPosition(midpoint.x, midpoint.y);
+    const restingRotation = orbRotationRef.current;
+    const spinTransit = mode === "swirl" && guidanceSequenceRef.current % 3 === 0;
+    const spiralTransit = mode === "swirl" && !spinTransit;
+    const spinPeak = restingRotation + direction * (spinTransit ? 2880 : 0);
+    const useCurve = distance >= 80 && Boolean(safeControlPoint);
+    const lateralX = control.x - ((current.x + destination.x) / 2);
+    const lateralY = control.y - ((current.y + destination.y) / 2);
+    // A multi-point S path makes the transit read as deliberate body movement
+    // instead of a translated DOM node. The control point is still chosen by
+    // the caller's live LiDAR pass; the extra points stay inside that corridor.
+    const transitPoints = useCurve
+      ? spiralTransit
+        ? [
+          current,
+          { x: current.x + dx * 0.14 + lateralX * 0.24, y: current.y + dy * 0.14 + lateralY * 0.24 },
+          { x: current.x + dx * 0.3 + lateralX * 0.72, y: current.y + dy * 0.3 + lateralY * 0.72 },
+          { x: current.x + dx * 0.46 - lateralX * 0.7, y: current.y + dy * 0.46 - lateralY * 0.7 },
+          { x: current.x + dx * 0.63 + lateralX * 0.58, y: current.y + dy * 0.63 + lateralY * 0.58 },
+          { x: current.x + dx * 0.8 - lateralX * 0.34, y: current.y + dy * 0.8 - lateralY * 0.34 },
+          destination,
+        ].map((point) => clampPosition(point.x, point.y))
+        : [
+          current,
+          { x: current.x + dx * 0.24 + lateralX * 0.52, y: current.y + dy * 0.24 + lateralY * 0.52 },
+          { x: current.x + dx * 0.5 - lateralX * 0.38, y: current.y + dy * 0.5 - lateralY * 0.38 },
+          { x: current.x + dx * 0.76 + lateralX * 0.22, y: current.y + dy * 0.76 + lateralY * 0.22 },
+          destination,
+        ].map((point) => clampPosition(point.x, point.y))
+      : [current, destination];
+    const xFrames = transitPoints.map((point) => point.x);
+    const yFrames = transitPoints.map((point) => point.y);
+    const times = transitPoints.length === 7
+      ? [0, 0.14, 0.3, 0.46, 0.63, 0.8, 1]
+      : transitPoints.length === 5 ? [0, 0.2, 0.48, 0.76, 1] : [0, 1];
+
+    emitOrbRuntimeEvent("orb_transit_started", {
+      mode,
+      distance,
+      duration,
+      control,
+      path: useCurve ? (spiralTransit ? "spiral" : "serpentine") : "short_glide",
+      rotation: spinTransit ? spinPeak : restingRotation,
+    });
+    if (spinTransit) {
+      emitOrbRuntimeEvent("orb_spin_up_started", { restingRotation, spinPeak });
+      await awaitAbortable(orbSpin.start({
+        rotateY: spinPeak,
+        transition: { duration: 0.52, ease: "easeIn" },
+      }), signal);
+      emitOrbRuntimeEvent("orb_spin_up_completed", { spinPeak });
+    }
+    await awaitAbortable(move.start({
+      x: xFrames,
+      y: yFrames,
+      transition: { duration, ease: "easeInOut", times },
+    }), signal);
+    if (spinTransit) {
+      emitOrbRuntimeEvent("orb_spin_down_started", { restingRotation });
+      await awaitAbortable(orbSpin.start({
+        rotateY: restingRotation,
+        transition: { duration: 0.42, ease: "easeOut" },
+      }), signal);
+      emitOrbRuntimeEvent("orb_spin_down_completed", { restingRotation });
+    }
+    orbRotationRef.current = restingRotation;
+    emitOrbRuntimeEvent("orb_transit_arrived", { mode, distance, restingRotation });
+  }, [clampPosition, move, orbSpin]);
 
   const splashAlignedPosition = useCallback(() => (
     clampPosition(
@@ -692,6 +790,24 @@ export const AutonomousOrb: React.FC<Props> = ({
       avoidUntilRef.current = Date.now() + 900;
       window.setTimeout(() => void resumeAutonomousPresenceRef.current(), 120);
     }
+  }, []);
+
+  // A completed response, guided action, or TAMP Out is a handoff back to
+  // ambient presence. Record the current resting pose as recently used and
+  // discard the soft vantage preference so the next LiDAR pass must acquire a
+  // meaningfully different live pose.
+  const invalidateAmbientPose = useCallback((reason: string) => {
+    const rect = orbElementRef.current?.getBoundingClientRect();
+    const current = rect ? { x: rect.left, y: rect.top } : positionRef.current;
+    positionRef.current = current;
+    ambientPoseHistoryRef.current = [
+      ...ambientPoseHistoryRef.current.filter((pose) => Math.hypot(pose.x - current.x, pose.y - current.y) > 1),
+      current,
+    ].slice(-4);
+    ambientVantageRef.current = null;
+    lastAutonomousDestinationRef.current = null;
+    window.sessionStorage.removeItem(AMBIENT_VANTAGE_STORAGE_KEY);
+    emitOrbRuntimeEvent("lidar_pose_invalidated", { reason, current });
   }, []);
 
   const authorizeMotion = useCallback((destination: { x: number; y: number }, intent: string) => {
@@ -789,13 +905,45 @@ export const AutonomousOrb: React.FC<Props> = ({
       : null;
     const relevantFeatures = lidarMap.features.filter((feature) => (
       feature.visible &&
-      !feature.occluded &&
       feature.pointerEvents !== "none" &&
-      ["interactive", "text_block", "image"].includes(feature.kind)
+      (feature.hardExclusion || (!feature.occluded && ["interactive", "text_block", "image"].includes(feature.kind)))
     ));
     const intersects = (a: { left: number; top: number; right: number; bottom: number }, b: { x: number; y: number; width: number; height: number }) =>
       Math.max(0, Math.min(a.right, b.x + b.width) - Math.max(a.left, b.x)) *
       Math.max(0, Math.min(a.bottom, b.y + b.height) - Math.max(a.top, b.y));
+    const currentOrbRect = orbElementRef.current?.getBoundingClientRect();
+    const captionElement = document.querySelector<HTMLElement>('[data-orb-caption-state]');
+    const captionRect = captionElement?.getBoundingClientRect();
+    const captionOffset = currentOrbRect && captionRect
+      ? {
+        x: captionRect.left - currentOrbRect.left,
+        y: captionRect.top - currentOrbRect.top,
+        width: captionRect.width,
+        height: captionRect.height,
+      }
+      : null;
+    const renderedFootprint = (candidate: { x: number; y: number }) => {
+      const body = {
+        left: candidate.x,
+        top: candidate.y,
+        right: candidate.x + size,
+        bottom: candidate.y + size,
+      };
+      const footprint = captionOffset
+        ? {
+          left: Math.min(body.left, candidate.x + captionOffset.x),
+          top: Math.min(body.top, candidate.y + captionOffset.y),
+          right: Math.max(body.right, candidate.x + captionOffset.x + captionOffset.width),
+          bottom: Math.max(body.bottom, candidate.y + captionOffset.y + captionOffset.height),
+        }
+        : body;
+      return {
+        left: footprint.left - LIDAR_SAFETY_PADDING_PX,
+        top: footprint.top - LIDAR_SAFETY_PADDING_PX,
+        right: footprint.right + LIDAR_SAFETY_PADDING_PX,
+        bottom: footprint.bottom + LIDAR_SAFETY_PADDING_PX,
+      };
+    };
 
     const candidates: Array<{
       point: { x: number; y: number };
@@ -812,18 +960,36 @@ export const AutonomousOrb: React.FC<Props> = ({
         );
         const actualTravel = Math.hypot(candidate.x - current.x, candidate.y - current.y);
         const candidateCenter = { x: candidate.x + size / 2, y: candidate.y + size / 2 };
-        const rect = { left: candidate.x - 12, top: candidate.y - 12, right: candidate.x + size + 12, bottom: candidate.y + size + 12 };
+        const rect = renderedFootprint(candidate);
         const collisions = relevantFeatures.reduce((total, feature) => total + intersects(rect, feature.rect), 0);
         const textCollisions = relevantFeatures
           .filter((feature) => feature.kind === "text_block")
           .reduce((total, feature) => total + intersects(rect, feature.rect), 0);
         const interactiveCollisions = relevantFeatures
-          .filter((feature) => feature.kind === "interactive")
-          .reduce((total, feature) => total + intersects(rect, feature.rect), 0);
+          .filter((feature) => feature.hardExclusion || feature.kind === "interactive")
+          .reduce((total, feature) => total + intersects(
+            rect,
+            feature.hardExclusion
+              ? {
+                x: feature.rect.x - LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX,
+                y: feature.rect.y - LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX,
+                width: feature.rect.width + LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX * 2,
+                height: feature.rect.height + LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX * 2,
+              }
+              : feature.rect,
+          ), 0);
+        const hardExclusionCollision = relevantFeatures.some((feature) => (
+          feature.hardExclusion && intersects(rect, {
+            x: feature.rect.x - LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX,
+            y: feature.rect.y - LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX,
+            width: feature.rect.width + LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX * 2,
+            height: feature.rect.height + LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX * 2,
+          }) > 0
+        ));
         const recentDistance = ambientPoseHistoryRef.current.length
           ? Math.min(...ambientPoseHistoryRef.current.map((pose) => Math.hypot(candidate.x - pose.x, candidate.y - pose.y)))
           : minimumTravel;
-        if (actualTravel < minimumTravel * 0.72 || actualTravel > maximumTravel || recentDistance < Math.max(72, size * 0.46)) continue;
+        if (actualTravel < minimumTravel * 0.72 || actualTravel > maximumTravel || recentDistance < Math.max(72, size * 0.46) || hardExclusionCollision) continue;
         const normalized = { x: candidateCenter.x / window.innerWidth, y: candidateCenter.y / window.innerHeight };
         const preferenceScore = preference
           ? Math.max(0, 150 - Math.hypot(normalized.x - preference.x, normalized.y - preference.y) * 360) * preference.confidence
@@ -841,6 +1007,50 @@ export const AutonomousOrb: React.FC<Props> = ({
         });
       }
     }
+
+    // Prefer the readable edge of the paragraph Weaver is hosting around.
+    // These are evidence-derived stances, not screen-edge docks: the live
+    // footprint and hard interactive exclusions still decide legality.
+    relevantFeatures
+      .filter((feature) => feature.kind === "text_block")
+      .slice(0, 10)
+      .forEach((feature) => {
+        const gap = 24;
+        const paragraphEdgeCandidates = [
+          { x: feature.rect.x - size - gap, y: feature.rect.y + feature.rect.height / 2 - size / 2 },
+          { x: feature.rect.x + feature.rect.width + gap, y: feature.rect.y + feature.rect.height / 2 - size / 2 },
+          { x: feature.rect.x + feature.rect.width / 2 - size / 2, y: feature.rect.y - size - gap },
+          { x: feature.rect.x + feature.rect.width / 2 - size / 2, y: feature.rect.y + feature.rect.height + gap },
+        ].map((candidate) => clampPosition(candidate.x, candidate.y));
+        paragraphEdgeCandidates.forEach((candidate) => {
+          const actualTravel = Math.hypot(candidate.x - current.x, candidate.y - current.y);
+          const rect = renderedFootprint(candidate);
+          const collisions = relevantFeatures.reduce((total, item) => total + intersects(rect, item.rect), 0);
+          const textCollisions = relevantFeatures
+            .filter((item) => item.kind === "text_block")
+            .reduce((total, item) => total + intersects(rect, item.rect), 0);
+          const interactiveCollisions = relevantFeatures
+            .filter((item) => item.hardExclusion || item.kind === "interactive")
+            .reduce((total, item) => total + intersects(rect, item.rect), 0);
+          const hardExclusionCollision = relevantFeatures.some((item) => item.hardExclusion && intersects(rect, {
+            x: item.rect.x - LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX,
+            y: item.rect.y - LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX,
+            width: item.rect.width + LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX * 2,
+            height: item.rect.height + LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX * 2,
+          }) > 0);
+          const recentDistance = ambientPoseHistoryRef.current.length
+            ? Math.min(...ambientPoseHistoryRef.current.map((pose) => Math.hypot(candidate.x - pose.x, candidate.y - pose.y)))
+            : minimumTravel;
+          if (actualTravel < minimumTravel * 0.72 || recentDistance < Math.max(72, size * 0.46) || hardExclusionCollision) return;
+          candidates.push({
+            point: candidate,
+            collisions,
+            textCollisions,
+            interactiveCollisions,
+            score: 320 + recentDistance * .35 - textCollisions * 90 - interactiveCollisions * 65 - collisions * 12 - actualTravel * .04,
+          });
+        });
+      });
 
     // Never trade readable copy for an old ambient preference. If a truly
     // clear pose exists, only clear poses may be chosen; otherwise select the
@@ -874,6 +1084,12 @@ export const AutonomousOrb: React.FC<Props> = ({
         collisions: Math.round(best.collisions),
         textCollisions: Math.round(best.textCollisions),
         interactiveCollisions: Math.round(best.interactiveCollisions),
+        captionFootprint: captionOffset ? {
+          width: captionOffset.width,
+          height: captionOffset.height,
+          offsetX: captionOffset.x,
+          offsetY: captionOffset.y,
+        } : null,
         ambientVelocity: AMBIENT_TRAVEL_PX_PER_SECOND,
         destination: best.point,
       });
@@ -885,7 +1101,10 @@ export const AutonomousOrb: React.FC<Props> = ({
       featureCount: lidarMap.features.length,
       reason: "no_clear_novel_pose",
     });
-    return current.x || current.y ? current : clampPosition(maxX, minY);
+    // A blocked LiDAR pass must not silently dock the Website ORB at an edge
+    // or corner. Hold the last witnessed pose and report the condition so a
+    // later live geometry pass can recover deliberately.
+    return current;
   }, [bounds, clampPosition, size]);
 
   const resumeAutonomousPresence = useCallback(async () => {
@@ -913,16 +1132,21 @@ export const AutonomousOrb: React.FC<Props> = ({
     const sequence = motionInterruptionSequenceRef.current + 1;
     motionInterruptionSequenceRef.current = sequence;
     const destination = nextDestination();
+    const relocationDistance = Math.hypot(destination.x - positionRef.current.x, destination.y - positionRef.current.y);
+    if (relocationDistance < 1) {
+      autonomousResumeActiveRef.current = false;
+      emitOrbRuntimeEvent("autonomous_resume_blocked", { reason: "no_legal_fresh_pose" });
+      return;
+    }
     const authorization = authorizeMotion(destination, "Ambient");
-    if (!authorization) return;
+    if (!authorization) {
+      autonomousResumeActiveRef.current = false;
+      return;
+    }
     emitOrbRuntimeEvent("autonomous_resume_started", { destination });
     try {
       assertMovementAuthorization(authorization);
-      await move.start({
-        x: destination.x,
-        y: destination.y,
-        transition: { duration: Math.max(4.8, Math.min(9.6, Math.hypot(destination.x - positionRef.current.x, destination.y - positionRef.current.y) / AMBIENT_TRAVEL_PX_PER_SECOND)), ease: [0.37, 0, 0.22, 1] },
-      });
+      await travelOrbAlongCurve(destination, "glide");
       if (sequence === motionInterruptionSequenceRef.current) positionRef.current = destination;
     } finally {
       if (sequence === motionInterruptionSequenceRef.current) {
@@ -930,7 +1154,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         emitOrbRuntimeEvent("autonomous_resume_complete", { destination });
       }
     }
-  }, [authorizeMotion, move, nextDestination]);
+  }, [authorizeMotion, nextDestination, travelOrbAlongCurve]);
   resumeAutonomousPresenceRef.current = resumeAutonomousPresence;
 
   const localMoveOutDestination = useCallback(() => {
@@ -1008,19 +1232,16 @@ export const AutonomousOrb: React.FC<Props> = ({
     emitOrbRuntimeEvent("control_motion_started", { command, current, destination, distance: distanceToMove });
     try {
       assertMovementAuthorization(authorization);
-      await move.start({
-        x: destination.x,
-        y: destination.y,
-        transition: { duration: Math.max(1.15, Math.min(2.2, distanceToMove / 78)), ease: [0.37, 0, 0.22, 1] },
-      });
+      await travelOrbAlongCurve(destination, distanceToMove > 520 ? "swirl" : "glide");
       positionRef.current = destination;
+      invalidateAmbientPose("control_action_complete");
       emitOrbRuntimeEvent("control_motion_complete", { command, moved: distanceToMove > 1, destination });
     } finally {
       controlMotionActiveRef.current = false;
     }
     window.setTimeout(() => void resumeAutonomousPresence(), 180);
     return true;
-  }, [authorizeMotion, clampPosition, localMoveOutDestination, markVisitorActivity, move, resumeAutonomousPresence, size]);
+  }, [authorizeMotion, clampPosition, invalidateAmbientPose, localMoveOutDestination, markVisitorActivity, move, resumeAutonomousPresence, size, travelOrbAlongCurve]);
 
   const findPointerRecordForIntent = useCallback((intentText: string) => {
     const query = normalizeIntentText(intentText);
@@ -1076,7 +1297,10 @@ export const AutonomousOrb: React.FC<Props> = ({
         targetId: record.target_id,
         reason,
       });
-      if (result) window.setTimeout(() => void resumeAutonomousPresence(), 120);
+      if (result) {
+        invalidateAmbientPose("tamp_out");
+        window.setTimeout(() => void resumeAutonomousPresence(), 120);
+      }
       return result;
     };
     const role = inferMorbRole(record, intentText);
@@ -1173,27 +1397,77 @@ export const AutonomousOrb: React.FC<Props> = ({
     const latestGoal = movement.getLatestGoal();
     const targetCenterX = latestGoal.normalizedX * window.innerWidth;
     const targetCenterY = latestGoal.normalizedY * window.innerHeight;
-    const preferredSide = targetCenterX < window.innerWidth / 2 ? 1 : -1;
-    // Clear the full live target rectangle, not only its center point. Wide
-    // cards otherwise leave the ORB visually sitting on top of their copy.
-    const requiredCenterOffset = activeRect.width / 2 + size / 2 + ORB_TARGET_CLEARANCE_PX;
-    const guidedDestination = [preferredSide, -preferredSide]
-      .map((candidateSide) => clampPosition(
-        targetCenterX + candidateSide * requiredCenterOffset - size / 2,
-        targetCenterY - size / 2,
-      ))
-      .reduce((best, candidate) => {
-        const bestClearance = Math.abs(best.x + size / 2 - targetCenterX);
-        const candidateClearance = Math.abs(candidate.x + size / 2 - targetCenterX);
-        return candidateClearance > bestClearance ? candidate : best;
+    const guidanceMap = buildLidarGuidanceMap({
+      orbPosition: { x: positionRef.current.x + size / 2, y: positionRef.current.y + size / 2 },
+    });
+    const currentOrbRect = orbElementRef.current?.getBoundingClientRect();
+    const captionRect = document.querySelector<HTMLElement>('[data-orb-caption-state]')?.getBoundingClientRect();
+    const captionOffset = currentOrbRect && captionRect
+      ? { x: captionRect.left - currentOrbRect.left, y: captionRect.top - currentOrbRect.top, width: captionRect.width, height: captionRect.height }
+      : null;
+    const intersects = (a: { left: number; top: number; right: number; bottom: number }, b: { x: number; y: number; width: number; height: number }) =>
+      Math.max(0, Math.min(a.right, b.x + b.width) - Math.max(a.left, b.x)) *
+      Math.max(0, Math.min(a.bottom, b.y + b.height) - Math.max(a.top, b.y));
+    const footprintFor = (candidate: { x: number; y: number }) => {
+      const body = { left: candidate.x, top: candidate.y, right: candidate.x + size, bottom: candidate.y + size };
+      const footprint = captionOffset ? {
+        left: Math.min(body.left, candidate.x + captionOffset.x),
+        top: Math.min(body.top, candidate.y + captionOffset.y),
+        right: Math.max(body.right, candidate.x + captionOffset.x + captionOffset.width),
+        bottom: Math.max(body.bottom, candidate.y + captionOffset.y + captionOffset.height),
+      } : body;
+      return {
+        left: footprint.left - LIDAR_SAFETY_PADDING_PX,
+        top: footprint.top - LIDAR_SAFETY_PADDING_PX,
+        right: footprint.right + LIDAR_SAFETY_PADDING_PX,
+        bottom: footprint.bottom + LIDAR_SAFETY_PADDING_PX,
+      };
+    };
+    const protectedFeatures = guidanceMap.features.filter((feature) => (
+      feature.visible && feature.pointerEvents !== "none" &&
+      (feature.hardExclusion || (!feature.occluded && ["interactive", "text_block", "image"].includes(feature.kind)))
+    ));
+    const isSafeStance = (candidate: { x: number; y: number }) => {
+      const footprint = footprintFor(candidate);
+      return !protectedFeatures.some((feature) => {
+        const margin = feature.hardExclusion ? LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX : 0;
+        return intersects(footprint, {
+          x: feature.rect.x - margin,
+          y: feature.rect.y - margin,
+          width: feature.rect.width + margin * 2,
+          height: feature.rect.height + margin * 2,
+        }) > 0;
       });
+    };
+    // Search around the same verified target first. Expand the radius only
+    // when the nearest cardinal/diagonal stance is occupied; never abandon
+    // the target for a generic edge or corner fallback.
+    const targetHalfWidth = activeRect.width / 2 + size / 2 + ORB_TARGET_CLEARANCE_PX;
+    const targetHalfHeight = activeRect.height / 2 + size / 2 + ORB_TARGET_CLEARANCE_PX;
+    const stanceCandidates = [1, 1.5, 2.2].flatMap((radius) => [
+      { x: targetCenterX - targetHalfWidth * radius - size / 2, y: targetCenterY - size / 2 },
+      { x: targetCenterX + targetHalfWidth * radius - size / 2, y: targetCenterY - size / 2 },
+      { x: targetCenterX - size / 2, y: targetCenterY - targetHalfHeight * radius - size / 2 },
+      { x: targetCenterX - size / 2, y: targetCenterY + targetHalfHeight * radius - size / 2 },
+      { x: targetCenterX - targetHalfWidth * radius - size / 2, y: targetCenterY - targetHalfHeight * radius - size / 2 },
+      { x: targetCenterX + targetHalfWidth * radius - size / 2, y: targetCenterY - targetHalfHeight * radius - size / 2 },
+      { x: targetCenterX - targetHalfWidth * radius - size / 2, y: targetCenterY + targetHalfHeight * radius - size / 2 },
+      { x: targetCenterX + targetHalfWidth * radius - size / 2, y: targetCenterY + targetHalfHeight * radius - size / 2 },
+    ].map((candidate) => clampPosition(candidate.x, candidate.y)));
+    const guidedDestination = stanceCandidates.find((candidate) => isSafeStance(candidate));
+    if (!guidedDestination) {
+      movement.cancel("no_phase_zero_adjacent_stance");
+      return finishGuidance(false, "no_phase_zero_adjacent_stance");
+    }
+    if (!options.launchMorbOnly) {
+      const rect = orbElementRef.current?.getBoundingClientRect();
+      if (rect) positionRef.current = { x: rect.left, y: rect.top };
+    }
     const current = positionRef.current;
     const destination = options.launchMorbOnly ? current : guidedDestination;
     const distance = Math.hypot(destination.x - current.x, destination.y - current.y);
     avoidUntilRef.current = Date.now() + 900;
     if (!options.launchMorbOnly) {
-      const rect = orbElementRef.current?.getBoundingClientRect();
-      if (rect) positionRef.current = { x: rect.left, y: rect.top };
       motionInterruptionSequenceRef.current += 1;
       autonomousResumeActiveRef.current = false;
       move.stop();
@@ -1204,14 +1478,27 @@ export const AutonomousOrb: React.FC<Props> = ({
       }
       setPointerWaltzPhase("APPROACH");
       assertMovementAuthorization(authorization);
-      await awaitAbortable(move.start({
-        x: destination.x,
-        y: destination.y,
-        transition: {
-          duration: Math.max(5.5, Math.min(12, distance / 75)),
-          ease: [0.37, 0, 0.22, 1],
-        },
-      }), options.signal);
+      const travelMode = distance > 520 ? "swirl" : "glide";
+      const dx = destination.x - current.x;
+      const dy = destination.y - current.y;
+      const pathLength = Math.max(1, Math.hypot(dx, dy));
+      const normalX = -dy / pathLength;
+      const normalY = dx / pathLength;
+      const bend = travelMode === "swirl" ? Math.min(180, Math.max(72, distance * 0.24)) : Math.min(112, Math.max(42, distance * 0.18));
+      const corridorControls = [0.24, 0.42, 0.66, 1].flatMap((scale) => [1, -1].map((side) => clampPosition(
+        (current.x + destination.x) / 2 + normalX * bend * scale * side,
+        (current.y + destination.y) / 2 + normalY * bend * scale * side,
+      )));
+      const safeControlPoint = distance < 80
+        ? null
+        : corridorControls.find((candidate) => isSafeStance(candidate)) || null;
+      emitOrbRuntimeEvent("lidar_transit_corridor_selected", {
+        targetId: record.target_id,
+        mode: travelMode,
+        safeControlPoint,
+        corridorCandidates: corridorControls,
+      });
+      await travelOrbAlongCurve(destination, travelMode, options.signal, safeControlPoint);
     }
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
     positionRef.current = destination;
@@ -1231,6 +1518,11 @@ export const AutonomousOrb: React.FC<Props> = ({
     const finalTargetY = finalRect.top + finalRect.height / 2;
     const orbCenterX = destination.x + size / 2;
     const orbCenterY = destination.y + size / 2;
+    const eyeDirectionLength = Math.max(1, Math.hypot(finalTargetX - orbCenterX, finalTargetY - orbCenterY));
+    setOrbEyeDirection({
+      x: Math.max(-1, Math.min(1, (finalTargetX - orbCenterX) / eyeDirectionLength)),
+      y: Math.max(-1, Math.min(1, (finalTargetY - orbCenterY) / eyeDirectionLength)),
+    });
 
     if (morbPointerRef.current) {
       setPointerWaltzPhase("DISSOLVE");
@@ -1362,7 +1654,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     setPointerWaltzPhase("COMPLETE");
     return finishGuidance(true);
     } finally { options.signal?.removeEventListener('abort', cancelGuidance); }
-  }, [authorizeMotion, bumpWorldStateSequence, clampPosition, markVisitorActivity, move, playMorbLaunchSound, playPointerPing, resumeAutonomousPresence, size, startMorbTravelSound, stopMorbTravelSound]);
+  }, [authorizeMotion, bumpWorldStateSequence, clampPosition, invalidateAmbientPose, markVisitorActivity, move, playMorbLaunchSound, playPointerPing, resumeAutonomousPresence, size, startMorbTravelSound, stopMorbTravelSound, travelOrbAlongCurve]);
 
   const guideToPointerTarget = useCallback(async (intentText: string) => {
     const record = findPointerRecordForIntent(intentText);
@@ -1659,6 +1951,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       if (speechAudioRef.current === audio) speechAudioRef.current = null;
       stopSpeechVisualizer();
       stopSpeechCaptions(!captionPlaybackCancelledRef.current);
+      invalidateAmbientPose("response_complete");
       settlement.resolve();
     };
     try {
@@ -1681,7 +1974,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     } finally {
       if (speechPlaybackSettlementRef.current === settlement) speechPlaybackSettlementRef.current = null;
     }
-  }, [startSpeechCaptions, startSpeechVisualizer, stopSpeechCaptions, stopSpeechVisualizer]);
+  }, [invalidateAmbientPose, startSpeechCaptions, startSpeechVisualizer, stopSpeechCaptions, stopSpeechVisualizer]);
 
   const logVoice = useCallback((message: string, turnId: number) => {
     if (process.env.NODE_ENV !== "production") {
@@ -1774,6 +2067,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         stopSpeechVisualizer();
         setVoiceState("idle");
         showStatus(1400);
+        invalidateAmbientPose("response_complete");
         emitOrbRuntimeEvent("playback_ended", { provider: provider || null });
         settlement.resolve();
       };
@@ -1830,7 +2124,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       showStatus(3600);
       return false;
     }
-  }, [connectSpeechMediaVisualizer, freezeOrbInPlace, markVisitorActivity, playDecodedSpeech, showStatus, startFallbackSpeechVisualizer, startSpeechCaptions, startSpeechVisualizer, stopSpeechCaptions, stopSpeechVisualizer]);
+  }, [connectSpeechMediaVisualizer, freezeOrbInPlace, invalidateAmbientPose, markVisitorActivity, playDecodedSpeech, showStatus, startFallbackSpeechVisualizer, startSpeechCaptions, startSpeechVisualizer, stopSpeechCaptions, stopSpeechVisualizer]);
 
   const speakWithGeneratedAudio = useCallback(async (
     text: string,
@@ -1919,7 +2213,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     const llmScriptedTourEvaluation = developmentLlmScriptedTourOverride();
     emitOrbRuntimeEvent("scripted_orientation_started", { orientationId, stepCount: steps.length });
     try {
-      for (const [index, step] of steps.entries()) {
+      tourSteps: for (const [index, step] of steps.entries()) {
         if (scriptedOrientationInterruptedRef.current) {
           emitOrbRuntimeEvent("scripted_orientation_interrupted_by_visitor", { orientationId, index });
           setStatusTitle("Tour paused for your question");
@@ -1980,7 +2274,7 @@ export const AutonomousOrb: React.FC<Props> = ({
               setStatusLine(message);
               showStatus(4200);
             }
-            continue;
+            continue tourSteps;
           }
           const guided = await guideToPointerRecord(
             target,
@@ -1991,13 +2285,14 @@ export const AutonomousOrb: React.FC<Props> = ({
             index,
             targetId,
           });
-          if (!guided && process.env.NODE_ENV !== "production") {
-            const message = `Scripted tour target failed live validation: ${targetId}`;
-            console.error(`[ORB scripted tour] ${message}`);
+          if (!guided) {
+            const message = `Weaver is holding until a safe stance is available for ${targetId}.`;
+            if (process.env.NODE_ENV !== "production") console.error(`[ORB scripted tour] ${message}`);
             setTourNotice(message);
-            setStatusTitle("Tour target validation failed");
+            setStatusTitle("Tour target waiting");
             setStatusLine(message);
             showStatus(4200);
+            continue tourSteps;
           }
         }
         if (scriptedOrientationInterruptedRef.current) continue;
@@ -2113,6 +2408,11 @@ export const AutonomousOrb: React.FC<Props> = ({
             purchase_authority: false,
           });
         }
+        // A completed authored stop is the same TAMP handoff as any other
+        // completed response: acquire a new Phase Zero-approved ambient pose
+        // before the next stop can begin.
+        invalidateAmbientPose("tour_step_complete");
+        await resumeAutonomousPresence();
       }
       window.sessionStorage.setItem(SCRIPTED_ORIENTATION_SESSION_KEY, orientationId);
       emitOrbRuntimeEvent("scripted_orientation_completed", { orientationId });
@@ -2120,7 +2420,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     } finally {
       scriptedOrientationRunningRef.current = false;
     }
-  }, [findPointerRecordById, guideToPointerRecord, navigate, runMorbWorkSimulation, showStatus, speakWithGeneratedAudio, waitForPointerRecords]);
+  }, [findPointerRecordById, guideToPointerRecord, invalidateAmbientPose, navigate, resumeAutonomousPresence, runMorbWorkSimulation, showStatus, speakWithGeneratedAudio, waitForPointerRecords]);
 
   const diagnosticNarrationText = useCallback(() => {
     return [
@@ -3133,7 +3433,6 @@ export const AutonomousOrb: React.FC<Props> = ({
         updateStartupDiagnostics({ audio_tts_state: "playing" });
         emitOrbRuntimeEvent("intro_audio_started", { provider: tts.tts_provider || null, voice: tts.tts_voice || null });
         const spokenGreeting = speak(preparation.greeting, tts.tts_audio_url, tts.tts_provider);
-        void guideToPointerRecord(SUITE_LOGO_POINTER_RECORD, "ORB Weaver suite", { launchMorbOnly: true });
         introAudioPlayed = await spokenGreeting;
         if (!introAudioPlayed) throw new Error("Startup voice playback failed");
         updateStartupDiagnostics({ audio_tts_state: "played", greeting_state: "played" });
@@ -3163,6 +3462,12 @@ export const AutonomousOrb: React.FC<Props> = ({
         emitOrbRuntimeEvent("intro_continuing_without_audio");
       }
 
+      // The intro is complete only after its playback promise settles. Keep a
+      // small deterministic boundary before the first tour pointer/navigation
+      // action so the two experiences cannot visually overlap.
+      emitOrbRuntimeEvent("intro_to_tour_settle_started", { delayMs: INTRO_TO_TOUR_SETTLE_MS });
+      await wait(INTRO_TO_TOUR_SETTLE_MS);
+      emitOrbRuntimeEvent("intro_to_tour_settle_completed");
       const scriptedOpeningComplete = await runScriptedOrientation("site:full-tour", SITE_TOUR_SCRIPT);
       scriptedLandingOpeningCompleteRef.current = scriptedOpeningComplete;
       if (scriptedOpeningComplete && (liveTourReady || liveTourReadyRef.current)) {
@@ -3174,6 +3479,12 @@ export const AutonomousOrb: React.FC<Props> = ({
     } else {
       updateStartupDiagnostics({ greeting_state: splashHandledGreeting || greetingAlreadyPlayed ? "skipped_session_once" : "waiting" });
       if (onLanding && splashHandledGreeting) {
+        // LandingPage owns the authored splash audio. Its durable completion
+        // marker proves playback ended, but the first governed tour action
+        // still gets the same short visual/audio settle boundary.
+        emitOrbRuntimeEvent("intro_to_tour_settle_started", { delayMs: INTRO_TO_TOUR_SETTLE_MS });
+        await wait(INTRO_TO_TOUR_SETTLE_MS);
+        emitOrbRuntimeEvent("intro_to_tour_settle_completed");
         const scriptedOpeningComplete = await runScriptedOrientation("site:full-tour", SITE_TOUR_SCRIPT);
         scriptedLandingOpeningCompleteRef.current = scriptedOpeningComplete;
         emitOrbRuntimeEvent("intro_handoff_to_scripted_landing_tour");
@@ -3958,14 +4269,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           continue;
         }
         assertMovementAuthorization(authorization);
-        await move.start({
-          x: destination.x,
-          y: destination.y,
-          transition: {
-            duration: Math.max(4.8, Math.min(9.6, travelDistance / AMBIENT_TRAVEL_PX_PER_SECOND)),
-            ease: [0.37, 0, 0.22, 1],
-          },
-        });
+        await travelOrbAlongCurve(destination, travelDistance > 520 ? "swirl" : "glide");
 
         if (!activeRef.current) break;
         if (movementSequence !== motionInterruptionSequenceRef.current) continue;
@@ -4008,6 +4312,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     glow,
     splashAlignedPosition,
     move,
+    travelOrbAlongCurve,
     nextDestination,
     playLocalPresence,
     presence,
@@ -4070,53 +4375,8 @@ export const AutonomousOrb: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const ringStyle = () => {
-    if (pulse?.kind === "ripple") {
-      return {
-        rings: 2,
-        color: "rgba(215,180,59,",
-        maxScale: 1.6,
-        duration: 0.82,
-      };
-    }
-
-    if (pulse?.kind === "flare") {
-      return {
-        rings: 3,
-        color: "rgba(91,200,230,",
-        maxScale: 3.6,
-        duration: 1.15,
-      };
-    }
-
-    return {
-      rings: 5,
-      color: "rgba(91,200,230,",
-      maxScale: 9.4,
-      duration: 2.05,
-    };
-  };
-
-  const visual = ringStyle();
-
   return (
     <>
-    {morbPointer && (
-      <div
-        className={`ow-v2-morb-pointer ${morbPointer.visible ? "visible" : ""} ${morbPointer.pinging ? "pinging" : ""} ${morbPointer.dissolving ? "dissolving" : ""}`}
-        data-orb-morb-target={morbPointer.targetId}
-        data-orb-morb-role={morbPointer.role}
-        data-orb-morb-trajectory={morbPointer.trajectory}
-        data-orb-pointer-state={pointerWaltzPhase || undefined}
-        aria-hidden="true"
-        style={{
-          left: morbPointer.left,
-          top: morbPointer.top,
-          ...morbStyleVars(morbPointer.role),
-        }}
-        data-orb-pointer-phase={morbPointer.phase}
-      />
-    )}
     {pointerBloom && (
       <div
         className="ow-v2-pointer-bloom"
@@ -4157,59 +4417,20 @@ export const AutonomousOrb: React.FC<Props> = ({
         "--ow-pointer-angle": `${pointerBloom?.originAngle || 0}deg`,
       } as React.CSSProperties}
     >
-      {pulse && (
-        <div className="ow-v2-local-pulse" key={pulse.id}>
-          <motion.div
-            className="ow-v2-local-bloom"
-            initial={{ scale: 0.1, opacity: 0 }}
-            animate={{
-              scale: pulse.kind === "flare" ? [0.12, 2.05] : [0.12, 1.12],
-              opacity: [0, 0.88, 0],
-            }}
-            transition={{
-              duration: visual.duration,
-              ease: "easeOut",
-            }}
-          />
-
-          {Array.from({ length: visual.rings }).map((_, index) => (
+        <motion.div animate={presence} style={{ transformOrigin: "center" }}>
+          <motion.div animate={glow}>
             <motion.div
-              key={`${pulse.id}-${index}`}
-              className="ow-v2-local-ring"
-              style={{
-                borderWidth: index === 0 ? 3 : 2,
-                borderColor: `${visual.color}${0.78 - index * 0.16})`,
-              }}
-              initial={{ scale: 0.12, opacity: 0 }}
-              animate={{
-                scale: [0.12, visual.maxScale],
-                opacity: [0.92, 0],
-              }}
-              transition={{
-                duration: visual.duration,
-                delay: index * 0.13,
-                ease: [0.22, 0.61, 0.36, 1],
-              }}
-            />
-          ))}
-
-   
-        </div>
-      )}
-
-      <motion.div animate={presence} style={{ transformOrigin: "center" }}>
-        <motion.div animate={glow}>
-            <div className="ow-v2-deploy-effect" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
-            <Orb
-              size={size}
-              state={voiceState}
-              speechAmplitude={speechAmplitude}
-              onClick={handleOrbClick}
-            />
+              animate={orbSpin}
+              style={{ width: size, height: size, transformOrigin: "center", perspective: 900 }}
+            >
+              <Orb
+                size={size}
+                state={voiceState}
+                speechAmplitude={speechAmplitude}
+                eyeDirection={orbEyeDirection}
+                onClick={handleOrbClick}
+              />
+            </motion.div>
             <button
               type="button"
               className={`ow-v2-orb-speaker ${speakerBoost ? "active" : ""}`}

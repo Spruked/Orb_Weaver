@@ -64,6 +64,24 @@ def test_empty_graph_and_no_approved_goal_do_not_invent_funnel():
     assert all(not value["journeys"] for value in graph["route_index"].values())
 
 
+def test_site_topic_funnels_are_witnessed_bounded_and_do_not_navigate():
+    from manufacturing.templates.Website_Orb_Final.backend.skg.funnel import compile_funnels, present_step
+    graph = build_graph(sample_site())
+    compiled = compile_funnels(graph)
+    funnel = compiled["funnels"]["appointment:/"]
+    assert funnel["route_path"] == ["/services", "/book"]
+    assert funnel["steps"] == 1
+    choice = present_step(funnel, [])
+    assert choice["type"] == "choice"
+    assert all(option['witness_id'] in graph['witnesses'] for option in choice['options'])
+    for answer in ['a', 'b']:
+        assert present_step(funnel, [answer]) == {"type": "destination_proposal", "route": "/book",
+                                                 "requires_confirmation": True, "navigation_authorized": False}
+    with pytest.raises(ValueError):
+        present_step(funnel, ['invalid'])
+    assert present_step(compiled['funnels']['appointment:/island'], [])['type'] == 'unreachable'
+
+
 def test_excludes_foreign_unverified_and_broken_evidence_and_dangling_links():
     source = sample_site()
     source["pages"][1]["usable"] = False

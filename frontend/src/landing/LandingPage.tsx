@@ -596,27 +596,6 @@ const LandingPage: React.FC = () => {
             <p>When the final weave is complete, something new exists.</p>
             <h2 className="ow-cut-orb-reveal">A Website ORB.</h2>
           </div>
-          <div className="ow-cut-reveal-visual" aria-hidden="true">
-            <div className="ow-cut-reveal-orb-wrap">
-              <img 
-                src="/lightstreamorbblue1024.png" 
-                alt="Luminous blue Website ORB with streaming light patterns representing real-time visitor guidance" 
-                style={{
-                  position: 'absolute',
-                  inset: '12%',
-                  width: '76%',
-                  height: '76%',
-                  objectFit: 'contain',
-                  zIndex: 2,
-                  filter: 'drop-shadow(0 0 40px rgba(108, 215, 238, 0.6))'
-                }}
-              />
-              <div className="ow-cut-splash-bloom" />
-              <div className="ow-cut-splash-ring ow-cut-splash-ring-a" />
-              <div className="ow-cut-splash-ring ow-cut-splash-ring-b" />
-              <div className="ow-cut-splash-ring ow-cut-splash-ring-c" />
-            </div>
-          </div>
         </div>
       </section>
 

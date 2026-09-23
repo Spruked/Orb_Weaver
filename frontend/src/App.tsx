@@ -145,11 +145,8 @@ function App() {
   if (publicPath === '/security') {
     return renderPublicPage(<PublicSecurity />);
   }
-  if (!customer && publicPath === '/privacy') {
-    return renderPublicPage(<LegalPage type="privacy" />);
-  }
-  if (!customer && publicPath === '/terms') {
-    return renderPublicPage(<LegalPage type="terms" />);
+  if (publicPath === '/privacy' || publicPath === '/terms') {
+    return renderPublicPage(<Navigate to="/" replace />);
   }
   if (!customer && publicPath === '/weaving') {
     return renderPublicPage(<LegalPage type="weaving" />);
@@ -201,8 +198,6 @@ function App() {
           <Route path="/cart" element={<Cart />} />
           <Route path="/checkout/success" element={<Cart />} />
           <Route path="/admin/customers" element={<AdminCustomers />} />
-          <Route path="/privacy" element={<LegalPage type="privacy" />} />
-          <Route path="/terms" element={<LegalPage type="terms" />} />
           <Route path="/account" element={<Account customer={customer} onLogout={handleLogout} />} />
         </Routes>
       </Layout>

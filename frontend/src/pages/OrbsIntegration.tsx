@@ -128,6 +128,7 @@ const OrbsIntegration: React.FC = () => {
 
   const technicalGate = ['preflight', 'crawl', 'final_audit'].includes(snapshot.current_stage);
   const currentIndex = JOURNEY.findIndex(([key]) => key === snapshot.current_stage);
+  const packageBuildId = (snapshot.approved_stage_evidence?.build_order as Record<string, unknown> | undefined)?.package_build_id;
 
   return (
     <div className="space-y-6">
@@ -162,6 +163,12 @@ const OrbsIntegration: React.FC = () => {
       </section>
 
       {error && <div className="card border-red-200 bg-red-50 text-sm font-semibold text-red-700">{error}</div>}
+
+      {typeof packageBuildId === 'string' && <button className="rounded-lg bg-brand-orange px-5 py-3 font-bold" onClick={() => {
+        void api.downloadManufacturedWebsiteOrb(snapshot.project_id, packageBuildId).catch((err) => {
+          setError(err instanceof Error ? err.message : 'Download failed');
+        });
+      }}>Download your Website ORB</button>}
 
       {technicalGate && (
         <section className="card border-amber-200 bg-amber-50">
