@@ -65,6 +65,7 @@ const ORB_SPEECH_PLAYBACK_RATE = 0.9;
 // startup gate still owns permission/readiness; this is only presentation
 // settling after the intro's audio-ended proof.
 const INTRO_TO_TOUR_SETTLE_MS = 650;
+const SCRIPTED_STEP_MIN_DWELL_MS = 2200;
 const ACCOUNT_CREATION_GUIDE_PROTOCOL = [
   "Guide the current account form one relevant question or field at a time using the server-owned Nine of Clubs policy.",
   "Preserve visitor control and keep credentials private.",
@@ -2214,6 +2215,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     emitOrbRuntimeEvent("scripted_orientation_started", { orientationId, stepCount: steps.length });
     try {
       tourSteps: for (const [index, step] of steps.entries()) {
+        const stepStartedAt = Date.now();
         if (scriptedOrientationInterruptedRef.current) {
           emitOrbRuntimeEvent("scripted_orientation_interrupted_by_visitor", { orientationId, index });
           setStatusTitle("Tour paused for your question");
@@ -2226,7 +2228,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           navigate(step.route);
           // RouteScrollReset and the destination page need one render before
           // the host narrates its page-level orientation.
-          await wait(900);
+          await wait(1400);
           emitOrbRuntimeEvent("scripted_tour_navigation_completed", { orientationId, index, route: step.route });
         }
         const section = step.selector ? document.querySelector<HTMLElement>(step.selector) : null;
@@ -2392,6 +2394,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           setStatusTitle("Continuing guided tour");
           setStatusLine("Voice is reconnecting. Weaver is continuing to the next tour stop.");
           showStatus(4200);
+          await wait(Math.max(0, SCRIPTED_STEP_MIN_DWELL_MS - (Date.now() - stepStartedAt)));
           continue;
         }
         if (scriptedOrientationInterruptedRef.current) continue;
@@ -2413,6 +2416,16 @@ export const AutonomousOrb: React.FC<Props> = ({
         // before the next stop can begin.
         invalidateAmbientPose("tour_step_complete");
         await resumeAutonomousPresence();
+        const remainingDwellMs = Math.max(0, SCRIPTED_STEP_MIN_DWELL_MS - (Date.now() - stepStartedAt));
+        if (remainingDwellMs > 0) {
+          emitOrbRuntimeEvent("scripted_orientation_step_settle_started", {
+            orientationId,
+            index,
+            remainingDwellMs,
+          });
+          await wait(remainingDwellMs);
+          emitOrbRuntimeEvent("scripted_orientation_step_settle_completed", { orientationId, index });
+        }
       }
       window.sessionStorage.setItem(SCRIPTED_ORIENTATION_SESSION_KEY, orientationId);
       emitOrbRuntimeEvent("scripted_orientation_completed", { orientationId });
