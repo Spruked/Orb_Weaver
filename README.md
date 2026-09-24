@@ -2,6 +2,8 @@
 
 Orb Weaver is a local-first website intelligence platform with authenticated customer workspaces, website crawling, preflight scanning, ORB-readable semantic scoring, report generation, checkout records, client intelligence packs, and Cloudflare Tunnel deployment support.
 
+The current capability and wiring boundary is maintained in the [ORB capability status review](docs/reference/ORB_CAPABILITY_STATUS.md). It lists all 22 Master Capability List categories and 161 atomic capabilities, separates crawl evidence from runtime verification, and records the remaining work required before a generated Website ORB package is treated as downloadable and deployable.
+
 > [!IMPORTANT]
 > **IMMUTABLE STORAGE LAW:** `vault_system/` is the sole authoritative data system. Every persisted scan, raw-data artifact, customer record, authentication session, project, checkout order, verified payment, entitlement, workflow state, report, cache, and learned observation must be written into and read back from the canonical Vault. Component-local or parallel stores are prohibited. See [IMMUTABLE_VAULT_STORAGE_LAW.md](./IMMUTABLE_VAULT_STORAGE_LAW.md).
 

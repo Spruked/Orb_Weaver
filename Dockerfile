@@ -75,6 +75,7 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 COPY backend /app/backend
 RUN chown -R orbweaver:orbweaver /app/backend
+COPY ["Orb Weaver — Master Capability List.html", "/app/Orb Weaver — Master Capability List.html"]
 
 COPY artifacts /app/artifacts
 COPY Orb_Assistant /app/Orb_Assistant

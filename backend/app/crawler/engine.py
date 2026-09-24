@@ -228,8 +228,52 @@ class OrbWeaverCrawler:
                 return resolved
         return None
 
+    def _node_executable(self) -> Optional[str]:
+        configured = os.environ.get("NODE_PATH_EXECUTABLE") or "node"
+        return shutil.which(configured)
+
+    def _render_page_with_playwright(self, url: str, timeout_seconds: int) -> Optional[str]:
+        """Capture a bounded hydrated DOM without waiting on site-owned runtime work."""
+        self._orb_render_diagnostics = {}
+        node = self._node_executable()
+        snapshot_script = os.path.join(os.path.dirname(__file__), "render_page_snapshot.js")
+        if not node or not os.path.isfile(snapshot_script):
+            return None
+        try:
+            result = subprocess.run(
+                [node, snapshot_script, url, str(max(5000, timeout_seconds * 1000))],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=min(max(timeout_seconds + 5, 15), 45),
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self._orb_last_render_error = str(exc)
+            return None
+        for line in (result.stderr or "").splitlines():
+            if line.startswith("ORB_RENDER_DIAGNOSTICS:"):
+                try:
+                    self._orb_render_diagnostics = json.loads(line.split(":", 1)[1])
+                except json.JSONDecodeError:
+                    self._orb_render_diagnostics = {"parse_error": "Invalid renderer diagnostics envelope"}
+                break
+        if result.returncode != 0 or "<html" not in result.stdout.lower():
+            self._orb_last_render_error = (result.stderr or "Playwright returned no usable rendered DOM")[-1000:]
+            return None
+        return result.stdout.strip()
+
     def _render_page_dom_sync(self, url: str) -> Optional[str]:
         self.render_attempts += 1
+        timeout_seconds = min(max(settings.CRAWL_TIMEOUT, 10), 30)
+        self._orb_last_render_error = None
+        self._orb_render_diagnostics = {}
+        rendered = self._render_page_with_playwright(url, timeout_seconds)
+        if rendered:
+            self.render_successes += 1
+            return rendered
+
+        # Compatibility fallback for minimal installations without Playwright.
         chrome = self._chrome_executable()
         if not chrome:
             return None
@@ -244,23 +288,27 @@ class OrbWeaverCrawler:
                     "--disable-crash-reporter",
                     "--disable-crashpad",
                     "--disable-dev-shm-usage",
+                    "--mute-audio",
+                    "--disable-background-networking",
                     f"--user-data-dir={profile_dir}",
                     "--dump-dom",
-                    "--virtual-time-budget=5000",
+                    "--virtual-time-budget=3000",
                     url,
                 ],
                 check=False,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 text=True,
-                timeout=min(max(settings.CRAWL_TIMEOUT, 10), 30),
+                timeout=timeout_seconds,
             )
-        except Exception:
+        except Exception as exc:
+            self._orb_last_render_error = str(exc)
             return None
         finally:
             shutil.rmtree(profile_dir, ignore_errors=True)
         rendered = result.stdout.strip()
         if result.returncode != 0 or "<html" not in rendered.lower():
+            self._orb_last_render_error = (result.stderr or "Chromium returned no usable rendered DOM")[-1000:]
             return None
         self.render_successes += 1
         return rendered
@@ -801,14 +849,22 @@ class OrbWeaverCrawler:
                 redirect_chain=redirects
             )
 
-        if (
+        render_required = (
             status_code == 200
             and not self._is_crawl_control_resource(url)
-            and self._looks_like_spa_shell(html)
-        ):
+            and (self.tier != "free" or self._looks_like_spa_shell(html))
+        )
+        render_status = "not_required"
+        render_error = None
+        if render_required:
+            render_status = "attempted"
             rendered_html = await self._render_page_dom(url)
             if rendered_html:
                 html = rendered_html
+                render_status = "success"
+            else:
+                render_status = "failed"
+                render_error = getattr(self, "_orb_last_render_error", None)
 
         soup = BeautifulSoup(html, 'lxml')
         if status_code == 200 and not self._is_crawl_control_resource(url):
@@ -865,6 +921,12 @@ class OrbWeaverCrawler:
         )
         semantic_analysis = {
             **semantic_analysis,
+            "browser_rendering": {
+                "status": render_status,
+                "required": render_required,
+                "error": render_error,
+                "diagnostics": getattr(self, "_orb_render_diagnostics", {}),
+            },
             "pointer_plot_records": pointer_plot_records,
             "pointer_plot_record_count": len(pointer_plot_records),
             "tesseract_weave": collect_tesseract_candidates(soup, url),
@@ -877,6 +939,15 @@ class OrbWeaverCrawler:
             },
             "route_classification": self._route_classification(normalized_url),
         }
+        if self._route_classification(normalized_url) in {"private", "admin"}:
+            login_markers = ("welcome back", "sign in", "log in", "forgot password")
+            if any(marker in text_content.lower() for marker in login_markers):
+                semantic_analysis["authentication_boundary"] = {
+                    "status": "login_wall_detected",
+                    "protected_route": True,
+                    "content_is_authenticated": False,
+                    "note": "The crawler reached the route but the live page returned an authentication surface.",
+                }
         if self._is_admin_section_url(normalized_url):
             self.admin_section_urls.add(normalized_url)
 
@@ -1115,6 +1186,24 @@ class OrbWeaverCrawler:
             'robots_error': self.robots_error,
             'javascript_render_attempts': self.render_attempts,
             'javascript_render_successes': self.render_successes,
+            'render_diagnostics': {
+                'pages_with_console_errors': sum(
+                    1 for p in self.crawled_data
+                    if (p.semantic_analysis or {}).get('browser_rendering', {}).get('diagnostics', {}).get('console_errors')
+                ),
+                'pages_with_page_errors': sum(
+                    1 for p in self.crawled_data
+                    if (p.semantic_analysis or {}).get('browser_rendering', {}).get('diagnostics', {}).get('page_errors')
+                ),
+                'failed_request_count': sum(
+                    len((p.semantic_analysis or {}).get('browser_rendering', {}).get('diagnostics', {}).get('failed_requests') or [])
+                    for p in self.crawled_data
+                ),
+                'failed_response_count': sum(
+                    len((p.semantic_analysis or {}).get('browser_rendering', {}).get('diagnostics', {}).get('failed_responses') or [])
+                    for p in self.crawled_data
+                ),
+            },
             'queue_exhausted': not self.max_page_limit_hit and skipped_estimate == 0,
             'frontier_drain_count': self.frontier_drain_count,
             'max_page_limit_hit': self.max_page_limit_hit,
@@ -1152,5 +1241,9 @@ class OrbWeaverCrawler:
             'avg_orb_semantic_score': sum(p.semantic_analysis.get('orb_semantic_score', {}).get('overall', 0) for p in self.crawled_data) / len(self.crawled_data) if self.crawled_data else 0,
             'low_orb_semantic_pages': sum(1 for p in self.crawled_data if p.semantic_analysis.get('orb_semantic_score', {}).get('overall', 0) < 65),
             'avg_mobile_ux_score': sum(p.mobile_ux_analysis.get('score', 0) for p in self.crawled_data) / len(self.crawled_data) if self.crawled_data else 0,
-            'mobile_ux_problem_pages': sum(1 for p in self.crawled_data if p.mobile_ux_analysis.get('score', 100) < 70)
+            'mobile_ux_problem_pages': sum(1 for p in self.crawled_data if p.mobile_ux_analysis.get('score', 100) < 70),
+            'authentication_wall_pages': sum(
+                1 for p in self.crawled_data
+                if (p.semantic_analysis or {}).get('authentication_boundary', {}).get('status') == 'login_wall_detected'
+            )
         }

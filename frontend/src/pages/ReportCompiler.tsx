@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { FileText, Download, RefreshCw, Eye, FolderOpen } from 'lucide-react';
+import { FileText, Download, RefreshCw, Eye, FolderOpen, Database } from 'lucide-react';
 import { api, Project, ReportCompilerPayload, downloads, openFiles } from '../services/api';
 
 const ReportCompiler: React.FC = () => {
@@ -10,6 +10,7 @@ const ReportCompiler: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState<'overview' | 'data'>('overview');
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -87,6 +88,9 @@ const ReportCompiler: React.FC = () => {
   const preflightWarnings = latestPreflight?.warnings?.length ?? 0;
   const pointerSummary = data.latest_audit?.report.pointer_summary || data.latest_crawl?.pointer_summary;
   const plannedToolCalls = data.latest_audit?.report.planned_tool_calls || data.latest_crawl?.planned_tool_calls || [];
+  const inventory = data.data_inventory || [];
+  const capabilityCoverage = data.capability_coverage;
+  const completionContract = data.completion_contract;
 
   return (
     <div className="space-y-6">
@@ -105,6 +109,95 @@ const ReportCompiler: React.FC = () => {
         </button>
         </div>
       </div>
+
+      <div className="flex gap-2 border-b border-gray-200">
+        <button
+          type="button"
+          onClick={() => setActiveTab('overview')}
+          className={`px-4 py-3 text-sm font-bold ${activeTab === 'overview' ? 'border-b-2 border-blue-600 text-blue-700' : 'text-gray-500'}`}
+        >
+          Report overview
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('data')}
+          className={`inline-flex items-center gap-2 px-4 py-3 text-sm font-bold ${activeTab === 'data' ? 'border-b-2 border-blue-600 text-blue-700' : 'text-gray-500'}`}
+        >
+          <Database className="h-4 w-4" />
+          Complete data inventory
+        </button>
+      </div>
+
+      {activeTab === 'data' && (
+        <div className="space-y-4">
+          <div className="card border-emerald-100 bg-emerald-50">
+            <p className="text-sm font-bold text-emerald-900">{data.report_access?.message || 'Report access is project-bound.'}</p>
+            <p className="mt-1 text-xs text-emerald-800">The inventory lists every manufactured intelligence system. LiDAR and pointer status require live DOM verification.</p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {inventory.map((item) => {
+              const ready = item.status === 'available';
+              return (
+                <article key={item.id} className="card border-gray-200">
+                  <div className="flex items-start justify-between gap-4">
+                    <h2 className="font-bold text-gray-900">{item.label}</h2>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${ready ? 'bg-emerald-100 text-emerald-700' : item.status.includes('blocked') ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'}`}>
+                      {ready ? 'Available' : item.status.replaceAll('_', ' ')}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-gray-600">{item.description}</p>
+                  {item.runtime_geometry_policy && <p className="mt-3 text-xs font-semibold text-amber-700">Runtime rule: live DOM geometry only.</p>}
+                </article>
+              );
+            })}
+          </div>
+          {capabilityCoverage && (
+            <div className="card border-indigo-100 bg-indigo-50">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Master Capability List coverage</h2>
+                  <p className="mt-1 text-sm text-gray-600">
+                    {capabilityCoverage.item_count} atomic capabilities across {capabilityCoverage.category_count} systems are tracked from the persisted scan evidence.
+                  </p>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-indigo-700">{capabilityCoverage.status}</span>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-gray-700 md:grid-cols-4">
+                {Object.entries(capabilityCoverage.status_counts).map(([status, count]) => (
+                  <div key={status} className="rounded border border-indigo-100 bg-white px-3 py-2">
+                    <span className="font-bold">{count}</span> {status.replaceAll('_', ' ')}
+                  </div>
+                ))}
+              </div>
+              <details className="mt-4 rounded border border-indigo-100 bg-white p-3">
+                <summary className="cursor-pointer text-sm font-bold text-gray-900">Review all capability categories and atomic items</summary>
+                <div className="mt-3 space-y-3">
+                  {capabilityCoverage.categories.map((category) => (
+                    <div key={category.id} className="border-b border-gray-100 pb-3 last:border-b-0">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-semibold text-gray-900">{category.title}</p>
+                        <span className="text-xs font-bold text-gray-500">{category.status.replaceAll('_', ' ')}</span>
+                      </div>
+                      <p className="mt-1 text-xs leading-5 text-gray-600">{category.items.join(' · ')}</p>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </div>
+          )}
+          {completionContract && (
+            <div className="card border-amber-100 bg-amber-50">
+              <h2 className="text-lg font-bold text-gray-900">Evidence completion contract</h2>
+              <p className="mt-1 text-sm text-gray-700">
+                State: <span className="font-bold">{completionContract.state}</span> · {completionContract.complete_stage_count}/{completionContract.required_stage_count} required stages complete · {completionContract.authentication_wall_pages} authentication walls detected.
+              </p>
+              <p className="mt-2 text-xs text-amber-900">{completionContract.note}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'overview' && <>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="card">
@@ -240,6 +333,7 @@ const ReportCompiler: React.FC = () => {
           </ul>
         )}
       </div>
+      </>}
     </div>
   );
 };

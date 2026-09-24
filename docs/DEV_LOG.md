@@ -1351,3 +1351,15 @@ The repository already contained many modified and untracked files before the gu
   excursions and journey persistence; 6/6 backend ORIENT tests; frontend
   TypeScript typecheck and `git diff --check` passed. No restart,
   Docker build, deployment, commit or push was performed.
+
+## 2026-09-24 — Capability evidence, reports, and development runtime handoff
+
+* Added an evidence-backed capability ledger sourced from `Orb Weaver — Master Capability List.html`. The ledger contains 22 categories and 161 atomic capabilities and is exposed in both the Crawl/Scan Capabilities tab and the Reports Complete Data Inventory tab.
+* Corrected crawl completion semantics. A crawl with `status=completed` is now still reported as `BLOCKED`, `FAILED`, or `PARTIAL` when required evidence is missing. `orb_ready` is reserved for completed stage evidence with pointer verification/recovery and runtime guidance complete.
+* Added bounded Playwright render diagnostics for console errors, uncaught page errors, failed requests, failed responses, mount/root text, and rendered HTML size. Renderers remain bounded and do not wait on audio, WebSockets, or site-owned tour timers.
+* Added explicit authentication-boundary evidence for protected/admin routes that return a login wall. The crawler does not claim authenticated dashboard or workspace coverage without an owner-authorized session.
+* Added capability coverage to the persisted client crawl pack and `website_orb_context`, so Site World consumers receive the same evidence ledger as Reports.
+* Added the review packet [`docs/reference/ORB_CAPABILITY_STATUS.md`](reference/ORB_CAPABILITY_STATUS.md), including the complete capability inventory, current Crawl #4 status, remaining implementation/wiring list, and template-clone audit.
+* The template validator passed with 31 routes and 858 pointer records. The template contains the compiler, validator, Site World, pointer map, runtime language, Vault/TPC material, deployment source, loader, and tests; customer packages still require fresh crawl compilation and Live Test before download/deployment.
+* Restarted the isolated development runtime on backend `127.0.0.1:16666` and frontend `127.0.0.1:16667`. Both returned HTTP 200; frontend compilation completed with existing non-blocking hook warnings and no TypeScript errors. Docker was not rebuilt.
+* Validation for this packet: frontend TypeScript typecheck passed; Python compilation passed; focused crawler/pointer suite passed 16/16; `git diff --check` passed; template package validation passed.

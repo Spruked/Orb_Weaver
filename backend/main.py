@@ -52,6 +52,7 @@ from app.core.storage import (
     require_vault_path,
 )
 from app.crawler.engine import OrbWeaverCrawler, PageData
+from app.crawler.capability_coverage import build_capability_coverage
 from app.crawler.tesseract_weave import summarize_weaves
 from app.orb.tour_evaluation import (
     TourActContext,
@@ -1009,6 +1010,71 @@ SERVICE_CATALOG = {
         "currency": "usd",
     },
 }
+
+# Customer-facing proof inventory.  This is intentionally organized by the
+# manufactured intelligence systems rather than exposing an unstructured list
+# of crawler internals.  Each row is backed by persisted crawl/audit evidence
+# when available; runtime geometry is never inferred from this inventory.
+REPORT_DATA_SYSTEMS = [
+    ("discovery", "Discovery & crawl intelligence", "Domains, subdomains, sitemaps, robots, routes, links, redirects, status, rescans, provenance, versions, and crawl lifecycle."),
+    ("content", "Content & semantic intelligence", "Page purpose/type, headings, sections, content blocks, terminology, aliases, entities, relationships, FAQs, policies, and retrieval indexes."),
+    ("design", "Design intelligence", "Hierarchy, layout, spacing, typography, color, contrast, imagery, brand assets, CTA prominence, responsive behavior, breakpoints, and accessibility presentation signals."),
+    ("commerce", "Commerce & catalog intelligence", "Products, SKUs, variants, services, prices, availability, specifications, options, categories, and purchase paths."),
+    ("interface", "Interface & workflow intelligence", "Buttons, links, forms, inputs, menus, dialogs, accordions, tabs, checkout, login, signup, validation, errors, success states, and route transitions."),
+    ("lidar", "LiDAR / pointer intelligence", "DOM occupancy, bounding boxes, viewport position, overlays, fixed/sticky elements, pointer targets, aliases, fingerprints, and locator confidence."),
+    ("pointer_authority", "Selective pointer authority", "Semantic references, live guidance candidates, recovery, locator conflicts, confidence gates, promotion, target-loss recovery, and no-false-Ping enforcement."),
+    ("tesseract", "Tesseract Weave", "OCR and intelligence extraction from images, PDFs, documents, Office files, and other non-DOM information sources."),
+    ("site_world", "Site World compilation", "Knowledge graph, route/page/section/control capsules, product/service/workflow capsules, current-page awareness, and capability maps."),
+    ("vault", "Vault intelligence", "A Priori verified knowledge, A Posteriori learning, catalog/pricing stores, interaction memory, verified outcomes, retrieval, and promotion rules."),
+    ("cognition", "TPC / runtime cognition", "Deterministic fast paths, direct catalog answers, local intelligence, grounded responses, intent recognition, articulation, and capability selection."),
+    ("voice", "Website ORB voice system", "Microphone input, STT, text input, local cognition, TTS, browser playback, voice selection, fallback, interruption, and listening/speaking state."),
+    ("guidance", "Website ORB visitor guidance", "Page awareness, guided focus, scroll/move/highlight, visitor-approved actions, safe handoff, recovery, and verified Point/Ping."),
+    ("personality", "ORB personality & physical design", "Skins, opacity/motion doctrine, animation, behavior packs, voice packs, sound effects, presence, idle/speech behavior, and custom identity."),
+    ("manufacturing", "ORB manufacturing", "Project, weave, Site World, catalog, pointer map, A Priori, owner policy, skin, voice, behavior, Vault, runtime assembly, and release manifest."),
+    ("dock", "Dock Station", "Owner configuration, appearance, behavior, conversations, intelligence, speech, tools, profiles, deployment, statistics, diagnostics, and Live Test."),
+    ("qa", "Live Test & release QA", "Site identity, domain binding, Site World binding, pointer integrity, voice, cognition, Vault isolation, policy compilation, fallback, secrets, and release validation."),
+    ("deployment", "Release & deployment", "Downloadable ORB package, release versioning, manifests, universal orb-loader.js, install snippets, endpoint binding, updates, and rollback."),
+    ("marketplace", "Marketplace", "Skins, voices, behavior packs, sound packs, enhancements, services, and upgrade packages."),
+    ("lifecycle", "Lifecycle & self-maintenance", "Site-change detection, new/removed/changed pages and controls, stale-state detection, Site World refresh, pointer refresh, rescans, and pruning."),
+    ("auditing", "Auditing & reporting", "SEO, technical, mobile, accessibility, content, schema, authority, design, pointer, route, control, workflow, funnel continuity, reports, and recommendations."),
+    ("tiers", "Website ORB manufacturing tiers", "Basic, Enhanced, and Platinum configurations with increasing intelligence, customization, guidance, and owner capability."),
+    ("web_weaver", "Web Weaver integration", "TTI-native site design/build when there is no existing site worth upgrading."),
+]
+
+
+def _report_data_inventory(project: Project, latest_crawl: Optional[CrawlJob], latest_audit: Optional[AuditReport], db: Session) -> List[Dict[str, Any]]:
+    """Describe reportable data without converting missing evidence into claims."""
+    crawl_ready = bool(latest_crawl and latest_crawl.status == "completed")
+    audit_ready = bool(latest_audit and latest_audit.report_data)
+    crawl_config = (latest_crawl.config or {}) if latest_crawl else {}
+    crawl_stats = crawl_config.get("stats") or {}
+    crawl_pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == latest_crawl.id).all() if latest_crawl else []
+    pointer = _pointer_summary_with_execution(
+        _pointer_summary_from_pages(crawl_pages),
+        crawl_config,
+    ) if latest_crawl else {}
+    pointer_quality = pointer.get("quality") or {}
+    rows = []
+    for system_id, label, description in REPORT_DATA_SYSTEMS:
+        if system_id in {"auditing", "qa"}:
+            status = "available" if audit_ready else "not_run"
+        elif system_id == "pointer_authority":
+            status = "available" if pointer_quality.get("status") == "PASSED" else "blocked_pending_runtime_verification"
+        elif system_id == "guidance":
+            status = "available" if pointer.get("runtime_guidance_status") == "COMPLETE" else "blocked_pending_runtime_verification"
+        elif system_id in {"voice", "personality", "deployment", "marketplace", "tiers", "web_weaver", "dock"}:
+            status = "runtime_capability_not_crawl_verified"
+        else:
+            status = "available" if crawl_ready else "not_run"
+        rows.append({
+            "id": system_id,
+            "label": label,
+            "description": description,
+            "status": status,
+            "source": "persisted_crawl_and_runtime_evidence",
+            "runtime_geometry_policy": "live_dom_only" if system_id in {"lidar", "pointer_authority", "guidance"} else None,
+        })
+    return rows
 
 
 def _normalize_email(email: str) -> str:
@@ -5808,6 +5874,7 @@ def _client_crawl_pack(project: Project, crawl_job: CrawlJob, pages: List[Crawle
     })
     pointer_plot_map["quality"] = assess_pointer_quality(pointer_plot_map)
     config = crawl_job.config or {}
+    capability_coverage = config.get("capability_coverage")
     commercial_catalog = config.get("commercial_catalog") or compile_commercial_catalog(pages)
     page_knowledge = [
         {
@@ -5849,6 +5916,7 @@ def _client_crawl_pack(project: Project, crawl_job: CrawlJob, pages: List[Crawle
         },
         "crawl": crawl_payload,
         "pointer_plot_map": pointer_plot_map,
+        "capability_coverage": capability_coverage,
         "commercial_catalog": commercial_catalog,
         "website_orb_context": {
             "schema": "orb_weaver.website_orb_context.v1",
@@ -5873,6 +5941,7 @@ def _client_crawl_pack(project: Project, crawl_job: CrawlJob, pages: List[Crawle
             "competitor_gap": crawl_payload.get("competitor_gap"),
             "template_detection": crawl_payload.get("template_detection"),
             "pointer_plot_map": pointer_plot_map,
+            "capability_coverage": capability_coverage,
         },
     }
 
@@ -6372,6 +6441,9 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
     execution_note = "Status requires persisted stage execution evidence."
     chunk_count = int(((crawl_job.config or {}).get("knowledge_chunks") or {}).get("chunk_count") or 0)
     retrieval_sources = int(((crawl_job.config or {}).get("retrieval_index") or {}).get("chunk_count") or 0)
+    capability_coverage = (crawl_job.config or {}).get("capability_coverage")
+    if not isinstance(capability_coverage, dict):
+        capability_coverage = build_capability_coverage(stages=execution, stats=stats, pages=pages)
     required_stage_ids = {
         "url_discovery", "crawl_control", "page_fetch", "javascript_rendering",
         "page_content_scan", "content_structure_extraction", "schema_extraction",
@@ -6386,11 +6458,57 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
         and all(stage_status(stage_id) == "COMPLETE" for stage_id in required_stage_ids)
         and not recovery_required
     )
+    stage_statuses = {stage_id: stage_status(stage_id) for stage_id in required_stage_ids}
+    blocked_stage_ids = sorted(stage_id for stage_id, value in stage_statuses.items() if value == "BLOCKED")
+    failed_stage_ids = sorted(stage_id for stage_id, value in stage_statuses.items() if value == "FAILED")
+    incomplete_stage_ids = sorted(
+        stage_id for stage_id, value in stage_statuses.items()
+        if value not in {"COMPLETE", "BLOCKED", "FAILED"}
+    )
+    if orb_ready:
+        completion_state = "COMPLETE"
+    elif blocked_stage_ids:
+        completion_state = "BLOCKED"
+    elif failed_stage_ids:
+        completion_state = "FAILED"
+    elif incomplete_stage_ids:
+        completion_state = "PARTIAL"
+    else:
+        completion_state = "PARTIAL"
+    authentication_wall_pages = int(stats.get("authentication_wall_pages") or sum(
+        1 for page in pages
+        if (page.semantic_analysis or {}).get("authentication_boundary", {}).get("status") == "login_wall_detected"
+    ))
+    render_diagnostics = stats.get("render_diagnostics") or {}
+    completion_reasons = []
+    if blocked_stage_ids:
+        completion_reasons.append("blocked_stages_require_follow-up")
+    if failed_stage_ids:
+        completion_reasons.append("failed_stages_require_recovery")
+    if authentication_wall_pages:
+        completion_reasons.append("protected_routes_returned_login_walls")
+    if render_diagnostics.get("pages_with_page_errors") or render_diagnostics.get("failed_request_count"):
+        completion_reasons.append("browser_runtime_diagnostics_need_review")
+    if not completion_reasons and not orb_ready:
+        completion_reasons.append("runtime_verification_not_complete")
 
     return {
         "schema": "orb_weaver.scan_assembly_status.v1",
         "crawl_job_id": str(crawl_job.id),
-        "overall_status": "orb_ready" if orb_ready else "analysis_complete" if complete else status,
+        "overall_status": "orb_ready" if orb_ready else completion_state.lower(),
+        "completion_contract": {
+            "state": completion_state,
+            "required_stage_count": len(required_stage_ids),
+            "complete_stage_count": sum(1 for value in stage_statuses.values() if value == "COMPLETE"),
+            "blocked_stage_ids": blocked_stage_ids,
+            "failed_stage_ids": failed_stage_ids,
+            "incomplete_stage_ids": incomplete_stage_ids,
+            "authentication_wall_pages": authentication_wall_pages,
+            "render_diagnostics": render_diagnostics,
+            "reasons": completion_reasons,
+            "runtime_geometry_policy": "live_dom_only",
+            "note": "A completed crawl is an evidence package; it is not runtime-ready until live pointer verification and recovery complete.",
+        },
         "crawl_delay_seconds": float((crawl_job.config or {}).get("delay") or 0),
         "stages": [
             _scan_stage("url_discovery", "URL Discovery", stage_status("url_discovery"), [
@@ -6405,6 +6523,9 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
             _scan_stage("javascript_rendering", "JavaScript Rendering", stage_status("javascript_rendering"), [
                 {"label": "required renders", "value": int(stats.get("javascript_render_attempts") or 0)},
                 {"label": "successful renders", "value": int(stats.get("javascript_render_successes") or 0)},
+                {"label": "pages with browser console errors", "value": int(render_diagnostics.get("pages_with_console_errors") or 0)},
+                {"label": "pages with uncaught page errors", "value": int(render_diagnostics.get("pages_with_page_errors") or 0)},
+                {"label": "failed browser requests", "value": int(render_diagnostics.get("failed_request_count") or 0)},
             ], execution_note),
             _scan_stage("page_content_scan", "Page Content Scan", stage_status("page_content_scan"), [
                 {"label": "pages processed", "value": pages_crawled, "total": pages_found or None},
@@ -6474,6 +6595,7 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
                 {"label": "source links validated", "value": int(((crawl_job.config or {}).get("source_validation") or {}).get("validated_count") or 0), "total": chunk_count or None},
             ], execution_note),
         ],
+        "capability_coverage": capability_coverage,
     }
 
 
@@ -7462,10 +7584,11 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             "knowledge_chunking": evidence("COMPLETE", len(stored_pages), knowledge_chunks["chunk_count"], "crawl.config.knowledge_chunks"),
             "retrieval_index_build": evidence("COMPLETE", knowledge_chunks["chunk_count"], retrieval_index["term_count"], "crawl.config.retrieval_index"),
             "source_validation": evidence("COMPLETE", source_validation["input_count"], source_validation["validated_count"], "crawl.config.source_validation"),
-            "pointer_verification": evidence("NOT_STARTED", int(pointer_summary.get("record_count") or 0), 0, None),
-            "pointer_recovery": evidence("BLOCKED" if pointer_quality.get("recovery_required") else "NOT_STARTED", int(pointer_summary.get("record_count") or 0), 0, None),
+            "pointer_verification": evidence("BLOCKED", int(pointer_summary.get("record_count") or 0), 0, None, "Live DOM verification is required before any target can become guidance-authoritative."),
+            "pointer_recovery": evidence("BLOCKED" if pointer_quality.get("recovery_required") else "NOT_STARTED", int(pointer_summary.get("record_count") or 0), 0, None, "Pointer recovery must process unresolved and conflicting targets." if pointer_quality.get("recovery_required") else None),
             "runtime_guidance": evidence("BLOCKED", int(pointer_summary.get("record_count") or 0), int(pointer_summary.get("guidance_eligible_count") or 0), None, "Independent pointer verification has not run."),
         }
+        capability_coverage = build_capability_coverage(stages=scan_stage_execution, stats=stats, pages=stored_pages)
 
         crawl_job.status = "completed"
         crawl_job.end_time = datetime.utcnow()
@@ -7492,6 +7615,7 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             "commercial_catalog": commercial_catalog,
             "catalog_summary": commercial_catalog_summary,
             "scan_stage_execution": scan_stage_execution,
+            "capability_coverage": capability_coverage,
         }
         if lifecycle_job:
             lifecycle_job.phase = "preserving_map_evidence"
@@ -11858,6 +11982,12 @@ async def report_compiler(project_id: str, db: Session = Depends(get_db), custom
         .order_by(AuditReport.id.desc())
         .first()
     )
+    latest_crawl_pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == latest_crawl.id).all() if latest_crawl else []
+    scan_assembly = _scan_assembly_status(
+        latest_crawl,
+        latest_crawl_pages,
+        (latest_crawl.config or {}).get("stats") or {},
+    ) if latest_crawl else None
 
     report_dir = _project_report_dir(project)
     files = sorted([p.name for p in report_dir.glob("*.json")])
@@ -11869,6 +11999,31 @@ async def report_compiler(project_id: str, db: Session = Depends(get_db), custom
         "audit": "complete" if latest_audit and latest_audit.report_data else "not_run",
     }
 
+    paid_order = (
+        db.query(CheckoutOrder)
+        .filter(
+            CheckoutOrder.customer_id == customer.id,
+            CheckoutOrder.project_id == project.id,
+            or_(CheckoutOrder.status == "paid", CheckoutOrder.payment_verified_at.isnot(None)),
+        )
+        .first()
+    )
+    active_orb_entitlement = (
+        db.query(OrbsEntitlement)
+        .filter(
+            OrbsEntitlement.customer_id == customer.id,
+            OrbsEntitlement.project_id == project.id,
+            OrbsEntitlement.status == "active",
+        )
+        .first()
+    )
+    report_access = {
+        "status": "paid" if paid_order or active_orb_entitlement else "owner_preview",
+        "paid_customer": bool(paid_order or active_orb_entitlement),
+        "scope": "full_scan_data_and_orb_reports" if paid_order or active_orb_entitlement else "project_owner_preview",
+        "message": "All purchased scan data and Website ORB reports are available for this project." if paid_order or active_orb_entitlement else "Purchase scan data or a Website ORB package to unlock the complete report library.",
+    }
+
     return {
         "project": _serialize_project(project, db),
         "evidence_status": evidence_status,
@@ -11876,6 +12031,10 @@ async def report_compiler(project_id: str, db: Session = Depends(get_db), custom
         "latest_crawl": _serialize_crawl_job(latest_crawl, db) if latest_crawl else None,
         "latest_audit": _serialize_audit_report(latest_audit) if latest_audit and latest_audit.report_data else None,
         "files": files,
+        "report_access": report_access,
+        "data_inventory": _report_data_inventory(project, latest_crawl, latest_audit, db),
+        "capability_coverage": scan_assembly.get("capability_coverage") if scan_assembly else None,
+        "completion_contract": scan_assembly.get("completion_contract") if scan_assembly else None,
     }
 
 

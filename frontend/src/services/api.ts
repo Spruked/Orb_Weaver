@@ -701,6 +701,34 @@ export interface ScanAssemblyStatus {
   overall_status: string;
   crawl_delay_seconds: number;
   stages: ScanAssemblyStage[];
+  completion_contract?: {
+    state: string;
+    required_stage_count: number;
+    complete_stage_count: number;
+    blocked_stage_ids: string[];
+    failed_stage_ids: string[];
+    incomplete_stage_ids: string[];
+    authentication_wall_pages: number;
+    render_diagnostics?: Record<string, number>;
+    reasons?: string[];
+    runtime_geometry_policy: string;
+    note: string;
+  };
+  capability_coverage?: {
+    schema: string;
+    source: string;
+    status: string;
+    category_count: number;
+    item_count: number;
+    status_counts: Record<string, number>;
+    categories: Array<{
+      id: string;
+      title: string;
+      status: string;
+      items: string[];
+      evidence?: { stage_ids?: string[] };
+    }>;
+  };
 }
 
 export interface AuditDelta {
@@ -1000,6 +1028,33 @@ export interface ReportCompilerPayload {
     report: AuditReportPayload;
   } | null;
   files: string[];
+  report_access?: {
+    status: 'paid' | 'owner_preview';
+    paid_customer: boolean;
+    scope: string;
+    message: string;
+  };
+  data_inventory?: Array<{
+    id: string;
+    label: string;
+    description: string;
+    status: string;
+    source: string;
+    runtime_geometry_policy?: string | null;
+  }>;
+  capability_coverage?: ScanAssemblyStatus['capability_coverage'];
+  completion_contract?: {
+    state: string;
+    required_stage_count: number;
+    complete_stage_count: number;
+    blocked_stage_ids: string[];
+    failed_stage_ids: string[];
+    incomplete_stage_ids: string[];
+    authentication_wall_pages: number;
+    render_diagnostics?: Record<string, number>;
+    runtime_geometry_policy: string;
+    note: string;
+  } | null;
 }
 
 export interface PublicPreflightReport {

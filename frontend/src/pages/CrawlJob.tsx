@@ -338,6 +338,28 @@ const CrawlJob: React.FC = () => {
 
       {!isActiveCrawl && <OrbAssemblyStatus assembly={crawlData.assembly_status} />}
 
+      {crawlData.assembly_status?.completion_contract && (
+        <div className="card border-amber-200 bg-amber-50">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-gray-900">Evidence completion contract</h2>
+              <p className="mt-1 text-sm text-gray-700">{crawlData.assembly_status.completion_contract.note}</p>
+            </div>
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-amber-800">
+              {crawlData.assembly_status.completion_contract.state}
+            </span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-700">
+            <span>{crawlData.assembly_status.completion_contract.complete_stage_count}/{crawlData.assembly_status.completion_contract.required_stage_count} required stages complete</span>
+            <span>{crawlData.assembly_status.completion_contract.authentication_wall_pages} authentication walls</span>
+            <span>{crawlData.assembly_status.completion_contract.runtime_geometry_policy}</span>
+          </div>
+          {!!crawlData.assembly_status.completion_contract.reasons?.length && (
+            <p className="mt-2 text-xs font-semibold text-amber-900">{crawlData.assembly_status.completion_contract.reasons.join(' · ')}</p>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card">
           <p className="text-sm text-gray-500 mb-1">Pages Crawled</p>
@@ -401,7 +423,7 @@ const CrawlJob: React.FC = () => {
 
       <div className="border-b border-gray-200">
         <nav className="flex gap-8">
-          {['overview', 'pages', 'semantic', 'entities', 'schema', 'links', 'authority', 'trends', 'gaps', 'templates', 'mobile'].map((tab) => (
+          {['overview', 'capabilities', 'pages', 'semantic', 'entities', 'schema', 'links', 'authority', 'trends', 'gaps', 'templates', 'mobile'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -542,6 +564,31 @@ const CrawlJob: React.FC = () => {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'capabilities' && (
+        <div className="space-y-4">
+          <div className="card border-blue-200 bg-blue-50">
+            <h2 className="font-bold text-gray-900">Master capability coverage</h2>
+            <p className="mt-1 text-sm text-gray-700">Every capability from the repository master list is listed below with evidence status. “Runtime verification required” is intentionally not treated as complete.</p>
+            <p className="mt-2 text-xs text-gray-600">Source: {crawlData.assembly_status?.capability_coverage?.source || 'Master Capability List'} · {crawlData.assembly_status?.capability_coverage?.item_count || 0} tracked items</p>
+          </div>
+          {(crawlData.assembly_status?.capability_coverage?.categories || []).map((category) => {
+            const status = category.status;
+            const tone = status === 'verified' ? 'bg-green-100 text-green-700' : status === 'blocked' || status === 'requires_runtime_verification' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-800';
+            return (
+              <details key={category.id} className="card border-gray-200" open={status !== 'verified'}>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-bold text-gray-900">
+                  <span>{category.title}</span>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${tone}`}>{status.replaceAll('_', ' ')}</span>
+                </summary>
+                <ul className="mt-4 grid gap-2 border-t border-gray-100 pt-4 md:grid-cols-2">
+                  {category.items.map((item) => <li key={item} className="text-sm leading-6 text-gray-600">{item}</li>)}
+                </ul>
+              </details>
+            );
+          })}
         </div>
       )}
 

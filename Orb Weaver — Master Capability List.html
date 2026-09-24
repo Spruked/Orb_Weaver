@@ -1,0 +1,85 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}</style><style>:root{color-scheme:light dark;--md-bg:#fff;--md-text:rgba(0,0,0,.8);--md-muted:rgba(0,0,0,.6);--md-fill:rgba(0,0,0,.04);--md-fill-strong:rgba(0,0,0,.06);--md-rule:rgba(0,0,0,.1);--md-rule-strong:rgba(0,0,0,.16);--md-link:hsl(210 100% 45%)}@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){--md-bg:#0d0d0d;--md-text:rgba(255,255,255,.85);--md-muted:rgba(255,255,255,.6);--md-fill:rgba(255,255,255,.06);--md-fill-strong:rgba(255,255,255,.09);--md-rule:rgba(255,255,255,.14);--md-rule-strong:rgba(255,255,255,.22);--md-link:hsl(210 100% 72%)}}:root[data-theme="dark"]{color-scheme:dark;--md-bg:#0d0d0d;--md-text:rgba(255,255,255,.85);--md-muted:rgba(255,255,255,.6);--md-fill:rgba(255,255,255,.06);--md-fill-strong:rgba(255,255,255,.09);--md-rule:rgba(255,255,255,.14);--md-rule-strong:rgba(255,255,255,.22);--md-link:hsl(210 100% 72%)}:root[data-theme="light"]{color-scheme:light}@media print{:root,:root[data-theme="dark"]{color-scheme:light;--md-bg:#fff;--md-text:rgba(0,0,0,.8);--md-muted:rgba(0,0,0,.6);--md-fill:rgba(0,0,0,.04);--md-fill-strong:rgba(0,0,0,.06);--md-rule:rgba(0,0,0,.1);--md-rule-strong:rgba(0,0,0,.16);--md-link:hsl(210 100% 45%)}}body{background:var(--md-bg);color:var(--md-text);max-width:720px;margin:0 auto;padding:32px;display:flex;flex-direction:column;gap:10px;font:14px/1.55 -apple-system,BlinkMacSystemFont,'SF Pro','Segoe UI',sans-serif;overflow-wrap:break-word}body>:first-child{margin-top:0}h1,h2,h3,h4,h5,h6{margin:6px 0 0;line-height:1.25;font-weight:600;text-wrap:balance}h1{font-size:1.35em}h2{font-size:1.15em;color:var(--md-muted)}h3,h4,h5,h6{font-size:1em}p,ul,ol,blockquote,table,pre,hr{margin:0}strong{font-weight:600}a{color:var(--md-link);text-decoration:none}a:hover{text-decoration:underline}ul,ol{display:flex;flex-direction:column;gap:6px;padding-left:22px}ul{list-style:disc}ol{list-style:decimal}:is(li,td,th)>*+:is(p,ul,ol,blockquote){margin-top:6px}blockquote{display:flex;flex-direction:column;gap:10px;border-left:2px solid var(--md-rule);padding-left:10px;color:var(--md-muted)}:not(pre)>code{background:var(--md-fill);padding:1px 3px;border-radius:4px;font:.92em 'SF Mono',ui-monospace,Menlo,Consolas,monospace}a>code{background:none;color:inherit}pre{background:var(--md-fill);padding:10px 12px;border-radius:6px;overflow-x:auto;font:12px/1.5 'SF Mono',ui-monospace,Menlo,Consolas,monospace;margin-block:4px}pre code{background:none;padding:0;font:inherit}table{width:100%;border-collapse:separate;border-spacing:2px;font:inherit}th,td{padding:6px 8px;border-radius:3px;text-align:left;vertical-align:top}th{background:var(--md-fill-strong);font-weight:600}td{background:var(--md-fill)}:is(th,td) :not(pre)>code{background:transparent}hr{border:0;border-top:1px solid var(--md-rule-strong);margin-block:10px}img{max-width:100%;height:auto;border-radius:4px}</style>
+</head><body>
+<h1>Orb Weaver — Master Capability &amp; Verification Architecture</h1>
+<p><em>Consolidated from the crawler inspection contract and the August 22 feature inventory. Every atomic item from the July 25 inventory is represented — items were merged only where two documents named the exact same capability, never removed for brevity.</em></p>
+<hr>
+<h2>1. Discovery &amp; Crawl Intelligence</h2>
+<p>Domain/subdomain discovery · sitemap discovery &amp; parsing · robots.txt · route discovery (sitemap-listed, discovered outside sitemap, unresolved) · internal/external link inventory · redirect &amp; redirect-chain detection · broken-link detection · HTTP status collection · canonical URL collection · duplicate/query-string/trailing-slash route variants · orphan-page detection · authenticated/protected route scanning where permitted · route depth &amp; ownership · application-route discovery · API-route inventory · public endpoint mapping · capability endpoint discovery · incremental rescan · targeted (page/route/workflow) rescan · full-site rescan · scan timestamping, versioning, provenance, confidence tracking · scan-result validation, deduplication, normalization, indexing, and persistence · scan audit logging</p>
+<p><strong>Crawl lifecycle states:</strong> DISCOVERED → RESOLVED → RENDERED → COMPLETE, or explicitly PARTIAL / BLOCKED / FAILED — never silently incomplete.</p>
+<h2>2. Rendering &amp; Live DOM Intelligence</h2>
+<p>Per-route render success/failure <em>with cause</em>, not just a count · hydration errors · client-routing failures · missing chunks · console errors, uncaught exceptions, network failures · DOM element inventory (type, ID, classes, attributes, ARIA/accessible name, role) · DOM-anchor collection · visible-label collection · data-attribute collection · visible/hidden/disabled/interactive state · duplicated or unstable/generated selectors · parent-child &amp; region relationships · bounding geometry &amp; viewport status</p>
+<h2>3. Content &amp; Semantic Intelligence</h2>
+<p>Content extraction <em>and classification</em> (not scraping) · page-title &amp; meta-description collection · page-purpose classification · page-type classification · headings/sections/content blocks · products, services, prices, features, FAQs, policies, contact/business/location/hours info · terms/privacy/legal-page discovery · documentation &amp; downloadable-file discovery, document metadata collection · image discovery &amp; alt-text collection · video/audio discovery &amp; media metadata collection · structured data discovery: JSON-LD, Schema.org, Open Graph · social-link discovery · search-engine metadata collection · site-search discovery &amp; behavior mapping · terminology, synonyms, aliases, visitor-language mapping · intent-to-page/section/control/workflow mapping · <strong>contradiction detection</strong> (conflicting prices, hours, phone numbers, warranty language, duplicated-but-different FAQs) · <strong>semantic completeness scoring</strong> — does the site actually answer the ~12 questions a customer will ask, scored per answered vs. unsupported</p>
+<h2>4. Design Intelligence</h2>
+<p>Visual hierarchy · layout/grid analysis · spacing rhythm · typography system &amp; font roles · color system &amp; contrast · brand consistency, brand-name collection, logo &amp; brand-asset discovery, imagery style · component &amp; section-pattern classification · page-template classification · CTA prominence &amp; trust-element placement · responsive/breakpoint behavior, mobile vs. desktop comparison · animation/motion inventory · design-token extraction · visual-signature generation</p>
+<h2>5. Commerce &amp; Catalog Intelligence</h2>
+<p>Product/SKU/variant discovery, product-name/description/feature collection · pricing collection &amp; pricing dictionary · availability · specifications &amp; options · category structure · product/service relationships (upsell, cross-sell) · catalog generation · <strong>inventory-change tracking</strong> (price/stock/variant changes, discontinued items) — locally-compared Tier-3 scan, only escalates to a full rescan on structural (not cosmetic) diffs</p>
+<h2>6. Interface &amp; Workflow Intelligence</h2>
+<p>Navigation-menu discovery (header, footer, breadcrumb, sidebar) · buttons, links, CTAs, forms, inputs (text/select/checkbox/radio/textarea), submit/search controls · modals, dialogs, accordions, tabs, dropdowns, carousels, pagination, menu controls · login/signup/account/cart/checkout/contact/download/media controls · full-funnel flow mapping: authentication, signup, login, contact, purchase, cart, checkout, lead-generation · multi-step workflow mapping · required-field &amp; validation-rule detection · error/success/confirmation-state collection · navigation/click/scroll/form action mapping · route-transition &amp; action-result mapping · <strong>conversion-path mapping</strong> (entry → decision → CTA → destination) · broken/abandoned-path detection</p>
+<h2>7. LiDAR / Pointer Intelligence</h2>
+<p>Bounding boxes, screen geometry, viewport position, scroll containers, scroll-target mapping · fixed/sticky elements, overlays, z-order/occlusion · responsive layout &amp; breakpoint geometry changes · pointer-target extraction, pointer-anchor generation, pointer-manifest generation, pointer plot-map generation, target alias generation, target-to-route/section/control mapping</p>
+<p><strong>Target verification states (mandatory, not optional):</strong> VERIFIED · UNSTABLE · CONFLICT · NOT_FOUND · NOT_INTERACTABLE · REQUIRES_RUNTIME_CHECK · PROTECTED. <code>not started</code> is never a valid completion state.</p>
+<p>Broken-target, missing-pointer-target, duplicate-target, and ambiguous-target detection · missing-route/section/control detection.</p>
+<p><strong>Recovery pipeline:</strong> alternate locator → semantic match → accessibility locator → text match → structural/route-relative locator → DOM reconciliation → outcome recorded as recovered / unresolved / ambiguous / blocked / requires human review.</p>
+<h2>8. Selective Pointer Authority</h2>
+<p><code>semantic_reference</code> vs. <code>live_guidance</code> distinction · guidance eligibility gating · confidence gating before a live Ping · target-loss recovery · no-false-Ping enforcement · candidate correction &amp; promotion path</p>
+<h2>9. Tesseract Weave (Non-DOM Extraction)</h2>
+<p>OCR and intelligence extraction from images, PDFs, Office documents, and other non-DOM sources — feeds the same content/semantic/catalog pipelines as live-page extraction</p>
+<h2>10. Site World / SKG Compilation</h2>
+<p>Site knowledge graph construction · route/page/section/control/product/service/workflow capsule generation · current-page awareness · physical-navigation map · page-to-page, product-to-page, service-to-page, FAQ-to-page, and control-to-workflow relationship mapping · capability mapping (tool-to-capability, capability-to-route, capability-to-control) · allowed-action mapping · stage &amp; stage-transition mapping · Stage Governor input generation</p>
+<h2>11. Vault Intelligence</h2>
+<p>A Priori (verified site knowledge) vs. A Posteriori (learned, promotion-gated) knowledge · structured catalog/pricing stores · interaction memory &amp; verified outcomes · verified-site-state storage · semantic retrieval · self-pruning, merge/compress/weaken/retire logic</p>
+<h2>12. TPC / Runtime Cognition</h2>
+<p>Deterministic fast-path answers from Vault/catalog · LLM escalation only when required · intent recognition · contextual articulation · capability selection
+<em>(Governed by the existing cognitive-engine/Doctrine architecture — this system consumes Site World/Vault output, it doesn't duplicate the crawl.)</em></p>
+<h2>13. Voice &amp; Visitor Guidance</h2>
+<p>STT/TTS, browser playback, voice selection &amp; fallback, listening/speaking state, interruption handling, low-latency response · guided focus, scroll/move/highlight · visitor-approved actions · MORB-assisted guidance · safe handoff and recovery when guidance fails</p>
+<h2>14. ORB Personality &amp; Physical Design</h2>
+<p>Factory-default ORB, skins, opacity/motion doctrine, animation, behavior packs, voice packs, sound effects, idle/presence/speech behavior, custom identity</p>
+<h2>15. Manufacturing Pipeline</h2>
+<p>Project → weave → Site World → catalog → pointer map → A Priori compile → owner policy → skin → voice → behavior → Vault → runtime assembly → release manifest. Site-specific ORB knowledge, tool, pointer, navigation, and workflow configuration · articulation-context and capability-snapshot generation.</p>
+<h2>16. Dock Station</h2>
+<p>Owner-facing configuration: appearance, behavior, conversation review, intelligence, speech, tools, profiles, deployment, statistics, diagnostics, Live Test entry point</p>
+<h2>17. Live Test &amp; Release QA</h2>
+<p>Site identity &amp; domain binding · Site World binding · pointer integrity · voice · cognition · Vault isolation (customer-data isolation confirmed) · policy compilation · skin fallback · secrets check · release validation</p>
+<h2>18. Release &amp; Deployment</h2>
+<p>Downloadable ORB package · compiled-site-package, ORB deployment-data, and ORB update-data / website-intelligence-package generation · release versioning &amp; manifest · universal loader script · install snippet · runtime endpoint binding · updates and rollback</p>
+<h2>19. Marketplace</h2>
+<p>Skins, voices, behavior packs, sound packs, enhancements, services, and upgrade packages — recurring revenue surface</p>
+<h2>20. Lifecycle &amp; Self-Maintenance</h2>
+<p>New/removed/changed page, control, form, navigation, and workflow detection · stale-content/stale-route detection · Site World &amp; pointer-map refresh · learned-correction promotion · self-pruning</p>
+<h2>21. Auditing &amp; Reporting</h2>
+<p>Crawl-report generation · endpoint-map generation · SEO (titles, meta, canonicals, headings, indexability, structured data, internal linking) · Accessibility (labels, ARIA, keyboard nav, focus order, contrast where measurable) · Technical Health (HTTP/JS/CSP/CORS/API/asset failures) · Performance (load timing, asset weight, blocking resources, LCP/CLS/INP/TTFB where instrumentable) · <strong>Security/trust signals</strong> (HTTPS, mixed content, exposed secrets, insecure forms/cookies, CSP presence) — explicitly <em>not</em> a penetration-testing tool · Design audit · Pointer/route/control/workflow audit</p>
+<h2>22. Manufacturing Tiers &amp; Sibling Product</h2>
+<p>Basic / Enhanced / Platinum manufacturing configurations, increasing intelligence, customization, and guidance depth · Web Weaver — same intelligence stack, used to design/build a new site when no existing site is worth upgrading</p>
+<hr>
+<h2>Owner-Priority View <em>(business value, not build order)</em></h2>
+<p><strong>Tier 1 — money &amp; customers:</strong> conversion blockers, broken functionality, search visibility, customer friction, missing/confusing information
+<strong>Tier 2 — trust:</strong> contradictions, accessibility, security/trust signals, performance, outdated content
+<strong>Tier 3 — opportunity:</strong> content gaps, internal linking, visitor guidance quality, sales-flow quality, ORB readiness</p>
+<h2>ORB-Priority View <em>(what the runtime needs to function safely)</em></h2>
+<p>Route truth → live DOM truth → target verification → geometry/LiDAR truth → pointer recovery → knowledge grounding → semantic relationships → Governor state → runtime health → evidence behind every claim</p>
+<h2>Crawl Completion Contract</h2>
+<p>A crawl is not COMPLETE because pages were fetched. It requires: routes discovered &amp; resolved, required routes rendered or failures explicitly recorded, content extracted &amp; classified, DOM extracted, pointer candidates extracted, runtime verification attempted, unresolved targets processed through recovery, baseline SEO + accessibility inspection done, technical-health errors collected, ORB-readiness check completed, and every subsystem returning a status + evidence.</p>
+<p>States: <strong>CRAWL COMPLETE</strong> (all required subsystems succeeded) · <strong>CRAWL PARTIAL</strong> (a subsystem couldn't run) · <strong>CRAWL BLOCKED</strong> (a dependency prevents completion) · <strong>CRAWL FAILED</strong> (execution itself failed).</p>
+<h2>Six Authoritative Rollup Outputs</h2>
+<p>Every crawl compiles into exactly these, giving both the owner and the ORB what they need from one source of truth:</p>
+<ol>
+<li><strong>Website Condition</strong> — what's broken or unhealthy</li>
+<li><strong>Search &amp; Discovery</strong> — can people and search engines find and understand it</li>
+<li><strong>Customer Experience</strong> — can visitors understand and navigate it</li>
+<li><strong>Commercial Opportunity</strong> — can visitors convert</li>
+<li><strong>ORB Readiness</strong> — can ORB safely understand, guide, answer, point, and act</li>
+<li><strong>Evidence &amp; Verification</strong> — can every finding be proven</li>
+</ol>
+<hr>
+<h2>Future / Explicitly-Gated Expansion</h2>
+<p>Not baseline scope — requires additional permission or integration before use, and should stay clearly separated from the core audit:</p>
+<ul>
+<li><strong>Competitive intelligence</strong> (leaves the site — requires explicit external-research permission)</li>
+<li><strong>Behavioral analytics</strong> (bounce/scroll/rage-click/funnel data — requires analytics access)</li>
+<li><strong>Search Console integration</strong> (impressions/CTR/position — distinguishes &quot;SEO looks weak&quot; from &quot;this page actually lost 38% of impressions&quot;)</li>
+<li><strong>Policy/compliance rule engines</strong> (industry-specific disclosure/warranty/financing language) — must run on explicit rules, never generic LLM judgment</li>
+</ul>
+
+</body></html>
