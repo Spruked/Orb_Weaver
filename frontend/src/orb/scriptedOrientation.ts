@@ -23,7 +23,10 @@ export const LANDING_FULL_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
   },
   {
     selector: '#weaver-first-encounter',
-    pointerTargetIds: ['what_weaver_does', 'what_to_say', 'watch_weaver_guide', 'interrupt_or_guide'],
+    // One deliberate Point/Ping proves the live guidance behavior here. The
+    // remaining targets belong to later authored stops; reacquiring this same
+    // section four times made the tour look stuck before narration began.
+    pointerTargetIds: ['watch_weaver_guide'],
     text: 'I am Weaver, your Website ORB host. I am not a general-purpose chatbot floating over a page. I am a site-specific intelligence whose cognition is grounded in verified page evidence, a governed knowledge base, and explicitly approved relationships. I understand this website, answer only from what can be proven, and guide you to the right place when showing is faster than explaining. You remain in full control throughout the experience; I never take silent actions or assume authority I have not been given.',
   },
   {

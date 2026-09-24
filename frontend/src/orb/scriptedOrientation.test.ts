@@ -11,8 +11,7 @@ describe('scripted orientation', () => {
     expect(LANDING_FULL_TOUR_SCRIPT[0].text).toMatch(/answer any questions/i);
     expect(LANDING_FULL_TOUR_SCRIPT.at(-1)?.text).toMatch(/rest of the public site/i);
     expect(LANDING_FULL_TOUR_SCRIPT.flatMap((step) => step.pointerTargetIds || [])).toEqual([
-      'orb-weaver-suite-logo', 'what_weaver_does', 'what_to_say', 'watch_weaver_guide',
-      'interrupt_or_guide', 'crawl-discovers-pages', 'relationship-structure',
+      'orb-weaver-suite-logo', 'watch_weaver_guide', 'crawl-discovers-pages', 'relationship-structure',
       'weave-page-knowledge', 'security-governance-proof', 'pointer-intelligence-proof',
       'business-outcomes', 'run-free-preflight',
     ]);

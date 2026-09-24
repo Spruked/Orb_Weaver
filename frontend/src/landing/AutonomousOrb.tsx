@@ -910,7 +910,8 @@ export const AutonomousOrb: React.FC<Props> = ({
     const relevantFeatures = lidarMap.features.filter((feature) => (
       feature.visible &&
       feature.pointerEvents !== "none" &&
-      (feature.hardExclusion || (!feature.occluded && ["interactive", "text_block", "image"].includes(feature.kind)))
+      (feature.hardExclusion || feature.kind === "text_block" ||
+        (!feature.occluded && ["interactive", "image"].includes(feature.kind)))
     ));
     const intersects = (a: { left: number; top: number; right: number; bottom: number }, b: { x: number; y: number; width: number; height: number }) =>
       Math.max(0, Math.min(a.right, b.x + b.width) - Math.max(a.left, b.x)) *
@@ -1398,9 +1399,11 @@ export const AutonomousOrb: React.FC<Props> = ({
       activeRect = refreshed;
     }
 
-    const latestGoal = movement.getLatestGoal();
-    const targetCenterX = latestGoal.normalizedX * window.innerWidth;
-    const targetCenterY = latestGoal.normalizedY * window.innerHeight;
+    // Use the freshly measured live rectangle as the spatial authority. The
+    // normalized goal is useful for intent, but can drift after scrolling or
+    // responsive reflow and put the body back over the target.
+    const targetCenterX = activeRect.left + activeRect.width / 2;
+    const targetCenterY = activeRect.top + activeRect.height / 2;
     const guidanceMap = buildLidarGuidanceMap({
       orbPosition: { x: positionRef.current.x + size / 2, y: positionRef.current.y + size / 2 },
     });
@@ -1427,12 +1430,25 @@ export const AutonomousOrb: React.FC<Props> = ({
         bottom: footprint.bottom + LIDAR_SAFETY_PADDING_PX,
       };
     };
+    // Readable page content remains protected even when the browser's
+    // occlusion probe reports a parent/card as covering it.  Weaver is a
+    // presence beside the copy, never a layer over the copy.
     const protectedFeatures = guidanceMap.features.filter((feature) => (
       feature.visible && feature.pointerEvents !== "none" &&
-      (feature.hardExclusion || (!feature.occluded && ["interactive", "text_block", "image"].includes(feature.kind)))
+      (feature.hardExclusion || feature.kind === "text_block" ||
+        (!feature.occluded && ["interactive", "image"].includes(feature.kind)))
     ));
+    const targetFootprint = {
+      x: activeRect.left,
+      y: activeRect.top,
+      width: activeRect.width,
+      height: activeRect.height,
+    };
     const isSafeStance = (candidate: { x: number; y: number }) => {
       const footprint = footprintFor(candidate);
+      // This direct check is intentional: the selected target is protected
+      // even if its feature record is marked occluded by a containing card.
+      if (intersects(footprint, targetFootprint) > 0) return false;
       return !protectedFeatures.some((feature) => {
         const margin = feature.hardExclusion ? LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX : 0;
         return intersects(footprint, {
@@ -1457,7 +1473,15 @@ export const AutonomousOrb: React.FC<Props> = ({
       { x: targetCenterX + targetHalfWidth * radius - size / 2, y: targetCenterY - targetHalfHeight * radius - size / 2 },
       { x: targetCenterX - targetHalfWidth * radius - size / 2, y: targetCenterY + targetHalfHeight * radius - size / 2 },
       { x: targetCenterX + targetHalfWidth * radius - size / 2, y: targetCenterY + targetHalfHeight * radius - size / 2 },
-    ].map((candidate) => clampPosition(candidate.x, candidate.y)));
+    ])
+      // Do not clamp an unsafe candidate into the text column. A candidate
+      // that cannot fit beside the target is rejected and the next radius is
+      // considered instead.
+      .filter((candidate) => (
+        candidate.x >= 0 && candidate.y >= 0 &&
+        candidate.x + size <= window.innerWidth &&
+        candidate.y + size <= window.innerHeight
+      ));
     const guidedDestination = stanceCandidates.find((candidate) => isSafeStance(candidate));
     if (!guidedDestination) {
       movement.cancel("no_phase_zero_adjacent_stance");
@@ -2280,14 +2304,13 @@ export const AutonomousOrb: React.FC<Props> = ({
           const target = await waitForPointerRecord(targetId);
           if (!target) {
             emitOrbRuntimeEvent("scripted_tour_pointer_unavailable", { orientationId, index, targetId });
-            const message = `Weaver is holding this page until its live target can be verified: ${targetId}.`;
+            const message = `Weaver could not verify ${targetId} on this pass, so I am continuing the guided explanation without pointing to it.`;
             if (process.env.NODE_ENV !== "production") console.error(`[ORB scripted tour] ${message}`);
-            setTourNotice(message);
-            setStatusTitle("Tour paused safely");
+            setStatusTitle("Tour continuing safely");
             setStatusLine(message);
             showStatus(6200);
-            emitOrbRuntimeEvent("scripted_orientation_paused", { orientationId, index, targetId, reason: "target_not_live_on_route" });
-            return false;
+            emitOrbRuntimeEvent("scripted_orientation_pointer_skipped", { orientationId, index, targetId, reason: "target_not_live_on_route" });
+            continue;
           }
           const guided = await guideToPointerRecord(
             target,
@@ -2299,13 +2322,13 @@ export const AutonomousOrb: React.FC<Props> = ({
             targetId,
           });
           if (!guided) {
-            const message = `Weaver is holding until a safe stance is available for ${targetId}.`;
+            const message = `Weaver could not find a safe stance for ${targetId} on this pass, so I am continuing without pointing to it.`;
             if (process.env.NODE_ENV !== "production") console.error(`[ORB scripted tour] ${message}`);
-            setTourNotice(message);
-            setStatusTitle("Tour target waiting");
+            setStatusTitle("Tour target skipped safely");
             setStatusLine(message);
             showStatus(4200);
-            return false;
+            emitOrbRuntimeEvent("scripted_orientation_pointer_skipped", { orientationId, index, targetId, reason: "no_safe_stance" });
+            continue;
           }
         }
         if (scriptedOrientationInterruptedRef.current) continue;
