@@ -163,7 +163,7 @@ const LandingPage: React.FC = () => {
         void beginStartupWarmup();
       }
       window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-complete", {
-        detail: { splash_state: "skipped_session_once" },
+        detail: { splash_state: "skipped_session_once", intro_audio_skipped: true },
       }));
       return;
     }
@@ -435,7 +435,13 @@ const LandingPage: React.FC = () => {
     window.sessionStorage.setItem(LANDING_STARTUP_READINESS_SESSION_KEY, voiceUnavailable ? "BLOCKED" : "READY");
     setSplashTrigger(0);
     window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-complete", {
-      detail: { splash_state: "complete", readiness_state: voiceUnavailable ? "BLOCKED" : "READY", voice_unavailable: voiceUnavailable },
+      detail: {
+        splash_state: "complete",
+        readiness_state: voiceUnavailable ? "BLOCKED" : "READY",
+        voice_unavailable: voiceUnavailable,
+        // The tour may begin only after this explicit audio completion handoff.
+        intro_audio_complete: true,
+      },
     }));
   };
   completeStartupGateRef.current = (voiceUnavailable = false) => {

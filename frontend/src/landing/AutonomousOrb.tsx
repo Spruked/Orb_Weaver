@@ -3379,6 +3379,10 @@ export const AutonomousOrb: React.FC<Props> = ({
       }, 30000);
       const handler = (event: Event) => {
         const detail = (event as CustomEvent).detail || {};
+        // A generic readiness event is not enough to admit the tour. Require
+        // either confirmed intro playback completion or an intentional
+        // once-per-session skip from LandingPage.
+        if (detail.intro_audio_complete !== true && detail.intro_audio_skipped !== true) return;
         unlockAudio();
         updateStartupDiagnostics({
           splash_state: detail.splash_state === "skipped_session_once" ? "skipped_session_once" : "complete",

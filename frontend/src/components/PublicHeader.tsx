@@ -21,6 +21,7 @@ const publicNavItems: PublicNavItem[] = [
   { href: '/investor-contact', label: 'Investors' },
   { href: '/security', label: 'Vision & Product Philosophy' },
   { href: 'https://campaign.orbweaver.spruked.com', label: 'Campaign', external: true },
+  { href: '/login?next=/dashboard', label: 'Login' },
   { href: 'https://campaign.orbweaver.spruked.com/roi-calculator', label: 'Planning Calculator', cta: true, external: true },
 ];
 
