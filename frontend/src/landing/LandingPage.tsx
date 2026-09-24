@@ -527,8 +527,8 @@ const LandingPage: React.FC = () => {
       {/* BEAT 2 — Challenge the belief */}
       <section id="beat-2" data-beat-id="beat2" className={beatClassName('beat2')}>
         <div className="ow-cut-shell ow-cut-shell-single">
-          <div className="ow-cut-copy">
-            <p>For thirty years we've accepted crawling as the way websites are understood.</p>
+          <div className="ow-cut-copy" data-orb-copy-region="true">
+            <p data-orb-target="crawl-discovers-pages">For thirty years we've accepted crawling as the way websites are understood.</p>
             <p className="ow-cut-preline"><strong>A crawl discovers pages.</strong></p>
             <p className="ow-cut-preline"><strong>A weave discovers purpose.</strong></p>
           </div>
@@ -538,8 +538,8 @@ const LandingPage: React.FC = () => {
       {/* BEAT 3 — The reveal */}
       <section id="beat-3" data-beat-id="beat3" className={beatClassName('beat3', 'accent')}>
         <div className="ow-cut-shell ow-cut-shell-split">
-          <div className="ow-cut-copy">
-            <p>Your website isn't made of pages.</p>
+          <div className="ow-cut-copy" data-orb-copy-region="true">
+            <p data-orb-target="relationship-structure">Your website isn't made of pages.</p>
             <p><strong>It's made of relationships.</strong></p>
             <div className="ow-cut-strands" aria-label="Relationship strands">
               <p>Products.</p>
@@ -562,7 +562,7 @@ const LandingPage: React.FC = () => {
       {/* BEAT 4 — Introduce ORB Weaver */}
       <section id="beat-4" data-beat-id="beat4" className={beatClassName('beat4')}>
         <div className="ow-cut-shell ow-cut-shell-single">
-          <div className="ow-cut-copy">
+          <div className="ow-cut-copy" data-orb-copy-region="true">
             <p>That's why ORB Weaver exists.</p>
             <p>It doesn't stop when it finds your website.</p>
             <p><strong>That's where the real work begins.</strong></p>
@@ -576,8 +576,8 @@ const LandingPage: React.FC = () => {
           <div className="ow-cut-visual" aria-hidden="true">
             <img className="ow-cut-visual-image" src="/WORKORB1600.png" alt="Website ORB processing and weaving business data into contextual intelligence" />
           </div>
-          <div className="ow-cut-copy">
-            <p>Imagine taking every page.</p>
+          <div className="ow-cut-copy" data-orb-copy-region="true">
+            <p data-orb-target="weave-page-knowledge">Imagine taking every page.</p>
             <p>Every product.</p>
             <p>Every FAQ.</p>
             <p>Every customer journey.</p>
@@ -592,7 +592,7 @@ const LandingPage: React.FC = () => {
       {/* BEAT 6 — Reveal the ORB */}
       <section id="beat-6" data-beat-id="beat6" className={beatClassName('beat6', 'hero')}>
         <div className="ow-cut-shell ow-cut-shell-reveal">
-          <div className="ow-cut-copy">
+          <div className="ow-cut-copy" data-orb-copy-region="true">
             <p>When the final weave is complete, something new exists.</p>
             <h2 className="ow-cut-orb-reveal">A Website ORB.</h2>
           </div>
@@ -602,7 +602,7 @@ const LandingPage: React.FC = () => {
       {/* BEAT 7 — So what (emotional hit) */}
       <section id="beat-7" data-beat-id="beat7" className={beatClassName('beat7', 'hero')}>
         <div className="ow-cut-shell ow-cut-shell-single">
-          <div className="ow-cut-copy">
+          <div className="ow-cut-copy" data-orb-copy-region="true">
             <p>Your customers stop wandering.</p>
             <p>They stop abandoning forms.</p>
             <p>They stop asking the same questions twice.</p>
@@ -619,9 +619,9 @@ const LandingPage: React.FC = () => {
       {/* BEAT 8 — Can I trust it? */}
       <section id="beat-8" data-beat-id="beat8" className={beatClassName('beat8', 'accent')}>
         <div className="ow-cut-shell ow-cut-shell-single">
-          <div className="ow-cut-copy">
+          <div className="ow-cut-copy" data-orb-copy-region="true">
             <h2>Can I trust it?</h2>
-            <p><strong>Security. Governance. Verification. Truth.</strong></p>
+            <p data-orb-target="security-governance-proof"><strong>Security. Governance. Verification. Truth.</strong></p>
             <p>ORB Weaver guides with verified state, bounded permissions, and explicit control governance — so business guidance remains safe, truthful, and dependable.</p>
             <a className="ow-cut-link" href="/security">See Security Design →</a>
           </div>
@@ -631,10 +631,10 @@ const LandingPage: React.FC = () => {
       {/* BEAT 9 — How does it actually work? */}
       <section id="beat-9" data-beat-id="beat9" className={beatClassName('beat9')}>
         <div className="ow-cut-shell ow-cut-shell-technical">
-          <div className="ow-cut-copy">
+          <div className="ow-cut-copy" data-orb-copy-region="true">
             <h2>How does it actually work?</h2>
             <h2>Beneath the Weave</h2>
-            <p><strong>28-Weave™ Assembly.</strong></p>
+            <p data-orb-target="pointer-intelligence-proof"><strong>28-Weave™ Assembly.</strong></p>
             <p>Not a crawl. Not an audit. A manufacturing process — twenty-eight explicit weaves that compile your website into verified knowledge, live pointer intelligence, and a learning system that gets smarter every month.</p>
             <p>Four of those weaves exist nowhere else: <strong>a priori knowledge</strong> compiled from your own verified facts and policies, <strong>a posteriori knowledge</strong> that keeps learning after launch, <strong>multi-funnel continuity</strong> across every path a visitor can take, and <strong>pointer intelligence</strong> that turns "click here" into something verified, not guessed.</p>
             <p>The rest — SEO, accessibility, performance, security, schema — get handled too. But that's not what makes this a Website ORB instead of a website audit.</p>
@@ -643,7 +643,7 @@ const LandingPage: React.FC = () => {
             <p>Not the web you already know. A new one — built from your own pages, products, and knowledge. Stronger every day, in the hands of ORB Weaver.</p>
             
             <h2 className="ow-cut-pause">Here's what that strength looks like:</h2>
-            <ul id="weave-business-outcomes" className="ow-cut-list" aria-label="Commercial value outcomes">
+            <ul id="weave-business-outcomes" data-orb-target="business-outcomes" className="ow-cut-list" aria-label="Commercial value outcomes">
               <li>Reduce visitor confusion — Help people understand where to go and what to do next.</li>
               <li>Increase completed journeys — Guide users from intent to completion across forms, checkout, and service workflows.</li>
               <li>Reduce abandonment — Support visitors at hesitation points before they drop out.</li>
@@ -735,7 +735,7 @@ const LandingPage: React.FC = () => {
           </div>
 
           <p className="ow-cut-secondary-links">
-            <a href="https://campaign.orbweaver.spruked.com">Campaign, Beta &amp; Investor Portal</a>
+            <a href="/use-cases">Explore Use Cases</a>
             <span>·</span>
             <a href="/features">Explore Business Features</a>
           </p>

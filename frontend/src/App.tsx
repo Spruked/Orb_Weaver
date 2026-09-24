@@ -28,7 +28,9 @@ import PublicPreflight from './pages/PublicPreflight';
 import PublicLeadPage from './pages/PublicLeadPage';
 import PublicHowItWorks from './pages/PublicHowItWorks';
 import PublicFeatures from './pages/PublicFeatures';
+import PublicUseCases from './pages/PublicUseCases';
 import PublicSecurity from './pages/PublicSecurity';
+import PublicOrbWeaverArtifact from './pages/PublicOrbWeaverArtifact';
 import LidarGuidance from './pages/LidarGuidance';
 import { api, authStore, Customer } from './services/api';
 import { marketplaceUrl } from './services/marketplaceUrl';
@@ -136,6 +138,9 @@ function App() {
   if (publicPath === '/features') {
     return renderPublicPage(<PublicFeatures />);
   }
+  if (publicPath === '/use-cases') {
+    return renderPublicPage(<PublicUseCases />);
+  }
   if (publicPath === '/lidar-guidance') {
     return renderPublicPage(<LidarGuidance />);
   }
@@ -144,6 +149,9 @@ function App() {
   }
   if (publicPath === '/security') {
     return renderPublicPage(<PublicSecurity />);
+  }
+  if (publicPath === '/orb-weaver') {
+    return renderPublicPage(<PublicOrbWeaverArtifact />);
   }
   if (publicPath === '/privacy' || publicPath === '/terms') {
     return renderPublicPage(<Navigate to="/" replace />);

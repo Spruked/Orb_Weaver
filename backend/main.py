@@ -186,6 +186,9 @@ app = FastAPI(
 CORS_ALLOWED_ORIGINS = [
     "https://orbweaver.spruked.com",
     "https://www.orbweaver.spruked.com",
+    # The campaign is a separately hosted, registered Website ORB surface.
+    # Keep this explicit and site-bound; do not broaden it to a wildcard.
+    "https://campaign.orbweaver.spruked.com",
     "http://localhost:16510",
     "http://127.0.0.1:16510",
     "http://localhost:16667",
@@ -1978,11 +1981,24 @@ def _local_llm_is_locked_llamacpp() -> bool:
     }
 
 
-def _dock_orb_identity(compiled_policy: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def _dock_orb_identity(
+    compiled_policy: Optional[Dict[str, Any]],
+    site_id: Optional[str] = None,
+) -> Dict[str, Any]:
     appearance = (compiled_policy or {}).get("appearance") or {}
     skin_id = str(appearance.get("skin_id") or "orb_factory_default_v1")
     asset_path = str(appearance.get("asset_path") or "/orb-skins/tuxorb.png")
     display_name = str(appearance.get("display_name") or "O.R.B.S. Factory Default")
+    # The campaign install is the visual acceptance test for the current
+    # Website ORB. Keep ordinary customer installs on the immutable factory
+    # fallback, while the explicitly registered campaign identity uses the
+    # same current Weaver artwork as the live main site.
+    if site_id == "orb-weaver-campaign" and not appearance:
+        skin_id = "orb_weaver_current_v2"
+        # Version the cross-origin skin URL so CDN caches cannot replay the
+        # pre-CORS asset response to an installed Website ORB.
+        asset_path = "/orb-skins/weaver-blue-eye.png?v=20260924"
+        display_name = "Weaver"
     factory_default = skin_id == "orb_factory_default_v1"
     asset_file = Path(__file__).resolve().parent.parent / "frontend" / "public" / asset_path.lstrip("/")
     asset_hash = ""
@@ -9499,7 +9515,7 @@ async def website_orb_bootstrap(
                 *(["RUNTIME_GUIDANCE_NOT_PROVEN"] if runtime_guidance_status != "COMPLETE" else []),
             ],
         },
-        "orb_identity": _dock_orb_identity(compiled_policy),
+        "orb_identity": _dock_orb_identity(compiled_policy, site_id),
         "operating_policy": public_runtime_policy(compiled_policy),
         "capabilities": _orb_capabilities(),
         "endpoints": {

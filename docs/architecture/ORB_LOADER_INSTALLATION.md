@@ -18,6 +18,17 @@ Install this exact script once at the site root so it loads on every route:
 
 The production URL is an installation target, not a deployment assertion. The loader must be deployed before testing that URL.
 
+The campaign installation is site-bound. `orb-weaver-campaign` is authorized
+only for `https://campaign.orbweaver.spruked.com`; the runtime validates both
+the HTTP origin and the WebSocket origin. The campaign snippet does not need
+to be changed when the shared loader or runtime is rebuilt.
+
+The published external loader is Weaver's embodied interface, not a chat
+widget. It mounts the current Website ORB skin, observes the host page, and
+starts microphone/STT when the visitor deliberately engages the ORB. It does
+not expose a text box, Ask button, or rectangular chat panel. Spoken output,
+verified Pointer/Ping guidance, and LiDAR-safe movement remain runtime-owned.
+
 ## Native React/TypeScript adapter
 
 If a platform rejects or strips external scripts, install the source adapter in the site project:
@@ -43,7 +54,7 @@ export function SiteRoot() {
 
 Both adapters call the same `src/orb-client` core and the same runtime contracts. The native adapter is not a second ORB implementation.
 
-Every adapter activates the immutable `orb_factory_default_v1` **O.R.B.S. Factory Default** identity from `/orb-skins/factory-orb-v1.png` first. A custom skin changes only the in-memory visual selection. Failed custom assets and explicit PATCH-class rollback both restore Factory Default without remounting the loader, rebuilding Site World or Pointer Map, restarting runtime, or disconnecting WebSocket. Factory Default remains permanently registered, immutable, and owner-non-editable.
+Ordinary adapters activate the immutable `orb_factory_default_v1` **O.R.B.S. Factory Default** identity from `/orb-skins/factory-orb-v1.png` first. The registered campaign installation is an explicit current-Weaver exception and receives `orb_weaver_current_v2` from `/orb-skins/weaver-blue-eye.png` with a versioned asset query. A custom skin changes only the in-memory visual selection. Failed custom assets and explicit PATCH-class rollback restore Factory Default without remounting the loader, rebuilding Site World or Pointer Map, restarting runtime, or disconnecting WebSocket.
 
 ## Campaign scan binding
 
@@ -73,7 +84,13 @@ cd ..
 PYTHONPATH=backend .venv/bin/pytest -q backend/tests
 ```
 
-The 25-check browser smoke test covers a plain HTML script install, Factory-first rendering, scaling, duplicate prevention, Shadow DOM isolation, route changes through `pushState`, `replaceState`, and back navigation, offline/reconnect, pointer and voice availability, custom-skin success, automatic Factory fallback, explicit Factory rollback, unchanged motion/runtime/WebSocket state, layout isolation, teardown, reinitialization, and zero console errors.
+The loader smoke test covers a plain HTML script install, identity rendering,
+scaling, duplicate prevention, Shadow DOM isolation, route changes through
+`pushState`, `replaceState`, and back navigation, offline/reconnect, pointer
+and voice availability, custom-skin success, automatic Factory fallback,
+explicit Factory rollback, unchanged runtime/WebSocket state, layout
+isolation, teardown, reinitialization, and zero console errors. The current
+run passes **35 checks** with zero console errors.
 
 ## External installation ladder
 

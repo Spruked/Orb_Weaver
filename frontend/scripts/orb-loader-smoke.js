@@ -149,9 +149,11 @@ const { chromium } = require('playwright');
   }, 'Factory artwork must preserve its full aspect inside every supported ORB size');
   assert.equal(await page.evaluate(() => {
     const root = document.querySelector('#orb-weaver-universal-root').shadowRoot;
-    return !root.querySelector('[data-panel]').hidden
-      && root.querySelector('[data-toggle]').getAttribute('aria-expanded') === 'true'
-      && !root.querySelector('[data-voice]').disabled
+    return !root.querySelector('[data-panel]')
+      && !root.querySelector('[data-form]')
+      && !root.querySelector('[data-input]')
+      && !root.querySelector('[data-voice]')
+      && root.querySelector('[data-toggle]').getAttribute('aria-pressed') === 'false'
       && /Weaver|listening|Microphone/.test(root.querySelector('[data-output]').textContent);
   }), true, 'Factory ORB must introduce itself and remain voice-capable on first mount');
   assert.equal(observations[0].page_context.host, 'campaign.test');

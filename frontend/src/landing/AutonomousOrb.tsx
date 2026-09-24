@@ -60,6 +60,9 @@ const ABSOLUTE_RECORDING_LIMIT_MS = 22000;
 const SPEECH_LEVEL_THRESHOLD = 0.018;
 const LIDAR_DRIFT_THRESHOLD_PX = 12;
 const ORB_SPEECH_PLAYBACK_RATE = 0.9;
+// Keep the authored site tour brisk without changing the intro or live visitor
+// responses. Pitch remains preserved by the media element.
+const TOUR_SPEECH_PLAYBACK_RATE = 1.08;
 // Give the browser and the visitor a short, explicit boundary between the
 // authored landing introduction and the first governed tour action. The
 // startup gate still owns permission/readiness; this is only presentation
@@ -1703,6 +1706,16 @@ export const AutonomousOrb: React.FC<Props> = ({
     return pointerRecordsRef.current.length > 0;
   }, []);
 
+  const waitForPointerRecord = useCallback(async (targetId: string) => {
+    const startedAt = Date.now();
+    while (activeRef.current && Date.now() - startedAt < 8000) {
+      const target = findPointerRecordById(targetId);
+      if (target) return target;
+      await wait(160);
+    }
+    return findPointerRecordById(targetId);
+  }, [findPointerRecordById]);
+
   const playPulse = useCallback(async (kind: PulseKind, duration: number) => {
     const visibleDuration = Math.max(duration, kind === "ripple" ? 1150 : kind === "flare" ? 1450 : 2100);
 
@@ -1913,7 +1926,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     return analyser;
   }, []);
 
-  const playDecodedSpeech = useCallback(async (audioUrl: string, captionText?: string, onPlaybackStarted?: () => void) => {
+  const playDecodedSpeech = useCallback(async (audioUrl: string, captionText?: string, onPlaybackStarted?: () => void, playbackRate = ORB_SPEECH_PLAYBACK_RATE) => {
     const AudioContextCtor = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextCtor) {
       throw new Error("AudioContext unavailable");
@@ -1934,8 +1947,8 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     const audio = new Audio(api.orbMediaUrl(audioUrl));
     audio.crossOrigin = 'anonymous';
-    audio.playbackRate = ORB_SPEECH_PLAYBACK_RATE;
-    audio.defaultPlaybackRate = ORB_SPEECH_PLAYBACK_RATE;
+    audio.playbackRate = playbackRate;
+    audio.defaultPlaybackRate = playbackRate;
     audio.preservesPitch = true;
     speechAudioRef.current = audio;
     const source = context.createMediaElementSource(audio);
@@ -2005,7 +2018,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     text: string,
     audioUrl?: string | null,
     provider?: string | null,
-    options: { showTranscript?: boolean; onPlaybackStarted?: () => void } = {},
+    options: { showTranscript?: boolean; onPlaybackStarted?: () => void; playbackRate?: number } = {},
   ): Promise<boolean> => {
     // Narration is active hosting, never visitor inactivity.
     markVisitorActivity();
@@ -2041,7 +2054,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         return false;
       }
       if (speakerBoostRef.current) {
-        await playDecodedSpeech(audioUrl, showTranscript ? text : undefined, options.onPlaybackStarted);
+        await playDecodedSpeech(audioUrl, showTranscript ? text : undefined, options.onPlaybackStarted, options.playbackRate);
         speechPlaybackRef.current = false;
         setVoiceState("idle");
         showStatus(1400);
@@ -2054,8 +2067,8 @@ export const AutonomousOrb: React.FC<Props> = ({
       const audio = new Audio();
       audio.muted = false;
       audio.volume = speakerBoostRef.current ? 1 : 0.86;
-      audio.playbackRate = ORB_SPEECH_PLAYBACK_RATE;
-      audio.defaultPlaybackRate = ORB_SPEECH_PLAYBACK_RATE;
+      audio.playbackRate = options.playbackRate || ORB_SPEECH_PLAYBACK_RATE;
+      audio.defaultPlaybackRate = options.playbackRate || ORB_SPEECH_PLAYBACK_RATE;
       audio.preservesPitch = true;
       audio.src = api.orbMediaUrl(audioUrl);
       speechAudioRef.current = audio;
@@ -2131,7 +2144,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     text: string,
     audioUrl?: string | null,
     provider?: string | null,
-    options: { onPlaybackStarted?: () => void } = {},
+    options: { onPlaybackStarted?: () => void; playbackRate?: number } = {},
   ) => {
     const normalizedText = normalizeOrbDialogue(text);
     setStatusTitle("Preparing voice");
@@ -2214,7 +2227,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     const llmScriptedTourEvaluation = developmentLlmScriptedTourOverride();
     emitOrbRuntimeEvent("scripted_orientation_started", { orientationId, stepCount: steps.length });
     try {
-      tourSteps: for (const [index, step] of steps.entries()) {
+      for (const [index, step] of steps.entries()) {
         const stepStartedAt = Date.now();
         if (scriptedOrientationInterruptedRef.current) {
           emitOrbRuntimeEvent("scripted_orientation_interrupted_by_visitor", { orientationId, index });
@@ -2264,19 +2277,17 @@ export const AutonomousOrb: React.FC<Props> = ({
         // launches the pointer, and pings without ever clicking the target.
         for (const targetId of step.pointerTargetIds || []) {
           if (scriptedOrientationInterruptedRef.current) break;
-          const pointersReady = await waitForPointerRecords();
-          const target = pointersReady ? findPointerRecordById(targetId) : null;
+          const target = await waitForPointerRecord(targetId);
           if (!target) {
             emitOrbRuntimeEvent("scripted_tour_pointer_unavailable", { orientationId, index, targetId });
-            if (process.env.NODE_ENV !== "production") {
-              const message = `Scripted tour target is unavailable: ${targetId}`;
-              console.error(`[ORB scripted tour] ${message}`);
-              setTourNotice(message);
-              setStatusTitle("Tour target unavailable");
-              setStatusLine(message);
-              showStatus(4200);
-            }
-            continue tourSteps;
+            const message = `Weaver is holding this page until its live target can be verified: ${targetId}.`;
+            if (process.env.NODE_ENV !== "production") console.error(`[ORB scripted tour] ${message}`);
+            setTourNotice(message);
+            setStatusTitle("Tour paused safely");
+            setStatusLine(message);
+            showStatus(6200);
+            emitOrbRuntimeEvent("scripted_orientation_paused", { orientationId, index, targetId, reason: "target_not_live_on_route" });
+            return false;
           }
           const guided = await guideToPointerRecord(
             target,
@@ -2294,7 +2305,7 @@ export const AutonomousOrb: React.FC<Props> = ({
             setStatusTitle("Tour target waiting");
             setStatusLine(message);
             showStatus(4200);
-            continue tourSteps;
+            return false;
           }
         }
         if (scriptedOrientationInterruptedRef.current) continue;
@@ -2366,6 +2377,7 @@ export const AutonomousOrb: React.FC<Props> = ({
               ? { tts_audio_url: suppliedAudioUrl, tts_provider: suppliedAudioProvider }
               : await api.websiteOrbTts(spokenText);
             played = await speakWithGeneratedAudio(spokenText, tts.tts_audio_url, tts.tts_provider, {
+              playbackRate: TOUR_SPEECH_PLAYBACK_RATE,
               onPlaybackStarted: () => {
                 emitOrbRuntimeEvent("scripted_orientation_step_started", { orientationId, index, attempt });
                 if (!step.scrollToEndDuringSpeech) return;
@@ -2433,7 +2445,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     } finally {
       scriptedOrientationRunningRef.current = false;
     }
-  }, [findPointerRecordById, guideToPointerRecord, invalidateAmbientPose, navigate, resumeAutonomousPresence, runMorbWorkSimulation, showStatus, speakWithGeneratedAudio, waitForPointerRecords]);
+  }, [findPointerRecordById, guideToPointerRecord, invalidateAmbientPose, navigate, resumeAutonomousPresence, runMorbWorkSimulation, showStatus, speakWithGeneratedAudio, waitForPointerRecord, waitForPointerRecords]);
 
   const diagnosticNarrationText = useCallback(() => {
     return [

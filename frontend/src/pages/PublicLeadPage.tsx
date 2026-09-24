@@ -22,7 +22,7 @@ const PublicLeadPage: React.FC<PublicLeadPageProps> = ({ type }) => {
   }, [isBeta]);
 
   return (
-    <main data-orb-target={isBeta ? 'tour-founding-beta' : 'tour-investor-contact'} className="ow-lead-page">
+    <main data-orb-target={isBeta ? 'tour-founding-beta' : 'tour-investor-contact'} className="ow-lead-page ow-campaign-page">
       <div className="ow-lead-grid" aria-hidden="true" />
       <div className="ow-lead-glow" aria-hidden="true" />
       <PublicHeader theme="dark" />

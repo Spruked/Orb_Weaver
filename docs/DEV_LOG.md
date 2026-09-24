@@ -1,5 +1,32 @@
 # Orb Weaver Development Log
 
+## 2026-09-23 — Campaign Website ORB runtime publication and design artifact integration
+
+* Rebuilt and restarted the production Docker service after the campaign
+  installer exposed stale runtime behavior. The campaign origin is now bound
+  explicitly to `orb-weaver-campaign` for API/CORS and WebSocket access; the
+  campaign install snippet was not changed.
+* Removed the external loader's legacy chatbot housing: no panel, text box,
+  Ask button, or conventional voice window. Engaging Weaver starts the
+  microphone/STT path directly; spoken responses and verified Pointer/LiDAR
+  guidance remain in the shared governed runtime.
+* Published the current campaign identity as `orb_weaver_current_v2` using the
+  white-collar/cyan-lens `weaver-blue-eye.png` skin. Added narrow cross-origin
+  access for `/orb-skins/` and versioned the skin URL to prevent a stale CDN
+  response from forcing the tuxedo factory fallback.
+* Added the supplied compiled React design export at
+  `frontend/public/orb-weaver.html` and exposed it through the native React
+  route `/orb-weaver` using `PublicOrbWeaverArtifact`. This preserves the
+  design while allowing later section-by-section migration into editable
+  React components.
+* Validation: loader build passed; loader smoke passed with 35 checks and
+  zero console errors; frontend development compilation passed; production
+  CORS preflight passed; campaign bootstrap returned the current skin; and
+  the versioned skin request returned `200` with cross-origin headers.
+* Remaining external issue: the campaign's own Vinext deployment requests
+  missing Geist font files under `.vinext/fonts/`. Those 404s are separate
+  from Orb Weaver and require a Campaign-site build/path repair.
+
 ## 2026-09-22 — Customer download isolation and installable runtime
 
 * Removed unversioned context overlays and excluded seeded template data,

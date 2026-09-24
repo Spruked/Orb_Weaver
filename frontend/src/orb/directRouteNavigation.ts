@@ -11,6 +11,7 @@ export type VerifiedRouteNavigation = {
 export const VERIFIED_ROUTE_NAVIGATIONS: readonly VerifiedRouteNavigation[] = [
   { route: '/lidar-guidance', pointerTargetId: 'tour-lidar-guidance', label: 'LiDAR visual navigation', aliases: ['navigation page', 'lidar navigation', 'lidar guidance', 'visual navigation'] },
   { route: '/features', pointerTargetId: 'tour-features', label: 'Website ORB features', aliases: ['features page', 'orb features'] },
+  { route: '/use-cases', pointerTargetId: 'tour-use-cases', label: 'Website ORB use cases', aliases: ['use cases', 'use-case page', 'orb use cases'] },
   { route: '/how-it-works', pointerTargetId: 'tour-how-it-works', label: 'how Orb Weaver works', aliases: ['how it works', 'how does it work'] },
   { route: '/security', pointerTargetId: 'tour-security', label: 'security', aliases: ['security page', 'security'] },
   { route: '/weaving', pointerTargetId: 'tour-weaving', label: 'weaving', aliases: ['weaving page', 'weaving'] },

@@ -224,11 +224,10 @@ def test_bootstrap_blocks_unverified_pointer_context(tmp_path, monkeypatch):
         "passed": False,
         "blockers": ["POINTER_RECOVERY_REQUIRED", "RUNTIME_GUIDANCE_NOT_PROVEN"],
     }
-    assert payload["orb_identity"]["skin_id"] == "orb_factory_default_v1"
-    assert payload["orb_identity"]["asset_path"] == "/orb-skins/tuxorb.png"
-    assert payload["orb_identity"]["asset_sha256"] == "f447043b007e9aba07c0c67e3b5749751f8db327b21b09f1a763eca359e73ca5"
-    assert payload["orb_identity"]["owner_editable"] is False
-    assert payload["orb_identity"]["immutable_default"] is True
+    assert payload["orb_identity"]["skin_id"] == "orb_weaver_current_v2"
+    assert payload["orb_identity"]["asset_path"] == "/orb-skins/weaver-blue-eye.png?v=20260924"
+    assert payload["orb_identity"]["owner_editable"] is True
+    assert payload["orb_identity"]["immutable_default"] is False
     assert payload["orb_identity"]["fallback_enabled"] is True
     assert payload["page_capsule"]["current_url"] == "https://demo.openai.chatgpt.site/"
     assert payload["page_capsule"]["context_domain"] == "campaign.orbweaver.spruked.com"
@@ -392,6 +391,23 @@ def test_orb_websocket_is_origin_checked_and_route_aware(tmp_path, monkeypatch):
             "target_url": "https://demo.openai.chatgpt.site/about",
             "route": "/about",
         }
+
+
+def test_campaign_origin_is_allowed_for_loader_http_requests(tmp_path, monkeypatch):
+    _main, client = load_app(tmp_path, monkeypatch)
+    response = client.get(
+        "/api/orb/bootstrap",
+        params={
+            "site_id": "orb-weaver-campaign",
+            "target_url": "https://campaign.orbweaver.spruked.com/use-cases",
+            "loader_version": "1",
+        },
+        headers={"origin": "https://campaign.orbweaver.spruked.com"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "https://campaign.orbweaver.spruked.com"
+    assert response.json()["site"]["site_id"] == "orb-weaver-campaign"
 
 
 def test_runtime_blocks_stale_signup_route_suggestion(tmp_path, monkeypatch):

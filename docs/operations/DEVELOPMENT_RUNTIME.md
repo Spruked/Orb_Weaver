@@ -12,6 +12,26 @@ or modify the reviewed Docker runtime.
 | Reviewed Docker backend | `16500` |
 | Reviewed Docker frontend | `16510` |
 
+The reviewed Docker service is also the public tunnel origin for
+`orbweaver.spruked.com`. When the external campaign loader or runtime changes,
+rebuild the service so the public API, loader, frontend build, and Nginx asset
+headers are updated together:
+
+```bash
+docker compose up -d --build orb-weaver
+```
+
+Verify the campaign boundary after restart:
+
+```bash
+curl -i -X OPTIONS https://orbweaver.spruked.com/api/orb/bootstrap \
+  -H 'Origin: https://campaign.orbweaver.spruked.com' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: content-type'
+curl -I 'https://orbweaver.spruked.com/orb-skins/weaver-blue-eye.png?v=20260924' \
+  -H 'Origin: https://campaign.orbweaver.spruked.com'
+```
+
 Earlier `16600`, `16610`, and `19667` pairings are historical only.
 
 ## Start and verify

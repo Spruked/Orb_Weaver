@@ -1,124 +1,53 @@
 import React, { useEffect } from 'react';
+import { ArrowRight, Check, Eye, LockKeyhole, MessageCircle, MousePointer2, Radar, Route, ScanSearch, ShieldCheck, Sparkles } from 'lucide-react';
 import PublicHeader from '../components/PublicHeader';
 import PublicFooter from '../components/PublicFooter';
+import { marketplaceUrl } from '../services/marketplaceUrl';
+import './PublicFeatures.css';
 
-type FeatureBlock = {
-  title: string;
-  problem: string;
-  why: string;
-  difference: string;
-};
+type Outcome = { number: string; title: string; headline: string; body: string; outcome: string; icon: React.ElementType; accent: string };
 
-const featureBlocks: FeatureBlock[] = [
-  {
-    title: 'Reduce Visitor Confusion',
-    problem: 'Visitors cannot quickly find the right page, action, or path.',
-    why: 'Confusion increases exits and lowers conversion intent before visitors even engage.',
-    difference: 'Orb Weaver uses page-aware context to guide visitors with relevant, situational responses instead of generic prompts.',
-  },
-  {
-    title: 'Guide Visitors Naturally',
-    problem: 'Static websites force people to self-navigate complex journeys.',
-    why: 'When guidance feels robotic, visitors disengage instead of progressing.',
-    difference: 'Orb Weaver keeps conversational continuity and helps visitors move forward through natural dialogue.',
-  },
-  {
-    title: 'Verified Website Guidance',
-    problem: 'Many assistants suggest steps that are outdated or unavailable.',
-    why: 'Incorrect guidance breaks trust and increases abandonment.',
-    difference: 'Orb Weaver validates targets and actions against live website state before guidance is delivered.',
-  },
-  {
-    title: 'Visual Point and Ping',
-    problem: 'Text-only instructions are slow when users need precise direction.',
-    why: 'The longer it takes to locate a control, the more likely users are to leave.',
-    difference: 'Orb Weaver can visually guide to verified page controls to reduce hesitation and navigation friction.',
-  },
-  {
-    title: 'Conversation That Understands Context',
-    problem: 'Disconnected answers force visitors to repeat themselves.',
-    why: 'Repeated clarification creates fatigue and weakens confidence in the experience.',
-    difference: 'Orb Weaver carries objective, context, and prior answers across turns to maintain momentum.',
-  },
-  {
-    title: 'Safer AI Through Verification',
-    problem: 'Unbounded assistants can overstate certainty or propose unsafe actions.',
-    why: 'Safety and trust are mandatory for customer-facing workflows.',
-    difference: 'Orb Weaver separates recommendation from execution and applies verification plus governance before action.',
-  },
-  {
-    title: 'Continuous Learning',
-    problem: 'Website support quality stagnates when systems do not learn from real outcomes.',
-    why: 'Without learning, recurring customer friction remains unresolved.',
-    difference: 'Orb Weaver records verified outcomes and incorporates approved learnings to improve guidance quality over time.',
-  },
-  {
-    title: 'Website Intelligence',
-    problem: 'Most systems do not truly understand the website they are guiding on.',
-    why: 'Low website understanding leads to shallow assistance and missed conversions.',
-    difference: 'Orb Weaver compiles site structure, controls, and pathways into a working website intelligence model for grounded assistance.',
-  },
+const outcomes: Outcome[] = [
+  { number: '01', title: 'Reduce visitor confusion', headline: 'Help people find the right path faster.', body: 'Visitors arrive with a question, need, or goal—not a map of your site. Weaver interprets that intent in website context and helps them move toward the relevant page, person, product, form, or next step.', outcome: 'Less friction between arrival and action.', icon: Route, accent: 'cyan' },
+  { number: '02', title: 'Guide visitors naturally', headline: 'Give your website the ability to guide, not just display.', body: 'Weaver stays engaged across the journey, maintains context, and moves between relevant areas without making visitors restart the conversation on every page.', outcome: 'A more continuous guided visitor experience.', icon: MessageCircle, accent: 'violet' },
+  { number: '03', title: 'Verified website guidance', headline: 'Know the destination exists before pointing someone toward it.', body: 'Routes, targets, and live page state are checked before guidance is presented. If a destination cannot be verified, Weaver does not pretend it can reach it.', outcome: 'More dependable guidance and fewer broken journeys.', icon: ShieldCheck, accent: 'emerald' },
+  { number: '04', title: 'Visual Point & Ping', headline: 'Show visitors exactly what you are talking about.', body: 'Weaver moves beside verified content, points toward the relevant destination, and pings the target. Guidance is based on live page geometry—not guessed screen coordinates.', outcome: 'Faster understanding with less searching.', icon: MousePointer2, accent: 'amber' },
+  { number: '05', title: 'Context-aware conversation', headline: 'Stop making visitors repeat themselves.', body: 'The visitor objective and relevant context travel across turns and page transitions, so the interaction keeps its thread while the language remains natural.', outcome: 'Conversations that feel continuous instead of disconnected.', icon: MessageCircle, accent: 'pink' },
+  { number: '06', title: 'Website intelligence', headline: 'The ORB understands the site it represents.', body: 'The scan and compilation process builds a structured understanding of routes, content, terminology, relationships, verified destinations, and approved guidance data.', outcome: 'Guidance based on your website—not a generic assistant.', icon: ScanSearch, accent: 'blue' },
+  { number: '07', title: 'LiDAR-guided navigation', headline: 'Let the ORB move through the website with spatial awareness.', body: 'Live geometry evaluates content, controls, targets, protected areas, and usable open space before Weaver moves or points. The ORB can guide around what matters.', outcome: 'Spatial guidance that feels integrated with the page.', icon: Radar, accent: 'cyan' },
+  { number: '08', title: 'Governed actions', headline: 'Conversation can recommend. Verified runtime state controls what happens.', body: 'The language layer explains and interprets. It does not invent URLs, coordinates, targets, or consequential actions. Runtime state and permissions decide what is allowed.', outcome: 'Natural interaction without unrestricted model control.', icon: LockKeyhole, accent: 'violet' },
+  { number: '09', title: 'Safer AI through verification', headline: 'Useful intelligence should know its boundaries.', body: 'Website evidence, bounded permissions, live target validation, and governance constrain what Weaver can represent as available or actionable.', outcome: 'Greater trust in customer-facing AI guidance.', icon: ShieldCheck, accent: 'emerald' },
+  { number: '10', title: 'Learning from verified outcomes', headline: 'Improve from real interactions without abandoning control.', body: 'Approved learning artifacts and verified outcomes inform future guidance. Improvement remains tied to evidence and customer website data—not uncontrolled self-modification.', outcome: 'A Website ORB that becomes more useful as the site evolves.', icon: Sparkles, accent: 'amber' },
+];
+
+const deploymentPaths = [
+  { label: 'Founding Beta', title: 'Start with a real website journey.', description: 'For operators ready to test a governed Website ORB against real visitor questions, destinations, and conversion paths.', action: 'Apply for the beta', href: '/founding-beta', accent: 'featured', bullets: ['Website scan and intelligence foundation', 'Guided visitor experience with verified targets', 'Direct deployment feedback loop'] },
+  { label: 'Marketplace', title: 'Choose a ready-to-install package.', description: 'Review the current ORB packages, installation options, and package-specific pricing in the live Marketplace catalog.', action: 'View packages and pricing', href: marketplaceUrl, accent: 'standard', bullets: ['Current product catalog', 'Live package pricing and availability', 'Purchase and installation path'] },
+  { label: 'Supported deployment', title: 'Shape a larger operating environment.', description: 'For teams with multiple sites, governed workflows, or a need for a deeper deployment conversation.', action: 'Talk with the team', href: '/investor-contact', accent: 'standard', bullets: ['Site-specific intelligence and governance', 'Deployment planning around live workflows', 'Expansion path as evidence accumulates'] },
 ];
 
 const PublicFeatures: React.FC = () => {
-  useEffect(() => {
-    document.title = 'Features | ORB Weaver';
-  }, []);
+  useEffect(() => { document.title = 'Features & Pricing | ORB Weaver'; }, []);
 
   return (
-    <main data-orb-target="tour-features" className="min-h-screen overflow-hidden bg-slate-950 text-white">
+    <main data-orb-target="tour-features" className="ow-features-page ow-campaign-page min-h-screen overflow-hidden bg-slate-950 text-white">
       <PublicHeader theme="dark" />
-
-      <div className="pointer-events-none fixed inset-0 opacity-70" aria-hidden="true">
-        <div className="absolute left-1/2 top-24 h-[520px] w-[760px] -translate-x-1/2 rounded-full bg-cyan-400/10 blur-3xl" />
-      </div>
-
-      <div className="relative mx-auto w-full max-w-6xl px-6 py-10 md:px-8">
-        <section className="py-10 md:py-16">
-          <p className="text-sm font-semibold tracking-[0.22em] text-cyan-300">FEATURES BY BUSINESS OUTCOME</p>
-          <h1 className="mt-3 max-w-4xl text-4xl font-black leading-tight md:text-6xl">
-            Customer outcomes first. Technology where it matters.
-          </h1>
-          <p className="mt-5 max-w-3xl text-lg leading-relaxed text-slate-300">
-            Orb Weaver features are organized around business impact: reducing friction, improving journey completion,
-            and creating a more trustworthy website experience.
-          </p>
+      <div className="ow-features-grid" aria-hidden="true" /><div className="ow-features-glow ow-features-glow-one" aria-hidden="true" /><div className="ow-features-glow ow-features-glow-two" aria-hidden="true" />
+      <div className="relative z-[1] mx-auto w-full max-w-7xl px-5 sm:px-8">
+        <section className="grid min-h-[640px] items-center gap-12 py-20 lg:grid-cols-[1.08fr_.92fr] lg:py-28">
+          <div><div className="ow-feature-kicker"><span className="ow-live-dot" /> FEATURES BY BUSINESS OUTCOME</div><h1 className="mt-6 max-w-4xl text-5xl font-black leading-[.98] tracking-[-.06em] text-white sm:text-7xl">Turn your website into an <span className="ow-gradient-text">intelligent visitor experience.</span></h1><p className="mt-7 max-w-2xl text-lg leading-8 text-slate-300 sm:text-xl">Orb Weaver helps visitors understand where they are, find what matters, and move toward the right page, person, product, form, or next step.</p><p className="mt-5 max-w-2xl text-base leading-7 text-slate-400">Website intelligence, natural conversation, verified navigation, and visual guidance become one persistent Website ORB operating inside the structure of your site.</p><div className="mt-9 flex flex-wrap gap-3"><a className="ow-feature-button ow-feature-button-primary" href="#outcomes">Explore outcomes <ArrowRight size={16} /></a><a className="ow-feature-button ow-feature-button-quiet" href="#pricing">See deployment paths <ArrowRight size={16} /></a></div><div className="mt-10 flex flex-wrap gap-5 text-xs font-semibold uppercase tracking-[.16em] text-slate-500"><span>Website-native</span><span>Verified</span><span>Spatially aware</span><span>Governed</span></div></div>
+          <div className="ow-feature-hero-card" data-orb-target="feature-hero-proof"><div className="ow-hero-card-top"><span>WEBSITE ORB / LIVE MODEL</span><span className="ow-card-status">● READY</span></div><div className="ow-hero-orbit"><div className="ow-hero-orbit-line ow-hero-orbit-line-a" /><div className="ow-hero-orbit-line ow-hero-orbit-line-b" /><div className="ow-hero-orb"><Eye size={72} strokeWidth={1.3} /></div><span className="ow-orbit-label ow-orbit-label-a">live geometry</span><span className="ow-orbit-label ow-orbit-label-b">verified targets</span><span className="ow-orbit-label ow-orbit-label-c">visitor intent</span></div><div className="ow-hero-card-bottom"><span>understand</span><span>guide</span><span>interact</span></div></div>
         </section>
 
-        <section className="py-8 md:py-12">
-          <div className="flex justify-center">
-            <img 
-              src="/orb-weaver-features-infographic.png" 
-              alt="ORB Weaver Features Infographic showing Website Intelligence, Twenty-Eight Weaves, Smart Guidance, Natural Conversation, Journey Completion, Trust & Confidence, Secure by Design, Verified Destinations, Business Insights, and Seamless Integration" 
-              className="w-full max-w-5xl rounded-2xl shadow-2xl shadow-cyan-500/20"
-            />
-          </div>
-        </section>
+        <section id="outcomes" className="scroll-mt-24 py-20 sm:py-28"><div className="max-w-3xl"><p className="ow-feature-kicker">THE OUTCOME LAYER</p><h2 className="mt-4 text-4xl font-black tracking-[-.045em] sm:text-6xl">A better host for every visitor journey.</h2><p className="mt-5 text-lg leading-8 text-slate-400">Each capability exists to move a visitor closer to understanding and action. The technology is important because the outcome is visible.</p></div><div className="mt-12 grid gap-4 md:grid-cols-2">{outcomes.map((item) => { const Icon = item.icon; return <article key={item.number} className={`ow-outcome-card ow-accent-${item.accent}`} data-orb-target={`feature-outcome-${item.number}`}><div className="flex items-start justify-between gap-5"><span className="ow-outcome-number">{item.number}</span><Icon className="ow-outcome-icon" size={23} strokeWidth={1.6} /></div><p className="mt-8 text-xs font-bold uppercase tracking-[.14em] text-slate-400">{item.title}</p><h3 className="mt-2 text-2xl font-bold leading-tight text-white">{item.headline}</h3><p className="mt-4 text-sm leading-7 text-slate-300">{item.body}</p><div className="mt-6 border-t border-white/10 pt-4 text-sm font-semibold text-white"><span className="mr-2 text-slate-500">Outcome →</span>{item.outcome}</div></article>; })}</div></section>
 
-        <section className="grid gap-5">
-          {featureBlocks.map((item) => (
-            <article key={item.title} className="rounded-2xl border border-cyan-300/20 bg-white/[0.05] p-6 md:p-7">
-              <h2 className="text-2xl font-bold text-white">{item.title}</h2>
+        <section className="ow-system-section py-20 sm:py-28"><div className="grid gap-12 lg:grid-cols-[.8fr_1.2fr] lg:items-end"><div><p className="ow-feature-kicker">THE WEBSITE ORB DIFFERENCE</p><h2 className="mt-4 text-4xl font-black tracking-[-.045em] sm:text-6xl">More than a chatbot.</h2></div><p className="max-w-2xl text-lg leading-8 text-slate-300">A chatbot waits in a corner for someone to open it. Orb Weaver becomes part of the website: a persistent, intelligent layer that understands the site, guides the visitor, and makes the next step visible.</p></div><div className="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{['Understand the site it represents', 'Maintain context across the journey', 'Navigate verified destinations', 'Point, ping, and guide visually', 'Move with live page geometry', 'Guide to pages, forms, people, and products', 'Operate within defined permissions', 'Improve from verified outcomes'].map((item) => <div key={item} className="ow-capability"><Check size={16} />{item}</div>)}</div></section>
 
-              <div className="mt-5 grid gap-4 md:grid-cols-3">
-                <div className="rounded-xl border border-white/10 bg-slate-900/60 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.1em] text-slate-400">What problem does this solve?</p>
-                  <p className="mt-2 text-slate-200">{item.problem}</p>
-                </div>
+        <section className="py-20 sm:py-28"><div className="grid gap-12 lg:grid-cols-[1fr_1fr] lg:items-center"><div><p className="ow-feature-kicker">FROM WEBSITE TO WEBSITE ORB</p><h2 className="mt-4 text-4xl font-black tracking-[-.045em] sm:text-6xl">Your website remains your website. <span className="ow-gradient-text">Now it has presence.</span></h2></div><div className="ow-flow-card"><div className="ow-flow-step"><span>01</span><div><strong>Scan</strong><p>Read the structure, content, routes, and controls.</p></div></div><div className="ow-flow-connector" /><div className="ow-flow-step"><span>02</span><div><strong>Compile</strong><p>Build verified intelligence and approved destinations.</p></div></div><div className="ow-flow-connector" /><div className="ow-flow-step"><span>03</span><div><strong>Guide</strong><p>Operate as a Website ORB inside the live experience.</p></div></div></div></div></section>
 
-                <div className="rounded-xl border border-white/10 bg-slate-900/60 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.1em] text-slate-400">Why does it matter?</p>
-                  <p className="mt-2 text-slate-200">{item.why}</p>
-                </div>
+        <section id="pricing" className="scroll-mt-24 py-20 sm:py-28" data-orb-target="pricing-overview"><div className="flex flex-wrap items-end justify-between gap-6"><div className="max-w-3xl"><p className="ow-feature-kicker">DEPLOYMENT & PRICING</p><h2 className="mt-4 text-4xl font-black tracking-[-.045em] sm:text-6xl">Choose the path that fits your website.</h2><p className="mt-5 text-lg leading-8 text-slate-400">Pricing and package availability live in the Marketplace catalog. Start with a focused beta, choose a ready package, or talk through a larger deployment.</p></div><a className="ow-feature-button ow-feature-button-quiet" href={marketplaceUrl}>Open Marketplace <ArrowRight size={16} /></a></div><div className="mt-12 grid gap-4 lg:grid-cols-3">{deploymentPaths.map((path) => <article key={path.label} className={`ow-price-card ${path.accent === 'featured' ? 'ow-price-card-featured' : ''}`}><p className="text-xs font-bold uppercase tracking-[.16em] text-cyan-300">{path.label}</p><h3 className="mt-5 text-2xl font-bold text-white">{path.title}</h3><p className="mt-4 min-h-[96px] text-sm leading-7 text-slate-300">{path.description}</p><ul className="mt-6 space-y-3 border-t border-white/10 pt-6 text-sm text-slate-300">{path.bullets.map((bullet) => <li key={bullet} className="flex gap-2"><Check className="mt-0.5 shrink-0 text-cyan-300" size={16} />{bullet}</li>)}</ul><a className="mt-8 inline-flex items-center gap-2 text-sm font-bold text-white transition hover:text-cyan-200" href={path.href}>{path.action} <ArrowRight size={16} /></a></article>)}</div></section>
 
-                <div className="rounded-xl border border-cyan-300/25 bg-cyan-950/30 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.1em] text-cyan-200">How is Orb Weaver different?</p>
-                  <p className="mt-2 text-slate-100">{item.difference}</p>
-                </div>
-              </div>
-            </article>
-          ))}
-        </section>
+        <section className="border-t border-white/10 py-20 text-center sm:py-28"><p className="ow-feature-kicker justify-center">EXPLORE ORB WEAVER</p><h2 className="mx-auto mt-4 max-w-3xl text-4xl font-black tracking-[-.045em] sm:text-6xl">Make the next visitor step easier to see.</h2><p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-400">See the spatial runtime, the operating model, the governance layer, or the package path that takes your site from display to presence.</p><div className="mt-9 flex flex-wrap justify-center gap-3"><a className="ow-feature-button ow-feature-button-primary" href="/lidar-guidance">See LiDAR Guidance <ArrowRight size={16} /></a><a className="ow-feature-button ow-feature-button-quiet" href="/how-it-works">How It Works <ArrowRight size={16} /></a><a className="ow-feature-button ow-feature-button-quiet" href="/founding-beta">Join Founding Beta <ArrowRight size={16} /></a></div></section>
       </div>
       <PublicFooter />
     </main>

@@ -9,7 +9,7 @@ const LidarGuidance: React.FC = () => {
   }, []);
 
   return (
-    <main data-orb-target="tour-lidar-guidance" className="ow-cut-page">
+    <main data-orb-target="tour-lidar-guidance" className="ow-cut-page ow-campaign-page">
       <div className="ow-cut-grid" />
       <div className="ow-cut-noise" />
       

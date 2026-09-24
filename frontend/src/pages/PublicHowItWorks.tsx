@@ -44,7 +44,7 @@ const PublicHowItWorks: React.FC = () => {
   }, []);
 
   return (
-    <main data-orb-target="tour-how-it-works" className="min-h-screen overflow-hidden bg-slate-950 text-white">
+    <main data-orb-target="tour-how-it-works" className="ow-campaign-page min-h-screen overflow-hidden bg-slate-950 text-white">
       <PublicHeader theme="dark" />
 
       <div className="pointer-events-none fixed inset-0 opacity-70" aria-hidden="true">
@@ -54,7 +54,7 @@ const PublicHowItWorks: React.FC = () => {
       <div className="relative mx-auto w-full max-w-6xl px-6 py-10 md:px-8">
         <section className="py-10 md:py-16">
           <p className="text-sm font-semibold tracking-[0.22em] text-cyan-300">HOW IT WORKS</p>
-          <h1 className="mt-3 max-w-4xl text-4xl font-black leading-tight md:text-6xl">
+          <h1 className="ow-campaign-heading-teal mt-3 max-w-4xl text-4xl font-black leading-tight md:text-6xl">
             Start with the visitor experience, then the technology underneath it.
           </h1>
           <p className="mt-5 max-w-3xl text-lg leading-relaxed text-slate-300">

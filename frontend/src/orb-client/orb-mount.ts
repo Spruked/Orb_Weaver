@@ -5,7 +5,6 @@ import type { OrbConnectionState, OrbLoaderConfig, OrbMountHandle, OrbPointerRec
 
 const HOST_ID = 'orb-weaver-universal-root';
 const STARTUP_SESSION_KEY = 'orbweaver-loader-startup-complete';
-const STARTUP_GREETING = 'Hi, I am Weaver. I am here on this site, ready to listen and guide you to verified targets.';
 const RECORDING_MAX_MS = 14000;
 const RECORDING_MIN_MS = 650;
 const SILENCE_AFTER_SPEECH_MS = 850;
@@ -24,24 +23,18 @@ const routeOf = (value?: string) => {
 const normalize = (value?: string | null) => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 const CSS = [
   ':host{all:initial}*{box-sizing:border-box}.shell{font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;color:#eaf8ff}',
-  '.toggle{pointer-events:auto;position:fixed;right:18px;bottom:18px;width:84px;height:84px;padding:0;border:0;border-radius:50%;cursor:pointer;background:transparent;filter:drop-shadow(0 14px 24px rgba(2,8,24,.55)) drop-shadow(0 0 12px rgba(44,220,245,.25));animation:pulse 2.7s ease-in-out infinite}',
-  '.toggle:focus-visible,.action:focus-visible,.input:focus-visible{outline:3px solid #facc15;outline-offset:3px}.skin{display:block;width:100%;height:100%;object-fit:contain;border-radius:50%;user-select:none;pointer-events:none}',
-  '.panel{pointer-events:auto;position:fixed;right:22px;bottom:100px;width:min(350px,calc(100vw - 28px));border:1px solid rgba(125,228,255,.28);border-radius:18px;background:linear-gradient(155deg,rgba(7,13,35,.97),rgba(11,31,60,.97));box-shadow:0 22px 70px rgba(2,8,25,.5);overflow:hidden;backdrop-filter:blur(16px)}',
-  '.head{display:flex;align-items:center;justify-content:space-between;padding:15px 16px 12px;border-bottom:1px solid rgba(125,228,255,.14)}.title{font-size:14px;font-weight:800}.status{display:flex;align-items:center;gap:7px;color:#a9bfd1;font-size:11px}.dot{width:8px;height:8px;border-radius:50%;background:#f87171}.dot[data-state=online]{background:#4ade80}.dot[data-state=pending]{background:#facc15}.dot[data-state=loading]{background:#7dd3fc;animation:blink 1s infinite}',
-  '.body{padding:14px 16px 16px}.output{min-height:54px;margin:0 0 12px;color:#dcecf8;font-size:13px;line-height:1.5}.form{display:flex;gap:8px}.input{min-width:0;flex:1;border:1px solid rgba(125,228,255,.22);border-radius:10px;padding:10px 11px;background:rgba(255,255,255,.07);color:#fff;font:inherit}.input::placeholder{color:#8fa8ba}.action{border:0;border-radius:10px;padding:9px 11px;background:#37bde8;color:#061629;font-size:12px;font-weight:800;cursor:pointer}.action[disabled]{opacity:.45}.voice{margin-top:9px;width:100%;background:rgba(125,228,255,.12);color:#c9f4ff;border:1px solid rgba(125,228,255,.22)}.foot{margin-top:10px;color:#7893a7;font-size:10px}',
+  '.toggle{pointer-events:auto;position:fixed;left:max(12px,min(68vw,calc(100vw - 190px)));top:38vh;width:164px;height:164px;padding:0;border:0;border-radius:0;cursor:pointer;background:transparent;filter:drop-shadow(0 18px 28px rgba(2,8,24,.4)) drop-shadow(0 0 34px rgba(255,255,255,.72));animation:pulse 2.7s ease-in-out infinite}',
+  '.toggle:focus-visible,.action:focus-visible,.input:focus-visible{outline:3px solid #facc15;outline-offset:3px}.skin{display:block;width:100%;height:100%;object-fit:contain;border-radius:0;user-select:none;pointer-events:none}',
+  '.sr-status{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}',
   '.pointer{display:none;pointer-events:none;position:fixed;border:3px solid #5ee7ff;border-radius:12px;box-shadow:0 0 0 5px rgba(94,231,255,.2),0 0 30px rgba(94,231,255,.75);animation:pointer 1s ease-in-out infinite}.pointer[data-visible=true]{display:block}',
-  '@keyframes pulse{50%{transform:translateY(-3px)}}@keyframes blink{50%{opacity:.35}}@keyframes pointer{50%{box-shadow:0 0 0 10px rgba(94,231,255,.08),0 0 38px rgba(94,231,255,.9)}}@media(prefers-reduced-motion:reduce){.toggle,.dot,.pointer{animation:none!important}}',
+  '@keyframes pulse{50%{transform:translateY(-3px)}}@keyframes pointer{50%{box-shadow:0 0 0 10px rgba(94,231,255,.08),0 0 38px rgba(94,231,255,.9)}}@media(prefers-reduced-motion:reduce){.toggle,.pointer{animation:none!important}}',
 ].join('');
 const MARKUP = [
   '<style>', CSS, '</style><div class="shell">',
-  '<button class="toggle" type="button" data-toggle aria-label="Open O.R.B.S. website guide" aria-expanded="false"><img class="skin" data-skin alt="" draggable="false"></button>',
-  '<section class="panel" data-panel hidden role="dialog" aria-label="Orb Weaver website guide">',
-  '<header class="head"><div class="title">Orb Weaver</div><div class="status"><span class="dot" data-dot data-state="loading"></span><span data-status>Connecting</span></div></header>',
-  '<div class="body"><p class="output" data-output>I am connecting to this site guide.</p>',
-  '<form class="form" data-form><input class="input" data-input maxlength="1000" aria-label="Ask the website guide" placeholder="Ask where to find something…"><button class="action" type="submit">Ask</button></form>',
-  '<button class="action voice" type="button" data-voice>Start voice question</button>',
-  '<div class="foot">Voice activates only after you choose it. Pointer targets are verified before guidance.</div></div>',
-  '</section><div class="pointer" data-pointer aria-hidden="true"></div></div>',
+  '<button class="toggle" type="button" data-toggle aria-label="Engage Weaver and start a voice question" aria-pressed="false"><img class="skin" data-skin alt="Weaver website presence" draggable="false"></button>',
+  '<span class="sr-status" data-status role="status" aria-live="polite">Connecting</span><span class="sr-status" data-dot data-state="loading"></span>',
+  '<span class="sr-status" data-output aria-live="polite">Weaver is connecting to this site.</span>',
+  '<div class="pointer" data-pointer aria-hidden="true"></div></div>',
 ].join('');
 
 export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
@@ -68,7 +61,6 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
 
   let mounted = true;
   let online = false;
-  let open = false;
   const factoryUrl = factoryAssetUrl(config);
   let currentSkinId = FACTORY_SKIN.skinId;
   let customizationState: 'FACTORY_DEFAULT' | 'CUSTOM' = 'FACTORY_DEFAULT';
@@ -145,11 +137,6 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
     log('Runtime status', { state, text });
   };
   const setMessage = (text: string) => { element('[data-output]').textContent = text.slice(0, 700); };
-  const setOpen = (next: boolean) => {
-    open = next;
-    element('[data-panel]').hidden = !open;
-    element('[data-toggle]').setAttribute('aria-expanded', String(open));
-  };
   const stopRecordingMonitor = () => { window.clearTimeout(recordingMonitor); recordingMonitor = 0; };
   const releaseMicrophone = () => {
     stopRecordingMonitor();
@@ -296,24 +283,11 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
       log('Runtime failure', { stage: 'text', message: error instanceof Error ? error.message : String(error) });
     }
   };
-  const speakStartupGreeting = () => {
-    try {
-      if (!('speechSynthesis' in window) || typeof window.SpeechSynthesisUtterance !== 'function') return;
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(STARTUP_GREETING);
-      utterance.rate = 0.96;
-      utterance.pitch = 1.02;
-      window.speechSynthesis.speak(utterance);
-      log('Startup greeting spoken', { provider: 'browser-speech-synthesis' });
-    } catch {
-      log('Startup greeting unavailable', { provider: 'browser-speech-synthesis' });
-    }
-  };
-  const startVoiceQuestion = async (source: 'button') => {
-    const button = element<HTMLButtonElement>('[data-voice]');
+  const startVoiceQuestion = async (source: 'orb-engagement') => {
+    const button = element<HTMLButtonElement>('[data-toggle]');
     if (recorder?.state === 'recording') { recorder.stop(); return true; }
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-      setMessage('Voice recording is not supported here. You can still type a question.');
+      setMessage('Voice recording is not supported in this browser.');
       log('Voice initialization available', { available: false, source });
       return false;
     }
@@ -332,7 +306,8 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
       speechDetected = false;
       recorder.addEventListener('dataavailable', (event) => { if (event.data.size) chunks.push(event.data); });
       recorder.addEventListener('stop', async () => {
-        button.textContent = 'Start voice question';
+        button.setAttribute('aria-pressed', 'false');
+        button.setAttribute('aria-label', 'Engage Weaver and start a voice question');
         stopRecordingMonitor();
         const firstChunk = chunks[0];
         const recordedType = recorder?.mimeType || (firstChunk instanceof Blob ? firstChunk.type : '') || 'audio/webm';
@@ -343,19 +318,20 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
           handleResponse(response, response.transcript || '');
         } catch (error) {
           setStatus('offline', 'Voice unavailable');
-          setMessage('Voice could not connect. You can still type a question.');
+          setMessage('Voice could not connect. Please try engaging Weaver again.');
           log('Runtime failure', { stage: 'voice', message: error instanceof Error ? error.message : String(error), source });
         }
       });
       recorder.start();
-      button.textContent = 'Finish voice question';
+      button.setAttribute('aria-pressed', 'true');
+      button.setAttribute('aria-label', 'Finish voice question');
       setStatus('online', 'Listening');
       setMessage('I am listening. Choose Finish when your question is complete.');
       log('Voice initialization available', { available: true, permissionRequested: true, source });
       monitorSilence();
       return true;
     } catch {
-      setMessage('Microphone permission was not granted. You can still type a question.');
+      setMessage('Microphone permission was not granted. Allow access, then engage Weaver again.');
       log('Voice initialization available', { available: true, permission: 'denied', source });
       return false;
     }
@@ -365,10 +341,8 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
     if (window.sessionStorage.getItem(STARTUP_SESSION_KEY) === '1') return;
     startupStarted = true;
     window.sessionStorage.setItem(STARTUP_SESSION_KEY, '1');
-    setOpen(true);
-    setStatus('online', 'Listening');
-    setMessage(`Hi, I am Weaver. I am connected to ${siteName} and I am listening.`);
-    speakStartupGreeting();
+    setStatus('online', 'Present');
+    setMessage(`Weaver is present on ${siteName}. Engage Weaver to speak.`);
   };
   const load = async (snapshot: OrbSiteSnapshot) => {
     abortController?.abort();
@@ -381,7 +355,10 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
         await setSkin({
           skinId: response.orb_identity.skin_id,
           displayName: response.orb_identity.display_name,
-          bodyAssetUrl: new URL(response.orb_identity.asset_path, window.location.origin).toString(),
+          // Installed sites may be cross-origin from the ORB runtime. Resolve
+          // published skin assets from the runtime host, not the embedding
+          // site's origin, while retaining support for absolute asset URLs.
+          bodyAssetUrl: new URL(response.orb_identity.asset_path, new URL(config.runtime).origin).toString(),
           customizationState: 'CUSTOM',
         });
       } else if (currentSkinId !== FACTORY_SKIN.skinId) {
@@ -430,17 +407,7 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
   });
 
   element('[data-toggle]').addEventListener('click', () => {
-    setOpen(!open);
-  });
-  element<HTMLFormElement>('[data-form]').addEventListener('submit', (event) => {
-    event.preventDefault();
-    const input = element<HTMLInputElement>('[data-input]');
-    const value = input.value;
-    input.value = '';
-    void ask(value);
-  });
-  element('[data-voice]').addEventListener('click', async () => {
-    void startVoiceQuestion('button');
+    void startVoiceQuestion('orb-engagement');
   });
 
   const unmount = () => {

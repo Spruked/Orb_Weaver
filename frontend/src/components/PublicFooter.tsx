@@ -3,7 +3,7 @@ import { marketplaceUrl } from '../services/marketplaceUrl';
 
 const PublicFooter: React.FC = () => {
   return (
-    <footer style={{
+    <footer className="ow-public-footer" style={{
       position: 'relative',
       zIndex: 10,
       borderTop: '1px solid rgba(108, 215, 238, 0.15)',
@@ -52,7 +52,7 @@ const PublicFooter: React.FC = () => {
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <a href="/founding-beta" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Founding Beta</a>
             <a href="/investor-contact" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Investors</a>
-            <a href="https://campaign.orbweaver.spruked.com" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Campaign Portal</a>
+            <a href="/use-cases" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Use Cases</a>
             <a href="https://spruked.com" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Spruked</a>
           </nav>
         </div>

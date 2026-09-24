@@ -1,0 +1,147 @@
+:root {
+  --ow-campaign-paper: #f2f0e8;
+  --ow-campaign-paper-deep: #e7e5dc;
+  --ow-campaign-ink: #10181b;
+  --ow-campaign-muted: #40525b;
+  --ow-campaign-teal: #268c7b;
+  --ow-campaign-lime: #c2ff4f;
+  --ow-campaign-rule: rgba(16, 24, 27, .2);
+}
+
+.ow-public-header {
+  position: relative !important;
+  min-height: 94px !important;
+  padding: 0 clamp(20px, 5vw, 76px) !important;
+  border-top: 3px solid #343638 !important;
+  border-bottom: 1px solid var(--ow-campaign-rule) !important;
+  color: var(--ow-campaign-ink) !important;
+  background: rgba(242, 240, 232, .96) !important;
+  backdrop-filter: none !important;
+}
+
+.ow-public-brand {
+  align-self: stretch;
+  gap: 10px !important;
+  min-width: 210px;
+  color: var(--ow-campaign-ink) !important;
+  font-family: Inter, Arial, sans-serif;
+  font-size: 12px !important;
+  letter-spacing: .18em !important;
+}
+
+.ow-public-brand-logo {
+  width: 62px !important;
+  height: 62px !important;
+  border-radius: 50% !important;
+  object-fit: contain !important;
+  box-shadow: none !important;
+}
+
+.ow-public-nav {
+  align-self: stretch;
+  flex-wrap: nowrap !important;
+  justify-content: flex-end !important;
+  gap: 0 !important;
+  overflow-x: auto;
+}
+
+.ow-public-nav a {
+  display: inline-flex;
+  height: 91px;
+  align-items: center;
+  gap: 18px;
+  border: 0 !important;
+  border-left: 1px solid var(--ow-campaign-rule) !important;
+  border-radius: 0 !important;
+  padding: 0 17px !important;
+  color: var(--ow-campaign-ink) !important;
+  background: transparent !important;
+  font-family: Inter, Arial, sans-serif;
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  letter-spacing: .02em !important;
+}
+
+.ow-public-nav a:hover,
+.ow-public-nav a:focus-visible {
+  color: var(--ow-campaign-teal) !important;
+  border-color: var(--ow-campaign-rule) !important;
+  background: rgba(194, 255, 79, .16) !important;
+}
+
+.ow-public-nav .ow-public-nav-cta {
+  min-width: 225px;
+  justify-content: space-between;
+  margin-left: 26px;
+  border: 1px solid #174b46 !important;
+  color: #f4f2eb !important;
+  background: #10191b !important;
+  font-weight: 800 !important;
+  letter-spacing: .1em !important;
+}
+
+.ow-public-nav .ow-public-nav-cta:hover,
+.ow-public-nav .ow-public-nav-cta:focus-visible {
+  color: var(--ow-campaign-lime) !important;
+  border-color: var(--ow-campaign-teal) !important;
+  background: #172c2b !important;
+}
+
+.ow-campaign-page {
+  min-height: 100vh;
+  color: var(--ow-campaign-ink);
+  background: var(--ow-campaign-paper) !important;
+  font-family: Inter, Arial, sans-serif;
+}
+
+.ow-campaign-page .text-white { color: var(--ow-campaign-ink) !important; }
+.ow-campaign-page h1,
+.ow-campaign-page h2,
+.ow-campaign-page h3,
+.ow-campaign-page h4,
+.ow-campaign-page strong,
+.ow-campaign-page .text-slate-50,
+.ow-campaign-page .text-slate-100 { color: var(--ow-campaign-ink) !important; }
+.ow-campaign-page .ow-campaign-heading-teal { color: var(--ow-campaign-teal) !important; }
+.ow-campaign-page .text-slate-200,
+.ow-campaign-page .text-slate-300,
+.ow-campaign-page .text-slate-400 { color: var(--ow-campaign-muted) !important; }
+.ow-campaign-page .text-cyan-100,
+.ow-campaign-page .text-cyan-200,
+.ow-campaign-page .text-cyan-300 { color: var(--ow-campaign-teal) !important; }
+.ow-campaign-page .bg-slate-950,
+.ow-campaign-page .bg-slate-900\/60,
+.ow-campaign-page .bg-slate-900\/45,
+.ow-campaign-page .bg-white\/\[0\.05\],
+.ow-campaign-page .bg-white\/\[0\.045\] { background: rgba(255, 255, 255, .44) !important; }
+.ow-campaign-page .border-cyan-300\/20,
+.ow-campaign-page .border-cyan-300\/25,
+.ow-campaign-page .border-cyan-300\/15,
+.ow-campaign-page .border-white\/10 { border-color: var(--ow-campaign-rule) !important; }
+.ow-campaign-page .rounded-2xl,
+.ow-campaign-page .rounded-xl { border-radius: 0.35rem !important; }
+.ow-campaign-page h1,
+.ow-campaign-page h2 { letter-spacing: -.055em; }
+.ow-campaign-page h1 span.ow-gradient-text,
+.ow-campaign-page .ow-gradient-text { color: var(--ow-campaign-teal); background: none; }
+
+.ow-public-footer {
+  position: relative !important;
+  border-top: 1px solid #324247 !important;
+  color: #d8e4dd !important;
+  background: #0d171a !important;
+}
+
+@media (max-width: 1120px) {
+  .ow-public-brand { min-width: 150px; }
+  .ow-public-nav a { padding: 0 12px !important; font-size: 9px !important; }
+  .ow-public-nav .ow-public-nav-cta { min-width: 170px; margin-left: 12px; }
+}
+
+@media (max-width: 760px) {
+  .ow-public-header { min-height: 132px !important; padding: 12px 18px !important; gap: 8px; }
+  .ow-public-brand { min-height: 54px; }
+  .ow-public-nav { width: 100%; justify-content: flex-start !important; }
+  .ow-public-nav a { height: 48px; border-left: 1px solid var(--ow-campaign-rule) !important; padding: 0 12px !important; }
+  .ow-public-nav .ow-public-nav-cta { min-width: 160px; margin-left: 0; }
+}

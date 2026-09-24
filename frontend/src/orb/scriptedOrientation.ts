@@ -28,10 +28,12 @@ export const LANDING_FULL_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
   },
   {
     selector: '#beat-2',
+    pointerTargetIds: ['crawl-discovers-pages'],
     text: 'For years, a crawl has told us which pages exist on a site. That is the easy, structural part: list the URLs, extract the text, build a search index. A weave goes further. It discovers the purpose those pages share, maps the relationships between them, and identifies the decisions, policies, products, and journeys that give the site its actual meaning. Crawl is inventory. Weave is understanding.',
   },
   {
     selector: '#beat-3',
+    pointerTargetIds: ['relationship-structure'],
     text: 'Your website is not just a stack of pages. It is a living network of products, services, people, policies, questions, and decisions. Products connect to policies. Questions connect to answers. People connect to decisions. Pages belong to visitor journeys. That relationship map is where useful intelligence actually lives. Most tools never look past the surface text; Orb Weaver is built to read the connections.',
   },
   {
@@ -40,6 +42,7 @@ export const LANDING_FULL_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
   },
   {
     selector: '#beat-5',
+    pointerTargetIds: ['weave-page-knowledge'],
     text: 'I do not work that way. Every answer I give traces back to something actually verified about this website — not a hunch, not a statistically likely paragraph, not an external assumption. If I do not know something, I say so and I find out from the governed evidence instead of inventing a fluent reply. The difference is the difference between a chatbot and a site-specific ORB.',
   },
   {
@@ -52,10 +55,12 @@ export const LANDING_FULL_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
   },
   {
     selector: '#beat-8',
+    pointerTargetIds: ['security-governance-proof'],
     text: 'None of that guidance is improvised. It is governed by verified state, bounded permissions, and your explicit control at every step. I can point to a live target only after the geometry has been validated. I can explain only what the evidence supports. I never silently take actions, invent authority, or convert guidance into unapproved automation. Trust is a rule I do not get to break.',
   },
   {
     selector: '#beat-9',
+    pointerTargetIds: ['pointer-intelligence-proof', 'business-outcomes'],
     text: 'Orb Weaver builds that intelligence through the 28-Weave process: explicit, structured work that compiles website knowledge, live pointer intelligence, and a learning system that improves over time. Its distinct weaves include a priori knowledge (what the site declares), a posteriori learning (what visitors reveal), multi-funnel continuity (journey stitching across sessions and paths), and pointer intelligence (LiDAR-inspired geometry that lets me move and highlight with precision rather than guess).',
   },
   {
@@ -87,6 +92,39 @@ export const SITE_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
     simulation: 'product_price_research',
     auditTaskCount: 3,
     text: 'Watch this Morb research deployment. I am staging three independently auditable product-and-price research tasks. Morbs are single-function researchers: they investigate a bounded question and return evidence for review. The batch size is deliberately prime so any omission is obvious. In this demo the work stays entirely on-site, makes no live price claims, and initiates no purchase. It simply shows how specialized, auditable research can extend a guided visitor experience without breaking the trust boundary.',
+  },
+  {
+    route: '/use-cases',
+    pointerTargetIds: ['use-case-1'],
+    text: 'Use cases begin with product discovery. Weaver helps a visitor understand the available options, compare what matters, identify requirements, and move toward the right choice. Watch the scroll: I am moving to the verified card, pointing, and pinging the exact place I am explaining.',
+  },
+  {
+    pointerTargetIds: ['use-case-2'],
+    text: 'For sales and conversion, Weaver answers questions at the moment of consideration, guides visitors to relevant offers, explains the next step, and reduces uncertainty before they abandon the journey.',
+  },
+  {
+    pointerTargetIds: ['use-case-3'],
+    text: 'For forms and applications, Weaver clarifies requirements and confusing fields, then guides the visitor through each stage so the application feels like a supported journey instead of a test they must solve alone.',
+  },
+  {
+    pointerTargetIds: ['use-case-4'],
+    text: 'For bookings and appointments, Weaver helps visitors identify the correct service, understand what is required, and enter the appropriate approved booking path without guessing which page comes next.',
+  },
+  {
+    pointerTargetIds: ['use-case-5'],
+    text: 'For customer support, Weaver connects a question to the right answer, policy, account pathway, document, or support action, then preserves context when the visitor needs a human or a deeper service channel.',
+  },
+  {
+    pointerTargetIds: ['use-case-6'],
+    text: 'For onboarding, Weaver welcomes new customers, introduces the important features, guides setup, and creates a structured first experience so people do not have to discover the product by trial and error.',
+  },
+  {
+    pointerTargetIds: ['use-case-7'],
+    text: 'For guided website tours, Weaver leads visitors through products, services, facilities, campaigns, resources, or platform features while preserving the context of what they have already seen and why the next stop matters.',
+  },
+  {
+    pointerTargetIds: ['use-case-8'],
+    text: 'For complex decisions, Weaver maintains direction across policies, options, forms, calculators, documents, and account processes when one page is not enough. Across all eight use cases, the common job is the same: help a real visitor reach a useful destination with verified guidance.',
   },
   {
     route: '/lidar-guidance',
@@ -147,6 +185,8 @@ export const SITE_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
 const PAGE_ORIENTATIONS: Record<string, string> = {
   '/features':
     'This page explains the Website ORB features: verified answers grounded in live site evidence, guided navigation that respects real page geometry, and the operational tools that support a useful visitor journey. The emphasis is on reducing confusion and increasing confidence, not on adding another chat surface.',
+  '/use-cases':
+    'This page shows eight practical use cases for a Website ORB: product discovery, sales and conversion, forms and applications, bookings, customer support, onboarding, guided tours, and complex decisions. The common thread is helping visitors preserve direction across a real website journey.',
   '/lidar-guidance':
     'This is the page that explains the LiDAR-inspired two-dimensional visual navigation system. Weaver builds a live geometric map of the page, reconciles it with verified targets, and re-validates before every pointer movement so guidance remains precise even as layouts change.',
   '/how-it-works':

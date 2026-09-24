@@ -1,24 +1,27 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { marketplaceUrl } from '../services/marketplaceUrl';
+import './PublicCampaign.css';
 
 type PublicHeaderProps = {
   theme?: 'dark' | 'light';
 };
 
-const publicNavItems = [
-  { href: '/', label: 'Home' },
-  { href: '/features', label: 'Features' },
-  { href: '/lidar-guidance', label: 'LiDAR Guidance' },
+type PublicNavItem = {
+  href: string;
+  label: string;
+  cta?: boolean;
+  external?: boolean;
+};
+
+const publicNavItems: PublicNavItem[] = [
+  { href: '/', label: 'Website ORB' },
   { href: '/how-it-works', label: 'How It Works' },
-  { href: '/security', label: 'Security' },
-  { href: '/now/desktop-orb', label: 'Desktop ORB' },
-  { href: 'https://campaign.orbweaver.spruked.com', label: 'Campaign', external: true },
-  { href: '/preflight', label: 'Preflight' },
-  { href: '/founding-beta', label: 'Beta' },
+  { href: '/use-cases', label: 'Use Cases' },
+  { href: '/founding-beta', label: 'Founding Beta' },
   { href: '/investor-contact', label: 'Investors' },
-  { href: marketplaceUrl, label: 'Marketplace', external: true },
-  { href: '/login', label: 'Login' },
+  { href: '/security', label: 'Vision & Product Philosophy' },
+  { href: 'https://campaign.orbweaver.spruked.com', label: 'Campaign', external: true },
+  { href: 'https://campaign.orbweaver.spruked.com/roi-calculator', label: 'Planning Calculator', cta: true, external: true },
 ];
 
 const PublicHeader: React.FC<PublicHeaderProps> = ({ theme = 'dark' }) => {
@@ -31,9 +34,13 @@ const PublicHeader: React.FC<PublicHeaderProps> = ({ theme = 'dark' }) => {
       <nav className="ow-public-nav" aria-label="Public site navigation">
         {publicNavItems.map((item) => (
           item.external ? (
-            <a key={item.href} href={item.href}>{item.label}</a>
+            <a className={item.cta ? 'ow-public-nav-cta' : undefined} key={item.href} href={item.href}>
+              {item.label}{item.cta && <span aria-hidden="true">→</span>}
+            </a>
           ) : (
-            <Link key={item.href} to={item.href}>{item.label}</Link>
+            <Link className={item.cta ? 'ow-public-nav-cta' : undefined} key={item.href} to={item.href}>
+              {item.label}{item.cta && <span aria-hidden="true">→</span>}
+            </Link>
           )
         ))}
       </nav>

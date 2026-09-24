@@ -117,6 +117,7 @@ const featureKind = (element: Element, hardInteractiveExclusion: boolean): Lidar
   if (element instanceof HTMLCanvasElement) return 'canvas';
   if (element instanceof HTMLAnchorElement && /\.(pdf|docx?|xlsx?|pptx?)(?:$|[?#])/i.test(element.href)) return 'document_link';
   if (hardInteractiveExclusion) return 'interactive';
+  if (element.matches('.ow-cut-copy, [data-orb-copy-region]')) return 'text_block';
   if (element.matches('p, h1, h2, h3, h4, h5, h6, article')) return 'text_block';
   return 'container';
 };
@@ -125,12 +126,20 @@ const isDynamicObstacle = (element: Element, style: CSSStyleDeclaration) =>
   style.position === 'fixed' || style.position === 'sticky' ||
   element.matches('[role="dialog"], [aria-modal="true"], dialog, [data-modal], [data-popover]');
 
+// Weaver is rendered above the page so visitors can see her, but her own
+// overlay must not make the readable page content beneath her disappear from
+// the spatial model. The ORB + caption footprint is checked separately by
+// Phase Zero when selecting a pose.
+const isOrbRuntimeOverlay = (element: Element) => Boolean(
+  element.closest('.ow-v2-orb-position, .ow-v2-pointer-bloom, [data-orb-caption-state]')
+);
+
 export function buildLidarGuidanceMap(options: BuildLidarGuidanceMapOptions = {}): LidarGuidanceMap {
   const gridCellSize = Math.max(4, options.gridCellSize || 10);
   const orb = options.orbPosition;
   const candidates = Array.from(document.querySelectorAll(
     'body *:not(script):not(style):not(meta):not(link):not(noscript)'
-  ));
+  )).filter((element) => !isOrbRuntimeOverlay(element));
 
   const occupancy: LidarOccupancyCell[] = [];
   const features: LidarSemanticFeature[] = [];
@@ -146,10 +155,10 @@ export function buildLidarGuidanceMap(options: BuildLidarGuidanceMapOptions = {}
 
     const url = elementUrl(element);
     const zIndex = numericZIndex(style);
-    const topElement = document.elementFromPoint(
-      Math.min(Math.max(rect.left + rect.width / 2, 0), window.innerWidth - 1),
-      Math.min(Math.max(rect.top + rect.height / 2, 0), window.innerHeight - 1),
-    );
+    const pointX = Math.min(Math.max(rect.left + rect.width / 2, 0), window.innerWidth - 1);
+    const pointY = Math.min(Math.max(rect.top + rect.height / 2, 0), window.innerHeight - 1);
+    const topElement = document.elementsFromPoint(pointX, pointY)
+      .find((candidate) => !isOrbRuntimeOverlay(candidate));
     const occluded = Boolean(topElement && topElement !== element && !element.contains(topElement));
     const dynamic = isDynamicObstacle(element, style);
     const hardInteractiveExclusion = isHardInteractiveExclusion(element);

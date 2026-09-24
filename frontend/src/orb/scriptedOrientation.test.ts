@@ -12,7 +12,9 @@ describe('scripted orientation', () => {
     expect(LANDING_FULL_TOUR_SCRIPT.at(-1)?.text).toMatch(/rest of the public site/i);
     expect(LANDING_FULL_TOUR_SCRIPT.flatMap((step) => step.pointerTargetIds || [])).toEqual([
       'orb-weaver-suite-logo', 'what_weaver_does', 'what_to_say', 'watch_weaver_guide',
-      'interrupt_or_guide', 'run-free-preflight',
+      'interrupt_or_guide', 'crawl-discovers-pages', 'relationship-structure',
+      'weave-page-knowledge', 'security-governance-proof', 'pointer-intelligence-proof',
+      'business-outcomes', 'run-free-preflight',
     ]);
   });
 
@@ -22,7 +24,7 @@ describe('scripted orientation', () => {
 
   test('visits every native public explainer before account creation', () => {
     expect(SITE_TOUR_SCRIPT.map((step) => step.route).filter(Boolean)).toEqual([
-      '/features', '/lidar-guidance', '/how-it-works', '/security', '/weaving',
+      '/features', '/use-cases', '/lidar-guidance', '/how-it-works', '/security', '/weaving',
       '/web-weave', '/now/desktop-orb', '/founding-beta', '/investor-contact',
       '/preflight', '/signup',
     ]);
@@ -38,6 +40,16 @@ describe('scripted orientation', () => {
     expect(SITE_TOUR_SCRIPT.find((step) => step.simulation === 'product_price_research')?.route).toBeUndefined();
     expect(SITE_TOUR_SCRIPT.at(-1)?.route).toBe('/signup');
     expect(scriptedPageOrientation('/signup')).toBeNull();
+    expect(scriptedPageOrientation('/use-cases')?.text).toMatch(/eight practical use cases/i);
+  });
+
+  test('walks and explains all eight use-case targets in order', () => {
+    const useCaseSteps = SITE_TOUR_SCRIPT.filter((step) => step.pointerTargetIds?.[0]?.startsWith('use-case-'));
+    expect(useCaseSteps.map((step) => step.pointerTargetIds?.[0])).toEqual([
+      'use-case-1', 'use-case-2', 'use-case-3', 'use-case-4',
+      'use-case-5', 'use-case-6', 'use-case-7', 'use-case-8',
+    ]);
+    expect(useCaseSteps.every((step) => Boolean(step.text))).toBe(true);
   });
 
   test('guides an owner-controlled Preflight scan and defers review until after account creation', () => {
