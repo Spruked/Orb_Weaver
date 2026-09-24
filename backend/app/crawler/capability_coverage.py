@@ -45,50 +45,90 @@ def load_master_capabilities() -> List[Dict[str, Any]]:
     return categories
 
 
-def _status_for_category(category_id: str, stages: Mapping[str, Any], stats: Mapping[str, Any], pages: Sequence[Any]) -> str:
+RUNTIME_CATEGORY_PREFIXES = (
+    "11_vault", "12_tpc", "13_voice", "14_orb_personality", "15_manufacturing",
+    "16_dock", "17_live_test", "18_release", "19_marketplace", "22_manufacturing",
+)
+
+
+def _status_for_category(
+    category_id: str,
+    stages: Mapping[str, Any],
+    stats: Mapping[str, Any],
+    pages: Sequence[Any],
+    runtime_evidence: Mapping[str, Any],
+) -> str:
     def stage(name: str) -> str:
         return str((stages.get(name) or {}).get("status") or "NOT_STARTED").upper()
 
     if category_id.startswith("1_discovery"):
-        return "verified" if stage("url_discovery") == "COMPLETE" and stage("page_fetch") == "COMPLETE" else "partial"
+        return "verified" if (
+            stage("url_discovery") == "COMPLETE"
+            and stage("page_fetch") == "COMPLETE"
+            and not stats.get("depth_limit_hit")
+            and not stats.get("authentication_wall_pages")
+        ) else "partial"
     if category_id.startswith("2_rendering"):
-        return "verified" if stage("javascript_rendering") == "COMPLETE" else "blocked"
+        if stage("javascript_rendering") != "COMPLETE":
+            return "blocked"
+        diagnostics = stats.get("render_diagnostics") or {}
+        return "partial" if any(int(diagnostics.get(key) or 0) for key in (
+            "pages_with_console_errors", "pages_with_page_errors", "failed_request_count", "failed_response_count"
+        )) else "verified"
     if category_id.startswith("3_content"):
         return "verified" if all(stage(name) == "COMPLETE" for name in ("page_content_scan", "semantic_indexing", "schema_extraction")) else "partial"
     if category_id.startswith("4_design"):
-        return "verified" if all(stage(name) == "COMPLETE" for name in ("mobile_ux_analysis", "template_detection")) else "partial"
+        return "partial"
     if category_id.startswith("5_commerce"):
         catalog = stats.get("commercial_catalog") or {}
         if stage("commercial_catalog_extraction") != "COMPLETE":
             return "partial" if catalog else "not_run"
         return "verified" if int(catalog.get("entry_count") or 0) > 0 else "partial"
     if category_id.startswith("6_interface"):
-        return "verified" if stage("pointer_mapping") == "COMPLETE" else "partial"
+        return "partial" if stage("pointer_mapping") == "COMPLETE" else "blocked"
     if category_id.startswith("7_lidar"):
         return "requires_runtime_verification" if stage("pointer_mapping") == "COMPLETE" else "blocked"
     if category_id.startswith("8_selective"):
         return "verified" if stage("pointer_verification") == "COMPLETE" and stage("pointer_recovery") == "COMPLETE" else "blocked"
     if category_id.startswith("9_tesseract"):
         measured = sum(1 for page in pages if (page.semantic_analysis or {}).get("tesseract_weave"))
-        return "verified" if measured == len(pages) and pages else "partial" if measured else "not_run"
+        return "partial" if measured == len(pages) and pages else "partial" if measured else "not_run"
     if category_id.startswith("10_site_world"):
         return "verified" if stage("relationship_mapping") == "COMPLETE" and stage("knowledge_chunking") == "COMPLETE" else "partial"
-    if category_id.startswith(("11_vault", "12_tpc", "13_voice", "14_orb_personality", "15_manufacturing", "16_dock", "17_live_test", "18_release", "19_marketplace", "22_manufacturing")):
+    if category_id.startswith(RUNTIME_CATEGORY_PREFIXES):
+        verified_categories = set(runtime_evidence.get("verified_categories") or [])
+        if str(category_id) in verified_categories and str(runtime_evidence.get("status") or "").upper() == "COMPLETE":
+            return "verified"
         return "runtime_capability_not_crawl_verified"
     if category_id.startswith("20_lifecycle"):
         return "verified" if stats.get("historical") else "partial"
     if category_id.startswith("21_auditing"):
-        return "verified" if stage("source_validation") == "COMPLETE" else "partial"
+        return "partial" if stage("source_validation") == "COMPLETE" else "partial"
     return "tracked"
 
 
-def build_capability_coverage(*, stages: Mapping[str, Any], stats: Mapping[str, Any], pages: Sequence[Any]) -> Dict[str, Any]:
+def build_capability_coverage(
+    *,
+    stages: Mapping[str, Any],
+    stats: Mapping[str, Any],
+    pages: Sequence[Any],
+    runtime_evidence: Mapping[str, Any] | None = None,
+) -> Dict[str, Any]:
+    runtime_evidence = runtime_evidence or {}
     categories = []
     counts: Dict[str, int] = {}
     for category in load_master_capabilities():
-        status = _status_for_category(category["id"], stages, stats, pages)
+        status = _status_for_category(category["id"], stages, stats, pages, runtime_evidence)
         counts[status] = counts.get(status, 0) + 1
-        categories.append({**category, "status": status, "evidence": {"stage_ids": sorted(stages.keys())}})
+        categories.append({
+            **category,
+            "status": status,
+            "item_evidence": [
+                {"label": item, "status": status, "stage_ids": sorted(stages.keys())}
+                for item in category["items"]
+            ],
+            "evidence": {"stage_ids": sorted(stages.keys()), "runtime_evidence": runtime_evidence},
+        })
     unresolved = sum(value for key, value in counts.items() if key != "verified")
     return {
         "schema": "orb_weaver.capability_coverage.v1",
@@ -97,5 +137,7 @@ def build_capability_coverage(*, stages: Mapping[str, Any], stats: Mapping[str, 
         "category_count": len(categories),
         "item_count": sum(len(category["items"]) for category in categories),
         "status_counts": counts,
+        "runtime_evidence": runtime_evidence,
+        "runtime_promotion_rule": "Live Test must persist status COMPLETE and explicitly list verified category IDs before runtime-only categories can become verified.",
         "categories": categories,
     }

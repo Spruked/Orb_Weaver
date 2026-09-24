@@ -178,7 +178,9 @@ const ReportCompiler: React.FC = () => {
                         <p className="font-semibold text-gray-900">{category.title}</p>
                         <span className="text-xs font-bold text-gray-500">{category.status.replaceAll('_', ' ')}</span>
                       </div>
-                      <p className="mt-1 text-xs leading-5 text-gray-600">{category.items.join(' · ')}</p>
+                      <p className="mt-1 text-xs leading-5 text-gray-600">
+                        {(category.item_evidence || category.items.map((label) => ({ label, status: category.status }))).map((item) => `${item.label} [${item.status.replaceAll('_', ' ')}]`).join(' · ')}
+                      </p>
                     </div>
                   ))}
                 </div>

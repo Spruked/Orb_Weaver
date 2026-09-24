@@ -14,7 +14,7 @@ Status language is evidence-based:
 
 The existing Crawl #4 artifact contains 34 fetched pages, 833 extracted pointer targets, 86 guidance-eligible candidates, 317 uncertain targets, and 67 route/locator conflicts. It reached login walls on protected routes. JavaScript rendering completed 30 of 32 required renders. Pointer verification and runtime guidance are blocked until live verification and recovery run.
 
-The resulting capability ledger is **partial**: 7 verified categories, 2 blocked, 2 partial, 1 requiring runtime verification, and 10 runtime-only categories not crawl-verified.
+The resulting capability ledger is **partial**: 2 verified categories, 7 partial, 2 blocked, 1 requiring runtime verification, and 10 runtime-only categories not crawl-verified. These counts are mutually exclusive and reconcile with all 22 category headers.
 
 ## Complete capability inventory
 
@@ -22,7 +22,7 @@ The resulting capability ledger is **partial**: 7 verified categories, 2 blocked
 
 Domain/subdomain discovery; sitemap discovery & parsing; robots.txt; route discovery (sitemap-listed, discovered outside sitemap, unresolved); internal/external link inventory; redirect & redirect-chain detection; broken-link detection; HTTP status collection; canonical URL collection; duplicate/query-string/trailing-slash route variants; orphan-page detection; authenticated/protected route scanning where permitted; route depth & ownership; application-route discovery; API-route inventory; public endpoint mapping; capability endpoint discovery; incremental rescan; targeted (page/route/workflow) rescan; full-site rescan; scan timestamping, versioning, provenance, confidence tracking; scan-result validation, deduplication, normalization, indexing, and persistence; scan audit logging.
 
-### 2. Rendering & Live DOM Intelligence — partial/blocked by failed renders
+### 2. Rendering & Live DOM Intelligence — blocked
 
 Per-route render success/failure with cause; hydration errors; client-routing failures; missing chunks; console errors, uncaught exceptions, network failures; DOM element inventory; DOM-anchor collection; visible-label collection; data-attribute collection; visible/hidden/disabled/interactive state; duplicated or unstable/generated selectors; parent-child and region relationships; bounding geometry and viewport status.
 
@@ -30,7 +30,7 @@ Per-route render success/failure with cause; hydration errors; client-routing fa
 
 Content extraction and classification; page-title and meta-description collection; page-purpose classification; page-type classification; headings/sections/content blocks; products, services, prices, features, FAQs, policies, contact/business/location/hours information; terms/privacy/legal-page discovery; documentation and downloadable-file discovery; document metadata; image discovery and alt-text collection; video/audio discovery and media metadata; JSON-LD, Schema.org, Open Graph; social links; search-engine metadata; site-search discovery and behavior mapping; terminology, synonyms, aliases, visitor-language mapping; intent-to-page/section/control/workflow mapping; contradiction detection; semantic completeness scoring.
 
-### 4. Design Intelligence — verified/partial by available scan stages
+### 4. Design Intelligence — partial
 
 Visual hierarchy; layout/grid analysis; spacing rhythm; typography system and font roles; color system and contrast; brand consistency, brand-name collection, logo and brand-asset discovery, imagery style; component and section-pattern classification; page-template classification; CTA prominence and trust-element placement; responsive/breakpoint behavior; mobile versus desktop comparison; animation/motion inventory; design-token extraction; visual-signature generation.
 
@@ -38,7 +38,7 @@ Visual hierarchy; layout/grid analysis; spacing rhythm; typography system and fo
 
 Product/SKU/variant discovery; product-name, description, and feature collection; pricing collection and pricing dictionary; availability; specifications and options; category structure; product/service relationships; catalog generation; inventory-change tracking with structural-diff escalation. Crawl #4 produced zero catalog entries, so zero is reported as incomplete evidence rather than proof that no catalog exists.
 
-### 6. Interface & Workflow Intelligence — verified for extraction, not full runtime workflow authority
+### 6. Interface & Workflow Intelligence — partial
 
 Navigation-menu discovery; buttons, links, CTAs, forms, inputs, submit/search controls; modals, dialogs, accordions, tabs, dropdowns, carousels, pagination, and menu controls; login/signup/account/cart/checkout/contact/download/media controls; authentication, signup, login, contact, purchase, cart, checkout, and lead-generation funnel mapping; multi-step workflow mapping; required-field and validation-rule detection; error/success/confirmation-state collection; navigation/click/scroll/form action mapping; route-transition and action-result mapping; conversion-path mapping; broken/abandoned-path detection.
 
@@ -50,7 +50,7 @@ Bounding boxes, screen geometry, viewport position, scroll containers, and scrol
 
 Semantic-reference versus live-guidance distinction; guidance eligibility gating; confidence gating before a live Ping; target-loss recovery; no-false-Ping enforcement; candidate correction and promotion path.
 
-### 9. Tesseract Weave — partial/not fully evidenced by Crawl #4
+### 9. Tesseract Weave — partial
 
 OCR and intelligence extraction from images, PDFs, Office documents, and other non-DOM sources, feeding the same content, semantic, and catalog pipelines as live-page extraction.
 
@@ -98,7 +98,7 @@ Skins, voices, behavior packs, sound packs, enhancements, services, and upgrade 
 
 New, removed, and changed page/control/form/navigation/workflow detection; stale-content and stale-route detection; Site World and pointer-map refresh; learned-correction promotion; self-pruning.
 
-### 21. Auditing & Reporting — verified for current persisted report surfaces, with runtime gaps
+### 21. Auditing & Reporting — partial
 
 Crawl-report generation; endpoint-map generation; SEO; accessibility where measurable; technical health; performance metrics where instrumentable; security/trust signals; design audit; pointer, route, control, and workflow audit. This is explicitly not a penetration-testing tool.
 
@@ -123,3 +123,7 @@ Basic, Enhanced, and Platinum manufacturing configurations with increasing intel
 `manufacturing/templates/Website_Orb_Final` currently contains the runtime source, compiled Site World/pointer artifacts, backend/frontend package, Vault/TPC material, install documentation, compiler, validator, and tests. Its validator passes with 31 routes and 858 pointer records.
 
 The template is structurally ready for compilation, but it is not a substitute for a fresh customer-specific build. Its compiled artifacts must be regenerated from the customer crawl after pointer verification, Site World compilation, policy compilation, and Live Test. Docker remains intentionally unchanged until that acceptance step.
+
+## Live Test promotion mechanism
+
+Live Test is a separate runtime evidence artifact, not an implied crawl stage. When it passes, it persists a `runtime_evidence` object on the crawl/package containing `status: COMPLETE`, the tested package/site identity, evidence artifact references, and an explicit `verified_categories` list. The capability ledger is then rebuilt with that object. Only categories explicitly listed by a completed Live Test can move from `runtime_capability_not_crawl_verified` to `verified`; a passing deployment gate alone does not promote categories.

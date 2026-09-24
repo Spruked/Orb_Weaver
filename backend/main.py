@@ -6443,7 +6443,12 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
     retrieval_sources = int(((crawl_job.config or {}).get("retrieval_index") or {}).get("chunk_count") or 0)
     capability_coverage = (crawl_job.config or {}).get("capability_coverage")
     if not isinstance(capability_coverage, dict):
-        capability_coverage = build_capability_coverage(stages=execution, stats=stats, pages=pages)
+        capability_coverage = build_capability_coverage(
+            stages=execution,
+            stats=stats,
+            pages=pages,
+            runtime_evidence=(crawl_job.config or {}).get("runtime_evidence") or {},
+        )
     required_stage_ids = {
         "url_discovery", "crawl_control", "page_fetch", "javascript_rendering",
         "page_content_scan", "content_structure_extraction", "schema_extraction",
@@ -7588,7 +7593,12 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             "pointer_recovery": evidence("BLOCKED" if pointer_quality.get("recovery_required") else "NOT_STARTED", int(pointer_summary.get("record_count") or 0), 0, None, "Pointer recovery must process unresolved and conflicting targets." if pointer_quality.get("recovery_required") else None),
             "runtime_guidance": evidence("BLOCKED", int(pointer_summary.get("record_count") or 0), int(pointer_summary.get("guidance_eligible_count") or 0), None, "Independent pointer verification has not run."),
         }
-        capability_coverage = build_capability_coverage(stages=scan_stage_execution, stats=stats, pages=stored_pages)
+        capability_coverage = build_capability_coverage(
+            stages=scan_stage_execution,
+            stats=stats,
+            pages=stored_pages,
+            runtime_evidence=(crawl_job.config or {}).get("runtime_evidence") or {},
+        )
 
         crawl_job.status = "completed"
         crawl_job.end_time = datetime.utcnow()

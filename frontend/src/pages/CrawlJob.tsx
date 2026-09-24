@@ -584,7 +584,12 @@ const CrawlJob: React.FC = () => {
                   <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${tone}`}>{status.replaceAll('_', ' ')}</span>
                 </summary>
                 <ul className="mt-4 grid gap-2 border-t border-gray-100 pt-4 md:grid-cols-2">
-                  {category.items.map((item) => <li key={item} className="text-sm leading-6 text-gray-600">{item}</li>)}
+                  {(category.item_evidence || category.items.map((label) => ({ label, status }))).map((item) => (
+                    <li key={item.label} className="flex items-start justify-between gap-3 text-sm leading-6 text-gray-600">
+                      <span>{item.label}</span>
+                      <span className="shrink-0 text-[10px] font-bold uppercase text-gray-400">{item.status.replaceAll('_', ' ')}</span>
+                    </li>
+                  ))}
                 </ul>
               </details>
             );

@@ -726,8 +726,11 @@ export interface ScanAssemblyStatus {
       title: string;
       status: string;
       items: string[];
+      item_evidence?: Array<{ label: string; status: string; stage_ids?: string[] }>;
       evidence?: { stage_ids?: string[] };
     }>;
+    runtime_evidence?: Record<string, unknown>;
+    runtime_promotion_rule?: string;
   };
 }
 
