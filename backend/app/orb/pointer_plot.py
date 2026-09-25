@@ -30,12 +30,54 @@ APPROVED_GUIDEABLE_SECTION_HINTS = {
 }
 
 
+def _importance_rank(element: Tag, target_type: str, text: str,
+                     semantic: Dict[str, Any], entities: Dict[str, Any],
+                     route_category: str) -> tuple[int, List[str]]:
+    """Scan-time importance from witnessed site structure; never action authority."""
+    baseline = {"nav": 2, "heading": 3, "section": 2, "paragraph": 3,
+                "form_field": 3, "button": 3, "faq_answer": 4,
+                "price_card": 4, "policy_line": 4, "download": 3, "other": 1}
+    rank = baseline.get(target_type, 2)
+    evidence = [f"observed_target_type:{target_type}"]
+    if element.name == "h1":
+        rank = max(rank, 4)
+        evidence.append("primary_page_heading")
+    if element.find_parent("footer"):
+        rank = min(rank, 2)
+        evidence.append("footer_secondary_context")
+    if element.find_parent("main") or element.name == "main":
+        if target_type in {"heading", "paragraph", "faq_answer", "price_card", "button", "form_field"}:
+            rank = max(rank, 3)
+            evidence.append("primary_content_landmark")
+    observed_terms = {str(item.get("term", "")).casefold() for item in semantic.get("top_terms", [])
+                      if isinstance(item, dict) and int(item.get("count") or 0) >= 2}
+    text_terms = set(re.findall(r"[a-z0-9]{3,}", text.casefold()))
+    if text_terms & observed_terms:
+        rank = max(rank, 4)
+        evidence.append("matches_site_scan_topical_terms")
+    names = [str(value).casefold() for key in ("product_names", "organizations", "named_entities")
+             for value in (entities.get(key) or []) if isinstance(value, str)]
+    if any(len(name) >= 4 and name in text.casefold() for name in names):
+        rank = max(rank, 4)
+        evidence.append("matches_scanned_site_entity")
+    if route_category == "transactional" and target_type in {"price_card", "policy_line", "form_field"}:
+        rank = 5
+        evidence.append("transactional_route_workflow_evidence")
+    elif target_type in {"button", "form_field", "download", "price_card"} and (
+        text_terms & {"signup", "register", "checkout", "purchase", "booking", "apply", "pricing"}
+    ):
+        rank = 5
+        evidence.append("witnessed_primary_workflow_control")
+    return max(1, min(5, rank)), evidence
+
+
 def extract_pointer_plot_records(
     page_route: str,
     soup: BeautifulSoup,
     *,
     semantic_analysis: Optional[Dict[str, Any]] = None,
     entity_analysis: Optional[Dict[str, Any]] = None,
+    route_category: str = "unknown",
     max_records: int = 500,
 ) -> List[Dict[str, Any]]:
     records: List[Dict[str, Any]] = []
@@ -65,12 +107,18 @@ def extract_pointer_plot_records(
         pointer_class, admission_reason = _pointer_admission(element, target_type, text, locator, aliases)
         confidence = _confidence(element, target_type, text)
         confidence_class, runtime_policy = pointer_runtime_policy(confidence, pointer_class=pointer_class)
+        base_rank, rank_evidence = _importance_rank(
+            element, target_type, text, semantic_analysis or {}, entity_analysis or {}, route_category,
+        )
         verified_at = datetime.utcnow().isoformat()
         records.append(
             {
                 "target_id": target_id,
                 "page_route": page_route,
                 "target_type": target_type,
+                "baseRank": base_rank,
+                "rankEvidence": rank_evidence,
+                "rankSource": "site_scan",
                 "pointer_class": pointer_class,
                 "pointer_admission_reason": admission_reason,
                 "meaning": _summarize_meaning(text, target_type),

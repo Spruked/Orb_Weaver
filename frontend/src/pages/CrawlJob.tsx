@@ -352,6 +352,7 @@ const CrawlJob: React.FC = () => {
           <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-700">
             <span>{crawlData.assembly_status.completion_contract.complete_stage_count}/{crawlData.assembly_status.completion_contract.required_stage_count} required stages complete</span>
             <span>{crawlData.assembly_status.completion_contract.authentication_wall_pages} authentication walls</span>
+            <span>auth session: {crawlData.assembly_status.completion_contract.authentication_session_status || 'not_requested'}</span>
             <span>{crawlData.assembly_status.completion_contract.runtime_geometry_policy}</span>
           </div>
           {!!crawlData.assembly_status.completion_contract.reasons?.length && (

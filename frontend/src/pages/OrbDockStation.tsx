@@ -411,6 +411,13 @@ const OrbDockStationPage: React.FC = () => {
           </div>
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             <div className="rounded-md border border-slate-200 bg-white p-5">
+              <h3 className="font-bold text-slate-950">Identity</h3>
+              <label className={`${labelClass} mt-4`}>ORB name
+                <input className={inputClass} value={draft.orb_name} onChange={(event) => updateDraft((current) => ({ ...current, orb_name: event.target.value }))} placeholder="Harley" maxLength={80} />
+                <span className="mt-1 block text-xs font-normal text-slate-500">This is the name visitors hear after the customer installs the ORB.</span>
+              </label>
+            </div>
+            <div className="rounded-md border border-slate-200 bg-white p-5">
               <h3 className="font-bold text-slate-950">Voice posture</h3>
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <label className={labelClass}>Tone

@@ -28,9 +28,10 @@ import {
   getActiveOrbProjectContext,
 } from "../orb/activeProjectContext";
 import { OrbRoboticsMovementController } from "../orb/robotics/movementController";
+import { observedUseCasePointerRecords } from "../orb/siteAuthoredUseCasePointers";
 import { authorizeMovement, assertMovementAuthorization } from "../orb/robotics/movementPolicy";
 import type { RobotCommand } from "../orb/robotics/robotMovement.types";
-import { buildLidarGuidanceMap, Lidar2DMappingCoordinateCache } from "../orb/lidar_2d_mapping";
+import { buildLidarGuidanceMap, evaluateLidarPose, inspectCornerExclusion, Lidar2DMappingCoordinateCache } from "../orb/lidar_2d_mapping";
 import {
   awaitAbortable,
   createPlaybackSettlement,
@@ -158,10 +159,10 @@ const EDGE = 8;
 // speaking over the visitor, or compromising the LiDAR-safe movement path.
 const AMBIENT_TRAVEL_PX_PER_SECOND = 42;
 const AMBIENT_INITIAL_DWELL_MS = 5200;
-// Weaver is a host, not a parked overlay. Keep its LiDAR-approved ambient
-// cadence visible enough to leave reading space clear without becoming noisy.
-const AMBIENT_SETTLE_MIN_MS = 2800;
-const AMBIENT_SETTLE_VARIANCE_MS = 2200;
+// A page host should be available without repeatedly interrupting reading.
+// Action/TAMP completion still forces its own immediate fresh LiDAR pose.
+const AMBIENT_SETTLE_MIN_MS = 14_000;
+const AMBIENT_SETTLE_VARIANCE_MS = 7_000;
 // After a page change, clear reading content promptly.  The LiDAR map chooses
 // the destination; this is a short settle, not a decorative hover delay.
 const AMBIENT_POST_INTERACTION_DWELL_MS = 800;
@@ -425,6 +426,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const lastAutonomousDestinationRef = useRef<{ x: number; y: number } | null>(null);
   const ambientPoseHistoryRef = useRef<{ x: number; y: number }[]>([]);
   const ambientVantageRef = useRef<AmbientVantagePreference | null>(readAmbientVantagePreference());
+  const currentPurposeRef = useRef<{ text: string; until: number } | null>(null);
   const movementControllerRef = useRef<OrbRoboticsMovementController | null>(null);
   const nudgePointerRef = useRef<{ pointerId: number; start: { x: number; y: number }; origin: { x: number; y: number } } | null>(null);
   const lidarCacheRef = useRef(Lidar2DMappingCoordinateCache.getInstance());
@@ -436,6 +438,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const guidanceSequenceRef = useRef(0);
   const worldStateSequenceRef = useRef(1);
   const lastActivityAtRef = useRef(Date.now());
+  const nextAmbientMoveAtRef = useRef(0);
   const restModeRef = useRef(false);
   const restTransitionActiveRef = useRef(false);
   const resumeAutonomousPresenceRef = useRef<() => Promise<void>>(async () => undefined);
@@ -894,25 +897,41 @@ export const AutonomousOrb: React.FC<Props> = ({
     audio.currentTime = 0;
   }, []);
 
+  const routePointerRecords = useCallback(() => {
+    const authored = observedUseCasePointerRecords();
+    const authoredIds = new Set(authored.map(record => record.target_id));
+    const scanned = pointerRecordsRef.current.filter(record => !authoredIds.has(record.target_id));
+    return onboardingLiveRecordRef.current
+      ? [...scanned, ...authored, onboardingLiveRecordRef.current]
+      : [...scanned, ...authored];
+  }, []);
+
+  const mappedPointerEvidence = useCallback(() => {
+    const targetIdByElement = new WeakMap<Element, string>();
+    const rankByElement = new WeakMap<Element, { baseRank: number; rankEvidence: string[] }>();
+    const route = routeForUrl(window.location.href);
+    const records = routePointerRecords();
+    for (const record of records) {
+      if (routeForUrl(record.page_route) !== route) continue;
+      try {
+        const element = document.querySelector(record.semantic_locator);
+        if (!element) continue;
+        targetIdByElement.set(element, record.target_id);
+        if (Number.isInteger(record.baseRank) && record.baseRank! >= 1 && record.baseRank! <= 5) {
+          rankByElement.set(element, { baseRank: record.baseRank!, rankEvidence: record.rankEvidence || [] });
+        }
+      } catch { /* Unresolved locators remain non-authoritative. */ }
+    }
+    return { targetIdByElement, rankByElement };
+  }, [routePointerRecords]);
+
   const nextDestination = useCallback(() => {
     const current = positionRef.current;
     const minimumTravel = Math.max(56, Math.min(92, size * 0.45));
     // A route can place the ORB directly over a paragraph.  Permit one
     // deliberate relocation to a clear edge instead of trapping it in copy.
     const maximumTravel = Math.hypot(window.innerWidth, window.innerHeight);
-    const lidarMap = buildLidarGuidanceMap({
-      orbPosition: { x: current.x + size / 2, y: current.y + size / 2 },
-    });
     const { minX, minY, maxX, maxY } = bounds();
-    const preference = ambientVantageRef.current?.route === lidarMap.route
-      ? ambientVantageRef.current
-      : null;
-    const relevantFeatures = lidarMap.features.filter((feature) => (
-      feature.visible &&
-      feature.pointerEvents !== "none" &&
-      (feature.hardExclusion || feature.kind === "text_block" ||
-        (!feature.occluded && ["interactive", "image"].includes(feature.kind)))
-    ));
     const intersects = (a: { left: number; top: number; right: number; bottom: number }, b: { x: number; y: number; width: number; height: number }) =>
       Math.max(0, Math.min(a.right, b.x + b.width) - Math.max(a.left, b.x)) *
       Math.max(0, Math.min(a.bottom, b.y + b.height) - Math.max(a.top, b.y));
@@ -949,6 +968,27 @@ export const AutonomousOrb: React.FC<Props> = ({
         bottom: footprint.bottom + LIDAR_SAFETY_PADDING_PX,
       };
     };
+    const purpose = currentPurposeRef.current && currentPurposeRef.current.until > Date.now()
+      ? currentPurposeRef.current.text : undefined;
+    const lidarMap = buildLidarGuidanceMap({
+      orbPosition: { x: current.x + size / 2, y: current.y + size / 2 },
+      purpose,
+      ...mappedPointerEvidence(),
+      orbFootprint: {
+        offsetX: Math.min(0, captionOffset?.x || 0),
+        offsetY: Math.min(0, captionOffset?.y || 0),
+        width: Math.max(size, (captionOffset?.x || 0) + (captionOffset?.width || 0)) - Math.min(0, captionOffset?.x || 0),
+        height: Math.max(size, (captionOffset?.y || 0) + (captionOffset?.height || 0)) - Math.min(0, captionOffset?.y || 0),
+      },
+      clearancePx: LIDAR_SAFETY_PADDING_PX,
+    });
+    const preference = ambientVantageRef.current?.route === lidarMap.route
+      ? ambientVantageRef.current : null;
+    const relevantFeatures = lidarMap.features.filter((feature) => (
+      feature.visible &&
+      (feature.hardExclusion || feature.dynamic || feature.kind === "text_block" ||
+        (!feature.occluded && ["interactive", "image"].includes(feature.kind)))
+    ));
 
     const candidates: Array<{
       point: { x: number; y: number };
@@ -957,6 +997,9 @@ export const AutonomousOrb: React.FC<Props> = ({
       textCollisions: number;
       interactiveCollisions: number;
     }> = [];
+    let cornerRejectedCount = 0;
+    const rejected = { travel: 0, recent: 0, hardExclusion: 0, footprint: 0 };
+    const cornerRejectedSamples: Array<{ point: { x: number; y: number }; corners: string[] }> = [];
     for (let row = 0; row < 7; row += 1) {
       for (let column = 0; column < 9; column += 1) {
         const candidate = clampPosition(
@@ -966,6 +1009,15 @@ export const AutonomousOrb: React.FC<Props> = ({
         const actualTravel = Math.hypot(candidate.x - current.x, candidate.y - current.y);
         const candidateCenter = { x: candidate.x + size / 2, y: candidate.y + size / 2 };
         const rect = renderedFootprint(candidate);
+        const lidarEvidence = evaluateLidarPose(lidarMap, candidate, {
+          x: rect.left, y: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top,
+        });
+        const corner = inspectCornerExclusion(rect, { width: window.innerWidth, height: window.innerHeight }, CORNER_EXCLUSION_MARGIN_PX);
+        if (corner.excluded) {
+          cornerRejectedCount += 1;
+          if (cornerRejectedSamples.length < 8) cornerRejectedSamples.push({ point: candidate, corners: corner.corners });
+          continue;
+        }
         const collisions = relevantFeatures.reduce((total, feature) => total + intersects(rect, feature.rect), 0);
         const textCollisions = relevantFeatures
           .filter((feature) => feature.kind === "text_block")
@@ -984,7 +1036,7 @@ export const AutonomousOrb: React.FC<Props> = ({
               : feature.rect,
           ), 0);
         const hardExclusionCollision = relevantFeatures.some((feature) => (
-          feature.hardExclusion && intersects(rect, {
+          (feature.hardExclusion || feature.dynamic) && intersects(rect, {
             x: feature.rect.x - LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX,
             y: feature.rect.y - LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX,
             width: feature.rect.width + LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX * 2,
@@ -993,8 +1045,11 @@ export const AutonomousOrb: React.FC<Props> = ({
         ));
         const recentDistance = ambientPoseHistoryRef.current.length
           ? Math.min(...ambientPoseHistoryRef.current.map((pose) => Math.hypot(candidate.x - pose.x, candidate.y - pose.y)))
-          : minimumTravel;
-        if (actualTravel < minimumTravel * 0.72 || actualTravel > maximumTravel || recentDistance < Math.max(72, size * 0.46) || hardExclusionCollision) continue;
+          : Math.max(72, size * 0.46) + 1;
+        if (actualTravel < minimumTravel * 0.72 || actualTravel > maximumTravel) { rejected.travel += 1; continue; }
+        if (recentDistance < Math.max(72, size * 0.46)) { rejected.recent += 1; continue; }
+        if (hardExclusionCollision) { rejected.hardExclusion += 1; continue; }
+        if (!lidarEvidence.footprintClear) { rejected.footprint += 1; continue; }
         const normalized = { x: candidateCenter.x / window.innerWidth, y: candidateCenter.y / window.innerHeight };
         const preferenceScore = preference
           ? Math.max(0, 150 - Math.hypot(normalized.x - preference.x, normalized.y - preference.y) * 360) * preference.confidence
@@ -1008,7 +1063,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           // Text and controls are exclusion zones. The small edge preference
           // deliberately gives Weaver a readable margin when several clear
           // places are available.
-          score: preferenceScore + recentDistance * .35 - textCollisions * 90 - interactiveCollisions * 65 - collisions * 12 - actualTravel * .04 - edgeVantage * .10,
+          score: preferenceScore + recentDistance * .35 - textCollisions * 90 - interactiveCollisions * 65 - collisions * 12 - actualTravel * .04 - edgeVantage * .10 + lidarEvidence.purposeProximity * 90 + lidarEvidence.freeSpaceProximity * 20,
         });
       }
     }
@@ -1030,6 +1085,15 @@ export const AutonomousOrb: React.FC<Props> = ({
         paragraphEdgeCandidates.forEach((candidate) => {
           const actualTravel = Math.hypot(candidate.x - current.x, candidate.y - current.y);
           const rect = renderedFootprint(candidate);
+          const lidarEvidence = evaluateLidarPose(lidarMap, candidate, {
+            x: rect.left, y: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top,
+          });
+          const corner = inspectCornerExclusion(rect, { width: window.innerWidth, height: window.innerHeight }, CORNER_EXCLUSION_MARGIN_PX);
+          if (corner.excluded) {
+            cornerRejectedCount += 1;
+            if (cornerRejectedSamples.length < 8) cornerRejectedSamples.push({ point: candidate, corners: corner.corners });
+            return;
+          }
           const collisions = relevantFeatures.reduce((total, item) => total + intersects(rect, item.rect), 0);
           const textCollisions = relevantFeatures
             .filter((item) => item.kind === "text_block")
@@ -1037,7 +1101,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           const interactiveCollisions = relevantFeatures
             .filter((item) => item.hardExclusion || item.kind === "interactive")
             .reduce((total, item) => total + intersects(rect, item.rect), 0);
-          const hardExclusionCollision = relevantFeatures.some((item) => item.hardExclusion && intersects(rect, {
+          const hardExclusionCollision = relevantFeatures.some((item) => (item.hardExclusion || item.dynamic) && intersects(rect, {
             x: item.rect.x - LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX,
             y: item.rect.y - LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX,
             width: item.rect.width + LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX * 2,
@@ -1045,14 +1109,14 @@ export const AutonomousOrb: React.FC<Props> = ({
           }) > 0);
           const recentDistance = ambientPoseHistoryRef.current.length
             ? Math.min(...ambientPoseHistoryRef.current.map((pose) => Math.hypot(candidate.x - pose.x, candidate.y - pose.y)))
-            : minimumTravel;
-          if (actualTravel < minimumTravel * 0.72 || recentDistance < Math.max(72, size * 0.46) || hardExclusionCollision) return;
+            : Math.max(72, size * 0.46) + 1;
+          if (actualTravel < minimumTravel * 0.72 || recentDistance < Math.max(72, size * 0.46) || hardExclusionCollision || !lidarEvidence.footprintClear) return;
           candidates.push({
             point: candidate,
             collisions,
             textCollisions,
             interactiveCollisions,
-            score: 320 + recentDistance * .35 - textCollisions * 90 - interactiveCollisions * 65 - collisions * 12 - actualTravel * .04,
+            score: 320 + recentDistance * .35 - textCollisions * 90 - interactiveCollisions * 65 - collisions * 12 - actualTravel * .04 + lidarEvidence.purposeProximity * 90 + lidarEvidence.freeSpaceProximity * 20,
           });
         });
       });
@@ -1071,7 +1135,29 @@ export const AutonomousOrb: React.FC<Props> = ({
       null,
     );
 
+    if (cornerRejectedCount > 0) {
+      emitOrbRuntimeEvent("lidar_candidate_rejected", {
+        reason: "corner_exclusion",
+        phase: "ambient_stance_search",
+        count: cornerRejectedCount,
+        samples: cornerRejectedSamples,
+        renderedFootprintIncludesCaption: Boolean(captionOffset),
+      });
+    }
+
     if (best) {
+      const selectedRect = renderedFootprint(best.point);
+      const selectedEvidence = evaluateLidarPose(lidarMap, best.point, {
+        x: selectedRect.left, y: selectedRect.top,
+        width: selectedRect.right - selectedRect.left, height: selectedRect.bottom - selectedRect.top,
+      });
+      const recentPoseDistance = ambientPoseHistoryRef.current.length
+        ? Math.min(...ambientPoseHistoryRef.current.map(pose => Math.hypot(best.point.x - pose.x, best.point.y - pose.y)))
+        : Math.max(72, size * 0.46) + 1;
+      const nearestRelevant = lidarMap.features
+        .filter(feature => feature.purposeMatch && feature.surfaceType !== "obstacle")
+        .sort((a, b) => Math.hypot(best.point.x - a.rect.x, best.point.y - a.rect.y) -
+          Math.hypot(best.point.x - b.rect.x, best.point.y - b.rect.y))[0];
       lastAutonomousDestinationRef.current = best.point;
       ambientPoseHistoryRef.current = [...ambientPoseHistoryRef.current, best.point].slice(-4);
       const nextPreference: AmbientVantagePreference = {
@@ -1097,6 +1183,24 @@ export const AutonomousOrb: React.FC<Props> = ({
         } : null,
         ambientVelocity: AMBIENT_TRAVEL_PX_PER_SECOND,
         destination: best.point,
+        mapRevision: lidarMap.mapRevision,
+        purposeReference: lidarMap.purposeReference || null,
+        policy: "WAIT/free_surface_vantage",
+        currentPose: current,
+        candidateStance: best.point,
+        hardExclusion: false,
+        freeSpaceClear: selectedEvidence.footprintClear,
+        nearestFreeDistance: Math.round(selectedEvidence.nearestFreeDistance),
+        purposeProximity: selectedEvidence.purposeProximity,
+        freeSpaceProximity: selectedEvidence.freeSpaceProximity,
+        recentPoseDistance: Math.round(recentPoseDistance),
+        preferredVantage: Boolean(preference),
+        aggregateScore: best.score,
+        semanticSurfaceType: nearestRelevant?.surfaceType || "free_surface",
+        baseRank: nearestRelevant?.baseRank ?? 2,
+        effectiveRank: nearestRelevant?.effectiveRank ?? 2,
+        baseRankEvidence: nearestRelevant?.baseRankEvidence || ["live_orb_caption_footprint_clearance"],
+        reason: "highest_legal_phase_zero_candidate_score",
       });
       return best.point;
     }
@@ -1104,13 +1208,22 @@ export const AutonomousOrb: React.FC<Props> = ({
     emitOrbRuntimeEvent("lidar_ambient_pose_blocked", {
       route: lidarMap.route,
       featureCount: lidarMap.features.length,
-      reason: "no_clear_novel_pose",
+      rejected,
+      freeCellCount: lidarMap.occupancy.filter(cell => cell.kind === "free_space").length,
+      largestBlocking: lidarMap.occupancy.filter(cell => cell.blocksOrbMovement)
+        .sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height)
+        .slice(0, 5).map(cell => ({ id: cell.id, kind: cell.kind, rect: cell.rect })),
+      reason: cornerRejectedCount > 0
+        ? "no_clear_novel_pose_after_corner_exclusion"
+        : "no_clear_novel_pose",
+      retryOnNextLiveMap: true,
+      cornerRejectedCount,
     });
     // A blocked LiDAR pass must not silently dock the Website ORB at an edge
     // or corner. Hold the last witnessed pose and report the condition so a
     // later live geometry pass can recover deliberately.
     return current;
-  }, [bounds, clampPosition, size]);
+  }, [bounds, clampPosition, mappedPointerEvidence, size]);
 
   const resumeAutonomousPresence = useCallback(async () => {
     const blockers = {
@@ -1152,7 +1265,10 @@ export const AutonomousOrb: React.FC<Props> = ({
     try {
       assertMovementAuthorization(authorization);
       await travelOrbAlongCurve(destination, "glide");
-      if (sequence === motionInterruptionSequenceRef.current) positionRef.current = destination;
+      if (sequence === motionInterruptionSequenceRef.current) {
+        positionRef.current = destination;
+        nextAmbientMoveAtRef.current = Date.now() + AMBIENT_SETTLE_MIN_MS;
+      }
     } finally {
       if (sequence === motionInterruptionSequenceRef.current) {
         autonomousResumeActiveRef.current = false;
@@ -1255,11 +1371,14 @@ export const AutonomousOrb: React.FC<Props> = ({
     const currentRoute = routeForUrl(window.location.href);
     let best: { record: WebsiteOrbPointerRecord; score: number } | null = null;
 
-    const routeRecords = onboardingLiveRecordRef.current
-      ? [...pointerRecordsRef.current, onboardingLiveRecordRef.current]
-      : pointerRecordsRef.current;
+    const routeRecords = routePointerRecords();
+    const purposeMap = buildLidarGuidanceMap({ purpose: intentText, ...mappedPointerEvidence() });
+    const rankedPointerFeatures = new Map(purposeMap.features
+      .filter(feature => feature.authorityState === "pointer_candidate" && feature.targetId)
+      .map(feature => [feature.targetId!, feature] as const));
     for (const record of routeRecords) {
       if (routeForUrl(record.page_route) !== currentRoute) continue;
+      if (!["VERIFIED", "STABLE"].includes(record.confidence_class || "") || record.runtime_policy?.may_point !== true) continue;
       const candidates = [
         record.meaning || "",
         ...(record.direct_aliases || []),
@@ -1274,18 +1393,23 @@ export const AutonomousOrb: React.FC<Props> = ({
         : 0;
       const score =
         (overlap / Math.max(1, Math.min(queryTokens.size, recordTokens.size))) * confidence +
-        actionBonus;
+        actionBonus + (rankedPointerFeatures.get(record.target_id)?.purposeMatch ? 0.2 : 0) +
+        (overlap > 0 ? (
+          (rankedPointerFeatures.get(record.target_id)?.effectiveRank ??
+            (Number.isInteger(record.baseRank) ? Math.max(1, Math.min(5, record.baseRank!)) : 2)) - 1
+        ) * 0.04 : 0);
       if (score >= 0.34 && (!best || score > best.score)) best = { record, score };
     }
     return best?.record || null;
-  }, []);
+  }, [mappedPointerEvidence, routePointerRecords]);
 
   const guideToPointerRecord = useCallback(async (
     record: WebsiteOrbPointerRecord,
     intentText: string,
-    options: { launchMorbOnly?: boolean; signal?: AbortSignal } = {},
+    options: { launchMorbOnly?: boolean; signal?: AbortSignal; onPing?: () => void } = {},
   ) => {
     if (options.signal?.aborted) return false;
+    currentPurposeRef.current = { text: intentText, until: Date.now() + 30_000 };
     markVisitorActivity();
     const movementController = movementControllerRef.current;
     if (!movementController) return false;
@@ -1371,7 +1495,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         setGuidanceGeometrySource("lidar_cache");
         emitOrbRuntimeEvent("lidar_cache_hit", { targetId: record.target_id, drift });
       } else {
-        lidarCacheRef.current.load(pointerRecordsRef.current);
+        lidarCacheRef.current.load(routePointerRecords());
         setGuidanceGeometrySource("live_dom");
         emitOrbRuntimeEvent("lidar_drift_relocalized", { targetId: record.target_id, drift });
       }
@@ -1404,14 +1528,23 @@ export const AutonomousOrb: React.FC<Props> = ({
     // responsive reflow and put the body back over the target.
     const targetCenterX = activeRect.left + activeRect.width / 2;
     const targetCenterY = activeRect.top + activeRect.height / 2;
-    const guidanceMap = buildLidarGuidanceMap({
-      orbPosition: { x: positionRef.current.x + size / 2, y: positionRef.current.y + size / 2 },
-    });
     const currentOrbRect = orbElementRef.current?.getBoundingClientRect();
     const captionRect = document.querySelector<HTMLElement>('[data-orb-caption-state]')?.getBoundingClientRect();
     const captionOffset = currentOrbRect && captionRect
       ? { x: captionRect.left - currentOrbRect.left, y: captionRect.top - currentOrbRect.top, width: captionRect.width, height: captionRect.height }
       : null;
+    const guidanceMap = buildLidarGuidanceMap({
+      orbPosition: { x: positionRef.current.x + size / 2, y: positionRef.current.y + size / 2 },
+      purpose: intentText,
+      ...mappedPointerEvidence(),
+      orbFootprint: {
+        offsetX: Math.min(0, captionOffset?.x || 0),
+        offsetY: Math.min(0, captionOffset?.y || 0),
+        width: Math.max(size, (captionOffset?.x || 0) + (captionOffset?.width || 0)) - Math.min(0, captionOffset?.x || 0),
+        height: Math.max(size, (captionOffset?.y || 0) + (captionOffset?.height || 0)) - Math.min(0, captionOffset?.y || 0),
+      },
+      clearancePx: LIDAR_SAFETY_PADDING_PX,
+    });
     const intersects = (a: { left: number; top: number; right: number; bottom: number }, b: { x: number; y: number; width: number; height: number }) =>
       Math.max(0, Math.min(a.right, b.x + b.width) - Math.max(a.left, b.x)) *
       Math.max(0, Math.min(a.bottom, b.y + b.height) - Math.max(a.top, b.y));
@@ -1435,7 +1568,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     // presence beside the copy, never a layer over the copy.
     const protectedFeatures = guidanceMap.features.filter((feature) => (
       feature.visible && feature.pointerEvents !== "none" &&
-      (feature.hardExclusion || feature.kind === "text_block" ||
+      (feature.hardExclusion || feature.dynamic || feature.kind === "text_block" ||
         (!feature.occluded && ["interactive", "image"].includes(feature.kind)))
     ));
     const targetFootprint = {
@@ -1444,11 +1577,23 @@ export const AutonomousOrb: React.FC<Props> = ({
       width: activeRect.width,
       height: activeRect.height,
     };
+    let cornerRejectedCount = 0;
+    const cornerRejectedSamples: Array<{ point: { x: number; y: number }; corners: string[] }> = [];
     const isSafeStance = (candidate: { x: number; y: number }) => {
       const footprint = footprintFor(candidate);
+      const corner = inspectCornerExclusion(footprint, { width: window.innerWidth, height: window.innerHeight }, CORNER_EXCLUSION_MARGIN_PX);
+      if (corner.excluded) {
+        cornerRejectedCount += 1;
+        if (cornerRejectedSamples.length < 8) cornerRejectedSamples.push({ point: candidate, corners: corner.corners });
+        return false;
+      }
       // This direct check is intentional: the selected target is protected
       // even if its feature record is marked occluded by a containing card.
       if (intersects(footprint, targetFootprint) > 0) return false;
+      if (!evaluateLidarPose(guidanceMap, candidate, {
+        x: footprint.left, y: footprint.top,
+        width: footprint.right - footprint.left, height: footprint.bottom - footprint.top,
+      }).footprintClear) return false;
       return !protectedFeatures.some((feature) => {
         const margin = feature.hardExclusion ? LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX : 0;
         return intersects(footprint, {
@@ -1482,10 +1627,57 @@ export const AutonomousOrb: React.FC<Props> = ({
         candidate.x + size <= window.innerWidth &&
         candidate.y + size <= window.innerHeight
       ));
-    const guidedDestination = stanceCandidates.find((candidate) => isSafeStance(candidate));
+    const rankedStances = stanceCandidates
+      .filter((candidate) => isSafeStance(candidate))
+      .map((candidate, index) => {
+        const footprint = footprintFor(candidate);
+        const evidence = evaluateLidarPose(guidanceMap, candidate, {
+          x: footprint.left, y: footprint.top,
+          width: footprint.right - footprint.left, height: footprint.bottom - footprint.top,
+        });
+        const travelCost = Math.hypot(candidate.x - positionRef.current.x, candidate.y - positionRef.current.y);
+        return { candidate, evidence, travelCost, score: evidence.freeSpaceProximity * 20 + evidence.purposeProximity * 30 - travelCost * 0.04 - index * 2 };
+      })
+      .sort((a, b) => b.score - a.score);
+    const guidedDestination = rankedStances[0]?.candidate;
+    const mappedTarget = guidanceMap.features.find(feature => feature.targetId === record.target_id);
+    if (rankedStances.length) emitOrbRuntimeEvent("lidar_present_stance_selected", {
+      route: guidanceMap.route,
+      mapRevision: guidanceMap.mapRevision,
+      policy: "PRESENT/focus",
+      purposeReference: guidanceMap.purposeReference,
+      targetId: record.target_id,
+      pointerAuthorityState: record.confidence_class,
+      semanticSurfaceType: mappedTarget?.surfaceType || null,
+      baseRank: mappedTarget?.baseRank ?? record.baseRank ?? null,
+      effectiveRank: mappedTarget?.effectiveRank ?? record.baseRank ?? null,
+      baseRankEvidence: mappedTarget?.baseRankEvidence || record.rankEvidence || [],
+      currentPose: positionRef.current,
+      selectedCandidate: guidedDestination,
+      candidateCount: rankedStances.length,
+      freeSpaceClear: rankedStances[0].evidence.footprintClear,
+      freeSpaceProximity: rankedStances[0].evidence.freeSpaceProximity,
+      purposeProximity: rankedStances[0].evidence.purposeProximity,
+      travelCost: rankedStances[0].travelCost,
+      aggregateScore: rankedStances[0].score,
+      reason: "highest_legal_target_adjacent_stance_score",
+    });
+    if (cornerRejectedCount > 0) {
+      emitOrbRuntimeEvent("lidar_candidate_rejected", {
+        reason: "corner_exclusion",
+        phase: "present_stance_search",
+        targetId: record.target_id,
+        count: cornerRejectedCount,
+        samples: cornerRejectedSamples,
+        renderedFootprintIncludesCaption: Boolean(captionOffset),
+      });
+    }
     if (!guidedDestination) {
-      movement.cancel("no_phase_zero_adjacent_stance");
-      return finishGuidance(false, "no_phase_zero_adjacent_stance");
+      const recoveryReason = cornerRejectedCount > 0
+        ? "no_phase_zero_adjacent_stance_after_corner_exclusion"
+        : "no_phase_zero_adjacent_stance";
+      movement.cancel(recoveryReason);
+      return finishGuidance(false, recoveryReason);
     }
     if (!options.launchMorbOnly) {
       const rect = orbElementRef.current?.getBoundingClientRect();
@@ -1648,6 +1840,10 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     setPointerWaltzPhase("POINT");
     setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "POINT" } : null);
+    if (!movement.activateEndEffector()) {
+      movement.cancel("target_lost_before_end_effector");
+      return finishGuidance(false, "target_lost_before_end_effector");
+    }
     movement.complete();
     setPointerWaltzPhase("PING");
     playPointerPing();
@@ -1666,6 +1862,9 @@ export const AutonomousOrb: React.FC<Props> = ({
       height: pingRect.height + 20,
       originAngle: Math.atan2(finalTargetY - orbCenterY, finalTargetX - orbCenterX) * 180 / Math.PI,
     });
+    // The authored explanation starts at the witnessed Point/Ping boundary,
+    // not after the target flash has already disappeared.
+    options.onPing?.();
     setMorbPointer((currentMorb) => currentMorb ? { ...currentMorb, phase: "PING", pinging: true } : null);
     if (pointerTimerRef.current) window.clearTimeout(pointerTimerRef.current);
     pointerTimerRef.current = window.setTimeout(() => {
@@ -1682,7 +1881,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     setPointerWaltzPhase("COMPLETE");
     return finishGuidance(true);
     } finally { options.signal?.removeEventListener('abort', cancelGuidance); }
-  }, [authorizeMotion, bumpWorldStateSequence, clampPosition, invalidateAmbientPose, markVisitorActivity, move, playMorbLaunchSound, playPointerPing, resumeAutonomousPresence, size, startMorbTravelSound, stopMorbTravelSound, travelOrbAlongCurve]);
+  }, [authorizeMotion, bumpWorldStateSequence, clampPosition, invalidateAmbientPose, mappedPointerEvidence, markVisitorActivity, move, playMorbLaunchSound, playPointerPing, resumeAutonomousPresence, routePointerRecords, size, startMorbTravelSound, stopMorbTravelSound, travelOrbAlongCurve]);
 
   const guideToPointerTarget = useCallback(async (intentText: string) => {
     const record = findPointerRecordForIntent(intentText);
@@ -1692,13 +1891,11 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const findPointerRecordById = useCallback((targetId: string) => {
     const currentRoute = routeForUrl(window.location.href);
-    const routeRecords = onboardingLiveRecordRef.current
-      ? [...pointerRecordsRef.current, onboardingLiveRecordRef.current]
-      : pointerRecordsRef.current;
+    const routeRecords = routePointerRecords();
     return routeRecords.find((record) => (
       record.target_id === targetId && routeForUrl(record.page_route) === currentRoute
     )) || null;
-  }, []);
+  }, [routePointerRecords]);
 
   const guideFromRuntimeResult = useCallback(async (
     result: { transcript: string; spoken_output: string; guidance?: Record<string, unknown> | null; cognitive_pulse?: Record<string, unknown> | null },
@@ -2296,10 +2493,13 @@ export const AutonomousOrb: React.FC<Props> = ({
           emitOrbRuntimeEvent("scripted_orientation_paused", { orientationId, index, reason: "missing_script_text" });
           return false;
         }
+        const useCaseTargetId = step.pointerTargetIds?.length === 1 && /^use-case-[1-8]$/.test(step.pointerTargetIds[0])
+          ? step.pointerTargetIds[0] : null;
         // Every authored stop demonstrates the verified target before its
         // explanation. The movement controller performs a live DOM refresh,
         // launches the pointer, and pings without ever clicking the target.
         for (const targetId of step.pointerTargetIds || []) {
+          if (useCaseTargetId) break; // This Point/Ping is synchronized with its own spoken explanation below.
           if (scriptedOrientationInterruptedRef.current) break;
           const target = await waitForPointerRecord(targetId);
           if (!target) {
@@ -2399,7 +2599,7 @@ export const AutonomousOrb: React.FC<Props> = ({
             const tts = suppliedAudioUrl
               ? { tts_audio_url: suppliedAudioUrl, tts_provider: suppliedAudioProvider }
               : await api.websiteOrbTts(spokenText);
-            played = await speakWithGeneratedAudio(spokenText, tts.tts_audio_url, tts.tts_provider, {
+            const playbackOptions = {
               playbackRate: TOUR_SPEECH_PLAYBACK_RATE,
               onPlaybackStarted: () => {
                 emitOrbRuntimeEvent("scripted_orientation_step_started", { orientationId, index, attempt });
@@ -2409,7 +2609,34 @@ export const AutonomousOrb: React.FC<Props> = ({
                   emitOrbRuntimeEvent("scripted_orientation_scroll_to_end_started", { orientationId, index });
                 });
               },
-            });
+            };
+            if (useCaseTargetId) {
+              const target = await waitForPointerRecord(useCaseTargetId);
+              let speechAtPing: Promise<boolean> | undefined;
+              const guided = target && await guideToPointerRecord(target, spokenText, {
+                onPing: () => {
+                  speechAtPing = speakWithGeneratedAudio(spokenText, tts.tts_audio_url, tts.tts_provider, playbackOptions);
+                },
+              });
+              emitOrbRuntimeEvent(guided ? "scripted_tour_pointer_demonstrated" : "scripted_tour_pointer_unavailable", {
+                orientationId, index, targetId: useCaseTargetId,
+              });
+              if (!guided) {
+                emitOrbRuntimeEvent("scripted_orientation_pointer_skipped", {
+                  orientationId, index, targetId: useCaseTargetId,
+                  reason: target ? "no_safe_stance" : "target_not_live_on_route",
+                });
+                // Explain the topic without claiming a successful visual action.
+                // The first stop's copy deliberately makes no such promise.
+                setStatusLine(`I could not safely point to ${useCaseTargetId}; I will explain it without activating the page.`);
+                showStatus(4200);
+                played = await speakWithGeneratedAudio(spokenText, tts.tts_audio_url, tts.tts_provider, playbackOptions);
+              } else {
+                played = await (speechAtPing ?? Promise.resolve(false));
+              }
+            } else {
+              played = await speakWithGeneratedAudio(spokenText, tts.tts_audio_url, tts.tts_provider, playbackOptions);
+            }
           } catch (error) {
             if (scriptedOrientationInterruptedRef.current) break;
             emitOrbRuntimeEvent("scripted_orientation_tts_attempt_failed", {
@@ -3571,7 +3798,14 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   useEffect(() => {
     if (location.pathname === "/" || onboardingSafeMode) return;
-    const orientation = scriptedPageOrientation(location.pathname);
+    const main = document.querySelector<HTMLElement>('main, [role="main"]');
+    const heading = main?.querySelector<HTMLElement>('h1');
+    const paragraphs = Array.from(heading?.parentElement?.querySelectorAll<HTMLElement>('p') || []);
+    const summary = paragraphs.find((paragraph) => (paragraph.textContent?.trim().length || 0) >= 60);
+    const orientation = scriptedPageOrientation(location.pathname, {
+      title: heading?.textContent?.slice(0, 120),
+      summary: summary?.textContent?.slice(0, 230),
+    });
     if (!orientation) return;
     void runScriptedOrientation(`page:${location.pathname}`, [orientation])
       .finally(() => {
@@ -4307,6 +4541,11 @@ export const AutonomousOrb: React.FC<Props> = ({
           continue;
         }
 
+        if (Date.now() < nextAmbientMoveAtRef.current) {
+          await wait(Math.min(500, nextAmbientMoveAtRef.current - Date.now()));
+          continue;
+        }
+
         const destination = nextDestination();
 
         void playLocalPresence();
@@ -4327,12 +4566,13 @@ export const AutonomousOrb: React.FC<Props> = ({
         if (movementSequence !== motionInterruptionSequenceRef.current) continue;
 
         positionRef.current = destination;
+        nextAmbientMoveAtRef.current = Date.now() + AMBIENT_SETTLE_MIN_MS + Math.round(Math.random() * AMBIENT_SETTLE_VARIANCE_MS);
 
         void playLocalPresence();
 
         if (!activeRef.current) break;
 
-        await wait(AMBIENT_SETTLE_MIN_MS + Math.round(Math.random() * AMBIENT_SETTLE_VARIANCE_MS));
+        await wait(Math.max(0, nextAmbientMoveAtRef.current - Date.now()));
       }
     };
 

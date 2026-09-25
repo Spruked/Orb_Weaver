@@ -207,12 +207,14 @@ function escapeHtml(value: string) {
 }
 
 async function openJsonDocument(path: string) {
-  const opened = window.open('', '_blank', 'noopener,noreferrer');
-  if (!opened) return;
+  const opened = window.open('about:blank', '_blank');
+  if (!opened) throw new Error('Your browser blocked the report tab. Allow popups for this site or download the file.');
+  opened.opener = null;
   opened.document.write('<!doctype html><title>Loading report...</title><body style="font-family: system-ui, sans-serif; padding: 18px;">Loading report...</body>');
   opened.document.close();
 
-  const file = await fetchText(path);
+  let file;
+  try { file = await fetchText(path); } catch (error) { opened.close(); throw error; }
   let body = file.data;
   try {
     body = JSON.stringify(JSON.parse(file.data), null, 2);
@@ -242,9 +244,13 @@ async function openJsonDocument(path: string) {
 }
 
 async function openBlob(path: string) {
-  const blob = await fetchBlob(path);
+  const opened = window.open('about:blank', '_blank');
+  if (!opened) throw new Error('Your browser blocked the report tab. Allow popups for this site or download the file.');
+  opened.opener = null;
+  let blob;
+  try { blob = await fetchBlob(path); } catch (error) { opened.close(); throw error; }
   const url = URL.createObjectURL(blob.data);
-  window.open(url, '_blank', 'noopener,noreferrer');
+  opened.location.replace(url);
   window.setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
@@ -370,6 +376,7 @@ export interface DockSituationalGuideRail {
 
 export interface DockConfiguration {
   schema: 'orb_weaver.orb_dock_configuration.v1';
+  orb_name: string;
   appearance: { skin_id: string };
   llm: {
     provider: 'runtime_default' | 'ollama_local' | 'openai_api' | 'anthropic_api' | 'google_api' | 'openai_compatible';
@@ -679,6 +686,7 @@ export interface CrawlConfig {
   competitor_domains?: string[];
   seed_urls?: string[];
   include_admin_sections?: boolean;
+  authenticated_session_id?: string | null;
 }
 
 export interface ScanAssemblyMetric {
@@ -709,6 +717,7 @@ export interface ScanAssemblyStatus {
     failed_stage_ids: string[];
     incomplete_stage_ids: string[];
     authentication_wall_pages: number;
+    authentication_session_status?: string;
     render_diagnostics?: Record<string, number>;
     reasons?: string[];
     runtime_geometry_policy: string;
@@ -726,8 +735,8 @@ export interface ScanAssemblyStatus {
       title: string;
       status: string;
       items: string[];
-      item_evidence?: Array<{ label: string; status: string; stage_ids?: string[] }>;
-      evidence?: { stage_ids?: string[] };
+      item_evidence?: Array<{ label: string; status: string; runtime_evidence_state?: string; stage_ids?: string[] }>;
+      evidence?: { stage_ids?: string[]; runtime_evidence_state?: string };
     }>;
     runtime_evidence?: Record<string, unknown>;
     runtime_promotion_rule?: string;
@@ -1054,6 +1063,7 @@ export interface ReportCompilerPayload {
     failed_stage_ids: string[];
     incomplete_stage_ids: string[];
     authentication_wall_pages: number;
+    authentication_session_status?: string;
     render_diagnostics?: Record<string, number>;
     runtime_geometry_policy: string;
     note: string;
@@ -1273,6 +1283,9 @@ export interface WebsiteOrbPointerRecord {
   target_id: string;
   page_route: string;
   target_type: string;
+  baseRank?: number;
+  rankEvidence?: string[];
+  rankSource?: string;
   pointer_class?: 'semantic_reference' | 'live_guidance' | string;
   meaning?: string;
   intent_aliases?: string[];
@@ -1781,6 +1794,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(config)
     }),
+  createAuthenticatedCrawlSession: (projectId: string, storageState: Record<string, unknown>) =>
+    request<{ session_id: string; expires_in_seconds: number; scope: string; storage_policy: string }>(
+      `/api/projects/${projectId}/crawl-auth-session`,
+      { method: 'POST', body: JSON.stringify({ storage_state: storageState }) }
+    ),
   reauditProject: (projectId: string) =>
     request<{ audit_id: string; status: string; message: string }>(`/api/projects/${projectId}/reaudit`, {
       method: 'POST'
@@ -1806,6 +1824,8 @@ export const api = {
     }),
   getAuditReport: (auditId: string) => request<AuditReportResponse>(`/api/audit-reports/${auditId}`),
   getReportCompiler: (projectId: string) => request<ReportCompilerPayload>(`/api/projects/${projectId}/report-compiler`),
+  readReportFile: (projectId: string, filename: string) =>
+    fetchText(`/api/projects/${projectId}/report-files/${encodeURIComponent(filename)}?disposition=inline`),
   manufactureWebsiteOrb: (projectId: string, payload: {
     crawl_id?: string | null;
     approved_artifacts?: string[];

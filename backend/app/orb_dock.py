@@ -187,12 +187,21 @@ class SituationalGuideRail(LockedModel):
 
 class DockConfiguration(LockedModel):
     schema: Literal[DOCK_CONFIGURATION_SCHEMA] = DOCK_CONFIGURATION_SCHEMA
+    orb_name: str = Field(default="Website ORB", min_length=1, max_length=80)
     appearance: AppearanceConfiguration = Field(default_factory=AppearanceConfiguration)
     llm: LlmConfiguration = Field(default_factory=LlmConfiguration)
     behavior: BehaviorConfiguration = Field(default_factory=BehaviorConfiguration)
     business_objectives: List[BusinessObjective] = Field(default_factory=list, max_length=40)
     additional_guide_rails: List[AdditionalGuideRail] = Field(default_factory=list, max_length=80)
     situational_guide_rails: List[SituationalGuideRail] = Field(default_factory=list, max_length=80)
+
+    @field_validator("orb_name")
+    @classmethod
+    def normalize_orb_name(cls, value: str) -> str:
+        normalized = " ".join((value or "").split())
+        if not normalized:
+            raise ValueError("Name the ORB before publishing")
+        return normalized
 
 
 def default_configuration() -> Dict[str, Any]:
@@ -348,6 +357,7 @@ def compile_configuration(
         "schema": COMPILED_POLICY_SCHEMA,
         "project_id": project_id,
         "domain": domain,
+        "orb_name": configuration.orb_name,
         "version": next_version,
         "compiled_at": compiled_at,
         "locked_doctrine": {"hash": doctrine_hash(), "rules": LOCKED_ORB_DOCTRINE},

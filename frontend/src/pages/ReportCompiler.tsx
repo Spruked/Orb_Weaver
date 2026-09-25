@@ -10,7 +10,27 @@ const ReportCompiler: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'data'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'data'>('data');
+  const [openedReport, setOpenedReport] = useState<{ filename: string; content: string } | null>(null);
+  const [openError, setOpenError] = useState('');
+  const [openingFile, setOpeningFile] = useState<string | null>(null);
+
+  const openReport = useCallback(async (filename: string) => {
+    if (!projectId) return;
+    setOpeningFile(filename);
+    setOpenError('');
+    try {
+      const file = await api.readReportFile(projectId, filename);
+      let content = file.data;
+      try { content = JSON.stringify(JSON.parse(content), null, 2); } catch { /* Legacy text report. */ }
+      setOpenedReport({ filename, content });
+    } catch (err) {
+      setOpenedReport(null);
+      setOpenError(err instanceof Error ? err.message : 'Report could not be opened');
+    } finally {
+      setOpeningFile(null);
+    }
+  }, [projectId]);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -128,6 +148,13 @@ const ReportCompiler: React.FC = () => {
         </button>
       </div>
 
+      <div className="grid gap-4 md:grid-cols-4">
+        <div className="card"><p className="text-xs font-bold uppercase tracking-wide text-gray-500">Report systems</p><p className="mt-1 text-2xl font-bold text-gray-900">{inventory.length}</p><p className="text-xs text-gray-600">{inventory.filter(item => item.status === 'available').length} available from current evidence</p></div>
+        <div className="card"><p className="text-xs font-bold uppercase tracking-wide text-gray-500">Latest crawl</p><p className="mt-1 text-lg font-bold text-gray-900">{data.latest_crawl?.status || 'Not run'}</p><p className="text-xs text-gray-600">{latestCrawlId ? `Crawl #${latestCrawlId}` : 'No crawl evidence'}</p></div>
+        <div className="card"><p className="text-xs font-bold uppercase tracking-wide text-gray-500">Pointer evidence</p><p className="mt-1 text-2xl font-bold text-gray-900">{pointerSummary?.record_count ?? 0}</p><p className="text-xs text-gray-600">{pointerSummary?.runtime_guidance_status || pointerSummary?.status || 'Not verified'} · live geometry required</p></div>
+        <div className="card"><p className="text-xs font-bold uppercase tracking-wide text-gray-500">Report files</p><p className="mt-1 text-2xl font-bold text-gray-900">{data.files.length}</p><p className="text-xs text-gray-600">{latestAuditId ? `Latest audit #${latestAuditId}` : 'Audit not run'}</p></div>
+      </div>
+
       {activeTab === 'data' && (
         <div className="space-y-4">
           <div className="card border-emerald-100 bg-emerald-50">
@@ -150,6 +177,18 @@ const ReportCompiler: React.FC = () => {
                 </article>
               );
             })}
+          </div>
+          <div className="card">
+            <h2 className="text-lg font-bold text-gray-900">Available report snapshots</h2>
+            <p className="mt-1 text-sm text-gray-600">Open a report here to review its actual data. Downloads keep the original file.</p>
+            {data.files.length === 0 ? <p className="mt-4 text-sm text-gray-500">No report snapshots have been generated yet.</p> : (
+              <div className="mt-4 grid gap-2 md:grid-cols-2">
+                {data.files.map(file => <div key={file} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
+                  <span className="min-w-0 truncate text-sm font-semibold text-gray-800">{file}</span>
+                  <button type="button" onClick={() => void openReport(file)} className="btn-secondary shrink-0">{openingFile === file ? 'Opening…' : 'Open report'}</button>
+                </div>)}
+              </div>
+            )}
           </div>
           {capabilityCoverage && (
             <div className="card border-indigo-100 bg-indigo-50">
@@ -291,7 +330,7 @@ const ReportCompiler: React.FC = () => {
                 Audit PDF
               </button>
               <button
-                onClick={() => openFiles.auditPdf(latestAuditId)}
+                onClick={() => void openFiles.auditPdf(latestAuditId).catch(err => setOpenError(err instanceof Error ? err.message : 'PDF could not be opened'))}
                 className="btn-secondary flex items-center gap-2"
               >
                 <Eye className="w-4 h-4" />
@@ -316,11 +355,11 @@ const ReportCompiler: React.FC = () => {
                 <span className="truncate">{file}</span>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => openFiles.reportFile(data.project.id, file)}
+                    onClick={() => void openReport(file)}
                     className="px-3 py-2 rounded-lg bg-white border border-gray-200 hover:bg-gray-100 flex items-center gap-2"
                   >
                     <Eye className="w-4 h-4" />
-                    Open
+                    {openingFile === file ? 'Opening…' : 'Open'}
                   </button>
                   <button
                     onClick={() => downloads.reportFile(data.project.id, file)}
@@ -336,6 +375,14 @@ const ReportCompiler: React.FC = () => {
         )}
       </div>
       </>}
+      {openError && <div role="alert" className="card border-red-200 bg-red-50 text-red-800">Could not open report: {openError}</div>}
+      {openedReport && <section className="card" aria-label={`Report ${openedReport.filename}`}>
+        <div className="flex items-center justify-between gap-3">
+          <div><h2 className="text-lg font-bold text-gray-900">{openedReport.filename}</h2><p className="text-xs text-gray-500">Original report data · project {data.project.name}</p></div>
+          <button type="button" onClick={() => setOpenedReport(null)} className="btn-secondary">Close</button>
+        </div>
+        <pre className="mt-4 max-h-[65vh] overflow-auto rounded-lg bg-slate-950 p-5 text-sm leading-6 text-slate-100 whitespace-pre-wrap break-words">{openedReport.content}</pre>
+      </section>}
     </div>
   );
 };

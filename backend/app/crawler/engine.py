@@ -101,9 +101,11 @@ class OrbWeaverCrawler:
         progress_callback=None,
         tier: str = "authenticated",
         include_admin_sections: bool = True,
+        storage_state_path: Optional[str] = None,
     ):
         self.tier = "free" if tier == "free" else "authenticated"
         self.include_admin_sections = include_admin_sections and self.tier != "free"
+        self.storage_state_path = storage_state_path
         requested_pages = max_pages or settings.CRAWL_MAX_PAGES
         requested_depth = max_depth or settings.CRAWL_MAX_DEPTH
         if self.tier == "free":
@@ -246,6 +248,7 @@ class OrbWeaverCrawler:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                env={**os.environ, **({"ORB_STORAGE_STATE_PATH": self.storage_state_path} if self.storage_state_path else {})},
                 timeout=min(max(timeout_seconds + 5, 15), 45),
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -867,6 +870,12 @@ class OrbWeaverCrawler:
                 render_error = getattr(self, "_orb_last_render_error", None)
 
         soup = BeautifulSoup(html, 'lxml')
+        # The scope/Tesseract weave consumes the exact DOM used for extraction.
+        # Keep this handoff here as well as in link extraction so direct page
+        # probes and pages without link targets cannot lose visual resources.
+        latest_soup_by_url = getattr(self, "_orb_latest_soup_by_url", None)
+        if isinstance(latest_soup_by_url, dict):
+            latest_soup_by_url[self._normalize_url(url)] = soup
         if status_code == 200 and not self._is_crawl_control_resource(url):
             await self._expand_same_origin_iframes(session, soup, url)
         text_content = soup.get_text(separator=' ', strip=True)
@@ -918,6 +927,7 @@ class OrbWeaverCrawler:
             soup,
             semantic_analysis=semantic_analysis,
             entity_analysis=entity_analysis,
+            route_category=self._route_classification(normalized_url),
         )
         semantic_analysis = {
             **semantic_analysis,

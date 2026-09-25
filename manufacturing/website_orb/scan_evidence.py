@@ -66,6 +66,8 @@ def scan_evidence(*, site_id: str, domain: str, scan_id: str, captured_at: str,
                 continue
             add("other", f"pointer:{index}", {
                 "label": pointer["meaning"], "target_type": pointer.get("target_type"),
+                "baseRank": pointer.get("baseRank"),
+                "rankEvidence": pointer.get("rankEvidence") or [],
                 "structural_context": pointer.get("structural_context") or {},
                 "anchor_strategy": pointer.get("anchor_strategy") or "element_center",
                 "aliases": sorted({str(alias) for field in ("direct_aliases", "intent_aliases", "topic_aliases")

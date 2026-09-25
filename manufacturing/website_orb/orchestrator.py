@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Mapping, Optional
 
 from .compile_vaults import COMPILER_VERSION, compile_all
+from .nine_of_clubs import compile_question_registry
 from .site_payload import validate_site_inputs
 from .package_audit import audit_package
 from manufacturing.templates.Website_Orb_Final.backend.skg.graph import validate_graph
@@ -51,6 +52,7 @@ REQUIRED_PAYLOAD_FILES = (
     "payload/apriori/catalog.json",
     "payload/apriori/ontology.json",
     "payload/apriori/site_skg.json",
+    "payload/apriori/question_registry.json",
     "payload/apriori/qa.json",
     "payload/apriori/policies.json",
     "manifests/verification_manifest.json",
@@ -173,8 +175,10 @@ def _compile_site_world(evidence: Dict[str, Any], source_context: Dict[str, Any]
     for route, context in site_skg["route_index"].items():
         route_node = site_skg["nodes"][context["node_id"]]
         candidates = [site_skg["nodes"][nid] for nid in context["node_ids"]]
-        targets = [{"target_id": node["target_id"], "meaning": node["label"]}
-                   for node in candidates if node["kind"] == "pointer"]
+        targets = sorted(({"target_id": node["target_id"], "meaning": node["label"],
+                           "baseRank": node["baseRank"], "rankEvidence": node["rankEvidence"]}
+                          for node in candidates if node["kind"] == "pointer"),
+                         key=lambda target: (-target["baseRank"], target["target_id"]))
         summary = next((node["text"] for node in candidates if node.get("text")), route_node["label"])
         routes[route] = {
             "route": route, "page_purpose": route_node["label"], "summary": summary,
@@ -219,8 +223,10 @@ def _compile_site_world(evidence: Dict[str, Any], source_context: Dict[str, Any]
     }
 
 
-def _compile_pointers(evidence: Dict[str, Any], source_context: Dict[str, Any]) -> Dict[str, Any]:
+def _compile_pointers(evidence: Dict[str, Any], source_context: Dict[str, Any], site_skg: Dict[str, Any]) -> Dict[str, Any]:
     records = []
+    ranked_nodes = {(node.get("route"), node.get("target_id")): node
+                    for node in site_skg["nodes"].values() if node.get("kind") == "pointer"}
     excluded = {page["url"] for page in evidence.get("pages", [])
                 if page.get("usable") is False or page.get("route_category") in {"admin", "private", "system"}}
     for item in evidence.get("evidence") or []:
@@ -228,10 +234,14 @@ def _compile_pointers(evidence: Dict[str, Any], source_context: Dict[str, Any]) 
         if not target_id or item.get("verified") is not True or item.get("source_url") in excluded:
             continue
         payload = item.get("payload") or {}
+        ranked = ranked_nodes.get((item.get("route"), target_id), {})
         records.append({
             "target_id": str(target_id),
             "page_route": item.get("route") or "",
             "target_type": payload.get("target_type") or item.get("evidence_type") or "content",
+            "baseRank": ranked.get("baseRank", 2),
+            "rankEvidence": ranked.get("rankEvidence", ["legacy_scan_rank_missing"]),
+            "rankSource": "compiled_site_skg",
             "meaning": payload.get("name") or payload.get("title") or payload.get("label") or str(target_id),
             "intent_aliases": payload.get("intent_aliases") or payload.get("aliases") or [],
             "direct_aliases": payload.get("aliases") or [],
@@ -427,6 +437,14 @@ def validate_delivery_readiness(
         except (OSError, json.JSONDecodeError) as exc:
             runtime_schema_results[name] = [f"$: unreadable payload ({exc.__class__.__name__})"]
         failures.extend(f"schema:{name}:{failure}" for failure in runtime_schema_results[name])
+    try:
+        question_registry = json.loads((vault_root / "payload/apriori/question_registry.json").read_text(encoding="utf-8"))
+        question_failures = _validate_named_schema(question_registry, "question_registry.v1.json")
+        failures.extend(f"schema:question_registry:{failure}" for failure in question_failures)
+        if question_registry.get("question_count") != 50 or len(question_registry.get("patterns") or []) != 50:
+            failures.append("question_registry:expected_exactly_50_patterns")
+    except (OSError, json.JSONDecodeError) as exc:
+        failures.append(f"schema:question_registry:unreadable payload ({exc.__class__.__name__})")
     if not verification_manifest.get("shipping_gate", {}).get("package_allowed"):
         failures.extend(verification_manifest.get("shipping_gate", {}).get("blocked_reasons") or ["owner_verification_incomplete"])
 
@@ -535,9 +553,12 @@ def manufacture_website_orb(
 
     compiled = compile_all(document)
     context = dict(source_context or {})
+    question_registry = compile_question_registry(document, compiled["site_skg"])
     site_world = _compile_site_world(document, context, compiled["site_skg"])
     site_world["knowledge_chunks"] = compiled["knowledge_chunks"]
-    pointers = _compile_pointers(document, context)
+    site_world["question_registry_ref"] = "payload/apriori/question_registry.json"
+    compiled["site_skg"]["question_registry_ref"] = "payload/apriori/question_registry.json"
+    pointers = _compile_pointers(document, context, compiled["site_skg"])
     runtime_language = _compile_runtime_language(compiled["catalog"], compiled["qa"])
     tool_cache = _compile_tool_cache(compiled["catalog"], compiled["qa"], context)
     resolved_site_config = _default_site_config(document, dict(site_config or {}))
@@ -561,6 +582,7 @@ def manufacture_website_orb(
         "apriori/catalog.json": compiled["catalog"],
         "apriori/ontology.json": compiled["ontology"],
         "apriori/site_skg.json": compiled["site_skg"],
+        "apriori/question_registry.json": question_registry,
         "apriori/elimination_graph.json": compile_funnels(compiled["site_skg"]),
         "apriori/qa.json": compiled["qa"],
         "apriori/policies.json": compiled["policies"],

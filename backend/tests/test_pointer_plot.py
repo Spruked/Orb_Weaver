@@ -85,3 +85,22 @@ def test_duplicate_route_locator_conflicts_are_target_specific():
     assert diagnostics["route_locator_conflict_count"] == 1
     assert all(record["finding_subreason"] == "duplicate_route_locator_conflict" for record in records)
     assert all(record["runtime_policy"]["may_point"] is False for record in records)
+
+
+def test_scan_importance_rank_depends_on_witnessed_site_context_without_granting_pointer_authority():
+    soup = BeautifulSoup('<main><button id="report">Get Security Report</button></main>', 'lxml')
+    important = extract_pointer_plot_records(
+        'https://security.example/report', soup,
+        semantic_analysis={'top_terms': [{'term': 'security', 'count': 8}]},
+        route_category='public_content',
+    )[0]
+    secondary = extract_pointer_plot_records(
+        'https://general.example/report', soup,
+        semantic_analysis={'top_terms': [{'term': 'shoes', 'count': 8}]},
+        route_category='public_content',
+    )[0]
+    assert important['baseRank'] == 4
+    assert secondary['baseRank'] == 3
+    assert 'matches_site_scan_topical_terms' in important['rankEvidence']
+    assert all(1 <= record['baseRank'] <= 5 for record in (important, secondary))
+    assert important['runtime_policy'] == secondary['runtime_policy']

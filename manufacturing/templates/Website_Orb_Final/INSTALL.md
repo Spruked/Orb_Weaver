@@ -14,6 +14,11 @@ python -m venv .venv
 .venv/bin/python run.py --port 8787
 ```
 
+The purchaser names the ORB in Orb Weaver's customer setup before downloading
+the package. That identity is compiled into `payload/site_config.json` and is
+returned by `/orb/bootstrap`, so the installed ORB can be named for the
+business, such as `Harley`, instead of inheriting a generic assistant name.
+
 On Windows use `.venv\Scripts\python.exe` instead. Keep the server bound to
 loopback behind your HTTPS reverse proxy. Proxy `/orb/` to port 8787, then add
 this to the approved customer website (replace the example with your server):

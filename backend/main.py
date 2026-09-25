@@ -289,6 +289,9 @@ ORB_TTS_WARM_STATUS: Dict[str, Any] = {
     "errors": [],
 }
 CRAWL_WORKER_INSTANCE_ID = f"{os.getpid()}-{secrets.token_hex(6)}"
+# One-time, in-memory browser session handoffs. Raw cookies/local storage never
+# enter CrawlJob.config or the canonical report artifacts.
+AUTHENTICATED_CRAWL_SESSIONS: Dict[str, Dict[str, Any]] = {}
 
 ORB_INSTALL_SITES: Dict[str, Dict[str, Any]] = {
     "orb-weaver": {
@@ -457,6 +460,11 @@ class CrawlConfig(BaseModel):
     competitor_domains: List[str] = Field(default_factory=list)
     seed_urls: List[str] = Field(default_factory=list)
     include_admin_sections: bool = True
+    authenticated_session_id: Optional[str] = Field(default=None, min_length=16, max_length=200)
+
+
+class AuthenticatedCrawlSessionCreate(BaseModel):
+    storage_state: Dict[str, Any]
 
 
 class GA4Config(BaseModel):
@@ -2054,7 +2062,7 @@ def _dock_orb_identity(
     appearance = (compiled_policy or {}).get("appearance") or {}
     skin_id = str(appearance.get("skin_id") or "orb_factory_default_v1")
     asset_path = str(appearance.get("asset_path") or "/orb-skins/tuxorb.png")
-    display_name = str(appearance.get("display_name") or "O.R.B.S. Factory Default")
+    display_name = str((compiled_policy or {}).get("orb_name") or appearance.get("display_name") or "O.R.B.S. Factory Default")
     # The campaign install is the visual acceptance test for the current
     # Website ORB. Keep ordinary customer installs on the immutable factory
     # fallback, while the explicitly registered campaign identity uses the
@@ -2101,6 +2109,31 @@ def _owned_crawl_job(job_id: str, customer: Customer, db: Session) -> CrawlJob:
     if not crawl_job:
         raise HTTPException(status_code=404, detail="Crawl job not found")
     return crawl_job
+
+
+def _claim_authenticated_crawl_session(session_id: Optional[str], project: Project) -> Optional[Dict[str, Any]]:
+    if not session_id:
+        return None
+    record = AUTHENTICATED_CRAWL_SESSIONS.pop(session_id, None)
+    if not record or record.get("expires_at", 0) < time.time() or str(record.get("project_id")) != str(project.id):
+        return None
+    return record.get("storage_state") if isinstance(record.get("storage_state"), dict) else None
+
+
+def _validate_crawl_storage_state(storage_state: Dict[str, Any], project: Project) -> None:
+    if not isinstance(storage_state, dict) or not isinstance(storage_state.get("cookies", []), list):
+        raise HTTPException(status_code=400, detail="storage_state must be a Playwright storage-state object")
+    if len(json.dumps(storage_state, ensure_ascii=False)) > 2_000_000:
+        raise HTTPException(status_code=413, detail="storage_state is too large")
+    project_host = (urlparse(project.domain if "://" in project.domain else f"https://{project.domain}").hostname or "").lower()
+    for cookie in storage_state.get("cookies", []):
+        domain = str(cookie.get("domain") or "").lstrip(".").lower()
+        if domain and not (domain == project_host or domain.endswith(f".{project_host}")):
+            raise HTTPException(status_code=400, detail="storage_state contains a cookie for an unrelated domain")
+    for origin in storage_state.get("origins", []):
+        origin_host = (urlparse(str(origin.get("origin") or "")).hostname or "").lower()
+        if origin_host and not (origin_host == project_host or origin_host.endswith(f".{project_host}")):
+            raise HTTPException(status_code=400, detail="storage_state contains local data for an unrelated domain")
 
 
 def _owned_lifecycle_job(job_id: str | int, customer: Customer, db: Session) -> LifecycleJob:
@@ -6509,6 +6542,7 @@ def _scan_assembly_status(crawl_job: CrawlJob, pages: List[CrawledPage], stats: 
             "failed_stage_ids": failed_stage_ids,
             "incomplete_stage_ids": incomplete_stage_ids,
             "authentication_wall_pages": authentication_wall_pages,
+            "authentication_session_status": (crawl_job.config or {}).get("authenticated_session_status", "not_requested"),
             "render_diagnostics": render_diagnostics,
             "reasons": completion_reasons,
             "runtime_geometry_policy": "live_dom_only",
@@ -7384,6 +7418,24 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
         )
 
         config = CrawlConfig(**config_data)
+        authenticated_storage_state_path: Optional[str] = None
+        authenticated_session_state = _claim_authenticated_crawl_session(config.authenticated_session_id, project)
+        if authenticated_session_state:
+            state_file = tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", prefix="orb-crawl-storage-", suffix=".json", delete=False
+            )
+            try:
+                json.dump(authenticated_session_state, state_file, ensure_ascii=False)
+                state_file.flush()
+                os.chmod(state_file.name, 0o600)
+                authenticated_storage_state_path = state_file.name
+            finally:
+                state_file.close()
+        authenticated_session_status = (
+            "attached" if authenticated_session_state else
+            "unavailable_or_expired" if config.authenticated_session_id else
+            "not_requested"
+        )
         crawl_job.status = "running"
         crawl_job.start_time = datetime.utcnow()
         crawl_job.heartbeat_at = crawl_job.start_time
@@ -7391,6 +7443,7 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
         stage_started_at = crawl_job.start_time.isoformat()
         crawl_job.config = {
             **(crawl_job.config or {}),
+            "authenticated_session_status": authenticated_session_status,
             "scan_stage_execution": {
                 stage_id: {
                     "status": "RUNNING",
@@ -7458,6 +7511,7 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             max_depth=config.max_depth,
             tier=config.tier,
             include_admin_sections=config.include_admin_sections,
+            storage_state_path=authenticated_storage_state_path,
             progress_callback=persist_crawl_progress,
         )
 
@@ -7683,6 +7737,11 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             crawl_job.config = config
             db.commit()
     finally:
+        if 'authenticated_storage_state_path' in locals() and authenticated_storage_state_path:
+            try:
+                os.unlink(authenticated_storage_state_path)
+            except FileNotFoundError:
+                pass
         db.close()
 
 
@@ -11741,6 +11800,32 @@ async def start_crawl(
     return _serialize_crawl_job(crawl, db)
 
 
+@app.post("/api/projects/{project_id}/crawl-auth-session")
+async def create_authenticated_crawl_session(
+    project_id: str,
+    payload: AuthenticatedCrawlSessionCreate,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    """Accept a one-time owner-authorized Playwright session without persisting credentials."""
+    project = _owned_project(project_id, customer, db)
+    _validate_crawl_storage_state(payload.storage_state, project)
+    session_id = secrets.token_urlsafe(32)
+    AUTHENTICATED_CRAWL_SESSIONS[session_id] = {
+        "project_id": str(project.id),
+        "customer_id": str(customer.id),
+        "storage_state": payload.storage_state,
+        "created_at": datetime.utcnow().isoformat(),
+        "expires_at": time.time() + 600,
+    }
+    return {
+        "session_id": session_id,
+        "expires_in_seconds": 600,
+        "scope": "one_crawl_one_project",
+        "storage_policy": "memory_only_until_claimed; raw credentials are not persisted",
+    }
+
+
 @app.get("/api/crawl-jobs/{job_id}")
 async def get_crawl_job(job_id: str, db: Session = Depends(get_db), customer: Customer = Depends(get_current_customer)):
     crawl_job = _owned_crawl_job(job_id, customer, db)
@@ -12522,6 +12607,8 @@ async def manufacture_project_website_orb(
             config.setdefault("providers", policy["llm"])
         if policy.get("behavior"):
             config.setdefault("behavior", policy["behavior"])
+        if policy.get("orb_name"):
+            config.setdefault("orb_name", policy["orb_name"])
         approved_artifacts = ["*"] if payload.approve_all_artifacts else payload.approved_artifacts
         def manufacturing_progress(status: str, details: Dict[str, Any]) -> None:
             status_details = dict(details)

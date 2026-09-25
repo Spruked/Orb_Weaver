@@ -70,6 +70,12 @@ def site_world() -> dict:
     }
 
 
+@app.get("/orb/question-registry")
+def question_registry() -> dict:
+    """Expose compiled selectable references, never execution authority."""
+    return WORLD.question_registry
+
+
 @app.get("/orb/route-context", response_model=RouteContextResponse)
 def route_context(route: str = "/") -> RouteContextResponse:
     matched_route, record = lookup_route(WORLD, route)

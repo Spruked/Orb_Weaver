@@ -50,6 +50,39 @@ def test_graph_has_witnessed_nodes_lexicon_and_emergent_precompiled_paths():
     assert graph["authority"] == "advisory_only"
 
 
+def test_approved_site_goal_changes_compiled_base_rank_without_changing_authority():
+    source = sample_site()
+    source["site_goals"][0]["label"] = "Reserve"
+    approved = build_graph(source)
+    source["site_goals"][0]["owner_approved"] = False
+    unapproved = build_graph(source)
+    pointer = lambda graph: next(node for node in graph["nodes"].values()
+                                 if node.get("kind") == "pointer" and node.get("target_id") == "reserve")
+    assert pointer(approved)["baseRank"] == 5
+    assert pointer(unapproved)["baseRank"] < 5
+    assert "matches_owner_approved_site_goal" in pointer(approved)["rankEvidence"]
+    assert pointer(approved)["requires_live_validation"] is True
+    assert approved["authority"] == "advisory_only"
+
+
+def test_equal_length_journey_prefers_higher_ranked_witnessed_route():
+    source = sample_site()
+    source["pages"][3]["route_category"] = "transactional"
+    source["evidence"].extend([
+        {"evidence_id": "link-island", "evidence_type": "navigation_target",
+         "source_url": "https://sample.example/", "route": "/", "content_hash": "link-island-hash",
+         "verified": True, "payload": {"href": "/island", "label": "Archive"}},
+        {"evidence_id": "island-book", "evidence_type": "navigation_target",
+         "source_url": "https://sample.example/island", "route": "/island", "content_hash": "island-book-hash",
+         "verified": True, "payload": {"href": "/book", "label": "Reserve"}},
+    ])
+    graph = build_graph(source)
+    assert graph["nodes"][graph["route_index"]["/island"]["node_id"]]["baseRank"] == 4
+    assert graph["route_index"]["/"]["journeys"]["appointment"] == {
+        "status": "reachable", "next_route": "/island", "remaining_steps": 2,
+    }
+
+
 def test_empty_graph_and_no_approved_goal_do_not_invent_funnel():
     source = sample_site()
     source.update(pages=[], evidence=[], site_goals=[])

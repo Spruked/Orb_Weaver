@@ -107,6 +107,17 @@ def _status_for_category(
     return "tracked"
 
 
+def _runtime_evidence_state(category_id: str, runtime_evidence: Mapping[str, Any]) -> str:
+    """Separate absent runtime proof from a recorded but unsuccessful test."""
+    if not category_id.startswith(RUNTIME_CATEGORY_PREFIXES):
+        return "not_applicable"
+    if not runtime_evidence:
+        return "not_run"
+    if str(runtime_evidence.get("status") or "").upper() == "COMPLETE" and category_id in set(runtime_evidence.get("verified_categories") or []):
+        return "complete"
+    return "incomplete"
+
+
 def build_capability_coverage(
     *,
     stages: Mapping[str, Any],
@@ -119,15 +130,16 @@ def build_capability_coverage(
     counts: Dict[str, int] = {}
     for category in load_master_capabilities():
         status = _status_for_category(category["id"], stages, stats, pages, runtime_evidence)
+        runtime_state = _runtime_evidence_state(category["id"], runtime_evidence)
         counts[status] = counts.get(status, 0) + 1
         categories.append({
             **category,
             "status": status,
             "item_evidence": [
-                {"label": item, "status": status, "stage_ids": sorted(stages.keys())}
+                {"label": item, "status": status, "runtime_evidence_state": runtime_state, "stage_ids": sorted(stages.keys())}
                 for item in category["items"]
             ],
-            "evidence": {"stage_ids": sorted(stages.keys()), "runtime_evidence": runtime_evidence},
+            "evidence": {"stage_ids": sorted(stages.keys()), "runtime_evidence": runtime_evidence, "runtime_evidence_state": runtime_state},
         })
     unresolved = sum(value for key, value in counts.items() if key != "verified")
     return {

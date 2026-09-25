@@ -17,6 +17,7 @@
     "backend": "backend/app.py",
     "frontend_component": "frontend/src/WebsiteORB.tsx",
     "site_world_compiler": "tools/compile_site_world.py",
+    "question_registry": "runtime/vault_system/payload/apriori/question_registry.json",
     "validator": "tools/validate_package.py",
     "tpc_status": "GET /orb/tpc-status"
   }

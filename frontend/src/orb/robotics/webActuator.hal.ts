@@ -124,6 +124,7 @@ export function validateCommand(
 // --- End-effector deployment (ping) -------------------------------------
 // position: fixed matches getBoundingClientRect() viewport coordinates.
 // Asset is a bundled import path, not a broken external URL.
+let activePingTimeout: number | null = null;
 
 export function deployEndEffector(
   element: VerifiedTargetElement,
@@ -148,12 +149,16 @@ export function deployEndEffector(
   container.style.left = `${goal.normalizedX * window.innerWidth}px`;
   container.style.top = `${goal.normalizedY * window.innerHeight}px`;
 
-  window.setTimeout(() => {
+  if (activePingTimeout !== null) window.clearTimeout(activePingTimeout);
+  activePingTimeout = window.setTimeout(() => {
     container?.parentNode?.removeChild(container);
+    activePingTimeout = null;
   }, PING_DURATION_MS[duration]);
 }
 
 export function deactivateEndEffector(): void {
+  if (activePingTimeout !== null) window.clearTimeout(activePingTimeout);
+  activePingTimeout = null;
   const existing = document.getElementById("orb-active-ping");
   if (existing?.parentNode) {
     existing.parentNode.removeChild(existing);

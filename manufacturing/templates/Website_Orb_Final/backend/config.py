@@ -10,6 +10,7 @@ SITE_WORLD_PATH = COMPILED_ORB_ROOT / "site_world.json"
 POINTER_MAP_PATH = COMPILED_ORB_ROOT / "pointers.json"
 RUNTIME_LANGUAGE_PATH = COMPILED_ORB_ROOT / "runtime_language.json"
 TOOL_CACHE_PATH = COMPILED_ORB_ROOT / "tool_cache.json"
+QUESTION_REGISTRY_PATH = COMPILED_ORB_ROOT / "apriori" / "question_registry.json"
 
 
 DEFAULT_ROUTE = "/"

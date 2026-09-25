@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["schema", "registry", "mode", "site", "question_count", "selection_contract", "patterns"],
+  "properties": {
+    "schema": {"const": "orb_weaver.website_orb.question_registry.v1"},
+    "registry": {"const": "nine_of_clubs"},
+    "mode": {"const": "customer_clone_agnostic"},
+    "site": {"type": "object", "required": ["site_id", "domain", "source_scan_id"]},
+    "question_count": {"const": 50},
+    "selection_contract": {"type": "object"},
+    "patterns": {"type": "array", "minItems": 50, "maxItems": 50}
+  }
+}

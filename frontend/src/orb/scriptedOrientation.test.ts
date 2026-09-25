@@ -49,6 +49,9 @@ describe('scripted orientation', () => {
       'use-case-5', 'use-case-6', 'use-case-7', 'use-case-8',
     ]);
     expect(useCaseSteps.every((step) => Boolean(step.text))).toBe(true);
+    expect(useCaseSteps.map((step) => step.selector)).toEqual(
+      Array.from({ length: 8 }, (_, index) => `[data-orb-target="use-case-${index + 1}"]`),
+    );
   });
 
   test('guides an owner-controlled Preflight scan and defers review until after account creation', () => {
@@ -72,5 +75,11 @@ describe('scripted orientation', () => {
 
   test('provides a concise orientation for an otherwise unmapped route', () => {
     expect(scriptedPageOrientation('/account-settings')?.text).toContain('Account Settings page');
+    expect(scriptedPageOrientation('/account-settings')?.text).not.toContain('I will give you the essential context');
+    expect(scriptedPageOrientation('/account-settings', {
+      title: 'Control your notifications',
+      summary: 'Choose which account and scan updates reach you.',
+    })?.text).toContain('Choose which account and scan updates reach you.');
+    expect(scriptedPageOrientation('/features')?.text).toContain('check the live page again whenever you need me');
   });
 });

@@ -35,6 +35,17 @@ rejects a missing, invalid, stale-scan or foreign-site graph. Route/answer paths
 load the resident graph and preserve ambiguous matches for clarification.
 Lexical matches never grant pointer, navigation, form or purchase authority.
 
+Every newly manufactured clone also contains
+`runtime/vault_system/payload/apriori/question_registry.json`
+(`orb_weaver.website_orb.question_registry.v1`). It contains the 50 selectable
+Nine-of-Clubs semantic patterns compiled from the canonical source and bound
+to the selected scan's site identity, lexical model, and scan evidence. The
+patterns are not a 50-step script. The clone selects at most one question per
+turn when the Governor determines that information is missing. Commercial or
+purchase-oriented choices still require verified site evidence and explicit
+visitor confirmation before any consequential action.
+
 The scanner → registry → live DOM validation → governor → pointer boundary
-remains unchanged. The host-only Nine of Clubs sales policy is not a clone
-template dependency.
+remains unchanged. Orb Weaver's host-specific presentation remains separate;
+the clone receives only the agnostic compiled registry and site-bound
+references needed by its own installed runtime.

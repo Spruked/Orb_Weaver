@@ -20,6 +20,7 @@ class SiteWorld:
     pointer_map: Dict[str, Any]
     runtime_language: Dict[str, Any]
     tool_cache: Dict[str, Any]
+    question_registry: Dict[str, Any]
     pointer_by_route: Dict[str, List[Dict[str, Any]]]
 
     @classmethod
@@ -29,13 +30,18 @@ class SiteWorld:
         pointer_map_path: Path,
         runtime_language_path: Path,
         tool_cache_path: Path,
+        question_registry_path: Path | None = None,
     ) -> "SiteWorld":
         site_world = _load_json(site_world_path)
         pointer_map = _load_json(pointer_map_path)
         runtime_language = _load_json(runtime_language_path)
         tool_cache = _load_json(tool_cache_path)
+        question_path = question_registry_path or site_world_path.parent / "apriori" / "question_registry.json"
+        question_registry = _load_json(question_path)
+        if question_registry.get("schema") != "orb_weaver.website_orb.question_registry.v1" or question_registry.get("question_count") != 50:
+            raise ValueError("Manufactured question registry must contain the 50-pattern Nine-of-Clubs registry")
         pointer_by_route = _index_pointer_records(pointer_map)
-        return cls(site_world, pointer_map, runtime_language, tool_cache, pointer_by_route)
+        return cls(site_world, pointer_map, runtime_language, tool_cache, question_registry, pointer_by_route)
 
     @property
     def routes(self) -> Dict[str, Dict[str, Any]]:
@@ -54,6 +60,7 @@ class SiteWorld:
             "pointer_records": self.pointer_map.get("record_count", len(self.pointer_map.get("records", []))),
             "tools": len(self.tool_cache.get("entries", [])),
             "runtime_contract": self.site_world.get("runtime_contract"),
+            "question_patterns": self.question_registry.get("question_count", 0),
         }
 
 

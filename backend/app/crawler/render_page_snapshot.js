@@ -3,6 +3,7 @@ const { chromium } = require("playwright");
 const url = process.argv[2];
 const timeoutMs = Number(process.argv[3] || 15000);
 const executablePath = process.env.CHROME_PATH || process.env.CHROME_BIN || undefined;
+const storageStatePath = process.env.ORB_STORAGE_STATE_PATH || undefined;
 
 if (!url) {
   process.stderr.write("A URL is required\n");
@@ -26,6 +27,7 @@ if (!url) {
     const context = await browser.newContext({
       reducedMotion: "reduce",
       serviceWorkers: "block",
+      ...(storageStatePath ? { storageState: storageStatePath } : {}),
     });
     const page = await context.newPage();
     const diagnostics = {

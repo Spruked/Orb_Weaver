@@ -1,7 +1,9 @@
 export { Lidar2DMappingCoordinateCache } from './Lidar2DMappingCoordinateCache';
 export { Lidar2DMappingTelemetryClient } from './Lidar2DMappingTelemetryClient';
 export { useLidar2DMapping } from './useLidar2DMapping';
-export { buildLidarGuidanceMap } from './Lidar2DGuidanceMap';
+export { buildLidarGuidanceMap, evaluateLidarPose } from './Lidar2DGuidanceMap';
+export { inspectCornerExclusion } from './cornerExclusion';
+export type { CornerExclusion, CornerName, ViewportFootprint } from './cornerExclusion';
 export type {
   BuildLidarGuidanceMapOptions,
   LidarGuidanceMap,
@@ -11,6 +13,9 @@ export type {
   LidarRect,
   LidarSemanticFeature,
   LidarFeatureKind,
+  LidarSurfaceType,
+  LidarEvidenceState,
+  LidarAuthorityState,
 } from './Lidar2DGuidanceMap';
 export type {
   Lidar2DMappingStatus,

@@ -56,8 +56,11 @@ def build_graph(document: dict) -> dict:
 
     def node(kind, key, label, url, **extra):
         nid = kind + ":" + digest([site_id, key])[:24]
+        default_rank = {"route": 3, "entity": 4, "concept": 3, "pointer": 2, "action": 4}.get(kind, 2)
         nodes.setdefault(nid, {"id": nid, "kind": kind, "label": label, "source_url": url,
-                               "route": route_of(url) if url else None, **extra})
+                               "route": route_of(url) if url else None,
+                               "baseRank": default_rank, "rankEvidence": [f"verified_scan_node:{kind}"],
+                               **extra})
         return nid
 
     def witness(record, field, value, source_kind):
@@ -72,8 +75,11 @@ def build_graph(document: dict) -> dict:
         edges[eid] = {"id": eid, "source": source, "target": target, "kind": kind,
                       "weight": 1.0, "witness_id": wid}
 
-    def add_route(url, label):
-        rid = node("route", route_of(url), label or url, url)
+    def add_route(url, label, category="unknown"):
+        route_rank = 4 if category == "transactional" else 3
+        rid = node("route", route_of(url), label or url, url,
+                   baseRank=route_rank,
+                   rankEvidence=[f"observed_route_category:{category}", "scanned_route_identity"])
         route_ids[url] = rid
         return rid
 
@@ -84,7 +90,7 @@ def build_graph(document: dict) -> dict:
             continue
         if not page.get("content_hash"):
             continue
-        rid = add_route(url, page.get("title"))
+        rid = add_route(url, page.get("title"), page.get("route_category") or "unknown")
         record = {"id": page["page_id"], "source_url": url, "content_hash": page["content_hash"]}
         nodes[rid]["witness_id"] = witness(record, "url", page["url"], "page")
 
@@ -116,7 +122,10 @@ def build_graph(document: dict) -> dict:
             wid = witness(record, "payload." + field, text, "evidence")
             kind = "entity" if field == "name" else "concept"
             label = payload.get("name") or payload.get("title") or payload.get("heading") or text[:160]
-            nid = node(kind, [url, item["evidence_id"], field], label, url, text=text, witness_id=wid)
+            content_rank = 4 if field in {"answer", "name", "title", "heading"} else 3
+            nid = node(kind, [url, item["evidence_id"], field], label, url, text=text, witness_id=wid,
+                       baseRank=content_rank,
+                       rankEvidence=[f"observed_content_field:{field}", f"verified_evidence_type:{item['evidence_type']}"])
             edge(rid, nid, "mentions", wid)
             # Canonical concepts must themselves be observed in this evidence.
             for term in (payload.get("concepts") or []) + canonical_terms:
@@ -127,11 +136,22 @@ def build_graph(document: dict) -> dict:
         if target_id:
             label = payload.get("label") or payload.get("name") or payload.get("title") or target_id
             wid = witness(record, "pointer_target_id", target_id, "evidence")
+            target_type = str(payload.get("target_type") or "content")
+            observed_rank = payload.get("baseRank")
+            rank = observed_rank if isinstance(observed_rank, int) and not isinstance(observed_rank, bool) and 1 <= observed_rank <= 5 else {
+                "heading": 3, "paragraph": 3, "faq_answer": 4, "price_card": 4,
+                "policy_line": 4, "button": 3, "form_field": 3, "nav": 2,
+            }.get(target_type, 2)
+            rank_evidence = [str(value) for value in (payload.get("rankEvidence") or []) if isinstance(value, str)]
+            if not rank_evidence:
+                rank_evidence = ["legacy_scan_rank_missing", f"observed_target_type:{target_type}"]
             pid = node("pointer", [url, target_id], label, url, target_id=target_id,
+                       target_type=target_type, baseRank=rank, rankEvidence=rank_evidence,
                        witness_id=wid, requires_live_validation=True)
             edge(rid, pid, "contains", wid)
             if item["evidence_type"] in {"navigation_target", "form"} or payload.get("target_type") in {"button", "form_field", "nav", "download"}:
                 aid = node("action", [url, target_id], label, url, target_id=target_id,
+                           baseRank=rank, rankEvidence=list(rank_evidence),
                            witness_id=wid, authorization="proposal_only")
                 edge(pid, aid, "presents", wid)
         href = payload.get("href")
@@ -168,6 +188,16 @@ def build_graph(document: dict) -> dict:
         if any(g["goal_id"] == goal_id for g in goals):
             raise ValueError("Duplicate site goal id")
         goals.append({"goal_id": goal_id, "label": goal["label"], "destination": route_ids[url], "route": destination})
+        nodes[route_ids[url]]["baseRank"] = 5
+        nodes[route_ids[url]]["rankEvidence"].append("owner_approved_goal_destination")
+        goal_terms = set(re.findall(r"[a-z0-9]{3,}", str(goal["label"]).casefold()))
+        for mapped in nodes.values():
+            if mapped.get("route") != destination or mapped.get("kind") not in {"pointer", "action"}:
+                continue
+            label_terms = set(re.findall(r"[a-z0-9]{3,}", str(mapped.get("label") or "").casefold()))
+            if goal_terms & label_terms:
+                mapped["baseRank"] = 5
+                mapped["rankEvidence"].append("matches_owner_approved_site_goal")
         # Precompile next hops once. No crawl, graph search, or global ranking
         # on runtime navigation. Cycles/disconnected components are explicit.
         found = {destination: {"status": "arrived", "next_route": None, "remaining_steps": 0}}
@@ -175,19 +205,28 @@ def build_graph(document: dict) -> dict:
         while queue:
             target = queue.popleft()
             for source in sorted(reverse_links[target]):
+                candidate_steps = found[target]["remaining_steps"] + 1
                 if source not in found:
                     found[source] = {"status": "reachable", "next_route": target,
-                                     "remaining_steps": found[target]["remaining_steps"] + 1}
+                                     "remaining_steps": candidate_steps}
                     queue.append(source)
+                elif candidate_steps == found[source]["remaining_steps"]:
+                    old_next = found[source]["next_route"]
+                    if nodes[route_index[target]["node_id"]]["baseRank"] > nodes[route_index[old_next]["node_id"]]["baseRank"]:
+                        found[source]["next_route"] = target
         for route, context in route_index.items():
             context["journeys"][goal_id] = found.get(route, {"status": "unreachable", "next_route": None, "remaining_steps": None})
     for context in route_index.values():
         context["next_routes"] = sorted(set(context["next_routes"]))
     actionable_routes = {item["route"] for item in nodes.values() if item["kind"] == "action"}
     ranked_destinations = sorted({rid for rid in route_ids.values() if nodes[rid]["route"] in actionable_routes},
-                                 key=lambda nid: (-len(inbound[nid]), nid))
+                                 key=lambda nid: (-nodes[nid]["baseRank"], -len(inbound[nid]), nid))
     lexicon = compile_lexicon(nodes, document.get("lexical_index") or {}, site_id)
     nodes.update(lexicon.pop("nodes"))
+    for mapped in nodes.values():
+        if "baseRank" not in mapped:
+            mapped["baseRank"] = 2
+            mapped["rankEvidence"] = ["verified_scan_lexical_context"]
     all_edges = list(edges.values()) + lexicon.pop("edges")
     graph = {"schema": SCHEMA, "compiler_version": COMPILER, "site_id": site_id, "domain": domain,
              "source_scan_id": str(document["scan_id"]), "source_fingerprint": digest(document),
@@ -213,6 +252,10 @@ def validate_graph(graph: dict, site_id: str | None = None, domain: str | None =
     for nid, item in nodes.items():
         if item["id"] != nid or not isinstance(item.get("label"), str) or not item["label"].strip():
             raise ValueError("Invalid SKG node identity or label")
+        if (not isinstance(item.get("baseRank"), int) or isinstance(item["baseRank"], bool)
+                or not 1 <= item["baseRank"] <= 5
+                or not isinstance(item.get("rankEvidence"), list) or not item["rankEvidence"]):
+            raise ValueError("Invalid SKG importance rank evidence")
         if item["kind"] == "alias":
             continue
         if item["id"] != nid or item.get("witness_id") not in witnesses:

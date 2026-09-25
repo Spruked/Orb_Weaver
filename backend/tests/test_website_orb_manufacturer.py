@@ -53,6 +53,7 @@ def test_manufacturer_builds_complete_delivery_ready_package(tmp_path):
         output_root=tmp_path,
         build_id="build-verified",
         owner_verification={"owner": "owner-1", "approved_artifacts": ["*"]},
+        site_config={"orb_name": "Harley"},
         ephemeral=True,
     )
 
@@ -68,6 +69,16 @@ def test_manufacturer_builds_complete_delivery_ready_package(tmp_path):
     assert (orb_template / "assets" / "widget.js").is_file()
     runtime_vault = orb_template / "runtime" / "vault_system"
     assert json.loads((runtime_vault / "payload" / "apriori" / "catalog.json").read_text())["entries"][0]["entity_id"] == "product-1"
+    question_registry = json.loads((runtime_vault / "payload" / "apriori" / "question_registry.json").read_text())
+    assert question_registry["question_count"] == 50
+    assert question_registry["site"]["source_scan_id"] == "scan-1"
+    assert "Known Product" not in json.dumps(question_registry)
+    assert json.loads((runtime_vault / "payload" / "site_config.json").read_text())["orb_name"] == "Harley"
+    compiled_pointer = json.loads((runtime_vault / "payload" / "pointers.json").read_text())["records"][0]
+    assert 1 <= compiled_pointer["baseRank"] <= 5
+    assert compiled_pointer["rankEvidence"]
+    site_skg = json.loads((runtime_vault / "payload" / "apriori" / "site_skg.json").read_text())
+    assert all(1 <= node["baseRank"] <= 5 for node in site_skg["nodes"].values() if node["kind"] in {"route", "pointer", "action", "concept", "entity"})
     assert not (orb_template / "Orb_Vault_System" / "orb_vault_skg" / "vaults").exists()
     assert not (orb_template / "vendor" / "TPC_Triple_Predicate_Cubed" / "results").exists()
     assert not (orb_template / "vendor" / "TPC_Triple_Predicate_Cubed" / "vaults").exists()
@@ -183,6 +194,7 @@ print(json.dumps({'answer': answer['answer'], 'priori': coordinator.priori_dir, 
     assert not any("vendor/TPC_Triple_Predicate_Cubed/vaults/" in name for name in names)
     assert not any("vendor/TPC_Triple_Predicate_Cubed/api/" in name for name in names)
     assert "website-orb/runtime/vault_system/payload/apriori/site_skg.json" in names
+    assert "website-orb/runtime/vault_system/payload/apriori/question_registry.json" in names
     assert "website-orb/backend/skg/lexicon.py" in names
 
 

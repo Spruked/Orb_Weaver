@@ -1,5 +1,5 @@
 import { validateOrbPointerTarget, type OrbPointerRecord } from "../targetValidation";
-import type { RobotCommand, RobotTelemetry, RobotTelemetryEvent } from "./robotMovement.types";
+import { PING_DURATION_MS, type RobotCommand, type RobotTelemetry, type RobotTelemetryEvent } from "./robotMovement.types";
 import {
   calculateSpatialVector,
   deactivateEndEffector,
@@ -60,6 +60,7 @@ type BeginMovementSuccess = {
   targetRect: DOMRect;
   normalizedGoal: SpatialGoal;
   refreshTarget: () => DOMRect | null;
+  activateEndEffector: () => boolean;
   getLatestGoal: () => SpatialGoal;
   complete: () => void;
   cancel: (reason?: string) => void;
@@ -78,6 +79,8 @@ type ActiveMovement = {
 
 export class OrbRoboticsMovementController {
   private activeMovement: ActiveMovement | null = null;
+  private activePingCommandId: string | null = null;
+  private pingCompletionTimer: number | null = null;
 
   private emit(
     command: RobotCommand,
@@ -102,11 +105,17 @@ export class OrbRoboticsMovementController {
     return null;
   }
 
-  private clearActiveMovement(): void {
-    if (!this.activeMovement) return;
-    this.activeMovement.lockStopper();
-    this.activeMovement = null;
-    deactivateEndEffector();
+  private clearActiveMovement(deactivate = true): void {
+    if (this.activeMovement) {
+      this.activeMovement.lockStopper();
+      this.activeMovement = null;
+    }
+    if (deactivate) {
+      if (this.pingCompletionTimer !== null) window.clearTimeout(this.pingCompletionTimer);
+      this.pingCompletionTimer = null;
+      this.activePingCommandId = null;
+      deactivateEndEffector();
+    }
   }
 
   beginMovement(input: BeginMovementInput): BeginMovementResult {
@@ -177,17 +186,8 @@ export class OrbRoboticsMovementController {
 
     this.emit(command, "MOTION_STARTED", onTelemetry);
 
-    if (command.endEffector?.type === "PING_LIGHT") {
-      this.emit(command, "END_EFFECTOR_ACTIVE", onTelemetry);
-      deployEndEffector(targetElement, command.endEffector.duration, command.endEffector.intensity);
-      window.setTimeout(() => {
-        if (this.activeMovement?.command.commandId === command.commandId) {
-          this.emit(command, "END_EFFECTOR_COMPLETE", onTelemetry);
-        }
-      }, 40);
-    }
-
     const refreshTarget = (): DOMRect | null => {
+      if (this.activeMovement?.command.commandId !== command.commandId) return null;
       const refreshed = validateOrbPointerTarget(pointerRecord, { logger: console });
       if (!refreshed.ok) {
         this.emit(command, "TARGET_LOST", onTelemetry, refreshed.reason);
@@ -218,13 +218,32 @@ export class OrbRoboticsMovementController {
       targetRect,
       normalizedGoal: latestGoal,
       refreshTarget,
+      activateEndEffector: () => {
+        if (command.endEffector?.type !== "PING_LIGHT" ||
+          this.activePingCommandId === command.commandId || !refreshTarget()) return false;
+        this.activePingCommandId = command.commandId;
+        this.emit(command, "END_EFFECTOR_ACTIVE", onTelemetry);
+        deployEndEffector(targetElement, command.endEffector.duration, command.endEffector.intensity);
+        this.pingCompletionTimer = window.setTimeout(() => {
+          if (this.activePingCommandId === command.commandId) {
+            this.emit(command, "END_EFFECTOR_COMPLETE", onTelemetry);
+            this.activePingCommandId = null;
+            this.pingCompletionTimer = null;
+          }
+        }, PING_DURATION_MS[command.endEffector.duration]);
+        return true;
+      },
       getLatestGoal: () => latestGoal,
       complete: () => {
+        if (this.activeMovement?.command.commandId !== command.commandId) return;
         this.emit(command, "ARRIVAL_CONFIRMED", onTelemetry);
         this.emit(command, "COMMAND_COMPLETE", onTelemetry);
-        this.clearActiveMovement();
+        // Let the verified arrival ping finish its own bounded HAL duration.
+        this.clearActiveMovement(false);
       },
       cancel: (reason?: string) => {
+        if (this.activeMovement?.command.commandId !== command.commandId &&
+          this.activePingCommandId !== command.commandId) return;
         this.emit(command, "COMMAND_CANCELLED", onTelemetry, reason || "cancelled_by_controller");
         this.clearActiveMovement();
       },

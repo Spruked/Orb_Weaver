@@ -98,34 +98,42 @@ export const SITE_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
   },
   {
     route: '/use-cases',
+    selector: '[data-orb-target="use-case-1"]',
     pointerTargetIds: ['use-case-1'],
-    text: 'Use cases begin with product discovery. Weaver helps a visitor understand the available options, compare what matters, identify requirements, and move toward the right choice. Watch the scroll: I am moving to the verified card, pointing, and pinging the exact place I am explaining.',
+    text: 'Use cases begin with product discovery. Weaver helps a visitor understand the available options, compare what matters, identify requirements, and move toward the right choice. This is the first of eight live targets in the tour.',
   },
   {
+    selector: '[data-orb-target="use-case-2"]',
     pointerTargetIds: ['use-case-2'],
     text: 'For sales and conversion, Weaver answers questions at the moment of consideration, guides visitors to relevant offers, explains the next step, and reduces uncertainty before they abandon the journey.',
   },
   {
+    selector: '[data-orb-target="use-case-3"]',
     pointerTargetIds: ['use-case-3'],
     text: 'For forms and applications, Weaver clarifies requirements and confusing fields, then guides the visitor through each stage so the application feels like a supported journey instead of a test they must solve alone.',
   },
   {
+    selector: '[data-orb-target="use-case-4"]',
     pointerTargetIds: ['use-case-4'],
     text: 'For bookings and appointments, Weaver helps visitors identify the correct service, understand what is required, and enter the appropriate approved booking path without guessing which page comes next.',
   },
   {
+    selector: '[data-orb-target="use-case-5"]',
     pointerTargetIds: ['use-case-5'],
     text: 'For customer support, Weaver connects a question to the right answer, policy, account pathway, document, or support action, then preserves context when the visitor needs a human or a deeper service channel.',
   },
   {
+    selector: '[data-orb-target="use-case-6"]',
     pointerTargetIds: ['use-case-6'],
     text: 'For onboarding, Weaver welcomes new customers, introduces the important features, guides setup, and creates a structured first experience so people do not have to discover the product by trial and error.',
   },
   {
+    selector: '[data-orb-target="use-case-7"]',
     pointerTargetIds: ['use-case-7'],
     text: 'For guided website tours, Weaver leads visitors through products, services, facilities, campaigns, resources, or platform features while preserving the context of what they have already seen and why the next stop matters.',
   },
   {
+    selector: '[data-orb-target="use-case-8"]',
     pointerTargetIds: ['use-case-8'],
     text: 'For complex decisions, Weaver maintains direction across policies, options, forms, calculators, documents, and account processes when one page is not enough. Across all eight use cases, the common job is the same: help a real visitor reach a useful destination with verified guidance.',
   },
@@ -212,14 +220,22 @@ const PAGE_ORIENTATIONS: Record<string, string> = {
     'This is the investor contact page for private conversations about the product thesis, market opportunity, deployment model, and path forward, kept grounded in the verified product story.',
 };
 
-export const scriptedPageOrientation = (pathname: string): ScriptedOrientationStep | null => {
+export type PageOrientationEvidence = { title?: string; summary?: string };
+
+const sentence = (value: string): string => /[.!?]$/.test(value) ? value : `${value}.`;
+
+export const scriptedPageOrientation = (
+  pathname: string,
+  evidence: PageOrientationEvidence = {},
+): ScriptedOrientationStep | null => {
   if (pathname === '/' || pathname === '/signup') return null;
   const text =
     PAGE_ORIENTATIONS[pathname] ||
     (pathname.startsWith('/marketplace/')
       ? 'This page describes a specific Orb Weaver marketplace option and how it fits into the Website ORB system while preserving the same governance and verification model.'
       : null);
-  if (text) return { text };
+  const availability = 'I will stay available while you explore, and check the live page again whenever you need me.';
+  if (text) return { text: `${text} ${availability}` };
   const pageName =
     pathname
       .split('/')
@@ -227,7 +243,12 @@ export const scriptedPageOrientation = (pathname: string): ScriptedOrientationSt
       .pop()
       ?.replace(/[-_]/g, ' ')
       .replace(/\b\w/g, (letter) => letter.toUpperCase()) || 'current';
+  const title = evidence.title?.replace(/\s+/g, ' ').trim();
+  const summary = evidence.summary?.replace(/\s+/g, ' ').trim();
+  const pageIntroduction = title && title.toLowerCase() !== pageName.toLowerCase()
+    ? `This is the ${pageName} page. Its main heading is ${sentence(title)}`
+    : `This is the ${pageName} page.`;
   return {
-    text: `This is the ${pageName} page. I will give you the essential context grounded in what is verified here first, then remain available when you choose to continue.`,
+    text: `${pageIntroduction}${summary ? ` ${sentence(summary)}` : ' I can help you find and understand what is available here.'} ${availability}`,
   };
 };
