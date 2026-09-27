@@ -37,6 +37,21 @@ const MARKUP = [
   '<div class="pointer" data-pointer aria-hidden="true"></div></div>',
 ].join('');
 
+export type PointerTargetResolution<T> =
+  | { status: 'missing' }
+  | { status: 'ambiguous'; matchCount: number }
+  | { status: 'unique'; target: T };
+
+export function resolveUniquePointerTarget<T>(
+  candidates: T[],
+  matchesIdentity: (candidate: T) => boolean,
+): PointerTargetResolution<T> {
+  const matches = candidates.filter(matchesIdentity);
+  if (matches.length > 1) return { status: 'ambiguous', matchCount: matches.length };
+  if (matches.length === 1) return { status: 'unique', target: matches[0] };
+  return { status: 'missing' };
+}
+
 export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
   if (window.__ORB_WEAVER_LOADER_V1__?.mounted) {
     if (config.debug) console.info('[Orb Weaver] No duplicate instance', { siteId: config.siteId });
@@ -184,8 +199,7 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
     }
     let targets: NodeListOf<HTMLElement>;
     try { targets = searchRoot.querySelectorAll<HTMLElement>(record.semantic_locator); } catch { return false; }
-    const target = Array.from(targets).find((candidate) => {
-      const rect = candidate.getBoundingClientRect();
+    const targetResolution = resolveUniquePointerTarget(Array.from(targets), (candidate) => {
       const tag = normalize(record.structural_context?.tag);
       const text = normalize(candidate.getAttribute('aria-label') || candidate.textContent);
       const identityMatches = aliases(record).some((value) => {
@@ -194,11 +208,22 @@ export function mountOrb(config: OrbLoaderConfig): OrbMountHandle {
         return (text.includes(value) || value.includes(text))
           && Math.min(text.length, value.length) / Math.max(text.length, value.length) >= 0.65;
       });
-      return document.body.contains(candidate) && rect.width > 0 && rect.height > 0
-        && (!tag || candidate.tagName.toLowerCase() === tag)
+      return (!tag || candidate.tagName.toLowerCase() === tag)
         && (!aliases(record).length || identityMatches);
     });
-    if (!target) return false;
+    if (targetResolution.status === 'ambiguous') {
+      log('Pointer target ambiguous', {
+        targetId: record.target_id,
+        matchCount: targetResolution.matchCount,
+        parentLocator,
+        semanticLocator: record.semantic_locator,
+      });
+      return false;
+    }
+    if (targetResolution.status !== 'unique') return false;
+    const target = targetResolution.target;
+    const targetRect = target.getBoundingClientRect();
+    if (!document.body.contains(target) || targetRect.width <= 0 || targetRect.height <= 0) return false;
     target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
     window.clearTimeout(travelTimer);
     window.setTimeout(() => {

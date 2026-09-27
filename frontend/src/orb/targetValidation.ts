@@ -11,7 +11,7 @@ export type OrbTargetValidationResult =
   | {
       ok: false;
       targetId: string;
-      reason: "missing" | "hidden" | "detached" | "invalid_target_id" | "identity_mismatch" | "policy_blocked";
+      reason: "missing" | "hidden" | "detached" | "invalid_target_id" | "identity_mismatch" | "ambiguous" | "policy_blocked";
       fallbackPosition: OrbPoint;
     };
 
@@ -117,24 +117,24 @@ const queryElements = (selector: string): HTMLElement[] => {
   }
 };
 
-const resolvePointerElement = (record: OrbPointerRecord): { element: HTMLElement; method: "scoped_pointer_record" | "raw_pointer_record" } | null => {
+type ResolvedPointerElement =
+  | { element: HTMLElement; method: "scoped_pointer_record" | "raw_pointer_record" }
+  | { ambiguous: true };
+
+const resolvePointerElement = (record: OrbPointerRecord): ResolvedPointerElement | null => {
   const parentLocator = String(record.structural_context?.parent_locator || "").trim();
   const semanticLocator = String(record.semantic_locator || "").trim();
   const scopedSelector = parentLocator ? `${parentLocator} ${semanticLocator}` : semanticLocator;
 
-  for (const element of queryElements(scopedSelector)) {
-    if (elementMatchesRecord(element, record)) {
-      return { element, method: "scoped_pointer_record" };
-    }
-  }
+  const scopedMatches = queryElements(scopedSelector).filter((element) => elementMatchesRecord(element, record));
+  if (scopedMatches.length > 1) return { ambiguous: true };
+  if (scopedMatches.length === 1) return { element: scopedMatches[0], method: "scoped_pointer_record" };
 
   if (parentLocator) return null;
 
-  for (const element of queryElements(semanticLocator)) {
-    if (elementMatchesRecord(element, record)) {
-      return { element, method: "raw_pointer_record" };
-    }
-  }
+  const rawMatches = queryElements(semanticLocator).filter((element) => elementMatchesRecord(element, record));
+  if (rawMatches.length > 1) return { ambiguous: true };
+  if (rawMatches.length === 1) return { element: rawMatches[0], method: "raw_pointer_record" };
 
   return null;
 };
@@ -157,13 +157,21 @@ export function validateOrbTarget(
 
   try {
     const selector = `[data-orb-target="${cssEscape(targetId)}"]`;
-    const element = document.querySelector<HTMLElement>(selector);
+    const elements = queryElements(selector);
 
-    if (!element) {
+    if (!elements.length) {
       options.kineticTransit?.haltToSafePosition();
       logger.warn("[orb-target-validation]", { targetId, reason: "missing", fallbackPosition });
       return { ok: false, targetId, reason: "missing", fallbackPosition };
     }
+
+    if (elements.length > 1) {
+      options.kineticTransit?.haltToSafePosition();
+      logger.warn("[orb-target-validation]", { targetId, reason: "ambiguous", matchCount: elements.length, fallbackPosition });
+      return { ok: false, targetId, reason: "ambiguous", fallbackPosition };
+    }
+
+    const element = elements[0];
 
     if (!document.body.contains(element)) {
       options.kineticTransit?.haltToSafePosition();
@@ -217,6 +225,17 @@ export function validateOrbPointerTarget(
   }
 
   const resolved = resolvePointerElement(record);
+  if (resolved && "ambiguous" in resolved) {
+    options.kineticTransit?.haltToSafePosition();
+    logger.warn("[orb-target-validation]", {
+      targetId,
+      reason: "ambiguous",
+      semanticLocator: record.semantic_locator,
+      parentLocator: record.structural_context?.parent_locator,
+      fallbackPosition,
+    });
+    return { ok: false, targetId, reason: "ambiguous", fallbackPosition };
+  }
   if (!resolved) {
     options.kineticTransit?.haltToSafePosition();
     logger.warn("[orb-target-validation]", {

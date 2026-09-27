@@ -54,6 +54,7 @@ services:
       - ORB_DESKTOP_MCP_URL=${ORB_DESKTOP_MCP_URL:-http://host.docker.internal:8765}
       - ORB_DESKTOP_MCP_TOKEN=${ORB_DESKTOP_MCP_TOKEN:-}
       - TESSERACT_CMD=/usr/bin/tesseract
+      - TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
       - ORB_ASSISTANT_ROOT=/app/Orb_Assistant
       # Faster Whisper's active Substrate service is exposed on 13000 and
       # accepts the same multipart endpoint used by the development runtime.

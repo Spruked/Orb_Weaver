@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import csv
+import io
 import json
 import hashlib
 import os
@@ -13,7 +15,9 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urljoin, urlparse
 
+from app.core.config import settings
 from app.core.storage import require_vault_path
+from app.orb.pointer_plot import pointer_conflict_key
 
 
 DEFAULT_THRESHOLDS = {
@@ -38,6 +42,10 @@ UNCERTAINTY_REASONS = {
     "decorative_only",
 }
 
+MAX_OCR_SEGMENTS = 12
+MAX_OCR_WORDS_PER_SEGMENT = 1000
+OCR_TIMEOUT_SECONDS = 20
+
 
 def assess_pointer_quality(
     pointer_map: Dict[str, Any],
@@ -59,12 +67,12 @@ def assess_pointer_quality(
     stable = classes["VERIFIED"] + classes["STABLE"]
     uncertain = classes["UNCERTAIN"] + classes["BLOCKED"]
 
-    identities: Dict[tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
+    identities: Dict[tuple[str, str, str], List[Dict[str, Any]]] = defaultdict(list)
     for record in records:
-        route = _route(record.get("page_route"))
-        identity = str(record.get("semantic_locator") or record.get("content_fingerprint") or "")
+        route, parent_scope, locator = pointer_conflict_key(record)
+        identity = locator or str(record.get("content_fingerprint") or "")
         if identity:
-            identities[(route, identity)].append(record)
+            identities[(route, parent_scope, identity)].append(record)
     duplicate_groups = [group for group in identities.values() if len(group) > 1]
     duplicate_conflicts = sum(len(group) - 1 for group in duplicate_groups)
 
@@ -219,6 +227,7 @@ def reconcile_pointer_recovery(
     reference_records = [item for item in baseline_all if not _is_live_guidance_candidate(item)]
     baseline = [item for item in baseline_all if _is_live_guidance_candidate(item)]
     observations = [item for item in capture.get("observations") or [] if isinstance(item, dict)]
+    visual_ocr = _collect_visual_ocr_evidence(observations)
     observed_by_key: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for observation in observations:
         for candidate in observation.get("candidates") or []:
@@ -240,7 +249,13 @@ def reconcile_pointer_recovery(
                 value for value in values
                 if _route(value.get("route")) == route
                 and _candidate_matches_record(value, record)
-            )
+                )
+        visual_matches = [
+            candidate for candidate in matches
+            if _visual_ocr_supports_candidate(candidate, visual_ocr)
+        ]
+        if len(matches) > 1 and len(visual_matches) == 1:
+            matches = visual_matches
         render_ids = {str(item["observation"].get("render_id")) for item in matches}
         viewports = {str(item["observation"].get("viewport")) for item in matches}
         locators = {str(item.get("locator") or "") for item in matches if item.get("locator")}
@@ -265,6 +280,7 @@ def reconcile_pointer_recovery(
                 "viewports": sorted(viewports),
                 "locators": sorted(locators),
                 "last_verified_time": datetime.now(timezone.utc).isoformat(),
+                "visual_ocr": _visual_ocr_summary(matches, visual_ocr),
             }
             promoted["recovery_status"] = "promoted"
             content_versions = {str(item.get("text_fingerprint") or "") for item in matches}
@@ -296,6 +312,10 @@ def reconcile_pointer_recovery(
                 unresolved_record["finding_class"] = "UNVERIFIED"
             unresolved_record["finding_subreason"] = unresolved_record["uncertainty_reasons"][0]
             unresolved_record["pointer_health"] = str(record.get("pointer_health") or "NEW")
+            unresolved_record["confidence_evidence"] = {
+                **(record.get("confidence_evidence") or {}),
+                "visual_ocr": _visual_ocr_summary(matches, visual_ocr),
+            }
             unresolved.append(unresolved_record)
 
     records = reference_records + recovered + unresolved
@@ -693,6 +713,172 @@ def recovery_routes(pointer_map: Dict[str, Any], configured: Optional[List[str]]
     return normalized or ["/"]
 
 
+def _collect_visual_ocr_evidence(observations: Iterable[Dict[str, Any]]) -> Dict[tuple[str, int], Dict[str, Any]]:
+    """Collect bounded OCR evidence without changing pointer authority."""
+    evidence: Dict[tuple[str, int], Dict[str, Any]] = {}
+    processed = 0
+    for observation in observations:
+        render_id = str(observation.get("render_id") or "")
+        for segment in observation.get("segments") or []:
+            if processed >= MAX_OCR_SEGMENTS:
+                return evidence
+            if not isinstance(segment, dict):
+                continue
+            screenshot_path = Path(str(segment.get("screenshot_path") or ""))
+            if not screenshot_path.is_file():
+                continue
+            processed += 1
+            key = (render_id, int(segment.get("segment_index") or 0))
+            try:
+                result = subprocess.run(
+                    [
+                        settings.TESSERACT_CMD,
+                        str(screenshot_path),
+                        "stdout",
+                        "--tessdata-dir",
+                        settings.TESSDATA_PREFIX,
+                        "-l",
+                        "eng",
+                        "--psm",
+                        "6",
+                        "-c",
+                        "tessedit_create_tsv=1",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=OCR_TIMEOUT_SECONDS,
+                    check=False,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                evidence[key] = {
+                    "status": "failed",
+                    "error": str(exc),
+                    "authority": "evidence_only",
+                    "may_drive_pointer_action": False,
+                }
+                continue
+            if result.returncode != 0:
+                evidence[key] = {
+                    "status": "failed",
+                    "error": result.stderr.strip() or result.stdout.strip(),
+                    "authority": "evidence_only",
+                    "may_drive_pointer_action": False,
+                }
+                continue
+
+            viewport = segment.get("viewport_size") or {}
+            screenshot = segment.get("screenshot_size") or {}
+            viewport_width = float(viewport.get("width") or 0)
+            viewport_height = float(viewport.get("height") or 0)
+            screenshot_width = float(screenshot.get("width") or 0)
+            screenshot_height = float(screenshot.get("height") or 0)
+            scale_x = float(segment.get("scale_x") or (screenshot_width / viewport_width if viewport_width else 0))
+            scale_y = float(segment.get("scale_y") or (screenshot_height / viewport_height if viewport_height else 0))
+            if scale_x <= 0 or scale_y <= 0:
+                continue
+            scroll_x = float(segment.get("scroll_x") or 0)
+            scroll_y = float(segment.get("scroll_y") or 0)
+            words: List[Dict[str, Any]] = []
+            line_groups: Dict[tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
+            for row in csv.DictReader(io.StringIO(result.stdout), delimiter="\t"):
+                text = str(row.get("text") or "").strip()
+                if not text or len(words) >= MAX_OCR_WORDS_PER_SEGMENT:
+                    continue
+                try:
+                    confidence = float(row.get("conf") or -1)
+                    left = float(row.get("left") or 0)
+                    top = float(row.get("top") or 0)
+                    width = float(row.get("width") or 0)
+                    height = float(row.get("height") or 0)
+                except (TypeError, ValueError):
+                    continue
+                word = {
+                    "text": text,
+                    "confidence": confidence,
+                    "left": left,
+                    "top": top,
+                    "width": width,
+                    "height": height,
+                    "block_num": str(row.get("block_num") or ""),
+                    "line_num": str(row.get("line_num") or ""),
+                    "document_rect": {
+                        "x": scroll_x + left / scale_x,
+                        "y": scroll_y + top / scale_y,
+                        "width": width / scale_x,
+                        "height": height / scale_y,
+                    },
+                }
+                words.append(word)
+                line_groups[(word["block_num"], word["line_num"])].append(word)
+
+            lines = []
+            for line_words in line_groups.values():
+                left = min(word["document_rect"]["x"] for word in line_words)
+                top = min(word["document_rect"]["y"] for word in line_words)
+                right = max(word["document_rect"]["x"] + word["document_rect"]["width"] for word in line_words)
+                bottom = max(word["document_rect"]["y"] + word["document_rect"]["height"] for word in line_words)
+                lines.append({
+                    "text": " ".join(word["text"] for word in line_words),
+                    "confidence": round(sum(word["confidence"] for word in line_words) / len(line_words), 3),
+                    "document_rect": {"x": left, "y": top, "width": right - left, "height": bottom - top},
+                })
+            evidence[key] = {
+                "status": "completed",
+                "authority": "evidence_only",
+                "may_drive_pointer_action": False,
+                "scale_x": scale_x,
+                "scale_y": scale_y,
+                "scroll_x": scroll_x,
+                "scroll_y": scroll_y,
+                "words": words,
+                "lines": lines,
+            }
+    return evidence
+
+
+def _visual_ocr_supports_candidate(candidate: Dict[str, Any], evidence: Dict[tuple[str, int], Dict[str, Any]]) -> bool:
+    rect = candidate.get("rect") or {}
+    if not rect:
+        return False
+    candidate_words = _identity_words(_normalized_identity_text(candidate.get("accessible_name") or candidate.get("text")))
+    if not candidate_words:
+        return False
+    key = (str(candidate.get("_render_id") or ""), int(candidate.get("segment_index") or candidate.get("_segment_index") or 0))
+    observation = evidence.get(key) or {}
+    for line in observation.get("lines") or []:
+        line_words = _identity_words(_normalized_identity_text(line.get("text")))
+        if not candidate_words.intersection(line_words):
+            continue
+        if _rect_overlap(rect, line.get("document_rect") or {}) >= 0.05:
+            return True
+    return False
+
+
+def _visual_ocr_summary(matches: Iterable[Dict[str, Any]], evidence: Dict[tuple[str, int], Dict[str, Any]]) -> Dict[str, Any]:
+    supported = sum(1 for candidate in matches if _visual_ocr_supports_candidate(candidate, evidence))
+    return {
+        "status": "completed" if evidence else "not_run",
+        "authority": "evidence_only",
+        "may_drive_pointer_action": False,
+        "segment_count": len(evidence),
+        "candidate_support_count": supported,
+    }
+
+
+def _rect_overlap(first: Dict[str, Any], second: Dict[str, Any]) -> float:
+    try:
+        left = max(float(first.get("x") or 0), float(second.get("x") or 0))
+        top = max(float(first.get("y") or 0), float(second.get("y") or 0))
+        right = min(left + float(first.get("width") or 0), float(second.get("x") or 0) + float(second.get("width") or 0))
+        bottom = min(top + float(first.get("height") or 0), float(second.get("y") or 0) + float(second.get("height") or 0))
+        intersection = max(0.0, right - left) * max(0.0, bottom - top)
+        first_area = float(first.get("width") or 0) * float(first.get("height") or 0)
+        second_area = float(second.get("width") or 0) * float(second.get("height") or 0)
+        return intersection / min(first_area, second_area) if min(first_area, second_area) > 0 else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _route(value: Any) -> str:
     raw = str(value or "/")
     parsed = urlparse(raw if "://" in raw else f"https://pointer.invalid{raw if raw.startswith('/') else '/' + raw}")
@@ -705,6 +891,10 @@ def _meaning(record: Dict[str, Any]) -> str:
 
 
 def _candidate_matches_record(candidate: Dict[str, Any], record: Dict[str, Any]) -> bool:
+    candidate_scope = str(candidate.get("parent_scope") or "")
+    record_scope = str((record.get("structural_context") or {}).get("parent_locator") or "")
+    if candidate_scope and record_scope and candidate_scope != record_scope:
+        return False
     candidate_meaning = _normalized_identity_text(candidate.get("accessible_name") or candidate.get("text"))
     record_meaning = _normalized_identity_text(_meaning(record))
     if not candidate_meaning or not record_meaning:

@@ -34,6 +34,58 @@ Every generated `visual_recovery_hint` contains:
 
 The runtime may use this evidence to narrow a localized recovery search. It must still resolve a live DOM or accessibility target before moving, pointing, navigating, or acting. Fixed coordinates never replace target identity.
 
+## Screenshot metadata and bounded OCR recovery
+
+Pointer Recovery captures viewport screenshots together with the geometry needed
+to interpret visual evidence:
+
+```json
+{
+  "scroll_x": 0,
+  "scroll_y": 480,
+  "viewport_size": {"width": 1440, "height": 900},
+  "screenshot_size": {"width": 1440, "height": 900},
+  "device_pixel_ratio": 1,
+  "scale_x": 1,
+  "scale_y": 1
+}
+```
+
+OCR boxes are measured in screenshot pixels, converted through `scale_x` and
+`scale_y` into viewport CSS coordinates, and then offset into document CSS
+coordinates using `scroll_x` and `scroll_y`. The scales are recorded from the
+actual screenshot dimensions rather than inferred from device-pixel ratio, so
+unexpected rendering scale is visible in the evidence.
+
+The recovery path may run a bounded Tesseract witness over captured segments.
+It requests TSV output explicitly with `-c tessedit_create_tsv=1` and retains
+only text, confidence, pixel bounds, and block/line identifiers needed to
+compare OCR lines with existing DOM candidate rectangles. OCR can narrow an
+ambiguous candidate set, but it cannot promote a candidate:
+
+```json
+{
+  "authority": "evidence_only",
+  "may_drive_pointer_action": false
+}
+```
+
+The existing repeated-render, durable-identity, and exact-one live-target
+verification remains the only promotion path. Missing `segments` metadata in an
+older capture leaves the recovery run DOM-only; it does not trigger an inferred
+coordinate transform.
+
+The executable and model directory are explicit service configuration:
+
+```text
+TESSERACT_CMD=/home/bryan/substrate/orb_vision/tesseract/bin/tesseract
+TESSDATA_PREFIX=/home/bryan/substrate/orb_vision/tesseract/share/tessdata
+```
+
+The Docker image and compose service use the in-image equivalents
+`/usr/bin/tesseract` and `/usr/share/tesseract-ocr/5/tessdata`. The separate
+`ORB_WSL_TESSERACT_BIN` setting remains confined to the Desktop OCR path.
+
 ## Command
 
 Run from the Orb Weaver repository root:
@@ -124,4 +176,5 @@ The validation report must show:
 - `CONFIRMED` and `DYNAMIC` records came from repeated live evidence;
 - unresolved records remain non-pointable;
 - route, viewport, and rendering evidence are preserved;
+- OCR evidence, when present, is bounded and explicitly non-authoritative;
 - the baseline file was not overwritten unless the operator explicitly published it.

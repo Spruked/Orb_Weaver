@@ -1,4 +1,4 @@
-import { validateOrbPointerTarget } from "./targetValidation";
+import { validateOrbPointerTarget, validateOrbTarget } from "./targetValidation";
 
 declare const describe: (name: string, testSuite: () => void) => void;
 declare const beforeEach: (setup: () => void) => void;
@@ -169,6 +169,35 @@ describe("validateOrbPointerTarget", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.element).toBe(elements[1]);
+  });
+
+  it("rejects two semantic matches in the same authoritative scope as ambiguous", () => {
+    document.body.innerHTML = '<main><button class="cta">Book consultation</button><button class="cta">Book consultation</button></main>';
+    const haltToSafePosition = jest.fn();
+    const result = validateOrbPointerTarget({
+      target_id: "book-consult",
+      semantic_locator: "button.cta",
+      content_fingerprint: "consult",
+      meaning: "button: Book consultation",
+      confidence_class: "VERIFIED",
+      runtime_policy: { may_point: true },
+      structural_context: { parent_locator: "main", tag: "button" },
+    }, {
+      kineticTransit: { haltToSafePosition } as never,
+      logger: { warn: jest.fn(), info: jest.fn() },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("ambiguous");
+    expect(haltToSafePosition).toHaveBeenCalled();
+  });
+
+  it("rejects duplicate authored target identities as ambiguous", () => {
+    document.body.innerHTML = '<button data-orb-target="save">Save</button><button data-orb-target="save">Save</button>';
+    const result = validateOrbTarget("save", { logger: { warn: jest.fn(), info: jest.fn() } });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("ambiguous");
   });
 
   it("does not fall back outside an authoritative parent locator", () => {

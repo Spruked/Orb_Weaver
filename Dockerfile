@@ -25,6 +25,10 @@ ENV LOCAL_LLM_URL=http://host.docker.internal:11434/api/generate
 ENV LOCAL_LLM_MODEL=qwen2.5:3b
 ENV LOCAL_LLM_TIMEOUT_SECONDS=60
 ENV PUBLIC_BASE_URL=http://127.0.0.1:16510
+# The image owns its OCR contract; compose may override these values for a
+# deliberate deployment image, but the backend never depends on shell startup.
+ENV TESSERACT_CMD=/usr/bin/tesseract
+ENV TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata
 
 WORKDIR /app
 

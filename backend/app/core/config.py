@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     CRAWL_USER_AGENT: str = "Orb-Weaver/1.0"
     CRAWL_RESPECT_ROBOTS: bool = True
     CRAWL_MAX_DEPTH: int = 5
+    # OCR is optional for ordinary crawling but must be deterministic when
+    # visual recovery invokes it. These values are explicit service config,
+    # independent of interactive shell startup files.
+    TESSERACT_CMD: str = "/home/bryan/substrate/orb_vision/tesseract/bin/tesseract"
+    TESSDATA_PREFIX: str = "/home/bryan/substrate/orb_vision/tesseract/share/tessdata"
     # Owner/admin crawls should be aware of private operator surfaces that are
     # often absent from sitemap discovery. Public preflight scans do not use
     # these seeds.

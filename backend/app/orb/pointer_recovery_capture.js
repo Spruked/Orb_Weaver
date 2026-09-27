@@ -23,6 +23,11 @@ const viewports = [
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+const pngDimensions = (buffer) => ({
+  width: buffer.readUInt32BE(16),
+  height: buffer.readUInt32BE(20),
+});
+
 async function stabilize(page) {
   await page.evaluate(async () => {
     if (document.fonts?.ready) await document.fonts.ready.catch(() => undefined);
@@ -60,6 +65,31 @@ async function inspectSegment(page, route, segmentIndex) {
       || element.textContent
       || element.getAttribute('title')
     ).slice(0, 300);
+    const authoredLocator = (element) => {
+      const orbTarget = element.getAttribute('data-orb-target');
+      if (orbTarget) return `[data-orb-target="${escape(orbTarget)}"]`;
+      if (element.id) return `#${escape(element.id)}`;
+      for (const attribute of ['data-orb-id', 'data-testid', 'data-test', 'data-cy', 'name', 'aria-label']) {
+        const value = element.getAttribute(attribute);
+        if (value) return `[${attribute}="${escape(value)}"]`;
+      }
+      return '';
+    };
+    const siblingIndex = (element) => Array.from(element.parentElement?.children || [])
+      .filter((sibling) => sibling.tagName === element.tagName)
+      .indexOf(element) + 1;
+    const effectiveParentScope = (element) => {
+      const parent = element.parentElement?.closest('main,article,section,nav,form,header,footer');
+      if (!parent) return '';
+      const authored = authoredLocator(parent);
+      if (authored) return authored;
+      const local = `${parent.tagName.toLowerCase()}:nth-of-type(${siblingIndex(parent)})`;
+      const landmark = parent.parentElement?.closest('main,article,section,header,footer');
+      if (!landmark) return local;
+      const landmarkLocator = authoredLocator(landmark)
+        || `${landmark.tagName.toLowerCase()}:nth-of-type(${siblingIndex(landmark)})`;
+      return `${landmarkLocator} ${local}`;
+    };
     const durableLocator = (element) => {
       if (element.id) return { locator: `#${escape(element.id)}`, method: 'id', durable: true };
       const href = element.getAttribute('href');
@@ -90,12 +120,14 @@ async function inspectSegment(page, route, segmentIndex) {
       if (/^(react|next|vite|webpack|radix)-/i.test(element.id || '')) return [];
       const located = durableLocator(element);
       const role = element.getAttribute('role') || (element.tagName === 'A' ? 'link' : element.tagName === 'BUTTON' ? 'button' : '');
-      const identityKey = [route, element.tagName.toLowerCase(), role, name.toLowerCase(), href].join('|');
+      const parentScope = effectiveParentScope(element);
+      const identityKey = [route, parentScope, element.tagName.toLowerCase(), role, name.toLowerCase(), href].join('|');
       if (seen.has(identityKey)) return [];
       seen.add(identityKey);
       return [{
         identity_key: identityKey,
         route,
+        parent_scope: parentScope,
         segment_index: segmentIndex,
         tag: element.tagName.toLowerCase(),
         role,
@@ -133,13 +165,37 @@ async function inspectSegment(page, route, segmentIndex) {
           if (!positions.length) positions.push(0);
           const uniquePositions = [...new Set(positions)];
           const candidates = [];
+          const segmentMetadata = [];
           for (let segment = 0; segment < uniquePositions.length; segment += 1) {
             const y = uniquePositions[segment];
             await page.evaluate((top) => window.scrollTo({ top, behavior: 'instant' }), y);
             await sleep(180);
             candidates.push(...await inspectSegment(page, route, segment));
-            const screenshot = path.join(outputDir, `route-${route.replace(/[^a-z0-9]+/gi, '_') || 'root'}-${viewport.name}-pass${pass}-segment${segment}.png`);
-            await page.screenshot({ path: screenshot, fullPage: false });
+            const screenshotPath = path.join(outputDir, `route-${route.replace(/[^a-z0-9]+/gi, '_') || 'root'}-${viewport.name}-pass${pass}-segment${segment}.png`);
+            const screenshotBuffer = await page.screenshot({ path: screenshotPath, fullPage: false });
+            const screenshotSize = pngDimensions(screenshotBuffer);
+            const geometry = await page.evaluate(() => ({
+              scroll_x: window.scrollX,
+              scroll_y: window.scrollY,
+              viewport_css_width: window.innerWidth,
+              viewport_css_height: window.innerHeight,
+              device_pixel_ratio: window.devicePixelRatio || 1,
+            }));
+            segmentMetadata.push({
+              segment_id: `${route}:${viewport.name}:${pass}:segment:${segment}`,
+              segment_index: segment,
+              screenshot_path: screenshotPath,
+              scroll_x: geometry.scroll_x,
+              scroll_y: geometry.scroll_y,
+              viewport_size: {
+                width: geometry.viewport_css_width,
+                height: geometry.viewport_css_height,
+              },
+              screenshot_size: screenshotSize,
+              device_pixel_ratio: geometry.device_pixel_ratio,
+              scale_x: screenshotSize.width / geometry.viewport_css_width,
+              scale_y: screenshotSize.height / geometry.viewport_css_height,
+            });
           }
           const deduped = [...new Map(candidates.map((candidate) => [candidate.identity_key, candidate])).values()];
           observations.push({
@@ -150,6 +206,7 @@ async function inspectSegment(page, route, segmentIndex) {
             viewport_size: { width: viewport.width, height: viewport.height },
             document_height: height,
             segment_count: uniquePositions.length,
+            segments: segmentMetadata,
             candidates: deduped,
           });
           await context.close();

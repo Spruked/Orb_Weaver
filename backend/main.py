@@ -170,9 +170,13 @@ from app.orbs_governor import (
     validate_submission,
 )
 
-DEFAULT_TESSDATA_PATH = Path("/usr/share/tesseract-ocr/5/tessdata")
-if not os.environ.get("TESSDATA_PREFIX") and (DEFAULT_TESSDATA_PATH / "eng.traineddata").exists():
-    os.environ["TESSDATA_PREFIX"] = str(DEFAULT_TESSDATA_PATH)
+DEFAULT_TESSDATA_PATH = Path(settings.TESSDATA_PREFIX).expanduser()
+SYSTEM_TESSDATA_PATH = Path("/usr/share/tesseract-ocr/5/tessdata")
+if not os.environ.get("TESSDATA_PREFIX"):
+    if (DEFAULT_TESSDATA_PATH / "eng.traineddata").exists():
+        os.environ["TESSDATA_PREFIX"] = str(DEFAULT_TESSDATA_PATH)
+    elif (SYSTEM_TESSDATA_PATH / "eng.traineddata").exists():
+        os.environ["TESSDATA_PREFIX"] = str(SYSTEM_TESSDATA_PATH)
 
 
 app = FastAPI(

@@ -29,6 +29,35 @@ def test_navigation_anchor_is_not_duplicated_as_a_cta():
     assert matching[0]["target_type"] == "nav"
 
 
+def test_scan_confidence_and_observation_time_never_grant_pointer_authority():
+    soup = BeautifulSoup('<main><button id="report">Get Security Report</button></main>', "lxml")
+    record = extract_pointer_plot_records("https://example.test/report", soup)[0]
+
+    assert record["confidence_class"] == "UNCERTAIN"
+    assert record["runtime_policy"]["may_point"] is False
+    assert "last_verified_at" not in record
+    assert "last_verified_time" not in record["confidence_evidence"]
+    assert record["confidence_evidence"]["observed_at"]
+
+
+def test_physical_parent_scope_separates_header_and_footer_targets():
+    soup = BeautifulSoup(
+        "<header><nav><a href='/'>Home</a></nav></header>"
+        "<footer><nav><a href='/'>Home</a></nav></footer>",
+        "lxml",
+    )
+    records = extract_pointer_plot_records("https://example.test/", soup)
+
+    assert len(records) == 2
+    scopes = {record["structural_context"]["parent_locator"] for record in records}
+    assert len(scopes) == 2
+    assert any(scope.startswith("header") for scope in scopes)
+    assert any(scope.startswith("footer") for scope in scopes)
+    mark_route_locator_conflicts(records)
+    diagnostics = pointer_map_diagnostics(records)
+    assert diagnostics["route_locator_conflict_count"] == 0
+
+
 def test_default_extraction_does_not_truncate_component_rich_pages_at_eighty_targets():
     soup = BeautifulSoup(
         "<main>" + "".join(

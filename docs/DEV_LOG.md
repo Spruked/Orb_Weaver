@@ -1,5 +1,29 @@
 # Orb Weaver Development Log
 
+## 2026-09-27 — Bounded Tesseract evidence for Pointer Recovery
+
+* Extended `pointer_recovery_capture.js` with additive render metadata:
+  scroll offsets, viewport CSS dimensions, screenshot pixel dimensions, device
+  pixel ratio, and measured `scale_x`/`scale_y`. No OCR or pointer authority
+  changed in the capture step.
+* Made the OCR contract explicit through `TESSERACT_CMD` and
+  `TESSDATA_PREFIX`. Local defaults point to the Orb WSL Tesseract installation;
+  the Docker image and compose service point to `/usr/bin/tesseract` and
+  `/usr/share/tesseract-ocr/5/tessdata`. `ORB_WSL_TESSERACT_BIN` remains a
+  Desktop OCR setting only.
+* Added bounded Tesseract TSV recovery evidence to `pointer_recovery.py`.
+  Screenshot pixel boxes are transformed into document CSS coordinates using
+  captured scale and scroll metadata. OCR can narrow an existing ambiguous
+  candidate set, but every OCR record is marked `authority: evidence_only` and
+  `may_drive_pointer_action: false`; existing reconciliation and exact-one live
+  verification still decide promotion.
+* Verification: capture syntax, Python compilation, explicit-config loading,
+  and a temporary browser/Tesseract smoke run passed. The focused backend run
+  reported 28 passed and one pre-existing crawler assertion failure in
+  `test_crawler_emits_mapping_evidence_from_fetched_html` (expected resource
+  count 1, observed 0). The real-site acceptance scan was intentionally not
+  run while that focused backend issue remains unresolved.
+
 ## 2026-09-23 — Campaign Website ORB runtime publication and design artifact integration
 
 * Rebuilt and restarted the production Docker service after the campaign

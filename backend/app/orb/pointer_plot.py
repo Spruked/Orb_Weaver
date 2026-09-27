@@ -99,7 +99,7 @@ def extract_pointer_plot_records(
         context = _structural_context(element)
         target_id = _target_id(page_route, target_type, locator, fingerprint, context)
         aliases = _alias_groups(text, target_type, semantic_analysis or {}, entity_analysis or {})
-        dedupe_key = f"{target_type}:{fingerprint}:{locator}"
+        dedupe_key = f"{target_type}:{fingerprint}:{locator}:{context.get('parent_locator') or ''}"
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)
@@ -110,7 +110,7 @@ def extract_pointer_plot_records(
         base_rank, rank_evidence = _importance_rank(
             element, target_type, text, semantic_analysis or {}, entity_analysis or {}, route_category,
         )
-        verified_at = datetime.utcnow().isoformat()
+        observed_at = datetime.utcnow().isoformat()
         records.append(
             {
                 "target_id": target_id,
@@ -141,7 +141,7 @@ def extract_pointer_plot_records(
                     "duplicate_risk": "unknown",
                     "alias_ambiguity": "unknown",
                     "locator_method": _locator_method(locator),
-                    "last_verified_time": verified_at,
+                    "observed_at": observed_at,
                     "source_revision": fingerprint,
                 },
                 "allowed_actions": _default_actions(target_type),
@@ -149,7 +149,6 @@ def extract_pointer_plot_records(
                 "finding_class": "UNVERIFIED",
                 "finding_subreason": "initial_extraction_not_independently_verified",
                 "pointer_health": "NEW",
-                "last_verified_at": verified_at,
                 "source": "scan",
             }
         )
@@ -309,9 +308,32 @@ def _parent_locator(parent: Optional[Tag]) -> str:
     explicit = _explicit_orb_locator(parent)
     if explicit:
         return explicit
-    if parent.get("id"):
-        return f'#{_css_escape(str(parent.get("id")))}'
-    return f"{parent.name}:nth-of-type({_same_tag_index(parent)})"
+    authored = _authored_identity_locator(parent)
+    if authored:
+        return authored
+
+    # Keep the fallback short, but make a local nth-of-type distinguishable by
+    # anchoring it to the nearest outer landmark. For example, header/nav and
+    # footer/nav must not both become `nav:nth-of-type(1)`.
+    local = f"{parent.name}:nth-of-type({_same_tag_index(parent)})"
+    landmark = parent.find_parent(["main", "article", "section", "header", "footer"])
+    if landmark:
+        landmark_locator = _authored_identity_locator(landmark) or f"{landmark.name}:nth-of-type({_same_tag_index(landmark)})"
+        return f"{landmark_locator} {local}"
+    return local
+
+
+def _authored_identity_locator(element: Tag) -> str:
+    explicit = _explicit_orb_locator(element)
+    if explicit:
+        return explicit
+    if element.get("id"):
+        return f'#{_css_escape(str(element.get("id")))}'
+    for attr in ("data-testid", "data-test", "data-cy", "name", "aria-label"):
+        value = element.get(attr)
+        if value:
+            return f'{element.name}[{attr}="{_css_escape(str(value))}"]'
+    return ""
 
 
 def _ordinal_in_parent(element: Tag, parent: Optional[Tag]) -> int:
@@ -488,16 +510,15 @@ def pointer_map_diagnostics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         reason = str(record.get("pointer_admission_reason") or "unknown")
         admission_reasons[reason] = admission_reasons.get(reason, 0) + 1
         if record.get("pointer_class") == "live_guidance":
-            route = _canonical_route(str(record.get("page_route") or "/"))
-            locator = str(record.get("semantic_locator") or "")
-            route_locator.setdefault((route, locator), []).append(str(record.get("target_id") or ""))
+            route, parent_scope, locator = pointer_conflict_key(record)
+            route_locator.setdefault((route, parent_scope, locator), []).append(str(record.get("target_id") or ""))
             if record.get("confidence_class") in {"VERIFIED", "STABLE"} and (record.get("runtime_policy") or {}).get("may_point") is True:
                 stable_guidance += 1
             else:
                 unresolved_guidance += 1
     conflicts = [
-        {"route": route, "semantic_locator": locator, "target_ids": target_ids, "count": len(target_ids)}
-        for (route, locator), target_ids in route_locator.items()
+        {"route": route, "parent_locator": parent_scope, "semantic_locator": locator, "target_ids": target_ids, "count": len(target_ids)}
+        for (route, parent_scope, locator), target_ids in route_locator.items()
         if locator and len(target_ids) > 1
     ]
     live_guidance = sum(1 for record in records if record.get("pointer_class") == "live_guidance")
@@ -516,14 +537,14 @@ def pointer_map_diagnostics(records: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _mark_route_locator_conflicts(records: List[Dict[str, Any]]) -> None:
-    grouped: Dict[tuple[str, str], List[Dict[str, Any]]] = {}
+    grouped: Dict[tuple[str, str, str], List[Dict[str, Any]]] = {}
     for record in records:
         if record.get("pointer_class") != "live_guidance":
             continue
-        locator = str(record.get("semantic_locator") or "")
+        route, parent_scope, locator = pointer_conflict_key(record)
         if not locator:
             continue
-        grouped.setdefault((_canonical_route(str(record.get("page_route") or "/")), locator), []).append(record)
+        grouped.setdefault((route, parent_scope, locator), []).append(record)
     for group in grouped.values():
         if len(group) <= 1:
             continue
@@ -542,6 +563,15 @@ def _mark_route_locator_conflicts(records: List[Dict[str, Any]]) -> None:
             record["runtime_policy"] = policy
 
 
+def pointer_conflict_key(record: Dict[str, Any]) -> tuple[str, str, str]:
+    structural = record.get("structural_context") or {}
+    return (
+        _canonical_route(str(record.get("page_route") or "/")),
+        str(structural.get("parent_locator") or ""),
+        str(record.get("semantic_locator") or ""),
+    )
+
+
 def pointer_runtime_policy(confidence: float, *, pointer_class: str = "live_guidance") -> tuple[str, Dict[str, Any]]:
     """Translate evidence confidence into the product's enforced runtime boundary."""
     if pointer_class != "live_guidance":
@@ -551,29 +581,11 @@ def pointer_runtime_policy(confidence: float, *, pointer_class: str = "live_guid
             "must_verify_before_action": False,
             "requires_confirmation": False,
         }
-    if confidence >= 0.90:
-        return "VERIFIED", {
-            "behavior": "guide_or_act_within_permission_policy",
-            "may_point": True,
-            "must_verify_before_action": False,
-            "requires_confirmation": False,
-        }
-    if confidence >= 0.75:
-        return "STABLE", {
-            "behavior": "guide_and_verify_before_action",
-            "may_point": True,
-            "must_verify_before_action": True,
-            "requires_confirmation": False,
-        }
-    if confidence >= 0.50:
-        return "UNCERTAIN", {
-            "behavior": "explain_cautiously_without_unverified_point",
-            "may_point": False,
-            "must_verify_before_action": True,
-            "requires_confirmation": True,
-        }
-    return "BLOCKED", {
-        "behavior": "voice_only_refusal_to_point_or_act",
+    # Scan confidence describes what extraction observed. It is not live
+    # verification and can never grant pointer authority. The existing
+    # reconciliation path is the only promotion path for may_point=True.
+    return "UNCERTAIN", {
+        "behavior": "explain_cautiously_without_unverified_point",
         "may_point": False,
         "must_verify_before_action": True,
         "requires_confirmation": True,
