@@ -17,13 +17,14 @@ from typing import Any, Dict, Optional
 
 from app.core.storage import IDENTITY_ROOT, LONG_TERM_MEMORY_ROOT, PERSISTENT_CACHE_ROOT, SHORT_TERM_MEMORY_ROOT, require_vault_path
 from app.orb.vault_glyph_trace import record_vault_object
+from app.orb.weaver_mission import WEAVER_MISSION
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 INCULCATION_PATH = REPO_ROOT / "artifacts" / "inculcation.md"
 INCULCATION_VERSION = "artifacts/inculcation.md"
-ARTICULATION_RUNTIME = "llama.cpp"
-ARTICULATION_MODEL = "Substrate Llama 3.2 3B Instruct Q4_K_M"
+ARTICULATION_RUNTIME = "local inference gateway"
+ARTICULATION_MODEL = "orb-auto"
 
 
 def _hash(value: Any) -> str:
@@ -72,7 +73,7 @@ def compile_website_orb_governance(
         "orb_category": "Website ORB",
         "site_name": context.get("site_name") or context.get("brand") or "Orb Weaver",
         "domain": context.get("domain") or context.get("current_domain"),
-        "purpose": context.get("orb_role") or "Host and guide visitors on the Orb Weaver website.",
+        "purpose": context.get("orb_role") or WEAVER_MISSION,
     }
     tool_manifest = context.get("visitor_tools") or []
     persistent = {
@@ -108,15 +109,20 @@ def compile_website_orb_governance(
     }
 
 
-def initial_governance_trace(compiled: Dict[str, Any]) -> Dict[str, Any]:
+def initial_governance_trace(
+    compiled: Dict[str, Any],
+    *,
+    articulation_runtime: Optional[str] = None,
+    articulation_model: Optional[str] = None,
+) -> Dict[str, Any]:
     versions = compiled["versions"]
     return {
         "schema": "orb_weaver.website_governance_trace.v1",
         **versions,
         "tpc_state": "pending",
         "tpc_verification": "pending",
-        "articulation_runtime": ARTICULATION_RUNTIME,
-        "articulation_model": ARTICULATION_MODEL,
+        "articulation_runtime": articulation_runtime or ARTICULATION_RUNTIME,
+        "articulation_model": articulation_model or ARTICULATION_MODEL,
         "doctrine_version": "pending_post_articulation",
         "doctrine_checksum": "pending",
         "repair_count": 0,
@@ -130,7 +136,11 @@ def finalize_governance_trace(
     resolved: Dict[str, Any],
     doctrine_trace: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
-    trace = initial_governance_trace(compiled)
+    trace = initial_governance_trace(
+        compiled,
+        articulation_runtime=resolved.get("articulation_runtime"),
+        articulation_model=resolved.get("articulation_model"),
+    )
     lane = str(resolved.get("source_lane") or "unknown")
     evidence_ids = [str(item) for item in resolved.get("evidence_ids") or []]
     trace["governance_trace_id"] = f"GT-RUNTIME-{_hash({'versions': compiled['versions'], 'answer_hash': resolved.get('answer_hash'), 'evidence_ids': evidence_ids})[:24]}"

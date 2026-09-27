@@ -11,11 +11,20 @@ from .integrity import validate_payload
 from .cognition.answer_engine import answer_from_world
 from .cognition.tpc_runtime import tpc_runtime
 from .dock_adapter.dockstation_adapter import DockStationAdapter
-from .models import AnswerRequest, AnswerResponse, DockActionRequest, RouteContextResponse
+from .models import (
+    AnswerRequest,
+    AnswerResponse,
+    DockActionRequest,
+    MaintenanceCycleRequest,
+    ProductDeltaScanRequest,
+    RouteContextResponse,
+    TargetReverificationRequest,
+)
 from .pointer.pointer_index import route_pointer_targets
 from .runtime.route_lookup import lookup_route
 from .runtime.site_world import SiteWorld
 from .storage import canonical_vault_root, record_runtime_audit
+from .runtime.field_maintenance import FieldMaintenanceEngine, FieldMaintenanceStore, load_known_products
 from .skg.runtime import load_site_graph, site_guidance_context
 from .skg.funnel import present_step
 from .voice_runtime import VOICE_CACHE, speak, transcribe
@@ -28,6 +37,10 @@ app.add_middleware(CORSMiddleware, allow_origins=CONFIG["allowed_origins"],
                    allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
 WORLD = SiteWorld.load(SITE_WORLD_PATH, POINTER_MAP_PATH, RUNTIME_LANGUAGE_PATH, TOOL_CACHE_PATH)
 DOCK = DockStationAdapter()
+MAINTENANCE = FieldMaintenanceEngine(
+    FieldMaintenanceStore(canonical_vault_root() / "runtime" / "field_maintenance"),
+    known_products=load_known_products(canonical_vault_root() / "payload" / "apriori" / "catalog.json"),
+)
 
 
 @app.on_event("startup")
@@ -53,7 +66,13 @@ def widget():
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True, "world": WORLD.stats(), "dock": {"enabled": False}, "cognition": tpc_runtime.status()}
+    return {
+        "ok": True,
+        "world": WORLD.stats(),
+        "dock": {"enabled": False},
+        "cognition": tpc_runtime.status(),
+        "field_maintenance": MAINTENANCE.status(),
+    }
 
 
 @app.get("/orb/tpc-status")
@@ -67,7 +86,45 @@ def site_world() -> dict:
         "identity": WORLD.site_world.get("identity"),
         "stats": WORLD.stats(),
         "route_aliases": WORLD.route_aliases,
+        "field_maintenance": MAINTENANCE.status(),
     }
+
+
+@app.get("/orb/maintenance/status")
+def maintenance_status() -> dict:
+    return MAINTENANCE.status()
+
+
+@app.post("/orb/maintenance/product-delta-scan")
+def product_delta_scan(payload: ProductDeltaScanRequest) -> dict:
+    try:
+        return MAINTENANCE.product_delta_scan(payload.observations, dry_run=payload.dry_run)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/orb/maintenance/affected-target-reverification")
+def affected_target_reverification(payload: TargetReverificationRequest) -> dict:
+    try:
+        return MAINTENANCE.reverify_targets(payload.product_id, payload.targets)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.post("/orb/maintenance/cycle")
+def maintenance_cycle(payload: MaintenanceCycleRequest) -> dict:
+    try:
+        return MAINTENANCE.run_cycle(payload.observations)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/orb/question-registry")
@@ -109,7 +166,7 @@ def goal_guidance(goal_id: str, entry: str = "/", answers: str = "") -> dict:
 def answer_text(payload: AnswerRequest) -> AnswerResponse:
     matched_route, route_record = lookup_route(WORLD, payload.route)
     targets = route_pointer_targets(WORLD, matched_route, payload.message, limit=5) if payload.want_pointer else []
-    result = answer_from_world(payload.message, matched_route, route_record, WORLD.runtime_language, targets)
+    result = answer_from_world(payload.message, matched_route, route_record, WORLD.runtime_language, targets, MAINTENANCE)
     response = AnswerResponse(**result)
     _require_delivery_approval(response)
     return response

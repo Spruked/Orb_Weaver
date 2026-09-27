@@ -13,7 +13,7 @@ Environment=ORB_TTS_KOKORO_URL=http://127.0.0.1:8880/speak
 Environment=ORB_TTS_KOKORO_VOICE=am_michael
 Environment=LOCAL_LLM_URL=http://127.0.0.1:16520/api/generate
 Environment=LOCAL_LLM_MODEL=orb-auto
-ExecStart=%h/projects/Orb_Weaver/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 16600
+ExecStart=%h/projects/Orb_Weaver/.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 16666
 Restart=always
 RestartSec=5
 

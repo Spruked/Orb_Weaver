@@ -31,6 +31,7 @@ class Settings(BaseSettings):
 
     # Gateway
     GATEWAY_URL: str = os.getenv("GATEWAY_URL", "http://localhost:16520")
+    WEBSITE_ORB_URL: str = os.getenv("WEBSITE_ORB_URL", "http://127.0.0.1:8787")
 
     class Config:
         env_file = ".env"

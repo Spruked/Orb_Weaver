@@ -64,8 +64,10 @@ def test_manufacturer_builds_complete_delivery_ready_package(tmp_path):
     assert result["validation_results"]["catalog_validation"]["entry_count"] == 1
     dock_manifest = json.loads((Path(result["package_paths"]["dock_station"]) / "deployment" / "manifest.json").read_text())
     assert dock_manifest["manufacturing_pass"]["delivery_ready"] is True
+    assert (Path(result["package_paths"]["dock_station"]) / "app" / "backend" / "app" / "routers" / "field_maintenance.py").is_file()
     orb_template = Path(result["package_paths"]["dock_station"]) / "app" / "orb" / "template"
     assert (orb_template / "backend" / "app.py").is_file()
+    assert (orb_template / "backend" / "runtime" / "field_maintenance.py").is_file()
     assert (orb_template / "assets" / "widget.js").is_file()
     runtime_vault = orb_template / "runtime" / "vault_system"
     assert json.loads((runtime_vault / "payload" / "apriori" / "catalog.json").read_text())["entries"][0]["entity_id"] == "product-1"
@@ -109,8 +111,25 @@ client = TestClient(runtime.app)
 route_context = client.get('/orb/route-context', params={'route': '/product'}).json()
 assert route_context['matched_route'] == '/product'
 assert route_context['record']['semantic_guidance']['route_status'] == 'known'
+maintenance_status = client.get('/orb/maintenance/status').json()
+maintenance_cycle = client.post('/orb/maintenance/cycle', json={'observations': [{
+    'product_id': 'product-1',
+    'title': 'Known Product',
+    'price': 49,
+    'availability': 'in stock',
+    'verified': True,
+    'targets': [{
+        'target_id': 'buy-product',
+        'target_type': 'cta',
+        'meaning': 'Buy product',
+        'selector': '#buy',
+        'verified': True,
+        'depends_on': ['price', 'availability'],
+        'evidence': [{'kind': 'live_dom', 'unique_match': True, 'visible': True}],
+    }],
+}]}).json()
 blocked = client.post('/orb/website-voice', files={'audio': ('test.webm', b'audio', 'audio/webm')})
-print(json.dumps({'answer': answer['answer'], 'priori': coordinator.priori_dir, 'posteriori': coordinator.posteriori_dir, 'governance': answer['governance_trace'], 'blocked_status': blocked.status_code, 'tts_calls': tts_calls, 'skg_context': lexical_answer['skg_context']}))
+print(json.dumps({'answer': answer['answer'], 'priori': coordinator.priori_dir, 'posteriori': coordinator.posteriori_dir, 'governance': answer['governance_trace'], 'blocked_status': blocked.status_code, 'tts_calls': tts_calls, 'skg_context': lexical_answer['skg_context'], 'maintenance_status': maintenance_status, 'maintenance_cycle': maintenance_cycle}))
 """
     first = subprocess.run([sys.executable, "-c", package_probe], env=package_env, text=True, capture_output=True, check=True)
     first_payload = json.loads(first.stdout.strip().splitlines()[-1])
@@ -123,6 +142,10 @@ print(json.dumps({'answer': answer['answer'], 'priori': coordinator.priori_dir, 
     assert first_payload["skg_context"]["lexical_status"] == "matched"
     assert first_payload["skg_context"]["matched_candidates"][0]["route"] == "/"
     assert first_payload["skg_context"]["authority"] == "advisory_only"
+    assert first_payload["maintenance_status"]["dormant"] is True
+    assert first_payload["maintenance_status"]["mutation_authorized"] is False
+    assert first_payload["maintenance_cycle"]["reverification"][0]["published"] is True
+    assert first_payload["maintenance_cycle"]["status"]["authoritative_products"] == 1
     delivery_audit = runtime_vault / "audit" / "glyph_trace" / "website_orb_runtime.jsonl"
     assert delivery_audit.is_file()
     withheld_event = json.loads(delivery_audit.read_text().splitlines()[-1])

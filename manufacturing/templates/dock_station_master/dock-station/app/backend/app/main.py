@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.core.security import authenticate_owner, create_access_token
 from app.models import OwnerLogin, TokenResponse
 
-from app.routers import profiles, speech, behavior, intelligence, tools, appearance, deployment, conversations, statistics, diagnostics, try_it_live, live_test
+from app.routers import profiles, speech, behavior, intelligence, tools, appearance, deployment, conversations, statistics, diagnostics, try_it_live, live_test, field_maintenance
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,6 +54,7 @@ app.include_router(statistics.router)
 app.include_router(diagnostics.router)
 app.include_router(try_it_live.router)
 app.include_router(live_test.router)
+app.include_router(field_maintenance.router)
 
 @app.get("/health")
 async def health():
@@ -79,5 +80,6 @@ async def root():
             "statistics": "/statistics",
             "diagnostics": "/diagnostics",
             "try_it_live": "/try-it-live/{profile_id}",
+            "field_maintenance": "/field-maintenance/status",
         }
     }

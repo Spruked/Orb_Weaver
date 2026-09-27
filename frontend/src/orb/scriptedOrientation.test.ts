@@ -15,6 +15,9 @@ describe('scripted orientation', () => {
       'weave-page-knowledge', 'security-governance-proof', 'pointer-intelligence-proof',
       'business-outcomes', 'run-free-preflight',
     ]);
+    expect(LANDING_FULL_TOUR_SCRIPT[1].text).toMatch(/sales and demonstration ORB/i);
+    expect(LANDING_FULL_TOUR_SCRIPT[1].text).toMatch(/never claim an action happened/i);
+    expect(LANDING_FULL_TOUR_SCRIPT[1].text).not.toMatch(/site-specific intelligence/i);
   });
 
   test('uses the authored LiDAR orientation', () => {

@@ -1,7 +1,7 @@
 const { chromium } = require('playwright');
 
-const APP_URL = process.env.APP_URL || 'http://127.0.0.1:16510/';
-const API_ORIGIN = process.env.API_ORIGIN || 'http://127.0.0.1:16500';
+const APP_URL = process.env.APP_URL || 'http://127.0.0.1:16667/';
+const API_ORIGIN = process.env.API_ORIGIN || 'http://127.0.0.1:16666';
 
 const customer = {
   id: 'customer-smoke',

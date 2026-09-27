@@ -49,6 +49,26 @@ Pointers require unique visible DOM matches on the current route and never
 click or submit forms. Navigation is a proposed customer-site link the visitor
 chooses. Unknown, ambiguous or missing targets remain unresolved.
 
+## Optional field maintenance
+
+The clone includes a dormant, owner-triggered Product Delta Scan and Affected
+Target Reverification lane. It is limited to known commercial observations and
+does not mutate products or replace the manufactured payload. The normal
+sequence is scan, verify affected live targets, then publish the verified
+state:
+
+```sh
+curl http://127.0.0.1:8787/orb/maintenance/status
+curl -X POST http://127.0.0.1:8787/orb/maintenance/cycle \
+  -H 'content-type: application/json' \
+  --data '{"observations":[{"product_id":"example-product","title":"Example product","price":49,"availability":"in stock","verified":true,"targets":[{"target_id":"buy-example","target_type":"cta","meaning":"Buy example","selector":"[data-orb-target=buy-example]","verified":true,"depends_on":["price","availability"],"evidence":[{"kind":"live_dom","unique_match":true,"visible":true}]}]}]}'
+```
+
+The authoritative overlay is persisted at
+`runtime/vault_system/runtime/field_maintenance/state.json`. Changes without
+accepted target evidence remain pending, and a changed locator is quarantined
+until a newly observed candidate passes live verification.
+
 All persisted runtime data stays in `runtime/vault_system`. Back up that entire
 directory. The package manifest records the site, scan, artifact hashes and
 compiler/build versions. Hash validation detects changed files; it is not a

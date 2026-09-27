@@ -33,6 +33,7 @@ export function defaultLidarTelemetryUrl(): string {
     : normalizedHostname;
   const localOrPrivateHost =
     port === '16510' ||
+    port === '16667' ||
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||
     hostname === '0.0.0.0' ||

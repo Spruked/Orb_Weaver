@@ -115,13 +115,15 @@ def answer_from_world(
     route_record: Dict[str, Any],
     runtime_language: Dict[str, Any],
     pointer_targets: List[Dict[str, Any]],
+    maintenance: Any = None,
 ) -> Dict[str, Any]:
 
     # A Priori/A Posteriori may supply the factual answer, but every returned
     # visitor answer still travels through TPC and the final doctrine boundary.
     skg_context = site_guidance_context(route, message)
     route_record = {**route_record, "semantic_guidance": skg_context}
-    vault_result = _try_vault(message)
+    maintenance_result = maintenance.answer(message) if maintenance is not None else None
+    vault_result = maintenance_result or _try_vault(message)
     intent, _score = classify_intent(message, route_record)
     if vault_result is not None:
         intent = vault_result["intent"]

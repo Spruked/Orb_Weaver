@@ -35,3 +35,17 @@ class DockActionRequest(BaseModel):
     action: str
     arguments: Dict[str, Any] = Field(default_factory=dict)
     route: Optional[str] = None
+
+
+class ProductDeltaScanRequest(BaseModel):
+    observations: List[Dict[str, Any]] = Field(..., min_length=1, max_length=500)
+    dry_run: bool = False
+
+
+class TargetReverificationRequest(BaseModel):
+    product_id: str = Field(..., min_length=1, max_length=240)
+    targets: List[Dict[str, Any]] = Field(default_factory=list, max_length=200)
+
+
+class MaintenanceCycleRequest(BaseModel):
+    observations: List[Dict[str, Any]] = Field(..., min_length=1, max_length=500)

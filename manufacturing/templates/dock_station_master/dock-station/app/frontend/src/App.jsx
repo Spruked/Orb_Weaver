@@ -11,6 +11,7 @@ import LiveTest from './panels/LiveTest';
 import Statistics from './panels/Statistics';
 import Diagnostics from './panels/Diagnostics';
 import Conversations from './panels/Conversations';
+import FieldMaintenance from './panels/FieldMaintenance';
 
 function Login({ onLogin }) {
   const [email, setEmail] = useState('owner@orb.system');
@@ -66,6 +67,7 @@ export default function App() {
     live_test: <LiveTest profileId={profileId} />,
     statistics: <Statistics profileId={profileId} />,
     diagnostics: <Diagnostics />,
+    field_maintenance: <FieldMaintenance />,
     conversations: <Conversations profileId={profileId} />,
   };
 

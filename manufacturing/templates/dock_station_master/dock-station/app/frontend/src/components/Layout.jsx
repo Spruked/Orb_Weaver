@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
   LayoutDashboard, Mic, Brain, Wrench, Palette, 
-  BarChart3, Activity, MessageSquare, User, Shield,
+  BarChart3, Activity, MessageSquare, User, Shield, RefreshCw,
   Volume2, ChevronRight, Radio
 } from 'lucide-react';
 
@@ -16,6 +16,7 @@ const navItems = [
   { id: 'conversations', label: 'Conversations', icon: MessageSquare },
   { id: 'statistics', label: 'Statistics', icon: BarChart3 },
   { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
+  { id: 'field_maintenance', label: 'Field Maintenance', icon: RefreshCw },
 ];
 
 export default function Layout({ children, activePanel, onNavigate, user }) {

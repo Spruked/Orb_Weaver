@@ -1,5 +1,6 @@
 import { observedUseCasePointerRecords, USE_CASE_POINTER_TITLES } from './siteAuthoredUseCasePointers';
 import { validateOrbPointerTarget } from './targetValidation';
+import { afterEach, expect, test } from '@jest/globals';
 
 afterEach(() => {
   document.body.innerHTML = '';

@@ -90,6 +90,26 @@ def test_prompt_requires_exact_spoken_evidence_without_mechanical_enumeration():
     assert 'Every detail in that concept\'s description must be spoken' not in prompt
 
 
+def test_tour_prompt_keeps_weaver_as_demo_orb_and_execution_state_authoritative():
+    from app.orb.tour_evaluation import tour_prompt
+
+    prompt = tour_prompt({
+        'chapter_id': 'chapter-demo',
+        'stop_id': 'stop-pointer',
+        'required_concepts': [{'id': 'POINTER', 'description': 'Point to a verified target.'}],
+        'demonstration_state': {
+            'controller': 'tour_controller',
+            'pointer': {'target_id': 'buy-button', 'status': 'ping_completed'},
+            'receipts': [{'event': 'pointer_ping_completed', 'target_id': 'buy-button'}],
+        },
+    })
+    assert "sales and demonstration ORB" in prompt
+    assert "Conversation may enrich, clarify, or temporarily interrupt" in prompt
+    assert 'pointer_ping_completed' in prompt
+    assert 'claim a MORB deployed, Point occurred, or Ping completed' in prompt
+    assert 'independently control the tour' in prompt
+
+
 def test_sequence_pass_uses_controller_ids_and_actual_live_speech():
     payload = response()
     payload['covered_concepts'][0]['supporting_excerpt'] = 'Words the model did not speak.'

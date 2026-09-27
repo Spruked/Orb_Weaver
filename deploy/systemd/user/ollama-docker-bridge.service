@@ -1,0 +1,16 @@
+[Unit]
+Description=Orb Weaver narrow Docker bridge for host-local Ollama
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/Orb_Weaver
+ExecStart=/usr/bin/python3 %h/projects/Orb_Weaver/tools/ollama_docker_bridge.py
+Restart=on-failure
+RestartSec=2
+Environment=OLLAMA_DOCKER_RELAY_HOST=172.17.0.1
+Environment=OLLAMA_DOCKER_RELAY_PORT=11435
+
+[Install]
+WantedBy=default.target

@@ -93,6 +93,13 @@ export const diagnostics = {
   issues: () => api('/diagnostics/issues'),
 };
 
+export const fieldMaintenance = {
+  status: () => api('/field-maintenance/status'),
+  productDeltaScan: (observations) => api('/field-maintenance/product-delta-scan', { method: 'POST', body: JSON.stringify({ observations }) }),
+  reverifyTargets: (productId, targets) => api('/field-maintenance/affected-target-reverification', { method: 'POST', body: JSON.stringify({ product_id: productId, targets }) }),
+  cycle: (observations) => api('/field-maintenance/cycle', { method: 'POST', body: JSON.stringify({ observations }) }),
+};
+
 export const statistics = {
   list: (profileId) => api(`/statistics?profile_id=${profileId}`),
   latest: (profileId) => api(`/statistics/latest?profile_id=${profileId}`),

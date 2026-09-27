@@ -24,6 +24,9 @@ services:
       - LOCAL_LLM_NUM_PREDICT=${LOCAL_LLM_NUM_PREDICT:-32}
       - LOCAL_LLM_TEMPERATURE=${LOCAL_LLM_TEMPERATURE:-0.35}
       - ORB_INFERENCE_MAX_PROMPT_CHARS=${ORB_INFERENCE_MAX_PROMPT_CHARS:-100000}
+      # Keep orb-auto logical. Development prefers the healthy local Ollama
+      # binding; llama.cpp remains an approved secondary provider.
+      - ORB_INFERENCE_PROVIDER_ORDER=${ORB_INFERENCE_PROVIDER_ORDER:-ollama,llamacpp}
       # The supported local llama.cpp server is reachable from Docker through
       # the host gateway. Override this only when deliberately using another
       # provider endpoint.
@@ -33,8 +36,10 @@ services:
       - APHRODITE_MODEL=${APHRODITE_MODEL:-auto}
       - TENSORRT_LLM_BASE_URL=${TENSORRT_LLM_BASE_URL:-http://host.docker.internal:8000/v1}
       - TENSORRT_LLM_MODEL=${TENSORRT_LLM_MODEL:-auto}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:1.5b}
+      # Ollama stays loopback-only. The narrow host relay exposes only this
+      # Docker-bridge port and forwards to 127.0.0.1:11434.
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11435}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:3b}
       # Development-only frontier ORB observer. Replace this placeholder with the direct Google AI Studio key before rebuilding locally.
       - GEMINI_API_KEY=REPLACE_WITH_YOUR_GEMINI_API_KEY
       - ORB_WEAVER_VAULT_ROOT=/app/vault_system

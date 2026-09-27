@@ -70,6 +70,7 @@ const TOUR_SPEECH_PLAYBACK_RATE = 1.08;
 // settling after the intro's audio-ended proof.
 const INTRO_TO_TOUR_SETTLE_MS = 650;
 const SCRIPTED_STEP_MIN_DWELL_MS = 2200;
+const SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY = "orbweaver-scripted-orientation-progress-v1";
 const ACCOUNT_CREATION_GUIDE_PROTOCOL = [
   "Guide the current account form one relevant question or field at a time using the server-owned Nine of Clubs policy.",
   "Preserve visitor control and keep credentials private.",
@@ -116,6 +117,26 @@ type SpeechCaptionState = {
   phase: SpeechCaptionPhase;
   collapsed: boolean;
   expanded: boolean;
+};
+type ScriptedOrientationProgress = {
+  orientationId: string;
+  index: number;
+  route: string;
+  stopLabel: string;
+};
+type DemonstrationReceipt = {
+  event: string;
+  target_id?: string;
+  capability?: string;
+  status?: string;
+  at: number;
+};
+type DemonstrationState = {
+  controller: "tour_controller" | "visitor_guidance" | "scripted_orientation";
+  capability: string;
+  pointer?: { target_id: string; status: "requested" | "target_acquired" | "ping_completed" | "completed" | "blocked" };
+  morb?: { status: "not_requested" | "requested" | "launched" | "completed" | "blocked"; work?: string };
+  receipts: DemonstrationReceipt[];
 };
 type MorbPointerState = {
   targetId: string;
@@ -520,6 +541,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const scriptedOrientationRunningRef = useRef(false);
   const scriptedOrientationInterruptedRef = useRef(false);
   const scriptedLandingOpeningCompleteRef = useRef(false);
+  const demonstrationStateRef = useRef<DemonstrationState>({ controller: "tour_controller", capability: "none", receipts: [] });
   const liveTourReadyRef = useRef(window.sessionStorage.getItem(LANDING_STARTUP_READINESS_SESSION_KEY) === "READY");
   const routeArrivalInFlightRef = useRef<string | null>(null);
   const pendingDirectRouteGuidanceRef = useRef<VerifiedRouteNavigation | null>(null);
@@ -1420,8 +1442,24 @@ export const AutonomousOrb: React.FC<Props> = ({
     const guidanceSequence = guidanceSequenceRef.current + 1;
     guidanceSequenceRef.current = guidanceSequence;
     guidanceActiveRef.current = true;
+    demonstrationStateRef.current = {
+      controller: scriptedOrientationRunningRef.current ? "scripted_orientation" : "tour_controller",
+      capability: "verified Pointer/Ping guidance",
+      pointer: { target_id: record.target_id, status: "requested" },
+      receipts: [{ event: "pointer_requested", target_id: record.target_id, capability: "Point/Ping", at: Date.now() }],
+    };
     const finishGuidance = (result: boolean, reason?: string) => {
       if (guidanceSequenceRef.current === guidanceSequence) guidanceActiveRef.current = false;
+      demonstrationStateRef.current = {
+        ...demonstrationStateRef.current,
+        pointer: demonstrationStateRef.current.pointer
+          ? { ...demonstrationStateRef.current.pointer, status: result ? "completed" : "blocked" }
+          : undefined,
+        receipts: [
+          ...demonstrationStateRef.current.receipts,
+          { event: result ? "pointer_guidance_completed" : "pointer_guidance_blocked", target_id: record.target_id, capability: "Point/Ping", status: reason || "verified", at: Date.now() },
+        ].slice(-8),
+      };
       emitOrbRuntimeEvent(result ? "guidance_complete" : "guidance_recovery", {
         targetId: record.target_id,
         reason,
@@ -1451,6 +1489,11 @@ export const AutonomousOrb: React.FC<Props> = ({
     };
 
     setPointerWaltzPhase("ACQUIRE");
+    demonstrationStateRef.current = {
+      ...demonstrationStateRef.current,
+      pointer: { target_id: record.target_id, status: "target_acquired" },
+      receipts: [...demonstrationStateRef.current.receipts, { event: "pointer_target_acquired", target_id: record.target_id, capability: "Point/Ping", at: Date.now() }].slice(-8),
+    };
     emitOrbRuntimeEvent("guidance_acquire", {
       targetId: record.target_id,
       mayPoint: record.runtime_policy?.may_point === true,
@@ -1852,6 +1895,11 @@ export const AutonomousOrb: React.FC<Props> = ({
       targetId: record.target_id,
       geometrySource: "live_refresh",
     });
+    demonstrationStateRef.current = {
+      ...demonstrationStateRef.current,
+      pointer: { target_id: record.target_id, status: "ping_completed" },
+      receipts: [...demonstrationStateRef.current.receipts, { event: "pointer_ping_completed", target_id: record.target_id, capability: "Point/Ping", status: "live_refresh", at: Date.now() }].slice(-8),
+    };
 
     setPointerBloom({
       targetId: record.target_id,
@@ -2392,6 +2440,13 @@ export const AutonomousOrb: React.FC<Props> = ({
     const role: MorbWorkRole = work === "product_price_research" ? "comparison" : "sequence";
     const targetId = `morb-${work}-audit-${auditTaskCount}`;
 
+    demonstrationStateRef.current = {
+      controller: scriptedOrientationRunningRef.current ? "scripted_orientation" : "tour_controller",
+      capability: "bounded MORB deployment",
+      morb: { status: "requested", work },
+      receipts: [{ event: "morb_requested", capability: "MORB", status: work, at: Date.now() }],
+    };
+
     emitOrbRuntimeEvent("morb_single_function_deployment_started", {
       work,
       audit_task_count: auditTaskCount,
@@ -2402,6 +2457,11 @@ export const AutonomousOrb: React.FC<Props> = ({
       mutation_authority: false,
     });
     playMorbLaunchSound();
+    demonstrationStateRef.current = {
+      ...demonstrationStateRef.current,
+      morb: { status: "launched", work },
+      receipts: [...demonstrationStateRef.current.receipts, { event: "morb_launched", capability: "MORB", status: work, at: Date.now() }].slice(-8),
+    };
     setMorbPointer({
       targetId,
       role,
@@ -2430,6 +2490,11 @@ export const AutonomousOrb: React.FC<Props> = ({
       audit_task_count_is_prime: true,
       result: "mock_complete",
     });
+    demonstrationStateRef.current = {
+      ...demonstrationStateRef.current,
+      morb: { status: "completed", work },
+      receipts: [...demonstrationStateRef.current.receipts, { event: "morb_deployment_completed", capability: "MORB", status: "mock_complete", at: Date.now() }].slice(-8),
+    };
     await wait(480);
     setMorbPointer((current) => current ? { ...current, phase: "DISSOLVE", dissolving: true } : null);
     await wait(320);
@@ -2446,10 +2511,33 @@ export const AutonomousOrb: React.FC<Props> = ({
     scriptedOrientationInterruptedRef.current = false;
     handsFreeEnabledRef.current = false;
     const llmScriptedTourEvaluation = developmentLlmScriptedTourOverride();
+    let startIndex = 0;
+    try {
+      const saved = JSON.parse(window.sessionStorage.getItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY) || "null") as Partial<ScriptedOrientationProgress> | null;
+      const savedIndex = saved?.index;
+      if (saved?.orientationId === orientationId && typeof savedIndex === "number" && Number.isInteger(savedIndex) && savedIndex >= 0 && savedIndex < steps.length) {
+        startIndex = savedIndex;
+        emitOrbRuntimeEvent("scripted_orientation_checkpoint_restored", {
+          orientationId, index: startIndex, route: saved.route || window.location.pathname,
+          stopLabel: saved.stopLabel || `step-${startIndex + 1}`,
+        });
+      }
+    } catch {
+      window.sessionStorage.removeItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY);
+    }
     emitOrbRuntimeEvent("scripted_orientation_started", { orientationId, stepCount: steps.length });
     try {
-      for (const [index, step] of steps.entries()) {
+      for (let index = startIndex; index < steps.length; index += 1) {
+        const step = steps[index];
         const stepStartedAt = Date.now();
+        const checkpoint: ScriptedOrientationProgress = {
+          orientationId,
+          index,
+          route: step.route || window.location.pathname,
+          stopLabel: step.route || step.selector || `step-${index + 1}`,
+        };
+        window.sessionStorage.setItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY, JSON.stringify(checkpoint));
+        emitOrbRuntimeEvent("scripted_orientation_controller_position", checkpoint);
         if (scriptedOrientationInterruptedRef.current) {
           emitOrbRuntimeEvent("scripted_orientation_interrupted_by_visitor", { orientationId, index });
           setStatusTitle("Tour paused for your question");
@@ -2487,6 +2575,7 @@ export const AutonomousOrb: React.FC<Props> = ({
             readiness: ready ? "ready" : "warming",
             preflight_ready_for_optional_post_account_review: preflightReady,
           });
+          window.sessionStorage.setItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY, JSON.stringify({ ...checkpoint, index: index + 1 }));
           continue;
         }
         if (!step.text) {
@@ -2656,6 +2745,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           setStatusTitle("Continuing guided tour");
           setStatusLine("Voice is reconnecting. Weaver is continuing to the next tour stop.");
           showStatus(4200);
+          window.sessionStorage.setItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY, JSON.stringify({ ...checkpoint, index: index + 1 }));
           await wait(Math.max(0, SCRIPTED_STEP_MIN_DWELL_MS - (Date.now() - stepStartedAt)));
           continue;
         }
@@ -2688,7 +2778,9 @@ export const AutonomousOrb: React.FC<Props> = ({
           await wait(remainingDwellMs);
           emitOrbRuntimeEvent("scripted_orientation_step_settle_completed", { orientationId, index });
         }
+        window.sessionStorage.setItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY, JSON.stringify({ ...checkpoint, index: index + 1 }));
       }
+      window.sessionStorage.removeItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY);
       window.sessionStorage.setItem(SCRIPTED_ORIENTATION_SESSION_KEY, orientationId);
       emitOrbRuntimeEvent("scripted_orientation_completed", { orientationId });
       return true;
@@ -2946,6 +3038,12 @@ export const AutonomousOrb: React.FC<Props> = ({
                   visited_routes: interaction.visitedRoutes,
                   answer_signals: interaction.answerSignals,
                 },
+                demonstration_state: {
+                  ...demonstrationStateRef.current,
+                  controller: "tour_controller",
+                  chapter_id: chapter.id,
+                  stop_id: stop.id,
+                },
               },
             },
           });
@@ -3048,6 +3146,30 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const resumeLandingTour = useCallback(async () => {
     await landingTourSettledRef.current;
+    const scriptedProgress = window.sessionStorage.getItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY);
+    if (scriptedProgress) {
+      try {
+        const checkpoint = JSON.parse(scriptedProgress) as Partial<ScriptedOrientationProgress>;
+        if (checkpoint.orientationId === "site:full-tour") {
+          emitOrbRuntimeEvent("scripted_orientation_resume_requested", {
+            orientationId: checkpoint.orientationId,
+            index: checkpoint.index,
+            route: checkpoint.route || window.location.pathname,
+            stopLabel: checkpoint.stopLabel || null,
+          });
+          const resumed = await runScriptedOrientation("site:full-tour", SITE_TOUR_SCRIPT);
+          if (resumed) {
+            scriptedLandingOpeningCompleteRef.current = true;
+            setStatusTitle("Weaver is ready for questions");
+            setStatusLine("The guided tour is complete. Ask Weaver about Orb Weaver, Website ORBs, or the next step for your site.");
+            showStatus(5200);
+          }
+          return;
+        }
+      } catch {
+        window.sessionStorage.removeItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY);
+      }
+    }
     const state = websiteJourneyRef.current;
     if (!state || state.stage !== 'LANDING_TOUR' || state.preflightStatus === 'DEFERRED') return;
     if (voiceRequestInFlightRef.current || recorderRef.current) {
@@ -3059,7 +3181,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         interruptionState: { isInterrupted: false, interruptedAtChapterId: null, interruptedAtStopId: null } });
       void runLandingTour();
     } catch (error) { setTourNotice((error as Error).message); }
-  }, [runLandingTour, saveWebsiteJourney]);
+  }, [runLandingTour, runScriptedOrientation, saveWebsiteJourney, showStatus]);
 
   const retryPausedTour = useCallback(() => {
     cognitionUnavailableRef.current = false;
@@ -3130,6 +3252,29 @@ export const AutonomousOrb: React.FC<Props> = ({
       firstEncounterVisitorTurnRef.current = visitorTurn;
       const inFirstEncounter = isPublicLandingExperience() && !firstEncounterComplete();
       const guidedConversation = scriptedOrientationInterruptedRef.current || window.location.pathname === ONBOARDING_ROUTE;
+      let scriptedDemonstrationContext: Record<string, unknown> | null = null;
+      if (scriptedOrientationInterruptedRef.current) {
+        try {
+          const checkpoint = JSON.parse(window.sessionStorage.getItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY) || "null") as Partial<ScriptedOrientationProgress> | null;
+          scriptedDemonstrationContext = {
+            controller: "scripted_orientation",
+            mission: "Orb Weaver sales and demonstration ORB",
+            current_step: checkpoint?.index ?? null,
+            current_stop: checkpoint?.stopLabel || null,
+            current_route: checkpoint?.route || window.location.pathname,
+            execution_state: demonstrationStateRef.current,
+            receipts: demonstrationStateRef.current.receipts,
+          };
+        } catch {
+          scriptedDemonstrationContext = {
+            controller: "scripted_orientation",
+            mission: "Orb Weaver sales and demonstration ORB",
+            current_route: window.location.pathname,
+            execution_state: demonstrationStateRef.current,
+            receipts: demonstrationStateRef.current.receipts,
+          };
+        }
+      }
       const experience: WebsiteOrbExperienceContext | null = scriptedOrientationInterruptedRef.current
         ? {
             phase: "agency",
@@ -3138,6 +3283,7 @@ export const AutonomousOrb: React.FC<Props> = ({
             visitor_turn: visitorTurn,
             verification_state: "verified",
             demonstrated_capabilities: ["verified tour context", "visitor-directed navigation", "Founding Beta and investor routing"],
+            demonstration_context: scriptedDemonstrationContext,
           }
         : inFirstEncounter
         ? visitorTurn === 1
@@ -3848,6 +3994,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     window.sessionStorage.removeItem(LANDING_SPLASH_COMPLETE_SESSION_KEY);
     window.sessionStorage.removeItem(LANDING_STARTUP_READINESS_SESSION_KEY);
     window.sessionStorage.removeItem(SCRIPTED_ORIENTATION_SESSION_KEY);
+    window.sessionStorage.removeItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY);
     window.sessionStorage.removeItem(STARTUP_GREETING_SESSION_KEY);
     window.sessionStorage.removeItem(FIRST_ENCOUNTER_STORAGE_KEY);
     window.sessionStorage.removeItem(WEBSITE_JOURNEY_STORAGE_KEY);

@@ -23,6 +23,7 @@ vault_system/reports
 vault_system/indexes
 vault_system/manifests
 vault_system/runtime
+vault_system/development/runtime/tts_cache/**
 vault_system/backups
 vault_system/secrets
 vault_system/integrations/**/imports/pending

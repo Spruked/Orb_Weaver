@@ -62,6 +62,7 @@ from app.orb.tour_evaluation import (
     tour_evidence_prompt,
     tour_prompt,
 )
+from app.orb.weaver_mission import WEAVER_AUTHORITY_BOUNDARY, WEAVER_LLM_MUST_NOT, WEAVER_MISSION
 from app.catalog.compiler import compile_commercial_catalog
 from app.reporting.audit_reporting import build_audit_pdf, enrich_audit_report
 from app.lifecycle import (
@@ -277,8 +278,8 @@ LLM_WARM_STATUS: Dict[str, Any] = {
     "ready": False,
     "state": "warming",
     "model": settings.LOCAL_LLM_MODEL,
-    "model_lock": "Substrate Llama 3.2 3B Instruct Q4_K_M via llama.cpp",
-    "provider": "llamacpp",
+    "model_lock": "orb-auto via the local inference gateway",
+    "provider": "local_gateway",
     "endpoint": settings.LOCAL_LLM_URL,
     "checked_at": None,
     "error": None,
@@ -334,13 +335,13 @@ ORB_INSTALL_SITES: Dict[str, Dict[str, Any]] = {
 
 
 async def _warm_local_llm() -> None:
-    """Warm the configured llama.cpp inference gateway without delaying app startup."""
+    """Warm the configured local inference gateway without delaying app startup."""
     if not _local_llm_is_locked_llamacpp():
         if settings.LOCAL_LLM_URL or settings.LOCAL_LLM_MODEL:
             LLM_WARM_STATUS.update({
                 "ready": False,
                 "checked_at": datetime.utcnow().isoformat(),
-                "error": "Website ORB cognition model is locked to Substrate llama.cpp Llama 3.2 3B Instruct Q4_K_M.",
+                "error": "Website ORB local articulation gateway is not configured.",
             })
         return
     try:
@@ -356,9 +357,13 @@ async def _warm_local_llm() -> None:
                 },
             )
             response.raise_for_status()
+            articulation = _local_articulation_metadata(response.json())
         LLM_WARM_STATUS.update({
             "ready": True,
             "state": "ready",
+            "provider": articulation["provider"],
+            "model": articulation["model"],
+            "runtime": articulation["runtime"],
             "checked_at": datetime.utcnow().isoformat(),
             "error": None,
         })
@@ -550,6 +555,7 @@ class WebsiteOrbExperienceContext(BaseModel):
     verified_target_label: Optional[str] = Field(default=None, max_length=240)
     verification_state: str = Field(default="not_applicable", pattern="^(pending|verified|blocked|not_applicable)$")
     demonstrated_capabilities: List[str] = Field(default_factory=list, max_length=12)
+    demonstration_context: Optional[Dict[str, Any]] = None
 
 
 class WebsiteOrbTextRequest(BaseModel):
@@ -1453,7 +1459,7 @@ ORB_SENSITIVE_MEMORY_TERMS = {
     "browser_history",
 }
 ORB_PUBLIC_IDENTITY_ANSWER = (
-    "I'm Weaver, the Orb Weaver website guide. I help visitors understand scans, Website ORBs, pointer maps, marketplace options, and deployment readiness."
+    "I'm Weaver, Orb Weaver's sales and demonstration ORB. I explain and demonstrate the ORB Weaver system and its Website ORB capabilities, then help you find the right next commercial step."
 )
 
 
@@ -2046,16 +2052,37 @@ def _ollama_base_url() -> Optional[str]:
 
 
 def _local_llm_is_locked_llamacpp() -> bool:
+    """Compatibility name for the local articulation gate.
+
+    The Website ORB is allowed to articulate through the configured local
+    inference gateway. The gateway, rather than this backend, owns provider
+    selection and may select Ollama/Qwen or an approved local fallback.
+    """
     url = (settings.LOCAL_LLM_URL or "").strip()
     model = (settings.LOCAL_LLM_MODEL or "").strip()
-    if not url or not model:
-        return False
-    return "11434" not in url and model in {
-        "orb-auto",
-        "substrate-llama-3.2-3b",
-        "llama-3.2-3b-instruct-q4_k_m",
-        "llama-3.2-3b-instruct-q4_k_m.gguf",
-        "./llm/models/Llama-3.2-3B-Instruct-GGUF/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+    return bool(url and model)
+
+
+def _local_articulation_metadata(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize gateway proof without giving the model any new authority."""
+    runtime = payload.get("orb_runtime") if isinstance(payload, dict) else None
+    runtime = runtime if isinstance(runtime, dict) else {}
+    provider = str(runtime.get("provider") or "local_gateway").strip().lower()
+    model = str(payload.get("model") or settings.LOCAL_LLM_MODEL or "orb-auto").strip()
+    provider_label = {
+        "ollama": "Ollama",
+        "llamacpp": "llama.cpp",
+        "aphrodite": "Aphrodite",
+        "tensorrt": "TensorRT-LLM",
+    }.get(provider, provider.replace("_", " ").title())
+    return {
+        "provider": provider,
+        "provider_label": provider_label,
+        "model": model,
+        "runtime": f"{provider_label} via local inference gateway",
+        "endpoint": settings.LOCAL_LLM_URL,
+        "lane": runtime.get("lane"),
+        "latency_ms": runtime.get("latency_ms"),
     }
 
 
@@ -2591,8 +2618,9 @@ def _orb_capabilities() -> Dict[str, Any]:
     current_src = root / "src"
     legacy_electron_src = root / "electron" / "src"
     chrome_tool = shutil.which(settings.CHROME_DEVTOOLS_CLI) or shutil.which("npx")
-    tesseract_bin = shutil.which("tesseract")
-    tessdata_path = Path(os.environ.get("TESSDATA_PREFIX") or "")
+    configured_tesseract = Path(settings.TESSERACT_CMD).expanduser()
+    tesseract_bin = str(configured_tesseract) if configured_tesseract.is_file() else shutil.which(settings.TESSERACT_CMD) or shutil.which("tesseract")
+    tessdata_path = Path(os.environ.get("TESSDATA_PREFIX") or settings.TESSDATA_PREFIX).expanduser()
     website_tesseract_ready = bool(tesseract_bin and (tessdata_path / "eng.traineddata").exists())
     windows_tesseract_path = Path("/mnt/c/Program Files/Tesseract-OCR/tesseract.exe")
     windows_tesseract_available = windows_tesseract_path.exists()
@@ -2642,12 +2670,13 @@ def _orb_capabilities() -> Dict[str, Any]:
         },
         "local_llm": dict(LLM_WARM_STATUS),
         "local_cognition_model_lock": {
-            "provider": "llamacpp",
-            "model": "Substrate Llama 3.2 3B Instruct Q4_K_M",
+            "provider": LLM_WARM_STATUS.get("provider") or "local_gateway",
+            "model": LLM_WARM_STATUS.get("model") or settings.LOCAL_LLM_MODEL,
             "endpoint": settings.LOCAL_LLM_URL,
             "runtime_model": settings.LOCAL_LLM_MODEL,
             "locked": _local_llm_is_locked_llamacpp(),
-            "bypass_rule": "Use deterministic TPC, Site World, Vault, catalog, A Priori, and verified A Posteriori answers before calling the model.",
+            "runtime": LLM_WARM_STATUS.get("runtime") or "local inference gateway",
+            "bypass_rule": "Use deterministic TPC, Site World, Vault, catalog, A Priori, and verified A Posteriori answers before calling the local articulation gateway.",
         },
         "local_tts": dict(ORB_TTS_WARM_STATUS),
         "chrome_devtools_mcp": {
@@ -3288,10 +3317,14 @@ def _build_website_weaver_envelope(
     return {
         "identity": {
             "name": "Weaver",
-            "role": "Public Website ORB for Orb Weaver; website consultant, guide, and explainer.",
-            "not_roles": ["generic chatbot", "Desktop CALI", "navigation authority"],
+            "role": "Orb Weaver's sales and demonstration ORB for the Orb Weaver website.",
+            "mission": WEAVER_MISSION,
+            "authority_boundary": WEAVER_AUTHORITY_BOUNDARY,
+            "not_roles": ["generic customer Website ORB", "generic chatbot", "Desktop CALI", "tour or navigation authority"],
         },
-        "job": context.get("orb_role") or "Help visitors understand and safely use this website.",
+        "job": WEAVER_MISSION,
+        "commercial_next_steps": ["Preflight", "Founding Beta", "account or signup", "investor inquiry", "another verified product destination"],
+        "llm_must_not": list(WEAVER_LLM_MUST_NOT),
         "current_page": current_page,
         "site_intelligence": {
             "site_name": context.get("site_name") or context.get("brand"),
@@ -3537,7 +3570,8 @@ async def _llm_orb_spoken_output(
         if guidance_mode in {"account_setup", "login", "tour_question", "beta", "investor"}:
             phase_rule = "Answer the visitor's current request and follow the active Nine of Clubs guidance; ask at most one relevant question."
         prompt = (
-            "You are Weaver, the embodied website host for Orb Weaver. Generate the words for one live choreographed act; the words themselves are not scripted. Identify yourself as Weaver only when it is genuinely useful, and never mention or imply a gender.\n"
+            f"You are Weaver, Orb Weaver's sales and demonstration ORB. {WEAVER_MISSION} Generate the words for one live choreographed act; the words themselves are not scripted. Identify yourself as Weaver only when it is genuinely useful, and never mention or imply a gender.\n"
+            f"AUTHORITY BOUNDARY: {json.dumps(WEAVER_AUTHORITY_BOUNDARY, ensure_ascii=False)}. The conversational model may articulate, clarify, and bridge; it may not {', '.join(WEAVER_LLM_MUST_NOT)}.\n"
             f"{prompt_layers(governance_context) if governance_context else ''}\n"
             f"ACTIVE ACT: {json.dumps(experience_context, ensure_ascii=False)}\n"
             f"LIVE CONTEXT: {json.dumps(compact_live_context, ensure_ascii=False)}\n"
@@ -3550,7 +3584,8 @@ async def _llm_orb_spoken_output(
         )
     else:
         prompt = (
-            "You are Weaver. Obey the complete governed Website ORB assembly as the authoritative operating contract. Identify yourself only when useful, never repeat a fixed self-introduction, and never mention or imply a gender.\n"
+            f"You are Weaver, Orb Weaver's sales and demonstration ORB. {WEAVER_MISSION} Obey the complete governed Website ORB assembly as the authoritative operating contract. Identify yourself only when useful, never repeat a fixed self-introduction, and never mention or imply a gender.\n"
+            f"AUTHORITY BOUNDARY: {json.dumps(WEAVER_AUTHORITY_BOUNDARY, ensure_ascii=False)}. The conversational model may articulate, clarify, and bridge; it may not {', '.join(WEAVER_LLM_MUST_NOT)}.\n"
             f"{prompt_layers(governance_context) if governance_context else ''}\n"
             f"Website Weaver envelope: {json.dumps(weaver_envelope, ensure_ascii=False)}\n"
             f"Safe account memory, only if relevant: {json.dumps(memory_brief, ensure_ascii=False)}\n"
@@ -3596,6 +3631,7 @@ async def _llm_orb_spoken_output(
             response.raise_for_status()
             payload = response.json()
         raw_output = str(payload.get("response") or payload.get("text") or "")
+        articulation = _local_articulation_metadata(payload)
         if tour_context:
             if settings.DEBUG:
                 logger.warning(
@@ -3645,13 +3681,29 @@ async def _llm_orb_spoken_output(
                         detected_visitor_intent=evaluation.detected_visitor_intent,
                         suggested_transition=evaluation.suggested_transition,
                     )
-            return {"spoken_output": evaluation.spoken_output, "chapter_evaluation": evaluation.model_dump(),
-                    "llm_source": "llamacpp-tour", "raw_model_output": raw_output,
-                    "evidence_model_output": evidence_model_output}
+            return {
+                "spoken_output": evaluation.spoken_output,
+                "chapter_evaluation": evaluation.model_dump(),
+                "llm_source": f"{articulation['provider']}-tour",
+                "raw_model_output": raw_output,
+                "evidence_model_output": evidence_model_output,
+                "articulation_provider": articulation["provider"],
+                "articulation_runtime": articulation["runtime"],
+                "articulation_model": articulation["model"],
+                "articulation_endpoint": articulation["endpoint"],
+                "articulation_lane": articulation["lane"],
+                "articulation_latency_ms": articulation["latency_ms"],
+            }
         spoken = _clean_spoken_output(raw_output)
         return {
             "spoken_output": spoken or fallback,
-            "llm_source": "llamacpp-substrate-llama-3.2-3b-instruct-q4_k_m",
+            "llm_source": f"{articulation['provider']}-{articulation['model']}",
+            "articulation_provider": articulation["provider"],
+            "articulation_runtime": articulation["runtime"],
+            "articulation_model": articulation["model"],
+            "articulation_endpoint": articulation["endpoint"],
+            "articulation_lane": articulation["lane"],
+            "articulation_latency_ms": articulation["latency_ms"],
             "governance_trace": initial_governance_trace(governance_context) if governance_context else None,
         }
     except Exception as exc:
@@ -3751,6 +3803,18 @@ async def _first_visitor_act_response(
             "verified_target_id": experience_context.get("verified_target_id"),
         },
         "llm_source": llm_result["llm_source"],
+        **{
+            key: llm_result[key]
+            for key in (
+                "articulation_provider",
+                "articulation_runtime",
+                "articulation_model",
+                "articulation_endpoint",
+                "articulation_lane",
+                "articulation_latency_ms",
+            )
+            if key in llm_result
+        },
         "memory_context": memory_context,
         **tts_result,
     }
@@ -5164,7 +5228,7 @@ ORB_WEAVER_SHOWCASE_POINTERS: List[Dict[str, Any]] = [
     },
     {
         "target_id": "watch_weaver_guide", "page_route": "/", "target_type": "paragraph",
-        "meaning": "Watch Weaver guide. When pointing is useful, Weaver guides only to a verified target and pings the exact place it can prove is live.",
+        "meaning": "Then, explore in real time. When pointing is useful, Weaver guides only to a verified target and pings the exact place it can prove is live.",
         "intent_aliases": ["watch weaver guide", "verified target"], "direct_aliases": ["Watch Weaver guide"],
         "topic_aliases": ["visual guidance"], "content_fingerprint": "owner-watch-weaver-guide-v2",
         "semantic_locator": '[data-orb-target="watch_weaver_guide"]', "structural_context": {"tag": "p"},
@@ -8662,6 +8726,9 @@ async def _canonical_website_orb_turn(
                 tour.get("stop_id"), generated.get("llm_source"), settings.LOCAL_LLM_URL,
             )
             raise HTTPException(status_code=503, detail="Dynamic tour cognition is unavailable; the stop was not advanced")
+        resolved["articulation_runtime"] = generated.get("articulation_runtime") or "local inference gateway"
+        resolved["articulation_model"] = generated.get("articulation_model") or settings.LOCAL_LLM_MODEL
+        resolved["articulation_provider"] = generated.get("articulation_provider") or "local_gateway"
         evaluation = generated.get("chapter_evaluation")
         if not evaluation:
             raise HTTPException(status_code=503, detail="Tour cognition did not return concept evidence; the stop was not advanced")
@@ -8713,10 +8780,21 @@ async def _canonical_website_orb_turn(
                 "sanitized_output": resolved["spoken_output"],
                 "delivered_output": resolved["spoken_output"],
                 "model_source": generated["llm_source"],
+                "provider": generated.get("articulation_provider"),
+                "runtime": generated.get("articulation_runtime"),
+                "model": generated.get("articulation_model"),
+                "endpoint": generated.get("articulation_endpoint"),
+                "lane": generated.get("articulation_lane"),
+                "latency_ms": generated.get("articulation_latency_ms"),
                 "site_world_slice": tour["site_world_slice"],
             },
             "resolution_diagnostics": {"resolution_source": "tour_cognition", "confidence": resolved["confidence"],
-                "qwen_bypassed": False, "cached_speech": False,
+                "qwen_bypassed": False,
+                "articulation_provider": generated.get("articulation_provider"),
+                "articulation_model": generated.get("articulation_model"),
+                "articulation_endpoint": generated.get("articulation_endpoint"),
+                "articulation_runtime": generated.get("articulation_runtime"),
+                "cached_speech": False,
                 "governance_status": governance_trace["status"], "tpc_state": governance_trace["tpc_state"],
                 "doctrine_checksum": governance_trace["doctrine_checksum"]},
         }
@@ -8897,6 +8975,7 @@ async def website_orb_voice(
     experience_verified_target_id: Optional[str] = Form(default=None),
     experience_verified_target_label: Optional[str] = Form(default=None),
     experience_demonstrated_capabilities: Optional[str] = Form(default=None),
+    experience_demonstration_context: Optional[str] = Form(default=None),
     anonymous_session_id: Optional[str] = Form(default=None),
     authorization: Optional[str] = Header(default=None),
     origin: Optional[str] = Header(default=None),
@@ -8962,6 +9041,42 @@ async def website_orb_voice(
 
     experience_context = None
     if experience_phase and experience_objective:
+        demonstration_context: Optional[Dict[str, Any]] = None
+        if experience_demonstration_context:
+            try:
+                parsed_demonstration_context = json.loads(experience_demonstration_context)
+                if isinstance(parsed_demonstration_context, dict):
+                    # Preserve only bounded controller evidence. This is
+                    # articulation context, never an action authorization.
+                    raw_execution_state = parsed_demonstration_context.get("execution_state")
+                    execution_state = (
+                        {
+                            str(key)[:80]: str(value)[:240]
+                            for key, value in raw_execution_state.items()
+                            if len(str(key)) <= 160
+                        } if isinstance(raw_execution_state, dict) else {}
+                    )
+                    raw_receipts = parsed_demonstration_context.get("receipts")
+                    receipts = [
+                        {
+                            str(key)[:80]: str(value)[:240]
+                            for key, value in receipt.items()
+                            if len(str(key)) <= 160
+                        }
+                        for receipt in (raw_receipts[:12] if isinstance(raw_receipts, list) else [])
+                        if isinstance(receipt, dict)
+                    ]
+                    demonstration_context = {
+                        "controller": str(parsed_demonstration_context.get("controller") or "")[:80],
+                        "mission": str(parsed_demonstration_context.get("mission") or "")[:240],
+                        "current_step": parsed_demonstration_context.get("current_step"),
+                        "current_stop": str(parsed_demonstration_context.get("current_stop") or "")[:160],
+                        "current_route": str(parsed_demonstration_context.get("current_route") or "")[:240],
+                        "execution_state": execution_state,
+                        "receipts": receipts,
+                    }
+            except (TypeError, ValueError, json.JSONDecodeError):
+                logger.warning("Ignoring malformed Website ORB demonstration context")
         experience_context = WebsiteOrbExperienceContext(
             guidance_mode=experience_guidance_mode,
             phase=experience_phase,
@@ -8973,6 +9088,7 @@ async def website_orb_voice(
             demonstrated_capabilities=[
                 item.strip() for item in (experience_demonstrated_capabilities or "").split(",") if item.strip()
             ],
+            demonstration_context=demonstration_context,
         ).model_dump()
     # A live first-visitor act has its own evidence-rich choreography path.
     # It must run before the generic canonical resolver; otherwise the latter

@@ -67,6 +67,36 @@ Current compiled site artifacts live in `compiled_orb/`, including:
 
 The A Priori vault files form the semantic knowledge portion of the site payload. `compiled_orb` forms the operating/site-world portion. Together they allow the ORB to connect what a visitor means, what is known about the site, and where verified targets exist on the site.
 
+## Field Site World Maintenance
+
+Every newly manufactured clone includes a dormant, governed maintenance lane for
+known commercial surfaces. It is not a second crawler and it never changes a
+customer's products, prices, checkout, or DOM. An owner or approved Dock
+Station adapter explicitly submits observations to:
+
+- `POST /orb/maintenance/product-delta-scan` - compare product state with the
+  last observation and mark affected targets.
+- `POST /orb/maintenance/affected-target-reverification` - accept only live,
+  unique, visible target evidence; changed identities are quarantined before a
+  replacement can be promoted.
+- `POST /orb/maintenance/cycle` - run both operations for observations that
+  include affected targets.
+- `GET /orb/maintenance/status` - report configured, observed, verified, and
+  deep-rescan state separately.
+
+The bounded loop is:
+
+```text
+observe -> compare -> update pending Site World state -> reverify -> publish verified state
+```
+
+Only published maintenance state is eligible for deterministic product answers.
+Unverified deltas remain non-authoritative and the immutable manufactured
+payload is not rewritten. State is stored under
+`runtime/vault_system/runtime/field_maintenance/state.json` so it remains part
+of the canonical Vault backup and fail-closed storage boundary. Automatic runs,
+automatic publication, and product mutation are disabled by default.
+
 ## Main Runtime Folders
 
 - `backend/` - Website ORB backend, answer engine, TPC fallback, doctrine gate, runtime routing, pointer services, and DockStation adapter boundary.

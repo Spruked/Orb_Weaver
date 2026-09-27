@@ -13,6 +13,7 @@ function defaultApiBaseUrl() {
   };
   const isLocalOrPrivateHost =
     port === '16510' ||
+    port === '16667' ||
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||
     hostname === '0.0.0.0' ||
@@ -1269,6 +1270,7 @@ export interface WebsiteOrbExperienceContext {
       visited_routes: string[];
       answer_signals: Record<string, string>;
     };
+    demonstration_state?: Record<string, unknown>;
   };
   phase: WebsiteOrbExperiencePhase;
   objective: string;
@@ -1277,6 +1279,7 @@ export interface WebsiteOrbExperienceContext {
   verified_target_label?: string | null;
   verification_state?: 'pending' | 'verified' | 'blocked' | 'not_applicable';
   demonstrated_capabilities?: string[];
+  demonstration_context?: Record<string, unknown> | null;
 }
 
 export interface WebsiteOrbPointerRecord {
@@ -1532,6 +1535,9 @@ export const api = {
       if (context.experience.verified_target_label) formData.append('experience_verified_target_label', context.experience.verified_target_label);
       if (context.experience.demonstrated_capabilities?.length) {
         formData.append('experience_demonstrated_capabilities', context.experience.demonstrated_capabilities.join(','));
+      }
+      if (context.experience.demonstration_context) {
+        formData.append('experience_demonstration_context', JSON.stringify(context.experience.demonstration_context));
       }
     }
     return uploadForm<WebsiteOrbVoiceResponse>('/api/orb/website-voice', formData, { signal });

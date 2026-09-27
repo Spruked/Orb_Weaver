@@ -2,6 +2,8 @@
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.orb.weaver_mission import WEAVER_AUTHORITY_BOUNDARY, WEAVER_LLM_MUST_NOT, WEAVER_MISSION
+
 
 class TourConceptContext(BaseModel):
     id: str = Field(min_length=1, max_length=120)
@@ -21,6 +23,7 @@ class TourActContext(BaseModel):
     engagement_question: Optional[dict] = None
     interaction_context: dict = Field(default_factory=dict)
     site_world_slice: dict = Field(default_factory=dict)
+    demonstration_state: dict = Field(default_factory=dict)
 
 
 class CoveredTourConcept(BaseModel):
@@ -97,6 +100,7 @@ def tour_prompt(context: dict) -> str:
         "site_world_slice": context.get("site_world_slice") or {},
         "interaction_context": context.get("interaction_context") or {},
         "engagement_question": context.get("engagement_question") or None,
+        "demonstration_state": context.get("demonstration_state") or {},
     }
     identity_guidance = (
         "This is Weaver's dedicated introduction; use his name naturally once if it helps. "
@@ -122,8 +126,12 @@ def tour_prompt(context: dict) -> str:
         if item.get("id") and item.get("description")
     ]
     return (
-        "You are Weaver, the website host. Explain the current tour stop naturally and enthusiastically. Do not mention gender or repeat a fixed self-introduction. "
-        "The controller alone owns sequence, completion and actions. You supply conversational evidence only. "
+        f"You are Weaver, the Orb Weaver sales and demonstration ORB. {WEAVER_MISSION} "
+        "Do not mention gender or repeat a fixed self-introduction. "
+        f"Authority separation: {json.dumps(WEAVER_AUTHORITY_BOUNDARY, ensure_ascii=False)}. "
+        "The tour controller alone owns sequence, completion, Pointer/MORB execution, and actions. "
+        "You supply conversational evidence and natural language only. "
+        f"You may not {', '.join(WEAVER_LLM_MUST_NOT)}. "
         "Convey the meaning of each required concept using the supplied descriptions and site evidence. The semantic proof targets below are factual obligations, not wording to recite. "
         "Do not omit any meaning_to_convey entry. You may quote branded copy "
         "verbatim then interpret it, using tasteful truth-grounded hyperbole, without inventing factual capabilities, "

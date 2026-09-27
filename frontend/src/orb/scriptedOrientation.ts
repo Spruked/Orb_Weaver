@@ -27,7 +27,7 @@ export const LANDING_FULL_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
     // remaining targets belong to later authored stops; reacquiring this same
     // section four times made the tour look stuck before narration began.
     pointerTargetIds: ['watch_weaver_guide'],
-    text: 'I am Weaver, your Website ORB host. I am not a general-purpose chatbot floating over a page. I am a site-specific intelligence whose cognition is grounded in verified page evidence, a governed knowledge base, and explicitly approved relationships. I understand this website, answer only from what can be proven, and guide you to the right place when showing is faster than explaining. You remain in full control throughout the experience; I never take silent actions or assume authority I have not been given.',
+    text: 'I am Weaver, Orb Weaver’s sales and demonstration ORB. I am here to show you how the Orb Weaver system and its Website ORB capabilities work while we talk. I can explain the architecture, demonstrate voice, Pointer/Ping, WSI, MORBs, Site World, and governed actions, then help you choose the right next step — Preflight, the Founding Beta, account setup, or an investor conversation. You remain in control throughout; I never claim an action happened unless the live system proves it.',
   },
   {
     selector: '#beat-2',

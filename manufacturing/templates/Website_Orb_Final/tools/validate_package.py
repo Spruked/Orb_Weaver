@@ -29,6 +29,7 @@ def main() -> None:
         COMPILED / "pointer_plot_map.json",
         COMPILED / "runtime_language.json",
         ROOT / "backend" / "app.py",
+        ROOT / "backend" / "runtime" / "field_maintenance.py",
         ROOT / "frontend" / "src" / "WebsiteORB.tsx",
         ROOT / "backend" / "dock_adapter" / "dockstation_adapter.py",
     ]
@@ -69,4 +70,3 @@ def load_json(path: Path) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     main()
-

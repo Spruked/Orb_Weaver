@@ -29,8 +29,12 @@ class GuidanceSKG(BaseModel):
     purpose: str = Field(min_length=1)
     registry: Literal["frontend/src/tour/discovery/patterns.json"]
     common_rules: tuple[str, ...]
-    modes: dict[GuidanceMode, tuple[str, ...]]
-    showcase_routes: dict[str, GuidanceMode]
+    # JSON object keys arrive as strings. Validate the literal mode values in
+    # the policy validator below instead of asking Pydantic to apply a
+    # Literal validator to dictionary keys (which rejects valid keys on the
+    # deployed Pydantic version).
+    modes: dict[str, tuple[str, ...]]
+    showcase_routes: dict[str, str]
     compilation_rules: tuple[str, ...]
     continuity_rules: tuple[str, ...]
 
@@ -38,13 +42,15 @@ class GuidanceSKG(BaseModel):
     def valid_policy(self):
         if set(self.modes) != _MODES:
             raise ValueError("Incomplete guidance modes")
+        if any(mode not in _MODES for mode in self.showcase_routes.values()):
+            raise ValueError("Unknown guidance mode")
         for rules in (self.common_rules, self.compilation_rules, self.continuity_rules, *self.modes.values()):
             if not rules or any(not rule.strip() for rule in rules):
                 raise ValueError("Guidance rules must not be empty")
         for route, mode in self.showcase_routes.items():
             if not route.startswith("/") or route.startswith("//") or urlsplit(route).query or urlsplit(route).fragment:
                 raise ValueError("Showcase routes must be exact local paths")
-            if mode not in self.modes:
+            if mode not in _MODES:
                 raise ValueError("Unknown guidance mode")
         for mode in self.modes:
             if len(self.render(mode).encode("utf-8")) > MAX_GUIDANCE_BYTES:
