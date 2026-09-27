@@ -152,11 +152,11 @@ const OrbsIntegration: React.FC = () => {
           </div>
         </div>
         <div className="overflow-x-auto border-t border-slate-800 bg-slate-900 px-5 py-4">
-          <ol className="flex min-w-max items-center gap-2" aria-label="Authoritative customer journey">
+          <ol className="flex max-w-full flex-wrap items-center gap-2" aria-label="Authoritative customer journey">
             {JOURNEY.map(([key, label], index) => {
               const complete = snapshot.completed_stages.includes(key);
               const current = key === snapshot.current_stage;
-              return <React.Fragment key={key}><li className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-bold ${current ? 'bg-brand-orange text-brand-dark' : complete ? 'bg-emerald-900 text-emerald-200' : 'bg-white/10 text-slate-300'}`}>{complete ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleDashed className="h-3.5 w-3.5" />}{label}</li>{index < JOURNEY.length - 1 && <ArrowRight className="h-3.5 w-3.5 text-slate-600" />}</React.Fragment>;
+              return <React.Fragment key={key}><li className={`flex max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-center text-xs font-bold whitespace-normal ${current ? 'bg-brand-orange text-brand-dark' : complete ? 'bg-emerald-900 text-emerald-200' : 'bg-white/10 text-slate-300'}`}>{complete ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <CircleDashed className="h-3.5 w-3.5 shrink-0" />}{label}</li>{index < JOURNEY.length - 1 && <ArrowRight className="hidden h-3.5 w-3.5 text-slate-600 sm:block" />}</React.Fragment>;
             })}
           </ol>
         </div>
@@ -178,11 +178,11 @@ const OrbsIntegration: React.FC = () => {
 
       {snapshot.blocking_reason && <section className="card border-amber-200 bg-amber-50"><div className="flex gap-3"><AlertTriangle className="h-5 w-5 text-amber-700" /><div><h2 className="font-bold text-slate-950">Current blocker</h2><p className="mt-1 text-sm text-slate-700">{snapshot.blocking_reason}</p></div></div></section>}
 
-      <section className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="card">
+      <section className="grid min-w-0 gap-5">
+        <div className="card min-w-0">
           <div className="flex items-center gap-3"><ShieldCheck className="h-5 w-5 text-brand-accent" /><h2 className="text-xl font-bold text-slate-950">Approved stage evidence</h2></div>
           <p className="mt-2 text-sm text-slate-600">This is the project-scoped evidence the governor permits at the current stage. It contains no provider secrets or unrestricted handlers.</p>
-          <pre className="mt-4 max-h-[34rem] overflow-auto rounded-xl bg-slate-950 p-4 text-xs leading-6 text-slate-200">{JSON.stringify(snapshot.approved_stage_evidence, null, 2)}</pre>
+          <pre className="mt-4 max-h-[34rem] max-w-full overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-950 p-4 text-xs leading-6 text-slate-200">{JSON.stringify(snapshot.approved_stage_evidence, null, 2)}</pre>
         </div>
         <div className="space-y-5">
           <div className="card">

@@ -378,7 +378,16 @@ export interface DockSituationalGuideRail {
 export interface DockConfiguration {
   schema: 'orb_weaver.orb_dock_configuration.v1';
   orb_name: string;
-  appearance: { skin_id: string };
+  appearance: {
+    skin_id: string;
+    custom_skin_id?: string | null;
+    custom_skin_display_name?: string | null;
+    custom_skin_asset_path?: string | null;
+    custom_skin_sha256?: string | null;
+    custom_skin_width?: number | null;
+    custom_skin_height?: number | null;
+    custom_skin_file_size?: number | null;
+  };
   llm: {
     provider: 'runtime_default' | 'ollama_local' | 'openai_api' | 'anthropic_api' | 'google_api' | 'openai_compatible';
     model?: string | null;
@@ -413,6 +422,15 @@ export interface DockCompileIssue {
   message: string;
 }
 
+export interface DockPreferenceReview {
+  category: string;
+  field: string;
+  index: number;
+  text: string;
+  status: 'compatible' | 'redundant' | 'conflict' | 'unsupported' | 'needs_review';
+  reason: string;
+}
+
 export interface OrbDockStation {
   schema: 'orb_weaver.orb_dock_station.v1';
   project: { id: string; name: string; domain: string };
@@ -429,14 +447,18 @@ export interface OrbDockStation {
     publishable: boolean;
     blockers: DockCompileIssue[];
     warnings: DockCompileIssue[];
+    preference_review?: DockPreferenceReview[];
     preview_hash: string;
   };
   latest_crawl?: CrawlJob | null;
-  skins: Array<{ skin_id: string; display_name: string; asset_path: string; factory_default?: boolean }>;
+  skins: Array<{ skin_id: string; display_name: string; asset_path: string; factory_default?: boolean; custom?: boolean; width?: number | null; height?: number | null; file_size?: number | null }>;
   llm_options: Array<{ id: DockConfiguration['llm']['provider']; label: string; description: string }>;
 }
 
 export interface DockOllamaStatus {
+  provider?: 'ollama_local' | 'openai_compatible';
+  protocol?: 'native_ollama' | 'openai_compatible';
+  status?: 'available' | 'service_unreachable' | 'provider_misconfigured' | 'no_models_installed' | 'authentication_required' | 'configuration_required' | string;
   configured: boolean;
   reachable: boolean;
   endpoint?: string | null;
@@ -1495,12 +1517,19 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(payload)
     }),
+  uploadOrbDockCustomSkin: (projectId: string, image: File) => {
+    const formData = new FormData();
+    formData.append('image', image, image.name);
+    return uploadForm<OrbDockStation>(`/api/projects/${projectId}/orb-dock/custom-skin`, formData);
+  },
   compileOrbDock: (projectId: string) =>
     request<OrbDockStation>(`/api/projects/${projectId}/orb-dock/compile`, { method: 'POST' }),
   publishOrbDock: (projectId: string) =>
     request<OrbDockStation>(`/api/projects/${projectId}/orb-dock/publish`, { method: 'POST' }),
   getOrbDockOllama: (projectId: string) =>
     request<DockOllamaStatus>(`/api/projects/${projectId}/orb-dock/ollama`),
+  getOrbDockProviderStatus: (projectId: string, provider: 'ollama_local' | 'openai_compatible') =>
+    request<DockOllamaStatus>(`/api/projects/${projectId}/orb-dock/provider-status/${provider}`),
   pullOrbDockOllamaModel: (projectId: string, model: string) =>
     request<{ status: string; model: string }>(`/api/projects/${projectId}/orb-dock/ollama/pull`, {
       method: 'POST',

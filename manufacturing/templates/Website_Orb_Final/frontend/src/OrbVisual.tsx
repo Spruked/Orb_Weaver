@@ -12,7 +12,7 @@ export const Orb: React.FC<{
   size = 200,
   state = "idle",
   onClick,
-  skinSrc = "/orb-skins/tuxorb.png",
+  skinSrc = "/orb-skins/WORKORB21600.png",
 }) => {
   return (
     <button

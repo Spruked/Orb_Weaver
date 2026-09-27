@@ -1,5 +1,85 @@
 # Orb Weaver Development Log
 
+## 2026-09-27 — Dock Station owner-instruction UX completed
+
+* Added consistent owner-facing explanations for Business Objectives,
+  Additional Guide Rails, and Situational Guide Rails.
+* The three surfaces now distinguish outcomes, standing preferences, and
+  conditional instructions, with practical examples and accessible add-button
+  labels/tooltips.
+* Documented the precedence boundary: owner additions supplement Orb Weaver
+  behavior and remain subject to locked doctrine, Site World evidence,
+  verification, authorization, payment, and action-control rules.
+* Documented compilation review and publication blocking for conflicting,
+  unsupported, or ambiguous owner instructions. No Docker or deployment work
+  was performed for the UI pass.
+
+## 2026-09-27 — Website ORB deployment standard selected
+
+* Architecture decision: every manufactured Website ORB will ship as one
+  Docker Compose package for a single customer-controlled host.
+* Kubernetes, Helm, and cluster orchestration are explicitly out of scope.
+  The package boundary is intended to include the runtime, gateway, bundled
+  model, Kokoro/STT services, site Vault, selected skin, Work ORB fallback,
+  loader, health checks, restart policies, and persistent storage.
+* The current Python-template installer remains a legacy development path until
+  the Compose package passes a clean-host acceptance gate. No Docker rebuild,
+  service restart, or deployment migration was performed for this decision.
+
+## 2026-09-27 — Dock Station provider protocol separation
+
+* Separated native Local Ollama discovery and downloads from the local
+  OpenAI-compatible inference gateway. Local Ollama uses the backend-owned
+  `OLLAMA_BASE_URL` and `/api/tags` or `/api/pull`; the gateway uses
+  `OPENAI_COMPATIBLE_BASE_URL` and `/v1/models`.
+* Added backend-owned provider status classification for available,
+  unreachable, misconfigured, empty, authentication-required, and missing
+  configuration states. Provider endpoints remain server-side configuration;
+  secrets are not exposed to the browser.
+* Dock Station now displays the active provider's protocol-specific status and
+  disables Ollama downloads for non-Ollama providers. No LLM service was
+  restarted or changed during this repair.
+
+## 2026-09-27 — Work ORB factory fallback and Custom ORB Skin upload
+
+* Promoted the existing Work ORB artwork to `orb_factory_default_v1`, the
+  immutable standard Website ORB and verified runtime fallback. Business ORB
+  is now only an included selectable skin.
+* Updated the skin manifest, registry, Dock Station catalog, preflight preview,
+  universal loader, runtime identity fallback, and Website ORB manufacturing
+  template to use Work ORB without changing its artwork.
+* Added bounded Custom ORB Skin upload: PNG/WebP/JPG input, 12 MB limit,
+  decoded-image validation, centered 1024px optimized PNG normalization, and
+  canonical `vault_system` storage. Missing or invalid custom artwork falls
+  back to Work ORB.
+* Added Dock Station upload/re-upload/factory-reset controls and regression
+  coverage for normalized public asset serving and factory fallback selection.
+
+## 2026-09-27 — True Mark manufacturing run monitored
+
+* Production True Mark frontend was switched from the exposed Vite development
+  server to a built Vite preview artifact on port `3300`. The live domain now
+  serves built assets plus valid `robots.txt` and `sitemap.xml` responses.
+* The replacement True Mark crawl is active as crawl job `15`: latest observed
+  state is `7` pages crawled, `14` discovered, `0` errors, with the worker
+  opening `/login`. Pointer mapping remains `RUNNING`; pointer verification,
+  recovery, and runtime guidance have not started yet because they remain
+  downstream of crawl completion.
+* The prior crawl job `14` is historical and invalid for route coverage: it
+  completed before the production serving fix, saw only four routes, and
+  produced zero pointer candidates.
+* Checkout/manufacturing monitoring boundary: use the provider's sandbox/test
+  payment path or an explicit test entitlement. No real payment is bypassed or
+  falsified. After an authorized test checkout, monitor the UI-driven
+  MAP_CRAWL -> SITE_SCAN -> ORB_SCAN -> POINTER_RECOVERY/manufacturing stages
+  and record each completion or blocker here.
+* True Mark dev checkout inspection: `/payments/process` is a local development
+  payment-session workflow. It records `status: payment_cleared`, creates the
+  receipt, and returns the payment token without calling Stripe, PayPal, or
+  Square. This is sufficient for an end-to-end dev manufacturing test, but the
+  path must remain dev/test-only and must not be presented as real payment
+  capture in a production deployment.
+
 ## 2026-09-27 — Bounded Tesseract evidence for Pointer Recovery
 
 * Extended `pointer_recovery_capture.js` with additive render metadata:

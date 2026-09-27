@@ -19,11 +19,11 @@ assert.equal(asset.readUInt32BE(20), manifest.height, 'Factory asset height does
 assert.equal(asset[24], 8, 'Factory asset must use 8-bit channels');
 assert.equal(asset[25], 6, 'Factory asset must use PNG RGBA color type');
 assert.equal(manifest.skin_id, 'orb_factory_default_v1');
-assert.equal(manifest.display_name, 'O.R.B.S. Factory Default');
-assert.equal(manifest.path, '/orb-skins/tuxorb.png');
+assert.equal(manifest.display_name, 'Work ORB');
+assert.equal(manifest.path, '/orb-skins/WORKORB21600.png');
 assert.equal(manifest.mime_type, 'image/png');
 assert.equal(manifest.color, 'RGBA, 8-bit');
-assert.equal(manifest.provenance, 'Tuxedo Factory ORB asset supplied by the owner');
+assert.equal(manifest.provenance, 'Work ORB asset supplied by the owner');
 assert.equal(manifest.owner_editable, false);
 assert.equal(manifest.immutable_default, true);
 assert.equal(manifest.fallback_enabled, true);

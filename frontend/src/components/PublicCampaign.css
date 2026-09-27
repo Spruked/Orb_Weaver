@@ -110,10 +110,34 @@
 .ow-campaign-page .text-cyan-200,
 .ow-campaign-page .text-cyan-300 { color: var(--ow-campaign-teal) !important; }
 .ow-campaign-page .bg-slate-950,
+.ow-campaign-page .bg-slate-950\/50,
+.ow-campaign-page .bg-slate-950\/40,
+.ow-campaign-page .bg-slate-950\/35,
 .ow-campaign-page .bg-slate-900\/60,
 .ow-campaign-page .bg-slate-900\/45,
+.ow-campaign-page .bg-blue-950\/20,
 .ow-campaign-page .bg-white\/\[0\.05\],
-.ow-campaign-page .bg-white\/\[0\.045\] { background: rgba(255, 255, 255, .44) !important; }
+.ow-campaign-page .bg-white\/\[0\.045\] { background: rgba(255, 255, 255, .68) !important; }
+.ow-campaign-page .bg-slate-900\/80 { background: #183b3a !important; }
+.ow-campaign-page [data-preflight-finding="overview"] {
+  background: rgba(255, 255, 255, .82) !important;
+  border-color: var(--ow-campaign-rule) !important;
+}
+.ow-campaign-page [data-preflight-finding="overview"] > div:first-child > div {
+  background: var(--ow-campaign-paper-deep) !important;
+  border-color: var(--ow-campaign-rule) !important;
+}
+.ow-campaign-page [data-preflight-finding="overview"] > div:last-child,
+.ow-campaign-page [data-preflight-finding="overview"] > div:last-child .text-white {
+  color: #f2f0e8 !important;
+}
+.ow-campaign-page [data-preflight-finding="overview"] > div:last-child .text-slate-400 {
+  color: #c8ddd6 !important;
+}
+.ow-campaign-page [data-preflight-finding="overview"] > div:last-child .text-cyan-100,
+.ow-campaign-page [data-preflight-finding="overview"] > div:last-child .text-cyan-200 {
+  color: var(--ow-campaign-lime) !important;
+}
 .ow-campaign-page .border-cyan-300\/20,
 .ow-campaign-page .border-cyan-300\/25,
 .ow-campaign-page .border-cyan-300\/15,

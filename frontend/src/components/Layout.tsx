@@ -35,7 +35,7 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const navItems = [
-    { path: '/', icon: LayoutDashboard, label: 'Dashboard', hover: 'hover:border-cyan-400/60 hover:bg-cyan-400/15 hover:text-cyan-100' },
+    { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', hover: 'hover:border-cyan-400/60 hover:bg-cyan-400/15 hover:text-cyan-100' },
     { path: '/projects', icon: Globe, label: 'Projects', hover: 'hover:border-blue-400/60 hover:bg-blue-400/15 hover:text-blue-100' },
     { path: '/scan-center', icon: ScanLine, label: 'Scan Center', hover: 'hover:border-emerald-400/60 hover:bg-emerald-400/15 hover:text-emerald-100' },
     { path: '/crawl', icon: Search, label: 'Crawl Jobs', hover: 'hover:border-violet-400/60 hover:bg-violet-400/15 hover:text-violet-100' },

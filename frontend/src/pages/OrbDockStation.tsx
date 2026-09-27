@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -50,7 +50,7 @@ const providerDefaults: Record<DockConfiguration['llm']['provider'], Partial<Doc
   openai_api: { model: 'gpt-4.1-mini', base_url: null, api_key_env: 'OPENAI_API_KEY' },
   anthropic_api: { model: 'claude-3-5-sonnet-latest', base_url: null, api_key_env: 'ANTHROPIC_API_KEY' },
   google_api: { model: 'gemini-2.5-flash', base_url: null, api_key_env: 'GEMINI_API_KEY' },
-  openai_compatible: { model: '', base_url: 'http://127.0.0.1:11434/v1', api_key_env: null },
+  openai_compatible: { model: '', base_url: 'http://127.0.0.1:16520/v1', api_key_env: null },
 };
 
 const lines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
@@ -168,6 +168,8 @@ const OrbDockStationPage: React.FC = () => {
   const [ollama, setOllama] = useState<DockOllamaStatus | null>(null);
   const [ttsVoices, setTtsVoices] = useState<WebsiteOrbTtsVoices | null>(null);
   const [pullModel, setPullModel] = useState('');
+  const [uploadingSkin, setUploadingSkin] = useState(false);
+  const customSkinInput = useRef<HTMLInputElement | null>(null);
 
   const load = async () => {
     if (!projectId) return;
@@ -188,9 +190,11 @@ const OrbDockStationPage: React.FC = () => {
   useEffect(() => { void load(); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (tab !== 'models' || !projectId || ollama) return;
-    void api.getOrbDockOllama(projectId).then(setOllama).catch((err) => setError(err instanceof Error ? err.message : 'Unable to inspect Ollama'));
-  }, [tab, projectId, ollama]);
+    if (tab !== 'models' || !projectId || !draft) return;
+    const provider = draft.llm.provider === 'openai_compatible' ? 'openai_compatible' : 'ollama_local';
+    if (ollama?.provider === provider) return;
+    void api.getOrbDockProviderStatus(projectId, provider).then(setOllama).catch((err) => setError(err instanceof Error ? err.message : 'Unable to inspect the selected model provider'));
+  }, [tab, projectId, draft?.llm.provider, ollama?.provider]);
 
   useEffect(() => {
     if (tab !== 'behavior' || ttsVoices) return;
@@ -219,6 +223,10 @@ const OrbDockStationPage: React.FC = () => {
 
   const save = async (quiet = false) => {
     if (!projectId || !draft) return null;
+    if (!dirty) {
+      if (!quiet) setNotice('No draft changes to save. Edit a Dock Station setting first.');
+      return dock;
+    }
     setWorking('save');
     setError('');
     try {
@@ -261,6 +269,7 @@ const OrbDockStationPage: React.FC = () => {
       const response = await api.publishOrbDock(projectId);
       setDock(response);
       setDraft(response.configuration);
+      setDirty(false);
       setNotice(`Published policy version ${response.publication.version}.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The Dock policy could not be published');
@@ -285,6 +294,49 @@ const OrbDockStationPage: React.FC = () => {
     } finally {
       setWorking('');
     }
+  };
+
+  const uploadCustomSkin = async (file: File) => {
+    if (!projectId) return;
+    if (!['image/png', 'image/webp', 'image/jpeg'].includes(file.type)) {
+      setError('Custom ORB Skin must be a PNG, WebP, or JPG image.');
+      return;
+    }
+    if (file.size > 12 * 1024 * 1024) {
+      setError('Custom ORB Skin must be 12 MB or smaller.');
+      return;
+    }
+    setUploadingSkin(true);
+    setError('');
+    try {
+      const response = await api.uploadOrbDockCustomSkin(projectId, file);
+      setDock(response);
+      setDraft(response.configuration);
+      setDirty(false);
+      setNotice('Custom ORB Skin uploaded, normalized, and selected. Compile and publish to deploy it.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to upload the Custom ORB Skin');
+    } finally {
+      setUploadingSkin(false);
+      if (customSkinInput.current) customSkinInput.current.value = '';
+    }
+  };
+
+  const resetCustomSkin = () => {
+    updateDraft((current) => ({
+      ...current,
+      appearance: {
+        skin_id: 'orb_factory_default_v1',
+        custom_skin_id: null,
+        custom_skin_display_name: null,
+        custom_skin_asset_path: null,
+        custom_skin_sha256: null,
+        custom_skin_width: null,
+        custom_skin_height: null,
+        custom_skin_file_size: null,
+      },
+    }));
+    setNotice('Factory Default selected. Compile and publish to deploy the fallback skin.');
   };
 
   const compileCount = (dock?.compile.blockers.length || 0) + (dock?.compile.warnings.length || 0);
@@ -335,13 +387,13 @@ const OrbDockStationPage: React.FC = () => {
             <p className="mt-2 text-sm text-slate-600">{dock.project.name} · {dock.project.domain}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => void save()} disabled={!dirty || Boolean(working)} className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-45">
+            <button type="button" onClick={() => void save()} disabled={!draft || Boolean(working)} title={dirty ? 'Save the current Dock Station draft' : 'No draft changes to save'} className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-45">
               {working === 'save' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save draft
             </button>
-            <button onClick={() => void compile()} disabled={Boolean(working)} className="inline-flex items-center gap-2 rounded-md border border-brand-accent px-4 py-2.5 text-sm font-bold text-brand-accent hover:bg-cyan-50 disabled:opacity-45">
+            <button type="button" onClick={() => void compile()} disabled={Boolean(working)} className="inline-flex items-center gap-2 rounded-md border border-brand-accent px-4 py-2.5 text-sm font-bold text-brand-accent hover:bg-cyan-50 disabled:opacity-45">
               {working === 'compile' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck2 className="h-4 w-4" />} Compile
             </button>
-            <button onClick={() => void publish()} disabled={Boolean(working) || !dock.compile.publishable} className="inline-flex items-center gap-2 rounded-md bg-brand-orange px-4 py-2.5 text-sm font-bold text-brand-dark hover:bg-brand-accent hover:text-white disabled:opacity-45">
+            <button type="button" onClick={() => void publish()} disabled={Boolean(working) || !dock.compile.publishable} className="inline-flex items-center gap-2 rounded-md bg-brand-orange px-4 py-2.5 text-sm font-bold text-brand-dark hover:bg-brand-accent hover:text-white disabled:opacity-45">
               {working === 'publish' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />} Publish
             </button>
           </div>
@@ -368,6 +420,23 @@ const OrbDockStationPage: React.FC = () => {
                 <p key={`${issue.path}-${index}`} className="mt-1 text-sm text-slate-700"><strong>{issue.path}:</strong> {issue.message}</p>
               ))}
             </div>
+          </div>
+        </section>
+      )}
+      {!!dock.compile.preference_review?.length && (
+        <section className="rounded-md border border-slate-200 bg-white px-4 py-3">
+          <h2 className="font-bold text-slate-950">Owner preference review</h2>
+          <p className="mt-1 text-sm text-slate-600">Owner additions supplement the standard Website ORB behavior and cannot override doctrine, Site World evidence, verification, privacy, authorization, or runtime safety.</p>
+          <div className="mt-3 space-y-2">
+            {dock.compile.preference_review.map((item) => (
+              <div key={`${item.field}-${item.index}`} className="rounded-md border border-slate-200 px-3 py-2 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-extrabold uppercase ${item.status === 'compatible' ? 'bg-emerald-100 text-emerald-800' : item.status === 'redundant' ? 'bg-slate-100 text-slate-700' : item.status === 'needs_review' ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}`}>{item.status.replace('_', ' ')}</span>
+                  <span className="font-semibold text-slate-900">{item.text}</span>
+                </div>
+                <p className="mt-1 text-xs text-slate-600">{item.reason}</p>
+              </div>
+            ))}
           </div>
         </section>
       )}
@@ -461,13 +530,14 @@ const OrbDockStationPage: React.FC = () => {
             </div>
             <div className="rounded-md border border-slate-200 bg-white p-5">
               <h3 className="font-bold text-slate-950">Job and rules</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-500">These are optional owner preferences. They supplement the standard Website ORB behavior and cannot override safety, privacy, verification, Site World evidence, authorization, or pointer rules.</p>
               <div className="mt-4 space-y-4">
                 <TextAreaField label="Greeting script" value={draft.behavior.greeting_script} onChange={(greeting_script) => updateBehavior({ greeting_script })} rows={4} />
                 <TextAreaField label="Job description" value={draft.behavior.job_description} onChange={(job_description) => updateBehavior({ job_description })} rows={5} />
                 <TextAreaField label="Persona notes" value={draft.behavior.persona_notes} onChange={(persona_notes) => updateBehavior({ persona_notes })} rows={5} />
-                <ListField label="Must follow rules" value={draft.behavior.must_follow_rules} onChange={(must_follow_rules) => updateBehavior({ must_follow_rules })} />
-                <ListField label="Must not rules" value={draft.behavior.must_not_rules} onChange={(must_not_rules) => updateBehavior({ must_not_rules })} />
-                <ListField label="Prohibited tone" value={draft.behavior.prohibited_tone} onChange={(prohibited_tone) => updateBehavior({ prohibited_tone })} />
+                <ListField label="Additional preferences" value={draft.behavior.must_follow_rules} onChange={(must_follow_rules) => updateBehavior({ must_follow_rules })} />
+                <ListField label="Things you prefer Weaver to avoid" value={draft.behavior.must_not_rules} onChange={(must_not_rules) => updateBehavior({ must_not_rules })} />
+                <ListField label="Tone preferences to avoid" value={draft.behavior.prohibited_tone} onChange={(prohibited_tone) => updateBehavior({ prohibited_tone })} />
               </div>
             </div>
           </div>
@@ -477,12 +547,24 @@ const OrbDockStationPage: React.FC = () => {
       {tab === 'appearance' && (
         <section>
           <h2 className="text-2xl font-bold text-slate-950">ORB skins</h2>
-          <p className="mt-2 text-sm text-slate-600">Choose the deployed Website ORB body. Factory Default remains available as a verified fallback.</p>
+          <p className="mt-2 text-sm text-slate-600">Choose the deployed Website ORB body. Custom artwork is normalized to a centered, optimized 1024px PNG and the Factory Default remains available as a verified fallback.</p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <article className="rounded-md border border-dashed border-brand-accent bg-cyan-50/40 p-3">
+              <div className="flex aspect-square items-center justify-center rounded bg-white/80 p-4">
+                {selectedSkin?.custom ? <img src={selectedSkin.asset_path} alt="Your Custom ORB Skin preview" className="h-full w-full object-contain" /> : <div className="text-center text-sm font-bold text-brand-dark">Your ORB<br /><span className="font-normal text-slate-600">Upload a custom physical appearance</span></div>}
+              </div>
+              <div className="mt-3 flex items-start justify-between gap-2"><span className="text-sm font-bold text-slate-950">Your ORB</span>{selectedSkin?.custom && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}</div>
+              <p className="mt-1 text-xs leading-5 text-slate-600">PNG or WebP preferred; JPG accepted. Square artwork at 1024×1024 or larger is recommended.</p>
+              <input ref={customSkinInput} type="file" accept="image/png,image/webp,image/jpeg" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadCustomSkin(file); }} />
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => customSkinInput.current?.click()} disabled={uploadingSkin} className="rounded-md bg-brand-dark px-3 py-2 text-xs font-bold text-white hover:bg-brand-accent disabled:opacity-50">{uploadingSkin ? 'Normalizing…' : selectedSkin?.custom ? 'Re-upload' : '+ Upload Custom ORB'}</button>
+                {selectedSkin?.custom && <button type="button" onClick={resetCustomSkin} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Use Factory Default</button>}
+              </div>
+            </article>
             {dock.skins.map((skin) => {
               const selected = skin.skin_id === draft.appearance.skin_id;
               return (
-                <button key={skin.skin_id} onClick={() => updateDraft((current) => ({ ...current, appearance: { skin_id: skin.skin_id } }))} className={`rounded-md border bg-white p-3 text-left ${selected ? 'border-brand-orange ring-2 ring-brand-orange/25' : 'border-slate-200 hover:border-slate-400'}`}>
+                <button type="button" key={skin.skin_id} onClick={() => updateDraft((current) => ({ ...current, appearance: { ...current.appearance, skin_id: skin.skin_id } }))} className={`rounded-md border bg-white p-3 text-left ${selected ? 'border-brand-orange ring-2 ring-brand-orange/25' : 'border-slate-200 hover:border-slate-400'}`}>
                   <div className="aspect-square overflow-hidden rounded bg-slate-100"><img src={skin.asset_path} alt={`${skin.display_name} - Website ORB appearance skin`} className="h-full w-full object-contain" /></div>
                   <div className="mt-3 flex items-start justify-between gap-2"><span className="text-sm font-bold text-slate-900">{skin.display_name}</span>{selected && <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}</div>
                   {skin.factory_default && <p className="mt-1 text-xs text-slate-500">Verified fallback</p>}
@@ -515,7 +597,8 @@ const OrbDockStationPage: React.FC = () => {
                 </label>
                 {draft.llm.provider === 'openai_compatible' && (
                   <label className={labelClass}>Base URL
-                    <input className={inputClass} value={draft.llm.base_url || ''} onChange={(event) => updateLlm({ base_url: event.target.value || null })} placeholder="http://127.0.0.1:11434/v1" />
+                    <input className={inputClass} value={draft.llm.base_url || 'Backend-managed OpenAI-compatible endpoint'} readOnly aria-readonly="true" />
+                    <span className="mt-1 block text-xs font-normal text-slate-500">Discovery uses the backend-managed `/v1/models` endpoint. Secrets never enter the browser.</span>
                   </label>
                 )}
                 {draft.llm.provider !== 'runtime_default' && draft.llm.provider !== 'ollama_local' && (
@@ -535,12 +618,13 @@ const OrbDockStationPage: React.FC = () => {
             </div>
             <div className="rounded-md border border-slate-200 bg-white p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><h3 className="font-bold text-slate-950">Local Ollama</h3><p className="mt-1 text-sm text-slate-600">{ollama?.message || 'Checking the configured local runtime...'}</p></div>
-              <button onClick={() => projectId && api.getOrbDockOllama(projectId).then(setOllama)} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Refresh</button>
+              <div><h3 className="font-bold text-slate-950">{draft.llm.provider === 'openai_compatible' ? 'OpenAI-compatible gateway' : 'Local Ollama'}</h3><p className="mt-1 text-sm text-slate-600">{ollama?.message || 'Checking the configured provider...'}</p></div>
+              <button type="button" onClick={() => projectId && api.getOrbDockProviderStatus(projectId, draft.llm.provider === 'openai_compatible' ? 'openai_compatible' : 'ollama_local').then(setOllama)} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Refresh</button>
             </div>
+            {ollama && <p className={`mt-3 text-xs font-extrabold uppercase tracking-wide ${ollama.status === 'available' ? 'text-emerald-700' : ollama.status === 'no_models_installed' ? 'text-amber-700' : 'text-red-700'}`}>{(ollama.status || 'service_unreachable').replace(/_/g, ' ')}</p>}
             {ollama?.reachable && (
               <label className={`${labelClass} mt-4`}>Installed model
-                <select className={inputClass} value={draft.llm.model || ''} onChange={(event) => updateDraft((current) => ({ ...current, llm: { ...current.llm, provider: 'ollama_local', model: event.target.value || null } }))}>
+                <select className={inputClass} value={draft.llm.model || ''} onChange={(event) => updateDraft((current) => ({ ...current, llm: { ...current.llm, provider: draft.llm.provider, model: event.target.value || null } }))}>
                   <option value="">Select a model</option>
                   {ollama.models.map((model) => <option key={model.name} value={model.name}>{model.name} · {(model.size / 1_073_741_824).toFixed(1)} GB</option>)}
                 </select>
@@ -548,7 +632,7 @@ const OrbDockStationPage: React.FC = () => {
             )}
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <input className={`${inputClass} mt-0`} value={pullModel} onChange={(event) => setPullModel(event.target.value)} placeholder="Model name, for example qwen3:8b" />
-              <button onClick={() => void pull()} disabled={!ollama?.reachable || !pullModel.trim() || working === 'pull'} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-brand-orange px-4 py-2.5 text-sm font-bold text-brand-dark hover:bg-brand-accent hover:text-white disabled:opacity-45">
+              <button type="button" onClick={() => void pull()} disabled={draft.llm.provider !== 'ollama_local' || !ollama?.reachable || !pullModel.trim() || working === 'pull'} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-md bg-brand-orange px-4 py-2.5 text-sm font-bold text-brand-dark hover:bg-brand-accent hover:text-white disabled:opacity-45">
                 {working === 'pull' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Download with Ollama
               </button>
             </div>
@@ -559,7 +643,13 @@ const OrbDockStationPage: React.FC = () => {
 
       {tab === 'objectives' && (
         <section>
-          <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-2xl font-bold text-slate-950">Business objectives</h2><p className="mt-2 text-sm text-slate-600">Each outcome is bound to completion evidence, allowed destinations, tools, and explicit success or failure.</p></div><button onClick={() => updateDraft((current) => ({ ...current, business_objectives: [...current.business_objectives, blankObjective()] }))} className="inline-flex items-center gap-2 rounded-md bg-brand-dark px-4 py-2.5 text-sm font-bold text-white"><Plus className="h-4 w-4" /> Add objective</button></div>
+          <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-2xl font-bold text-slate-950">Business Objectives</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Business Objectives tell your ORB what outcomes are most important for your website.</p></div><button type="button" title="Example: Help visitors complete a certificate registration when they are ready." aria-label="Add objective. Example: Help visitors complete a certificate registration when they are ready." onClick={() => updateDraft((current) => ({ ...current, business_objectives: [...current.business_objectives, blankObjective()] }))} className="inline-flex items-center gap-2 rounded-md bg-brand-dark px-4 py-2.5 text-sm font-bold text-white"><Plus className="h-4 w-4" /> Add objective</button></div>
+          <div className="mt-4 rounded-md border border-cyan-200 bg-cyan-50/70 p-4 text-sm leading-6 text-slate-700">
+            <p>Use this section to add goals such as helping visitors understand a service, increasing completed registrations, guiding qualified visitors toward a purchase, reducing abandoned workflows, or encouraging contact with your team.</p>
+            <p className="mt-2">Objectives influence how the ORB prioritizes helpful next steps during a conversation. They do not override Orb Weaver's built-in safety, privacy, verification, authorization, or Site World rules.</p>
+            <p className="mt-2">Orb Weaver provides the core behavior your ORB needs to operate correctly. Add only the business priorities that are important to you.</p>
+            <p className="mt-3 text-xs font-semibold text-slate-600">Example: Help visitors complete a certificate registration when they are ready.</p>
+          </div>
           <div className="mt-5 space-y-4">
             {draft.business_objectives.map((objective, index) => (
               <article key={objective.objective_id} className="rounded-md border border-slate-200 bg-white p-5">
@@ -574,7 +664,14 @@ const OrbDockStationPage: React.FC = () => {
 
       {tab === 'additional' && (
         <section>
-          <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-2xl font-bold text-slate-950">Additional Guide Rails</h2><p className="mt-2 text-sm text-slate-600">Direct the ORB with structured behavior, evidence, action, and escalation rules.</p></div><button onClick={() => updateDraft((current) => ({ ...current, additional_guide_rails: [...current.additional_guide_rails, blankAdditionalRail()] }))} className="inline-flex items-center gap-2 rounded-md bg-brand-dark px-4 py-2.5 text-sm font-bold text-white"><Plus className="h-4 w-4" /> Add Guide Rail</button></div>
+          <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-2xl font-bold text-slate-950">Additional Guide Rails</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Additional Guide Rails let you add business-specific instructions for how your ORB should handle situations that are unique to your website or organization.</p></div><button type="button" title="Example: If a visitor asks for custom enterprise pricing, direct them to our contact page rather than estimating a price." aria-label="Add guide rail. Example: If a visitor asks for custom enterprise pricing, direct them to our contact page rather than estimating a price." onClick={() => updateDraft((current) => ({ ...current, additional_guide_rails: [...current.additional_guide_rails, blankAdditionalRail()] }))} className="inline-flex items-center gap-2 rounded-md bg-brand-dark px-4 py-2.5 text-sm font-bold text-white"><Plus className="h-4 w-4" /> Add Guide Rail</button></div>
+          <div className="mt-4 rounded-md border border-cyan-200 bg-cyan-50/70 p-4 text-sm leading-6 text-slate-700">
+            <p>Use this section for preferences such as when to recommend contacting your team, how to handle special customer requests, what topics should be referred to a human, or business practices that are not already captured by your website data.</p>
+            <p className="mt-2">These guide rails supplement the ORB's built-in behavior. They cannot override Orb Weaver's locked safety, privacy, verification, authorization, payment, Site World, or action-control rules.</p>
+            <p className="mt-2">Keep additions specific and practical. Orb Weaver will review them during compilation and flag instructions that conflict with existing rules, request unsupported behavior, or need clarification.</p>
+            <p className="mt-3 text-xs font-semibold text-slate-600">Example: If a visitor asks for custom enterprise pricing, direct them to our contact page rather than estimating a price.</p>
+          </div>
+          <h3 className="mt-6 text-lg font-bold text-slate-950">Your Additional Guide Rails</h3>
           <div className="mt-5 space-y-4">
             {draft.additional_guide_rails.map((rail, index) => (
               <article key={rail.guide_rail_id} className="rounded-md border border-slate-200 bg-white p-5">
@@ -589,7 +686,15 @@ const OrbDockStationPage: React.FC = () => {
 
       {tab === 'situational' && (
         <section>
-          <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-2xl font-bold text-slate-950">Situational Guide Rails</h2><p className="mt-2 text-sm text-slate-600">These rules activate only when their compiled route, visitor, workflow, confidence, or business condition matches.</p></div><button onClick={() => updateDraft((current) => ({ ...current, situational_guide_rails: [...current.situational_guide_rails, blankSituationalRail()] }))} className="inline-flex items-center gap-2 rounded-md bg-brand-dark px-4 py-2.5 text-sm font-bold text-white"><Plus className="h-4 w-4" /> Add situation</button></div>
+          <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-2xl font-bold text-slate-950">Situational Guide Rails</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Situational Guide Rails tell your ORB how to respond in specific situations that may come up during a visitor conversation.</p></div><button type="button" title="Example: If a visitor asks for a refund, explain the published refund policy and offer the approved support path." aria-label="Add situational guide rail. Example: If a visitor asks for a refund, explain the published refund policy and offer the approved support path." onClick={() => updateDraft((current) => ({ ...current, situational_guide_rails: [...current.situational_guide_rails, blankSituationalRail()] }))} className="inline-flex items-center gap-2 rounded-md bg-brand-dark px-4 py-2.5 text-sm font-bold text-white"><Plus className="h-4 w-4" /> Add situational guide rail</button></div>
+          <div className="mt-4 rounded-md border border-cyan-200 bg-cyan-50/70 p-4 text-sm leading-6 text-slate-700">
+            <p>Use this section for conditional instructions such as how to respond when a visitor is confused, asks for a refund, needs human assistance, requests information that is not available, reaches a sensitive topic, or enters a particular stage of a workflow.</p>
+            <p className="mt-2">Each guide rail should describe the situation and the preferred response or next step.</p>
+            <p className="mt-2">Situational Guide Rails supplement the ORB's built-in behavior and business objectives. They cannot override Orb Weaver's locked safety, privacy, verification, authorization, payment, Site World, or action-control rules.</p>
+            <p className="mt-2">Orb Weaver reviews these instructions during compilation and flags conflicts, unsupported actions, or ambiguous instructions before publication.</p>
+            <p className="mt-3 text-xs font-semibold text-slate-600">Example: If a visitor asks for a refund, explain the published refund policy and offer the approved support path.</p>
+          </div>
+          <h3 className="mt-6 text-lg font-bold text-slate-950">Your Situational Guide Rails</h3>
           <div className="mt-5 space-y-4">
             {draft.situational_guide_rails.map((rail, index) => {
               const condition = (patch: Partial<DockSituationalGuideRail['conditions']>) => updateSituational(index, { conditions: { ...rail.conditions, ...patch } });

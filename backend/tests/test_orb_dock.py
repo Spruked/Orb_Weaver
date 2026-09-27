@@ -1,9 +1,13 @@
+import asyncio
 import importlib
 import json
 import sys
+from io import BytesIO
 from pathlib import Path
 
+import httpx
 from fastapi.testclient import TestClient
+from PIL import Image
 
 
 def load_app(tmp_path, monkeypatch):
@@ -115,6 +119,76 @@ def valid_configuration():
     }
 
 
+class FakeProviderResponse:
+    def __init__(self, body, status_code=200):
+        self._body = body
+        self.status_code = status_code
+        self.request = httpx.Request("GET", "http://provider.test")
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise httpx.HTTPStatusError("provider error", request=self.request, response=self)
+
+    def json(self):
+        return self._body
+
+
+class FakeProviderClient:
+    calls = []
+    response_factory = None
+
+    def __init__(self, *args, **kwargs):
+        del args, kwargs
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        del args
+
+    async def get(self, url):
+        self.calls.append(url)
+        return self.response_factory(url)
+
+
+def test_dock_provider_discovery_uses_protocol_specific_endpoints(tmp_path, monkeypatch):
+    main, _client = load_app(tmp_path, monkeypatch)
+    main.settings.OLLAMA_BASE_URL = "http://127.0.0.1:11434"
+    main.settings.OPENAI_COMPATIBLE_BASE_URL = "http://127.0.0.1:16520"
+    FakeProviderClient.calls = []
+    FakeProviderClient.response_factory = staticmethod(lambda url: FakeProviderResponse(
+        {"models": [{"name": "qwen2.5:3b", "size": 123}]} if url.endswith("/api/tags")
+        else {"data": [{"id": "gateway-model"}]}
+    ))
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeProviderClient)
+
+    ollama = asyncio.run(main._inspect_dock_provider("ollama_local"))
+    gateway = asyncio.run(main._inspect_dock_provider("openai_compatible"))
+
+    assert ollama["status"] == "available", ollama
+    assert ollama["protocol"] == "native_ollama"
+    assert ollama["models"][0]["name"] == "qwen2.5:3b"
+    assert gateway["status"] == "available"
+    assert gateway["protocol"] == "openai_compatible"
+    assert gateway["models"][0]["name"] == "gateway-model"
+    assert FakeProviderClient.calls == [
+        "http://127.0.0.1:11434/api/tags",
+        "http://127.0.0.1:16520/v1/models",
+    ]
+
+
+def test_dock_ollama_404_is_provider_misconfiguration(tmp_path, monkeypatch):
+    main, _client = load_app(tmp_path, monkeypatch)
+    main.settings.OLLAMA_BASE_URL = "http://127.0.0.1:16520"
+    FakeProviderClient.response_factory = staticmethod(lambda _url: FakeProviderResponse({}, status_code=404))
+    monkeypatch.setattr(main.httpx, "AsyncClient", FakeProviderClient)
+
+    result = asyncio.run(main._inspect_dock_provider("ollama_local"))
+
+    assert result["status"] == "provider_misconfigured", result
+    assert "protocol" in result["message"]
+
+
 def test_dock_policy_compiles_publishes_and_strips_owner_notes(tmp_path, monkeypatch):
     main, client = load_app(tmp_path, monkeypatch)
     headers = signup(client, "dock-owner@example.com")
@@ -159,3 +233,75 @@ def test_dock_rejects_unverified_routes_and_owner_doctrine_mutation(tmp_path, mo
     configuration["locked_doctrine"] = []
     mutation = client.put(f"/api/projects/{project['id']}/orb-dock", headers=headers, json=configuration)
     assert mutation.status_code == 422
+
+
+def test_dock_classifies_owner_preferences_without_weakening_standard_behavior(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    headers = signup(client, "dock-preferences@example.com")
+    project = create_project(client, headers, "preferences.example.com")
+    configuration = valid_configuration()
+    configuration["behavior"] = {
+        "must_follow_rules": ["Use a friendly greeting", "Always guarantee payment is secure"],
+        "must_not_rules": ["Send an email to every visitor"],
+        "prohibited_tone": ["sarcastic"],
+    }
+
+    saved = client.put(f"/api/projects/{project['id']}/orb-dock", headers=headers, json=configuration)
+    assert saved.status_code == 200, saved.text
+    payload = saved.json()
+    review = {item["text"]: item for item in payload["compile"]["preference_review"]}
+    assert review["Use a friendly greeting"]["status"] == "compatible"
+    assert review["Always guarantee payment is secure"]["status"] == "conflict"
+    assert review["Send an email to every visitor"]["status"] == "unsupported"
+    assert review["sarcastic"]["status"] == "redundant"
+    assert payload["compile"]["publishable"] is False
+    assert payload["compile"]["preference_review"]
+
+    compiled = main.compile_configuration(
+        main.DockConfiguration.model_validate(configuration),
+        None,
+        project_id=str(project["id"]),
+        domain=project["domain"],
+        next_version=1,
+    )["compiled_policy"]
+    assert compiled["behavior"]["standard_behavior"]["verification"]
+    assert "Use a friendly greeting" in compiled["behavior"]["owner_preferences"]
+    assert "Always guarantee payment is secure" not in compiled["behavior"]["owner_preferences"]
+
+
+def test_custom_orb_skin_is_normalized_and_selected_with_public_fallback_asset(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    headers = signup(client, "dock-skin@example.com")
+    project = create_project(client, headers, "skin.example.com")
+    image = Image.new("RGBA", (1600, 800), (20, 120, 180, 220))
+    payload = BytesIO()
+    image.save(payload, format="WEBP")
+    payload.seek(0)
+
+    uploaded = client.post(
+        f"/api/projects/{project['id']}/orb-dock/custom-skin",
+        headers=headers,
+        files={"image": ("my-orb.webp", payload, "image/webp")},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    response = uploaded.json()
+    appearance = response["configuration"]["appearance"]
+    assert appearance["skin_id"].startswith("custom_orb_")
+    assert appearance["custom_skin_asset_path"].endswith(f"/{appearance['skin_id']}.png")
+    assert appearance["custom_skin_file_size"] < 12 * 1024 * 1024
+    custom = next(item for item in response["skins"] if item["skin_id"] == appearance["skin_id"])
+    assert custom["custom"] is True
+
+    asset = client.get(appearance["custom_skin_asset_path"])
+    assert asset.status_code == 200
+    with Image.open(BytesIO(asset.content)) as normalized:
+        assert normalized.size == (1024, 1024)
+        assert normalized.format == "PNG"
+
+    reset = client.put(
+        f"/api/projects/{project['id']}/orb-dock",
+        headers=headers,
+        json={**response["configuration"], "appearance": {"skin_id": "orb_factory_default_v1"}},
+    )
+    assert reset.status_code == 200, reset.text
+    assert reset.json()["compile"]["publishable"] is True

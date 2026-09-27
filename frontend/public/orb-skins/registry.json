@@ -3,8 +3,8 @@
   "default_skin_id": "orb_factory_default_v1",
   "skins": {
     "orb_factory_default_v1": {
-      "display_name": "O.R.B.S. Factory Default",
-      "asset_path": "/orb-skins/tuxorb.png",
+      "display_name": "Work ORB",
+      "asset_path": "/orb-skins/WORKORB21600.png",
       "manifest_path": "/orb-skins/factory-orb-v1.manifest.json",
       "immutable": true,
       "fallback": true,

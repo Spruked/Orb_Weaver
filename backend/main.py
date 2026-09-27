@@ -1998,6 +1998,39 @@ def _dock_compile(project: Project, record: OrbDockPolicy) -> Dict[str, Any]:
     )
 
 
+CUSTOM_SKIN_MAX_UPLOAD_BYTES = 12 * 1024 * 1024
+CUSTOM_SKIN_CANVAS_SIZE = 1024
+
+
+def _normalize_custom_skin(raw_bytes: bytes) -> Tuple[bytes, Dict[str, int]]:
+    if len(raw_bytes) > CUSTOM_SKIN_MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Custom ORB Skin must be 12 MB or smaller.")
+    try:
+        from PIL import Image, ImageOps
+
+        with Image.open(BytesIO(raw_bytes)) as source:
+            source.verify()
+        with Image.open(BytesIO(raw_bytes)) as source:
+            source.seek(0)
+            source_rgba = source.convert("RGBA")
+            original_width, original_height = source_rgba.size
+            fitted = ImageOps.contain(
+                source_rgba,
+                (CUSTOM_SKIN_CANVAS_SIZE, CUSTOM_SKIN_CANVAS_SIZE),
+                method=Image.Resampling.LANCZOS,
+            )
+            canvas = Image.new("RGBA", (CUSTOM_SKIN_CANVAS_SIZE, CUSTOM_SKIN_CANVAS_SIZE), (0, 0, 0, 0))
+            canvas.alpha_composite(
+                fitted,
+                ((CUSTOM_SKIN_CANVAS_SIZE - fitted.width) // 2, (CUSTOM_SKIN_CANVAS_SIZE - fitted.height) // 2),
+            )
+            output = BytesIO()
+            canvas.save(output, format="PNG", optimize=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Upload a valid PNG, WebP, or JPG image.") from exc
+    return output.getvalue(), {"width": original_width, "height": original_height}
+
+
 def _serialize_dock(project: Project, record: OrbDockPolicy, compile_result: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     preview = compile_result or _dock_compile(project, record)
     configuration = DockConfiguration.model_validate(record.draft_configuration or default_configuration()).model_dump(mode="json")
@@ -2010,6 +2043,20 @@ def _serialize_dock(project: Project, record: OrbDockPolicy, compile_result: Opt
         if db else None
     )
     latest_crawl_payload = _serialize_crawl_job(latest_crawl, db) if latest_crawl and db else None
+    skins = list(SKINS)
+    appearance = configuration.get("appearance") or {}
+    custom_skin_id = appearance.get("custom_skin_id")
+    if custom_skin_id and appearance.get("custom_skin_asset_path"):
+        skins.insert(0, {
+            "skin_id": custom_skin_id,
+            "display_name": appearance.get("custom_skin_display_name") or "Custom ORB Skin",
+            "asset_path": appearance["custom_skin_asset_path"],
+            "factory_default": False,
+            "custom": True,
+            "width": appearance.get("custom_skin_width"),
+            "height": appearance.get("custom_skin_height"),
+            "file_size": appearance.get("custom_skin_file_size"),
+        })
     return {
         "schema": "orb_weaver.orb_dock_station.v1",
         "project": {"id": str(project.id), "name": project.name, "domain": project.domain},
@@ -2026,10 +2073,11 @@ def _serialize_dock(project: Project, record: OrbDockPolicy, compile_result: Opt
             "publishable": preview["publishable"],
             "blockers": preview["blockers"],
             "warnings": preview["warnings"],
+            "preference_review": preview.get("compiled_policy", {}).get("preference_review", []),
             "preview_hash": preview["compiled_hash"],
         },
         "latest_crawl": latest_crawl_payload,
-        "skins": SKINS,
+        "skins": skins,
         "llm_options": [
             {"id": "runtime_default", "label": "Orb Weaver runtime default", "description": "Use the model configured for this Orb Weaver runtime."},
             {"id": "ollama_local", "label": "Local Ollama", "description": "Use an installed Ollama model reachable by this local Orb Weaver backend."},
@@ -2042,13 +2090,105 @@ def _serialize_dock(project: Project, record: OrbDockPolicy, compile_result: Opt
 
 
 def _ollama_base_url() -> Optional[str]:
-    raw = (settings.LOCAL_LLM_URL or "").strip().rstrip("/")
+    raw = (settings.OLLAMA_BASE_URL or "").strip().rstrip("/")
     if not raw:
         return None
-    for suffix in ("/api/generate", "/api/chat"):
-        if raw.endswith(suffix):
-            return raw[: -len(suffix)]
     return raw
+
+
+def _openai_compatible_base_url() -> Optional[str]:
+    raw = (settings.OPENAI_COMPATIBLE_BASE_URL or "").strip().rstrip("/")
+    return raw or None
+
+
+async def _inspect_dock_provider(provider: str) -> Dict[str, Any]:
+    if provider == "ollama_local":
+        base_url = _ollama_base_url()
+        discovery_path = "/api/tags"
+        protocol = "native_ollama"
+        label = "Local Ollama"
+    elif provider == "openai_compatible":
+        base_url = _openai_compatible_base_url()
+        discovery_path = "/v1/models"
+        protocol = "openai_compatible"
+        label = "OpenAI-compatible gateway"
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported Dock Station provider")
+
+    if not base_url:
+        return {
+            "provider": provider,
+            "protocol": protocol,
+            "status": "configuration_required",
+            "configured": False,
+            "reachable": False,
+            "endpoint": None,
+            "models": [],
+            "message": f"{label} endpoint is not configured on the backend.",
+        }
+    endpoint = f"{base_url}{discovery_path}"
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(endpoint)
+            response.raise_for_status()
+        body = response.json()
+        raw_models = body.get("models") if provider == "ollama_local" else body.get("data")
+        models = [
+            {
+                "name": str(item.get("name") or item.get("model") or item.get("id") or ""),
+                "size": int(item.get("size") or 0),
+                "modified_at": item.get("modified_at"),
+            }
+            for item in raw_models or []
+            if item.get("name") or item.get("model") or item.get("id")
+        ]
+        if not models:
+            return {
+                "provider": provider,
+                "protocol": protocol,
+                "status": "no_models_installed",
+                "configured": True,
+                "reachable": True,
+                "endpoint": base_url,
+                "models": [],
+                "message": f"{label} is reachable, but no models are installed or advertised.",
+            }
+        return {
+            "provider": provider,
+            "protocol": protocol,
+            "status": "available",
+            "configured": True,
+            "reachable": True,
+            "endpoint": base_url,
+            "models": models,
+            "message": f"{len(models)} {label} model{'s' if len(models) != 1 else ''} available.",
+        }
+    except httpx.HTTPStatusError as exc:
+        status_code = exc.response.status_code
+        status = "provider_misconfigured" if status_code == 404 else "authentication_required" if status_code in {401, 403} else "service_unreachable"
+        message = (
+            f"{label} endpoint responded with 404; check the provider protocol and base URL."
+            if status == "provider_misconfigured"
+            else f"{label} requires authentication before model discovery."
+            if status == "authentication_required"
+            else f"{label} returned HTTP {status_code} during model discovery."
+        )
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as exc:
+        status = "service_unreachable"
+        message = f"{label} service is unreachable: {str(exc)[:180]}"
+    except Exception as exc:
+        status = "service_unreachable"
+        message = f"{label} model discovery failed: {str(exc)[:180]}"
+    return {
+        "provider": provider,
+        "protocol": protocol,
+        "status": status,
+        "configured": True,
+        "reachable": False,
+        "endpoint": base_url,
+        "models": [],
+        "message": message,
+    }
 
 
 def _local_llm_is_locked_llamacpp() -> bool:
@@ -2092,7 +2232,7 @@ def _dock_orb_identity(
 ) -> Dict[str, Any]:
     appearance = (compiled_policy or {}).get("appearance") or {}
     skin_id = str(appearance.get("skin_id") or "orb_factory_default_v1")
-    asset_path = str(appearance.get("asset_path") or "/orb-skins/tuxorb.png")
+    asset_path = str(appearance.get("asset_path") or "/orb-skins/WORKORB21600.png")
     display_name = str((compiled_policy or {}).get("orb_name") or appearance.get("display_name") or "O.R.B.S. Factory Default")
     # The campaign install is the visual acceptance test for the current
     # Website ORB. Keep ordinary customer installs on the immutable factory
@@ -3591,8 +3731,7 @@ async def _llm_orb_spoken_output(
             f"Safe account memory, only if relevant: {json.dumps(memory_brief, ensure_ascii=False)}\n"
             f"Advisory cognitive pulse: {json.dumps(pulse_brief, ensure_ascii=False)}\n"
             f"Owner job description: {owner_behavior.get('job_description') or 'Serve as the visitor-facing Website ORB.'}\n"
-            f"Owner must-follow rules: {json.dumps(owner_behavior.get('must_follow_rules') or [], ensure_ascii=False)}\n"
-            f"Owner must-not rules: {json.dumps(owner_behavior.get('must_not_rules') or [], ensure_ascii=False)}\n"
+            f"Owner supplemental preferences (subordinate to doctrine, standard behavior, Site World, verification, privacy, and authorization): {json.dumps(owner_behavior.get('owner_preferences') or [], ensure_ascii=False)}\n"
             f"Visitor question: {transcript}\n"
             "Answer the visitor as Weaver in concise speech. Follow the owner behavior settings for tone and response style. "
             "Sound warm and patient, never angry, annoyed, sarcastic, or rushed. Follow tool availability and confirmation rules, "
@@ -12308,6 +12447,66 @@ async def get_orb_dock_station(
     return _serialize_dock(project, record)
 
 
+@app.post("/api/projects/{project_id}/orb-dock/custom-skin")
+async def upload_orb_dock_custom_skin(
+    project_id: str,
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    project = _owned_project(project_id, customer, db)
+    allowed_types = {"image/png", "image/webp", "image/jpeg"}
+    if image.content_type not in allowed_types:
+        raise HTTPException(status_code=415, detail="Custom ORB Skin must be PNG, WebP, or JPG.")
+    raw_bytes = await image.read(CUSTOM_SKIN_MAX_UPLOAD_BYTES + 1)
+    normalized_bytes, dimensions = _normalize_custom_skin(raw_bytes)
+    custom_skin_id = f"custom_orb_{secrets.token_hex(12)}"
+    skin_root = require_vault_path(
+        client_root(project.domain) / "website_orb_context" / "custom_orb_skins",
+        "Custom ORB Skin storage",
+    )
+    skin_root.mkdir(parents=True, exist_ok=True)
+    asset_path = require_vault_path(skin_root / f"{custom_skin_id}.png", "Custom ORB Skin asset")
+    asset_path.write_bytes(normalized_bytes)
+
+    record = _dock_record(project, customer, db, create=True)
+    configuration = DockConfiguration.model_validate(record.draft_configuration or default_configuration())
+    display_name = Path(image.filename or "Custom ORB Skin").stem.strip() or "Custom ORB Skin"
+    display_name = " ".join(display_name.replace("_", " ").replace("-", " ").split())[:120]
+    configuration.appearance = configuration.appearance.model_copy(update={
+        "skin_id": custom_skin_id,
+        "custom_skin_id": custom_skin_id,
+        "custom_skin_display_name": display_name,
+        "custom_skin_asset_path": f"/api/orb/custom-skins/{project.id}/{custom_skin_id}.png",
+        "custom_skin_sha256": hashlib.sha256(normalized_bytes).hexdigest(),
+        "custom_skin_width": dimensions["width"],
+        "custom_skin_height": dimensions["height"],
+        "custom_skin_file_size": len(normalized_bytes),
+    })
+    record.draft_configuration = configuration.model_dump(mode="json")
+    record.publication_status = "draft"
+    record.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(record)
+    return _serialize_dock(project, record)
+
+
+@app.get("/api/orb/custom-skins/{project_id}/{skin_id}.png")
+async def serve_orb_dock_custom_skin(project_id: str, skin_id: str, db: Session = Depends(get_db)):
+    if not re.fullmatch(r"custom_orb_[a-f0-9]{24}", skin_id):
+        raise HTTPException(status_code=404, detail="Custom ORB Skin not found")
+    project = db.get(Project, int(project_id)) if project_id.isdigit() else None
+    if not project:
+        raise HTTPException(status_code=404, detail="Custom ORB Skin not found")
+    asset_path = require_vault_path(
+        client_root(project.domain) / "website_orb_context" / "custom_orb_skins" / f"{skin_id}.png",
+        "Custom ORB Skin asset",
+    )
+    if not asset_path.is_file():
+        raise HTTPException(status_code=404, detail="Custom ORB Skin not found")
+    return FileResponse(asset_path, media_type="image/png", filename=f"{skin_id}.png")
+
+
 @app.put("/api/projects/{project_id}/orb-dock")
 async def save_orb_dock_draft(
     project_id: str,
@@ -12386,43 +12585,18 @@ async def inspect_orb_dock_ollama(
     customer: Customer = Depends(get_current_customer),
 ):
     _owned_project(project_id, customer, db)
-    base_url = _ollama_base_url()
-    if not base_url:
-        return {
-            "configured": False,
-            "reachable": False,
-            "endpoint": None,
-            "models": [],
-            "message": "Configure LOCAL_LLM_URL on the local Orb Weaver backend to connect Ollama.",
-        }
-    try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            response = await client.get(f"{base_url}/api/tags")
-            response.raise_for_status()
-        models = [
-            {
-                "name": str(item.get("name") or item.get("model") or ""),
-                "size": int(item.get("size") or 0),
-                "modified_at": item.get("modified_at"),
-            }
-            for item in response.json().get("models") or []
-            if item.get("name") or item.get("model")
-        ]
-        return {
-            "configured": True,
-            "reachable": True,
-            "endpoint": base_url,
-            "models": models,
-            "message": f"{len(models)} local Ollama model{'s' if len(models) != 1 else ''} available.",
-        }
-    except Exception as exc:
-        return {
-            "configured": True,
-            "reachable": False,
-            "endpoint": base_url,
-            "models": [],
-            "message": f"Ollama is configured but unavailable: {str(exc)[:240]}",
-        }
+    return await _inspect_dock_provider("ollama_local")
+
+
+@app.get("/api/projects/{project_id}/orb-dock/provider-status/{provider}")
+async def inspect_orb_dock_provider(
+    project_id: str,
+    provider: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    _owned_project(project_id, customer, db)
+    return await _inspect_dock_provider(provider)
 
 
 @app.post("/api/projects/{project_id}/orb-dock/ollama/pull")
@@ -12435,7 +12609,7 @@ async def pull_orb_dock_ollama_model(
     _owned_project(project_id, customer, db)
     base_url = _ollama_base_url()
     if not base_url:
-        raise HTTPException(status_code=503, detail="LOCAL_LLM_URL is not configured on this local Orb Weaver backend")
+        raise HTTPException(status_code=503, detail="OLLAMA_BASE_URL is not configured on this local Orb Weaver backend")
     try:
         model = safe_model_name(payload.model)
     except ValueError as exc:

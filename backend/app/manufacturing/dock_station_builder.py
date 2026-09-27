@@ -120,6 +120,12 @@ def _copy_website_orb_template(template_root: Path, destination: Path) -> Dict[s
     (destination / "deployment").mkdir(exist_ok=True)
     (destination / "assets").mkdir(exist_ok=True)
     shutil.copy2(template_root / "frontend/widget.js", destination / "assets/widget.js")
+    factory_skin = REPO_ROOT / "frontend" / "public" / "orb-skins" / "WORKORB21600.png"
+    if not factory_skin.is_file():
+        raise ValueError("Website ORB factory fallback asset is missing")
+    packaged_skin = destination / "frontend" / "public" / "orb-skins" / "WORKORB21600.png"
+    packaged_skin.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(factory_skin, packaged_skin)
     return hash_package_tree(destination)
 
 

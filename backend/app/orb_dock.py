@@ -26,9 +26,119 @@ LOCKED_ORB_DOCTRINE: List[Dict[str, str]] = [
     {"id": "owner_authentication", "label": "Owner authentication rules", "rule": "Owner controls and policy publication require an authenticated project owner."},
 ]
 
+STANDARD_WEBSITE_ORB_BEHAVIOR: Dict[str, Any] = {
+    "purpose": "Serve visitors through verified Website ORB capabilities and approved site paths.",
+    "conversation": [
+        "Use concise, natural language and ask one clarifying question when intent is unclear.",
+        "Preserve visitor progress and offer a concrete next step when a workflow is available.",
+        "Use the selected tone and response style without making the ORB sound scripted or hostile.",
+    ],
+    "grounding": [
+        "Ground website claims, destinations, and availability in compiled Site World evidence.",
+        "Never invent prices, policies, routes, tools, availability, or outcomes.",
+    ],
+    "verification": [
+        "Never claim an action completed without verified outcome evidence.",
+        "Require live exact-one target validation before pointer movement or Ping.",
+    ],
+    "privacy_and_authority": [
+        "Keep owner, private, and visitor scopes separated.",
+        "Require authorization for owner controls and consequential actions.",
+        "Never expose credentials, private records, or unrelated customer data.",
+    ],
+}
+
+_STANDARD_OWNER_RULES = {
+    "use one short spoken response unless the visitor asks for detail.",
+    "ask one helpful clarifying question when the visitor intent is unclear.",
+    "use only verified routes, tools, and owner-approved actions.",
+    "say when something needs owner or staff follow-up.",
+    "do not sound angry, annoyed, sarcastic, rushed, or scripted.",
+    "do not claim an action was completed without verified evidence.",
+    "do not expose credentials, private owner data, or unrelated customer data.",
+    "do not invent prices, policies, routes, tools, or availability.",
+}
+
+
+def classify_owner_preferences(configuration: "DockConfiguration") -> List[Dict[str, Any]]:
+    """Classify owner additions without allowing them to weaken runtime authority."""
+    reviews: List[Dict[str, Any]] = []
+    conflict_patterns = (
+        (re.compile(r"\b(skip|bypass|ignore|without)\b.{0,40}\b(payment|verification|consent|auth|authorization|approval|evidence)\b", re.I), "Conflicts with verification, consent, or authorization requirements."),
+        (re.compile(r"\b(guarantee|guaranteed|promise|claim)\b.{0,80}\b(completed|approved|secure|available|paid|certified|certificate|outcome|results?|payment|service)\b", re.I), "Conflicts with evidence-grounded claims and verified outcomes."),
+        (re.compile(r"\b(reveal|show|share|send|expose).{0,40}\b(password|credential|token|private|admin|secret|customer record)\b", re.I), "Conflicts with privacy and prohibited-data-exposure doctrine."),
+        (re.compile(r"\b(always|never)\b.{0,60}\b(point|ping|click|navigate|open)\b", re.I), "Cannot override live exact-one pointer and navigation validation."),
+    )
+    unsupported_patterns = (
+        (re.compile(r"\b(change|edit|delete|modify|write)\b.{0,50}\b(database|account|order|payment|record)\b", re.I), "Requests an unapproved side effect outside the Website ORB action contract."),
+        (re.compile(r"\b(send|text|email|call|refund|charge|purchase)\b", re.I), "Requests a capability that must be provided by an explicitly approved tool."),
+        (re.compile(r"\b(remember forever|read minds|know everything|guarantee results)\b", re.I), "Requests a capability the Website ORB cannot verify or provide."),
+    )
+    review_patterns = (
+        (re.compile(r"\b(legal|medical|financial|pricing|price|discount|guarantee|contract|complaint)\b", re.I), "Potentially consequential preference requires owner review."),
+        (re.compile(r"\b(always|never|must)\b", re.I), "Absolute instruction may be ambiguous or conflict with live context."),
+    )
+    fields = (
+        ("additional_preferences", "must_follow_rules", configuration.behavior.must_follow_rules),
+        ("avoid_preferences", "must_not_rules", configuration.behavior.must_not_rules),
+        ("avoid_tone_preferences", "prohibited_tone", configuration.behavior.prohibited_tone),
+    )
+    for category, field, values in fields:
+        for index, raw_value in enumerate(values):
+            text = " ".join(str(raw_value).split())
+            normalized = text.casefold()
+            item = {"category": category, "field": field, "index": index, "text": text}
+            if normalized in _STANDARD_OWNER_RULES or (
+                field == "prohibited_tone" and normalized in {"angry", "annoyed", "sarcastic", "rushed", "scripted"}
+            ):
+                reviews.append({**item, "status": "redundant", "reason": "Already provided by the standard Website ORB behavior pack."})
+                continue
+            matched = next(((pattern, reason) for pattern, reason in conflict_patterns if pattern.search(text)), None)
+            if matched:
+                reviews.append({**item, "status": "conflict", "reason": matched[1]})
+                continue
+            matched = next(((pattern, reason) for pattern, reason in unsupported_patterns if pattern.search(text)), None)
+            if matched:
+                reviews.append({**item, "status": "unsupported", "reason": matched[1]})
+                continue
+            matched = next(((pattern, reason) for pattern, reason in review_patterns if pattern.search(text)), None)
+            if matched:
+                reviews.append({**item, "status": "needs_review", "reason": matched[1]})
+                continue
+            reviews.append({**item, "status": "compatible", "reason": "Supplemental owner preference; higher-authority rules remain in force."})
+    text_fields = (
+        ("job_description", configuration.behavior.job_description),
+        ("persona_notes", configuration.behavior.persona_notes),
+    )
+    for field, raw_value in text_fields:
+        text = " ".join(str(raw_value).split())
+        item = {"category": "owner_context", "field": field, "index": 0, "text": text}
+        if (
+            field == "job_description"
+            and text.startswith("Serve as the visitor-facing Website ORB.")
+        ) or (
+            field == "persona_notes"
+            and text == "Sound warm, patient, curious, and never irritated. Avoid scripted or scolding language."
+        ):
+            reviews.append({**item, "status": "redundant", "reason": "Already provided by the standard Website ORB behavior pack."})
+            continue
+        matched = next(((pattern, reason) for pattern, reason in conflict_patterns if pattern.search(text)), None)
+        if matched:
+            reviews.append({**item, "status": "conflict", "reason": matched[1]})
+            continue
+        matched = next(((pattern, reason) for pattern, reason in unsupported_patterns if pattern.search(text)), None)
+        if matched:
+            reviews.append({**item, "status": "unsupported", "reason": matched[1]})
+            continue
+        matched = next(((pattern, reason) for pattern, reason in review_patterns if pattern.search(text)), None)
+        if matched:
+            reviews.append({**item, "status": "needs_review", "reason": matched[1]})
+            continue
+        reviews.append({**item, "status": "compatible", "reason": "Supplemental owner context; higher-authority rules remain in force."})
+    return reviews
+
 SKINS: List[Dict[str, Any]] = [
-    {"skin_id": "orb_factory_default_v1", "display_name": "Business ORB", "asset_path": "/orb-skins/tuxorb.png", "factory_default": True},
-    {"skin_id": "work_orb", "display_name": "Work ORB", "asset_path": "/orb-skins/WORKORB21600.png"},
+    {"skin_id": "orb_factory_default_v1", "display_name": "Work ORB", "asset_path": "/orb-skins/WORKORB21600.png", "factory_default": True},
     {"skin_id": "blue_sample", "display_name": "Blue Sample ORB", "asset_path": "/orb-skins/blueorbsampl1024.png"},
     {"skin_id": "blue_plastic", "display_name": "Blue Plastic ORB", "asset_path": "/orb-skins/blueplasticorb1600.png"},
     {"skin_id": "dark_green_earth", "display_name": "Dark Green Earth ORB", "asset_path": "/orb-skins/darkgreenearthyrobotorb1600.png"},
@@ -53,6 +163,13 @@ class LockedModel(BaseModel):
 
 class AppearanceConfiguration(LockedModel):
     skin_id: str = "orb_factory_default_v1"
+    custom_skin_id: Optional[str] = Field(default=None, max_length=80, pattern=r"^custom_orb_[a-f0-9]{24}$")
+    custom_skin_display_name: Optional[str] = Field(default=None, max_length=120)
+    custom_skin_asset_path: Optional[str] = Field(default=None, max_length=300)
+    custom_skin_sha256: Optional[str] = Field(default=None, max_length=64, pattern=r"^[a-f0-9]{64}$")
+    custom_skin_width: Optional[int] = Field(default=None, ge=1, le=4096)
+    custom_skin_height: Optional[int] = Field(default=None, ge=1, le=4096)
+    custom_skin_file_size: Optional[int] = Field(default=None, ge=1, le=20_000_000)
 
 
 class LlmConfiguration(LockedModel):
@@ -256,7 +373,49 @@ def compile_configuration(
     blockers: List[Dict[str, str]] = []
     warnings: List[Dict[str, str]] = []
     known_routes, known_tools = _known_site_evidence(website_context)
-    skin = SKIN_BY_ID.get(configuration.appearance.skin_id)
+    preference_reviews = classify_owner_preferences(configuration)
+    compatible_preferences = [item["text"] for item in preference_reviews if item["status"] == "compatible"]
+    compatible_by_field = {
+        field: [
+            item["text"] for item in preference_reviews
+            if item["field"] == field and item["status"] == "compatible"
+        ]
+        for field in ("must_follow_rules", "must_not_rules", "prohibited_tone")
+    }
+    compatible_text_by_field = {
+        item["field"]: item["text"]
+        for item in preference_reviews
+        if item["field"] in {"job_description", "persona_notes"} and item["status"] == "compatible"
+    }
+    preference_statuses = {"conflict", "unsupported", "needs_review"}
+    for item in preference_reviews:
+        path = f"behavior.{item['field']}.{item['index']}"
+        if item["status"] in preference_statuses:
+            blockers.append({
+                "path": path,
+                "code": f"owner_preference_{item['status']}",
+                "message": f"{item['status'].replace('_', ' ').title()}: {item['reason']}",
+            })
+        elif item["status"] == "redundant":
+            warnings.append({
+                "path": path,
+                "code": "owner_preference_redundant",
+                "message": item["reason"],
+            })
+    legacy_factory_alias = configuration.appearance.skin_id == "work_orb"
+    skin = SKIN_BY_ID.get("orb_factory_default_v1" if legacy_factory_alias else configuration.appearance.skin_id)
+    if legacy_factory_alias:
+        skin = {**skin, "skin_id": "orb_factory_default_v1"}
+    if not skin and configuration.appearance.custom_skin_id == configuration.appearance.skin_id:
+        custom_asset_path = configuration.appearance.custom_skin_asset_path or ""
+        if custom_asset_path.startswith("/api/orb/custom-skins/"):
+            skin = {
+                "skin_id": configuration.appearance.skin_id,
+                "display_name": configuration.appearance.custom_skin_display_name or "Custom ORB Skin",
+                "asset_path": custom_asset_path,
+                "factory_default": False,
+                "custom": True,
+            }
     if not skin:
         blockers.append({"path": "appearance.skin_id", "code": "unknown_skin", "message": "Select a registered ORB skin."})
         skin = SKIN_BY_ID["orb_factory_default_v1"]
@@ -365,10 +524,15 @@ def compile_configuration(
         "llm": configuration.llm.model_dump(mode="json"),
         "behavior": {
             **configuration.behavior.model_dump(mode="json"),
-            "must_follow_rules": _string_list(configuration.behavior.must_follow_rules),
-            "must_not_rules": _string_list(configuration.behavior.must_not_rules),
-            "prohibited_tone": _string_list(configuration.behavior.prohibited_tone),
+            "job_description": compatible_text_by_field.get("job_description", "Serve as the visitor-facing Website ORB and guide visitors only through verified site paths."),
+            "persona_notes": compatible_text_by_field.get("persona_notes", "Sound warm, patient, curious, and never irritated or scripted."),
+            "must_follow_rules": compatible_by_field["must_follow_rules"],
+            "must_not_rules": compatible_by_field["must_not_rules"],
+            "prohibited_tone": compatible_by_field["prohibited_tone"],
+            "standard_behavior": STANDARD_WEBSITE_ORB_BEHAVIOR,
+            "owner_preferences": compatible_preferences,
         },
+        "preference_review": preference_reviews,
         "business_objectives": compiled_objectives,
         "additional_guide_rails": compiled_additional,
         "situational_guide_rails": compiled_situational,
@@ -414,6 +578,7 @@ def public_runtime_policy(compiled_policy: Optional[Dict[str, Any]]) -> Optional
             "business_objectives",
             "additional_guide_rails",
             "situational_guide_rails",
+            "preference_review",
             "enforcement",
             "source_evidence",
         )

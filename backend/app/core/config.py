@@ -69,6 +69,12 @@ class Settings(BaseSettings):
     ORB_ADMIN_ROUTE_SEEDS: List[str] = ["/admin"]
     LOCAL_LLM_URL: Optional[str] = "http://127.0.0.1:16520/api/generate"
     LOCAL_LLM_MODEL: Optional[str] = "orb-auto"
+    # Dock Station provider discovery is kept separate from the articulation
+    # gateway. Native Ollama and OpenAI-compatible gateway protocols do not
+    # share model-discovery endpoints.
+    OLLAMA_BASE_URL: Optional[str] = "http://127.0.0.1:11434"
+    OLLAMA_MODEL: Optional[str] = "qwen2.5:3b"
+    OPENAI_COMPATIBLE_BASE_URL: Optional[str] = "http://127.0.0.1:16520"
     LOCAL_LLM_TIMEOUT_SECONDS: float = 60.0
     LOCAL_LLM_KEEP_ALIVE: str = "30m"
     LOCAL_LLM_NUM_CTX: int = 512

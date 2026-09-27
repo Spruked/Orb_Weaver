@@ -1504,6 +1504,12 @@ export const AutonomousOrb: React.FC<Props> = ({
       pointerRecord: record,
       currentWorldStateSequence: worldStateSequenceRef.current,
       onTelemetry: (event) => {
+        emitOrbRuntimeEvent("pointer_execution_stage", {
+          targetId: record.target_id,
+          commandId: event.commandId,
+          stage: event.event,
+          reason: event.reason || null,
+        });
         if (process.env.NODE_ENV !== "production") {
           console.info("[orb-robotics]", event);
         }
@@ -1891,6 +1897,11 @@ export const AutonomousOrb: React.FC<Props> = ({
     setPointerWaltzPhase("PING");
     playPointerPing();
     setLastGuidedTarget(record.target_id);
+    emitOrbRuntimeEvent("pointer_execution_stage", {
+      targetId: record.target_id,
+      stage: "PING_RENDER_REQUESTED",
+      geometrySource: "live_refresh",
+    });
     emitOrbRuntimeEvent("guidance_point_ping", {
       targetId: record.target_id,
       geometrySource: "live_refresh",
@@ -2524,6 +2535,14 @@ export const AutonomousOrb: React.FC<Props> = ({
       }
     } catch {
       window.sessionStorage.removeItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY);
+    }
+    if (orientationId === "site:full-tour" && startIndex === 0 && window.location.pathname === "/") {
+      const root = document.documentElement;
+      const previousScrollBehavior = root.style.scrollBehavior;
+      root.style.scrollBehavior = "auto";
+      window.scrollTo(0, 0);
+      root.style.scrollBehavior = previousScrollBehavior;
+      emitOrbRuntimeEvent("scripted_orientation_start_scroll_reset", { orientationId, scrollY: window.scrollY });
     }
     emitOrbRuntimeEvent("scripted_orientation_started", { orientationId, stepCount: steps.length });
     try {
@@ -4816,6 +4835,21 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   return (
     <>
+    {morbPointer && (
+      <div
+        className={`ow-v2-morb-pointer ${morbPointer.visible ? "visible" : ""} ${morbPointer.pinging ? "pinging" : ""} ${morbPointer.dissolving ? "dissolving" : ""}`}
+        data-orb-morb-target={morbPointer.targetId}
+        data-orb-morb-role={morbPointer.role}
+        data-orb-morb-trajectory={morbPointer.trajectory}
+        data-orb-pointer-phase={morbPointer.phase}
+        style={{
+          left: morbPointer.left,
+          top: morbPointer.top,
+          ...morbStyleVars(morbPointer.role),
+        }}
+        aria-hidden="true"
+      />
+    )}
     {pointerBloom && (
       <div
         className="ow-v2-pointer-bloom"

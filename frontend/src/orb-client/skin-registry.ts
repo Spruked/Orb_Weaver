@@ -9,8 +9,8 @@ export interface OrbSkinRegistryEntry extends OrbSkinSelection {
 export const ORB_SKIN_REGISTRY: Readonly<Record<string, Readonly<OrbSkinRegistryEntry>>> = Object.freeze({
   orb_factory_default_v1: Object.freeze({
     skinId: 'orb_factory_default_v1',
-    displayName: 'O.R.B.S. Factory Default',
-    bodyAssetUrl: '/orb-skins/tuxorb.png',
+    displayName: 'Work ORB',
+    bodyAssetUrl: '/orb-skins/WORKORB21600.png',
     customizationState: 'FACTORY_DEFAULT',
     immutable: true,
     fallback: true,

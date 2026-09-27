@@ -171,7 +171,7 @@ const PublicPreflight: React.FC = () => {
               <div className="absolute inset-5 rounded-full border border-blue-400/15" />
               <div className="absolute inset-10 rounded-full bg-cyan-400/10 blur-xl" />
               <img
-                src="/orb-skins/tuxorb.png"
+                src="/orb-skins/WORKORB21600.png"
                 alt="Orb Weaver Website ORB - intelligent site host ready to guide visitors"
                 className="relative z-10 h-40 w-40 rounded-full object-contain drop-shadow-[0_0_28px_rgba(34,211,238,0.42)]"
               />
