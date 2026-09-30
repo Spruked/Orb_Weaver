@@ -31,7 +31,7 @@ import { OrbRoboticsMovementController } from "../orb/robotics/movementControlle
 import { observedDesktopOrbPointerRecords, observedUseCasePointerRecords } from "../orb/siteAuthoredUseCasePointers";
 import { authorizeMovement, assertMovementAuthorization } from "../orb/robotics/movementPolicy";
 import type { RobotCommand } from "../orb/robotics/robotMovement.types";
-import { buildLidarGuidanceMap, evaluateLidarPose, inspectCornerExclusion, Lidar2DMappingCoordinateCache } from "../orb/lidar_2d_mapping";
+import { buildLidarGuidanceMap, evaluateLidarPose, Lidar2DMappingCoordinateCache } from "../orb/lidar_2d_mapping";
 import {
   awaitAbortable,
   createPlaybackSettlement,
@@ -189,10 +189,8 @@ const AMBIENT_SETTLE_VARIANCE_MS = 7_000;
 const AMBIENT_POST_INTERACTION_DWELL_MS = 800;
 const LIDAR_SAFETY_PADDING_PX = 16;
 const LIDAR_INTERACTIVE_EXCLUSION_MARGIN_PX = 20;
-// Weaver is a website presence, never a corner widget. Keep every legal
-// pose substantially inside the page so the visitor reads her as an active
-// host rather than a chat bubble docked to an edge.
-const CORNER_EXCLUSION_MARGIN_PX = 160;
+// Corner placement is allowed. The live map, readable-copy collision pass,
+// and interactive-control exclusions are the only ambient placement rules.
 const REST_AFTER_INACTIVITY_MS = 10 * 60 * 1000;
 const ACTIVE_ORB_OPACITY = 0.96;
 const REST_ORB_OPACITY = 0.60;
@@ -474,7 +472,9 @@ export const AutonomousOrb: React.FC<Props> = ({
   const idleHeadingRef = useRef(-Math.PI / 2);
   const lastAutonomousDestinationRef = useRef<{ x: number; y: number } | null>(null);
   const ambientPoseHistoryRef = useRef<{ x: number; y: number }[]>([]);
-  const ambientVantageRef = useRef<AmbientVantagePreference | null>(readAmbientVantagePreference());
+  // A persisted vantage may be stale after a layout or route change. Let the
+  // current live map choose every new pose instead of restoring a docked one.
+  const ambientVantageRef = useRef<AmbientVantagePreference | null>(null);
   const currentPurposeRef = useRef<{ text: string; until: number } | null>(null);
   const movementControllerRef = useRef<OrbRoboticsMovementController | null>(null);
   const nudgePointerRef = useRef<{ pointerId: number; start: { x: number; y: number }; origin: { x: number; y: number } } | null>(null);
@@ -571,6 +571,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const scriptedLandingOpeningCompleteRef = useRef(false);
   const signupWalkthroughStartedRef = useRef(false);
   const signupWalkthroughAbortRef = useRef<AbortController | null>(null);
+  const ambientRouteRef = useRef<string | null>(null);
   const demonstrationStateRef = useRef<DemonstrationState>({ controller: "tour_controller", capability: "none", receipts: [] });
   const liveTourReadyRef = useRef(window.sessionStorage.getItem(LANDING_STARTUP_READINESS_SESSION_KEY) === "READY");
   const routeArrivalInFlightRef = useRef<string | null>(null);
@@ -714,12 +715,10 @@ export const AutonomousOrb: React.FC<Props> = ({
   }
 
   const minY = HEADER_SAFE + EDGE;
-  const interiorX = Math.min(CORNER_EXCLUSION_MARGIN_PX, Math.max(EDGE, Math.floor((window.innerWidth - size) / 2) - EDGE));
-  const interiorY = Math.min(CORNER_EXCLUSION_MARGIN_PX, Math.max(EDGE, Math.floor((window.innerHeight - size) / 2) - EDGE));
-  const boundedMinX = Math.max(minX, interiorX);
-  const boundedMinY = Math.max(minY, interiorY);
-  const boundedMaxX = Math.max(boundedMinX, window.innerWidth - size - interiorX);
-  const boundedMaxY = Math.max(boundedMinY, window.innerHeight - size - interiorY);
+  const boundedMinX = Math.max(minX, EDGE);
+  const boundedMinY = Math.max(minY, EDGE);
+  const boundedMaxX = Math.max(boundedMinX, window.innerWidth - size - EDGE);
+  const boundedMaxY = Math.max(boundedMinY, window.innerHeight - size - EDGE);
 
   return {
     minX: boundedMinX,
@@ -1070,9 +1069,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       textCollisions: number;
       interactiveCollisions: number;
     }> = [];
-    let cornerRejectedCount = 0;
     const rejected = { travel: 0, recent: 0, hardExclusion: 0, footprint: 0 };
-    const cornerRejectedSamples: Array<{ point: { x: number; y: number }; corners: string[] }> = [];
     for (let row = 0; row < 7; row += 1) {
       for (let column = 0; column < 9; column += 1) {
         const candidate = clampPosition(
@@ -1085,12 +1082,6 @@ export const AutonomousOrb: React.FC<Props> = ({
         const lidarEvidence = evaluateLidarPose(lidarMap, candidate, {
           x: rect.left, y: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top,
         });
-        const corner = inspectCornerExclusion(rect, { width: window.innerWidth, height: window.innerHeight }, CORNER_EXCLUSION_MARGIN_PX);
-        if (corner.excluded) {
-          cornerRejectedCount += 1;
-          if (cornerRejectedSamples.length < 8) cornerRejectedSamples.push({ point: candidate, corners: corner.corners });
-          continue;
-        }
         const collisions = relevantFeatures.reduce((total, feature) => total + intersects(rect, feature.rect), 0);
         const textCollisions = Math.max(readableTextOverlap(rect), relevantFeatures
           .filter((feature) => feature.kind === "text_block")
@@ -1127,16 +1118,14 @@ export const AutonomousOrb: React.FC<Props> = ({
         const preferenceScore = preference
           ? Math.max(0, 150 - Math.hypot(normalized.x - preference.x, normalized.y - preference.y) * 360) * preference.confidence
           : 0;
-        const edgeVantage = Math.min(candidateCenter.x, window.innerWidth - candidateCenter.x, candidateCenter.y, window.innerHeight - candidateCenter.y);
         candidates.push({
           point: candidate,
           collisions,
           textCollisions,
           interactiveCollisions,
-          // Text and controls are exclusion zones. The small edge preference
-          // deliberately gives Weaver a readable margin when several clear
-          // places are available.
-          score: preferenceScore + recentDistance * .35 - textCollisions * 90 - interactiveCollisions * 65 - collisions * 12 - actualTravel * .04 - edgeVantage * .10 + lidarEvidence.purposeProximity * 90 + lidarEvidence.freeSpaceProximity * 20,
+          // Text and controls are the only exclusions. Do not score toward
+          // or away from any edge: the map is free to place Weaver anywhere.
+          score: preferenceScore + recentDistance * .35 - textCollisions * 90 - interactiveCollisions * 65 - collisions * 12 - actualTravel * .04 + lidarEvidence.purposeProximity * 90 + lidarEvidence.freeSpaceProximity * 20,
         });
       }
     }
@@ -1161,12 +1150,6 @@ export const AutonomousOrb: React.FC<Props> = ({
           const lidarEvidence = evaluateLidarPose(lidarMap, candidate, {
             x: rect.left, y: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top,
           });
-          const corner = inspectCornerExclusion(rect, { width: window.innerWidth, height: window.innerHeight }, CORNER_EXCLUSION_MARGIN_PX);
-          if (corner.excluded) {
-            cornerRejectedCount += 1;
-            if (cornerRejectedSamples.length < 8) cornerRejectedSamples.push({ point: candidate, corners: corner.corners });
-            return;
-          }
           const collisions = relevantFeatures.reduce((total, item) => total + intersects(rect, item.rect), 0);
           const textCollisions = Math.max(readableTextOverlap(rect), relevantFeatures
             .filter((item) => item.kind === "text_block")
@@ -1209,14 +1192,48 @@ export const AutonomousOrb: React.FC<Props> = ({
       null,
     );
 
-    if (cornerRejectedCount > 0) {
-      emitOrbRuntimeEvent("lidar_candidate_rejected", {
-        reason: "corner_exclusion",
-        phase: "ambient_stance_search",
-        count: cornerRejectedCount,
-        samples: cornerRejectedSamples,
-        renderedFootprintIncludesCaption: Boolean(captionOffset),
-      });
+    // If strict LiDAR occupancy rejects the grid, do not preserve a stale
+    // pose. Re-score a smaller set of live map coordinates using the
+    // same live DOM text and interactive geometry, then take the least
+    // obstructed interior vantage. This is recovery through the map, not a
+    // fixed corner fallback.
+    if (!best) {
+      const recoveryPoints = [
+        [0.08, 0.08], [0.5, 0.08], [0.92, 0.08],
+        [0.08, 0.5], [0.5, 0.5], [0.92, 0.5],
+        [0.08, 0.92], [0.5, 0.92], [0.92, 0.92],
+      ].map(([x, y]) => clampPosition(
+        minX + (maxX - minX) * x,
+        minY + (maxY - minY) * y,
+      ));
+      const recovery = recoveryPoints
+        .filter((point) => Math.hypot(point.x - current.x, point.y - current.y) >= minimumTravel * 0.72)
+        .map((point) => {
+          const rect = renderedFootprint(point);
+          const textCollisions = readableTextOverlap(rect);
+          const interactiveCollisions = relevantFeatures
+            .filter((feature) => feature.hardExclusion || feature.kind === "interactive")
+            .reduce((total, feature) => total + intersects(rect, feature.rect), 0);
+          const lidarEvidence = evaluateLidarPose(lidarMap, point, {
+            x: rect.left, y: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top,
+          });
+          return {
+            point,
+            score: (textCollisions === 0 ? 10000 : 0) - textCollisions * 120 - interactiveCollisions * 80 +
+              lidarEvidence.purposeProximity * 55 + lidarEvidence.freeSpaceProximity * 25 -
+              Math.hypot(point.x - current.x, point.y - current.y) * 0.02,
+          };
+        })
+        .filter((candidate): candidate is { point: { x: number; y: number }; score: number } => Boolean(candidate))
+        .sort((a, b) => b.score - a.score)[0];
+      if (recovery) {
+        emitOrbRuntimeEvent("lidar_ambient_pose_recovered", {
+          route: lidarMap.route,
+          destination: recovery.point,
+          reason: "live_map_recovery_after_strict_grid_rejection",
+        });
+        return recovery.point;
+      }
     }
 
     if (best) {
@@ -1287,15 +1304,11 @@ export const AutonomousOrb: React.FC<Props> = ({
       largestBlocking: lidarMap.occupancy.filter(cell => cell.blocksOrbMovement)
         .sort((a, b) => b.rect.width * b.rect.height - a.rect.width * a.rect.height)
         .slice(0, 5).map(cell => ({ id: cell.id, kind: cell.kind, rect: cell.rect })),
-      reason: cornerRejectedCount > 0
-        ? "no_clear_novel_pose_after_corner_exclusion"
-        : "no_clear_novel_pose",
+      reason: "no_clear_novel_pose",
       retryOnNextLiveMap: true,
-      cornerRejectedCount,
     });
-    // A blocked LiDAR pass must not silently dock the Website ORB at an edge
-    // or corner. Hold the last witnessed pose and report the condition so a
-    // later live geometry pass can recover deliberately.
+    // A blocked LiDAR pass holds the last witnessed pose only until the next
+    // live geometry pass; it never selects a designated corner dock.
     return current;
   }, [bounds, clampPosition, mappedPointerEvidence, size]);
 
@@ -1351,6 +1364,19 @@ export const AutonomousOrb: React.FC<Props> = ({
     }
   }, [authorizeMotion, nextDestination, travelOrbAlongCurve]);
   resumeAutonomousPresenceRef.current = resumeAutonomousPresence;
+
+  useEffect(() => {
+    if (ambientRouteRef.current === null) {
+      ambientRouteRef.current = location.pathname;
+      return;
+    }
+    if (ambientRouteRef.current === location.pathname) return;
+    ambientRouteRef.current = location.pathname;
+    move.stop();
+    invalidateAmbientPose("route_change_requires_fresh_map_pose");
+    nextAmbientMoveAtRef.current = Date.now() + AMBIENT_POST_INTERACTION_DWELL_MS;
+    window.setTimeout(() => void resumeAutonomousPresenceRef.current(), AMBIENT_POST_INTERACTION_DWELL_MS + 80);
+  }, [invalidateAmbientPose, location.pathname, move]);
 
   const localMoveOutDestination = useCallback(() => {
     const currentRect = orbElementRef.current?.getBoundingClientRect();
@@ -1678,16 +1704,8 @@ export const AutonomousOrb: React.FC<Props> = ({
       width: activeRect.width,
       height: activeRect.height,
     };
-    let cornerRejectedCount = 0;
-    const cornerRejectedSamples: Array<{ point: { x: number; y: number }; corners: string[] }> = [];
     const isSafeStance = (candidate: { x: number; y: number }) => {
       const footprint = footprintFor(candidate);
-      const corner = inspectCornerExclusion(footprint, { width: window.innerWidth, height: window.innerHeight }, CORNER_EXCLUSION_MARGIN_PX);
-      if (corner.excluded) {
-        cornerRejectedCount += 1;
-        if (cornerRejectedSamples.length < 8) cornerRejectedSamples.push({ point: candidate, corners: corner.corners });
-        return false;
-      }
       // This direct check is intentional: the selected target is protected
       // even if its feature record is marked occluded by a containing card.
       if (intersects(footprint, targetFootprint) > 0) return false;
@@ -1769,20 +1787,8 @@ export const AutonomousOrb: React.FC<Props> = ({
       aggregateScore: rankedStances[0].score,
       reason: "highest_legal_target_adjacent_stance_score",
     });
-    if (cornerRejectedCount > 0) {
-      emitOrbRuntimeEvent("lidar_candidate_rejected", {
-        reason: "corner_exclusion",
-        phase: "present_stance_search",
-        targetId: record.target_id,
-        count: cornerRejectedCount,
-        samples: cornerRejectedSamples,
-        renderedFootprintIncludesCaption: Boolean(captionOffset),
-      });
-    }
     if (!guidedDestination) {
-      const recoveryReason = cornerRejectedCount > 0
-        ? "no_phase_zero_adjacent_stance_after_corner_exclusion"
-        : "no_phase_zero_adjacent_stance";
+      const recoveryReason = "no_phase_zero_adjacent_stance";
       movement.cancel(recoveryReason);
       return finishGuidance(false, recoveryReason);
     }
