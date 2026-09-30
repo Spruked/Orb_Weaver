@@ -84,6 +84,22 @@ export const LANDING_FULL_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
 // Kept as an alias for callers that still use the previous exported name.
 export const LANDING_OPENING_SCRIPT = LANDING_FULL_TOUR_SCRIPT;
 
+const SECURITY_TOUR_STOPS: readonly ScriptedOrientationStep[] = [
+  { route: '/security', pointerTargetIds: ['security-quick-1'], text: 'What can the ORB do? It can understand page context, answer visitor questions, guide attention to verified next steps, and help people finish the journeys your website was built to support.' },
+  { pointerTargetIds: ['security-quick-2'], text: 'What can the ORB not do? It cannot invent permissions, pretend a control exists, claim an action succeeded without verification, or act outside the runtime control layer.' },
+  { pointerTargetIds: ['security-quick-3'], text: "The ORB cannot control your customer’s computer. A Website ORB operates inside the website experience and does not take control of a visitor device, desktop, files, or operating system." },
+  { pointerTargetIds: ['security-quick-4'], text: 'The ORB does not click buttons automatically by default. It can guide to a verified target and explain the next step, while execution remains bounded by runtime permissions and approval rules.' },
+  { pointerTargetIds: ['security-quick-5'], text: 'The ORB cannot purchase things for a visitor. It may explain an offer or reach the correct checkout step, but it cannot complete a purchase on the visitor’s behalf.' },
+  { pointerTargetIds: ['security-quick-6'], text: 'The ORB does not submit forms without control. Guidance and reasoning remain separate from consequential execution so the visitor stays in charge.' },
+  { pointerTargetIds: ['security-trust-1'], text: 'The Control Plane owns execution. AI can interpret, explain, and recommend, while the runtime control layer decides what tools exist and what actions are permitted.' },
+  { pointerTargetIds: ['security-trust-2'], text: 'Verification means Orb Weaver checks state before claiming success. If a fact, target, or action has not been verified, the ORB presents that uncertainty honestly.' },
+  { pointerTargetIds: ['security-trust-3'], text: 'The Stage Governor defines the current objective and allowed actions. The AI does not decide its own authority; it operates inside the stage rules it has been given.' },
+  { pointerTargetIds: ['security-trust-4'], text: 'Tool Permissions require every tool to be explicitly registered, permitted, and called with supported arguments. There are no hidden or implied tools.' },
+  { pointerTargetIds: ['security-trust-5'], text: 'Pointer Verification allows visual guidance only when a mapped target exists, the route matches, geometry is current, and the live target is verified.' },
+  { pointerTargetIds: ['security-trust-6'], text: 'The visitor always remains in control. The ORB helps, explains, and guides without taking the website experience away from the person using it.' },
+  { pointerTargetIds: ['security-bottom-line'], text: 'The bottom line is simple: the ORB helps visitors move forward, while the architecture makes sure it does so safely.' },
+];
+
 // Native public pages only. Marketplace lives on a separately redirected
 // surface, so it cannot preserve this in-browser tour session or its proven
 // final handoff to account creation.
@@ -151,11 +167,7 @@ export const SITE_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
     pointerTargetIds: ['tour-how-it-works'],
     text: 'This page lays out the operating sequence that turns a website into a guided environment. First I discover what is actually present on the live page. Then I reconcile that evidence with the verified knowledge base. Next I confirm which paths and actions are allowed under the current permissions. Only after those checks do I present a next step. It is a disciplined handoff from knowledge to action, designed so a visitor can move forward with confidence rather than hope.',
   },
-  {
-    route: '/security',
-    pointerTargetIds: ['tour-security'],
-    text: 'Security is not an afterthought in Orb Weaver — it is the rulebook behind every visible action. I work only from verified state, stay inside bounded permissions, and leave control with the visitor at every moment. I can point to a live target and explain it; I do not silently perform actions, invent authority, or turn guidance into an unapproved automation. The same governance that protects the visitor also protects the operator’s brand and legal posture.',
-  },
+  ...SECURITY_TOUR_STOPS,
   {
     route: '/weaving',
     pointerTargetIds: ['tour-weaving'],
@@ -167,21 +179,14 @@ export const SITE_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
     text: 'Web Weave is the operator workflow that keeps proposed website changes accountable. It gives teams a clear path to inspect a change, approve it, verify it against the live evidence, and preserve the same governance boundary you have seen throughout this tour. The goal is not merely to edit a page. The goal is to keep the site understandable and trustworthy after the change so the ORB’s knowledge and the visitor’s experience stay aligned.',
   },
   {
-    route: '/now/desktop-orb',
-    pointerTargetIds: ['desktop-orb-coming-soon'],
-    simulation: 'desktop_diagnostics',
-    auditTaskCount: 5,
-    text: 'This is the coming-soon Desktop ORB product — a future operator workspace for approved diagnostics beyond visitor-facing guidance. The architecture shown here defines how specialized Morbs may surface bounded findings and make system health easier to inspect once the product is released. The batch of five diagnostic tasks is only a demonstration of the intended audit model; the Website ORB hosts the visitor journey today.',
-  },
-  {
     route: '/founding-beta',
     pointerTargetIds: ['tour-founding-beta'],
-    text: 'This is the Founding Beta invitation. It is intended for a focused group of website operators who want to run real ORB deployments close to real decisions, then shape the product with direct feedback. The value of the beta is practical evidence: what visitors actually need, what operators need to operate safely, and where a governed ORB produces the clearest results. It is a partnership, not a passive trial.',
+    text: 'This is the Founding Beta invitation. Are you here to apply with a real website, or would you like help understanding the application first? I can walk you through the website, goals, role, and testing questions, then leave the final submission under your control. The beta is for operators who want to run real ORB deployments and shape the product with direct feedback.',
   },
   {
     route: '/investor-contact',
     pointerTargetIds: ['tour-investor-contact'],
-    text: 'This is the investor conversation point. It brings together the product thesis, the market opportunity, the deployment model, and the funding path behind Orb Weaver. When a visitor is ready to discuss those questions directly, I can bring them here and keep the discussion grounded in the same verified product story you have seen throughout the tour rather than in abstract claims.',
+    text: 'This is the investor conversation point. Are you looking for product proof, the market opportunity, the deployment model, or a strategic partnership discussion? I can help you understand the questions on this form and prepare a clear request, while you remain in control of sending it.',
   },
   {
     route: '/preflight',
@@ -212,8 +217,6 @@ const PAGE_ORIENTATIONS: Record<string, string> = {
     'This is the Preflight page. It begins with a free, public readiness check that shows what can be woven and where attention is needed before any deeper Website ORB assembly begins.',
   '/marketplace':
     'This page introduces the Orb Weaver marketplace and the Website ORB options available for deployment, each designed to fit different operator needs while preserving the same governance model.',
-  '/now/desktop-orb':
-    'This page previews the coming-soon Desktop ORB — a future operator workspace for approved diagnostic and guidance tools. It is not a released product yet; it is the planned complement to the visitor-facing Website ORB.',
   '/web-weave':
     'This page explains the Web Weave workflow and the approval boundary for making website changes. Changes remain accountable so the site stays understandable and the ORB’s knowledge stays aligned with reality.',
   '/weaving':

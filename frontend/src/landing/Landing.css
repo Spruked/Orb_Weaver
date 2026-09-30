@@ -813,6 +813,53 @@
   animation: ow-v2-pointer-ping 2.6s ease-out forwards;
 }
 
+.ow-v2-tour-handoff {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 2147483002;
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  gap: 8px;
+  align-items: center;
+  max-width: min(92vw, 760px);
+  padding: 12px;
+  border: 1px solid rgba(91, 200, 230, .52);
+  border-radius: 14px;
+  background: rgba(3, 10, 24, .94);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, .38), 0 0 28px rgba(91, 200, 230, .22);
+  transform: translate(-50%, -50%);
+  backdrop-filter: blur(14px);
+}
+
+.ow-v2-tour-handoff p {
+  grid-column: 1 / -1;
+  margin: 0 4px 2px;
+  color: #c9f5ff;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.ow-v2-tour-handoff button {
+  border: 1px solid rgba(91, 200, 230, .45);
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: rgba(91, 200, 230, .12);
+  color: #effcff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ow-v2-tour-handoff button:hover,
+.ow-v2-tour-handoff button:focus-visible {
+  background: rgba(91, 200, 230, .28);
+  outline: 2px solid #5bc8e6;
+  outline-offset: 2px;
+}
+
 .ow-v2-morb-pointer {
   position: fixed;
   z-index: 2147483001;

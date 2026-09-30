@@ -28,7 +28,7 @@ import {
   getActiveOrbProjectContext,
 } from "../orb/activeProjectContext";
 import { OrbRoboticsMovementController } from "../orb/robotics/movementController";
-import { observedDesktopOrbPointerRecords, observedUseCasePointerRecords } from "../orb/siteAuthoredUseCasePointers";
+import { observedDesktopOrbPointerRecords, observedLeadPagePointerRecords, observedSecurityPointerRecords, observedUseCasePointerRecords } from "../orb/siteAuthoredUseCasePointers";
 import { authorizeMovement, assertMovementAuthorization } from "../orb/robotics/movementPolicy";
 import type { RobotCommand } from "../orb/robotics/robotMovement.types";
 import { buildLidarGuidanceMap, evaluateLidarPose, Lidar2DMappingCoordinateCache } from "../orb/lidar_2d_mapping";
@@ -459,6 +459,10 @@ export const AutonomousOrb: React.FC<Props> = ({
 }) => {
   const location = useLocation();
   const onboardingSafeMode = ['/signup', '/login'].includes(location.pathname);
+
+  useEffect(() => {
+    setTourHandoffOffers(false);
+  }, [location.pathname]);
   const move = useAnimationControls();
   const orbSpin = useAnimationControls();
   const glow = useAnimationControls();
@@ -609,6 +613,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     originAngle: number;
   } | null>(null);
   const [morbPointer, setMorbPointer] = useState<MorbPointerState | null>(null);
+  const [tourHandoffOffers, setTourHandoffOffers] = useState(false);
   // Guidance is an async operation. Keep the currently rendered MORB in a ref
   // so a cosmetic MORB state update cannot recreate the guidance callback and
   // abort a route-continuation effect midway through a verified arrival.
@@ -949,7 +954,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, []);
 
   const routePointerRecords = useCallback(() => {
-    const authored = [...observedUseCasePointerRecords(), ...observedDesktopOrbPointerRecords()];
+    const authored = [...observedUseCasePointerRecords(), ...observedSecurityPointerRecords(), ...observedLeadPagePointerRecords(), ...observedDesktopOrbPointerRecords()];
     const signupRecords = window.location.pathname === ONBOARDING_ROUTE ? signupWalkthroughPointerRecords() : [];
     const routeAuthored = [...authored, ...signupRecords];
     const authoredIds = new Set(routeAuthored.map(record => record.target_id));
@@ -2646,12 +2651,13 @@ export const AutonomousOrb: React.FC<Props> = ({
         if (step.handoffToLiveConversation) {
           const ready = liveTourReadyRef.current;
           const preflightReady = Boolean(preflightNarratedReportRef.current);
+          setTourHandoffOffers(true);
           setStatusTitle(ready ? "Weaver is ready" : "Weaver is preparing");
           setStatusLine(ready
             ? (preflightReady
-              ? "Create your account, then we can optionally review your ready Preflight before a full-site scan."
-              : "The guided tour ends here. Tap Weaver to create your account or ask a question.")
-            : "The guided tour ends here. Account creation is ready while Weaver completes question readiness.");
+              ? "Choose Founding Beta, Investor contact, or continue your site onboarding in Preflight. I can help with any of the three."
+              : "The tour is complete. Choose Founding Beta, Investor contact, or continue your site onboarding in Preflight. I can help with any of the three.")
+            : "The tour is complete. Choose Founding Beta, Investor contact, or continue your site onboarding in Preflight while Weaver finishes question readiness.");
           showStatus(6200);
           emitOrbRuntimeEvent("scripted_orientation_account_handoff", {
             orientationId,
@@ -2659,6 +2665,7 @@ export const AutonomousOrb: React.FC<Props> = ({
             route: step.route || window.location.pathname,
             readiness: ready ? "ready" : "warming",
             preflight_ready_for_optional_post_account_review: preflightReady,
+            handoff_options: ['founding_beta', 'investor_contact', 'preflight_onboarding'],
           });
           window.sessionStorage.setItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY, JSON.stringify({ ...checkpoint, index: index + 1 }));
           continue;
@@ -5003,6 +5010,13 @@ export const AutonomousOrb: React.FC<Props> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const chooseTourHandoff = useCallback((route: '/founding-beta' | '/investor-contact' | '/preflight') => {
+    setTourHandoffOffers(false);
+    scriptedOrientationInterruptedRef.current = true;
+    emitOrbRuntimeEvent('scripted_orientation_handoff_choice', { route });
+    navigate(route);
+  }, [navigate]);
+
   return (
     <>
     {morbPointer && (
@@ -5034,6 +5048,14 @@ export const AutonomousOrb: React.FC<Props> = ({
       >
         <span />
       </div>
+    )}
+    {tourHandoffOffers && (
+      <nav className="ow-v2-tour-handoff" aria-label="Choose your next guided path">
+        <p>Choose your next path</p>
+        <button type="button" onClick={() => chooseTourHandoff('/founding-beta')}>Founding Beta</button>
+        <button type="button" onClick={() => chooseTourHandoff('/investor-contact')}>Investor contact</button>
+        <button type="button" onClick={() => chooseTourHandoff('/preflight')}>Onboard your site</button>
+      </nav>
     )}
     <motion.div
       ref={orbElementRef}
