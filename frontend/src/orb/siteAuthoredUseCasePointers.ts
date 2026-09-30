@@ -14,6 +14,37 @@ export const USE_CASE_POINTER_TITLES = [
   'Complex decisions',
 ] as const;
 
+export function observedDesktopOrbPointerRecords(): WebsiteOrbPointerRecord[] {
+  if (window.location.pathname !== '/now/desktop-orb') return [];
+  const targetId = 'desktop-orb-coming-soon';
+  const heading = document.querySelector<HTMLElement>(`[data-orb-target="${targetId}"]`);
+  if (!heading || heading.tagName !== 'H1') return [];
+  return [{
+    target_id: targetId,
+    page_route: '/now/desktop-orb',
+    target_type: 'heading',
+    baseRank: 5,
+    rankEvidence: ['site_owner_authored_desktop_orb_tour_target', 'coming_soon_product_statement'],
+    rankSource: 'site_authored_live_witness',
+    pointer_class: 'live_guidance',
+    meaning: 'heading: Desktop ORB Assistant coming soon',
+    direct_aliases: ['Desktop ORB Assistant coming soon', 'Desktop ORB coming soon'],
+    intent_aliases: ['desktop orb', 'desktop diagnostics'],
+    content_fingerprint: 'desktop-orb-assistant-coming-soon',
+    semantic_locator: `[data-orb-target="${targetId}"]`,
+    structural_context: { tag: 'h1' },
+    confidence: 1,
+    confidence_class: 'VERIFIED',
+    runtime_policy: {
+      may_point: true,
+      may_click: false,
+      may_navigate: false,
+      requires_live_verification: true,
+      reason: 'exact_site_authored_desktop_orb_live_witness',
+    },
+  }];
+}
+
 export function observedUseCasePointerRecords(): WebsiteOrbPointerRecord[] {
   if (window.location.pathname !== '/use-cases') return [];
   return USE_CASE_POINTER_TITLES.flatMap((title, index) => {

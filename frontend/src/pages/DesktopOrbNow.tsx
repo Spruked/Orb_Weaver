@@ -140,12 +140,12 @@ const DesktopOrbNow: React.FC = () => {
 
       <section className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(6,182,212,0.16),_transparent_38%),radial-gradient(circle_at_top_right,_rgba(249,115,22,0.12),_transparent_34%)] px-5 py-20 sm:px-8 lg:px-16">
         <div className="mx-auto max-w-7xl">
-          <p className="text-sm font-bold uppercase tracking-[0.28em] text-cyan-300">Now // Desktop ORB Assistant</p>
-          <h1 className="mt-5 max-w-5xl text-4xl font-black leading-tight sm:text-5xl lg:text-6xl">
+          <p className="text-sm font-bold uppercase tracking-[0.28em] text-cyan-300">Coming Soon // Desktop ORB Assistant</p>
+          <h1 data-orb-target="desktop-orb-coming-soon" className="mt-5 max-w-5xl text-4xl font-black leading-tight sm:text-5xl lg:text-6xl">
             Movement with intent. Diagnostics without entering the personal domain.
           </h1>
           <p className="mt-6 max-w-4xl text-lg leading-8 text-slate-300">
-            Orb Weaver is preparing the shared movement contract and the canonical diagnostic surface for the Desktop ORB Assistant. This page defines what the ORB may observe, how it interprets evidence, how it discovers endpoints and controls, and what it must never scan.
+            The Desktop ORB Assistant is a coming-soon product. Orb Weaver is preparing its shared movement contract and canonical diagnostic surface. This page defines what the future ORB may observe, how it interprets evidence, how it discovers endpoints and controls, and what it must never scan.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <a className="inline-flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-3 font-bold text-white hover:bg-orange-400" href="/diagnostics">

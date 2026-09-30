@@ -241,6 +241,23 @@ class OrbWeaverCrawler:
         snapshot_script = os.path.join(os.path.dirname(__file__), "render_page_snapshot.js")
         if not node or not os.path.isfile(snapshot_script):
             return None
+        # The crawler runs from the backend environment, while the repository's
+        # Playwright dependency is installed with the frontend. Node resolves
+        # modules relative to the snapshot script, so passing the module path is
+        # required for hydrated React/Vite sites to render instead of silently
+        # falling back to the empty HTTP shell.
+        frontend_node_modules = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "..", "..", "frontend", "node_modules")
+        )
+        node_path_entries = [
+            frontend_node_modules,
+            *(os.environ.get("NODE_PATH", "").split(os.pathsep) if os.environ.get("NODE_PATH") else []),
+        ]
+        render_env = {
+            **os.environ,
+            "NODE_PATH": os.pathsep.join(path for path in node_path_entries if path),
+            **({"ORB_STORAGE_STATE_PATH": self.storage_state_path} if self.storage_state_path else {}),
+        }
         try:
             result = subprocess.run(
                 [node, snapshot_script, url, str(max(5000, timeout_seconds * 1000))],
@@ -248,7 +265,7 @@ class OrbWeaverCrawler:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                env={**os.environ, **({"ORB_STORAGE_STATE_PATH": self.storage_state_path} if self.storage_state_path else {})},
+                env=render_env,
                 timeout=min(max(timeout_seconds + 5, 15), 45),
             )
         except (OSError, subprocess.TimeoutExpired) as exc:

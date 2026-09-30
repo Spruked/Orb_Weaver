@@ -41,6 +41,7 @@ export const LANDING_FULL_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
   },
   {
     selector: '#beat-4',
+    pointerTargetIds: ['orb-weaver-begins-work'],
     text: 'Here is the core problem with most website assistants: they sound confident while they are guessing. Ask one a pricing question and you will often get an answer that feels plausible but may be months out of date, pulled from a training corpus rather than the live site. That is not intelligence. That is a language model rolling dice. Orb Weaver refuses that pattern.',
   },
   {
@@ -50,10 +51,12 @@ export const LANDING_FULL_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
   },
   {
     selector: '#beat-6',
+    pointerTargetIds: ['website-orb-reveal'],
     text: 'That is how trust is built here — not by promising I am always right, but by proving the provenance of every answer. Once that foundation of verified state is in place, the rest of what an ORB can do for a visitor becomes far more powerful and far safer. Trust is not a marketing claim; it is an operating boundary I am not allowed to cross.',
   },
   {
     selector: '#beat-7',
+    pointerTargetIds: ['website-orb-outcome'],
     text: 'When the weave is complete, I can greet a visitor with context, guide them with precision, understand what they are trying to accomplish, help them past friction, and bring them to a useful finish instead of leaving them to wander and hope they find what they need. The weave turns a collection of pages into a guided environment.',
   },
   {
@@ -68,6 +71,7 @@ export const LANDING_FULL_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
   },
   {
     selector: '#weave-business-outcomes',
+    pointerTargetIds: ['business-outcomes'],
     text: 'The practical outcomes of a completed weave are measurable: clearer visitor journeys, less abandonment, stronger trust, better engagement, and faster decisions — both for the people visiting the site and for the teams that serve them. Orb Weaver is not a novelty layer; it is an intelligence system designed to improve the real economics of a website.',
   },
   {
@@ -164,10 +168,10 @@ export const SITE_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
   },
   {
     route: '/now/desktop-orb',
-    pointerTargetIds: ['tour-desktop-orb'],
+    pointerTargetIds: ['desktop-orb-coming-soon'],
     simulation: 'desktop_diagnostics',
     auditTaskCount: 5,
-    text: 'Welcome to the Desktop ORB view — the deeper workspace for operators who need more than visitor-facing guidance. Here specialized Morbs can carry out approved diagnostics, surface bounded findings, and make system health easier to inspect. The batch of five diagnostic tasks is again prime-sized for auditability. The Website ORB hosts the visitor journey; the Desktop ORB helps the team keep that journey reliable, observable, and governed.',
+    text: 'This is the coming-soon Desktop ORB product — a future operator workspace for approved diagnostics beyond visitor-facing guidance. The architecture shown here defines how specialized Morbs may surface bounded findings and make system health easier to inspect once the product is released. The batch of five diagnostic tasks is only a demonstration of the intended audit model; the Website ORB hosts the visitor journey today.',
   },
   {
     route: '/founding-beta',
@@ -209,7 +213,7 @@ const PAGE_ORIENTATIONS: Record<string, string> = {
   '/marketplace':
     'This page introduces the Orb Weaver marketplace and the Website ORB options available for deployment, each designed to fit different operator needs while preserving the same governance model.',
   '/now/desktop-orb':
-    'This page explains the Desktop ORB — the deeper operator workspace for approved diagnostic and guidance tools. It complements the visitor-facing Website ORB by giving the team visibility and control over system health.',
+    'This page previews the coming-soon Desktop ORB — a future operator workspace for approved diagnostic and guidance tools. It is not a released product yet; it is the planned complement to the visitor-facing Website ORB.',
   '/web-weave':
     'This page explains the Web Weave workflow and the approval boundary for making website changes. Changes remain accountable so the site stays understandable and the ORB’s knowledge stays aligned with reality.',
   '/weaving':
@@ -236,6 +240,16 @@ export const scriptedPageOrientation = (
       : null);
   const availability = 'I will stay available while you explore, and check the live page again whenever you need me.';
   if (text) return { text: `${text} ${availability}` };
+  if (/^\/crawl\/[^/]+$/.test(pathname)) {
+    return {
+      text: `This is the Crawl Results page. It shows the pages, links, and site evidence discovered during this crawl. ${availability}`,
+    };
+  }
+  if (/^\/audit\/[^/]+$/.test(pathname)) {
+    return {
+      text: `This is the SEO Audit Results page. It summarizes the site's search visibility, technical health, accessibility, and opportunities found during the audit. ${availability}`,
+    };
+  }
   const pageName =
     pathname
       .split('/')

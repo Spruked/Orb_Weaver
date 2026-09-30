@@ -3,23 +3,35 @@ import PublicHeader from '../components/PublicHeader';
 import PublicFooter from '../components/PublicFooter';
 
 interface LegalPageProps {
-  type: 'weaving';
+  type: 'weaving' | 'privacy' | 'terms';
 }
 
 const linkClass = 'font-semibold text-[#0E7490] hover:text-[#075985]';
 
 const LegalPage: React.FC<LegalPageProps> = ({ type }) => {
+  const isPrivacy = type === 'privacy';
+  const isTerms = type === 'terms';
   return (
     <div className="min-h-screen bg-[#F2FBFD] text-slate-900">
       <PublicHeader theme="light" />
       <div className="px-4 py-10 sm:px-6 lg:px-8">
       <main data-orb-target={`tour-${type}`} className="mx-auto max-w-3xl rounded-lg border border-slate-200 bg-white p-7 shadow-sm sm:p-9">
         <h1 className="mt-5 text-3xl font-bold text-slate-950">
-          The Practice of Weaving
+          {isPrivacy ? 'Privacy Statement' : isTerms ? 'Terms of Use' : 'The Practice of Weaving'}
         </h1>
-        <p className="mt-2 text-sm text-slate-500">Pro Prime Series Orb Weaver</p>
+        <p className="mt-2 text-sm text-slate-500">Orb Weaver workspace and Website ORB</p>
 
         <div className="mt-7 space-y-6 text-sm leading-7 text-slate-700">
+          {isPrivacy && <>
+            <p>Orb Weaver uses the account information and website URL you provide to create, operate, and support your workspace.</p>
+            <p>Website review is limited to authorized public project information. Do not submit passwords, private credentials, or information you are not authorized to share.</p>
+            <p>We do not sell private account information. You may contact the site operator through the supported workspace channels with privacy questions or requests.</p>
+          </>}
+          {isTerms && <>
+            <p>You may use an Orb Weaver workspace only for lawful, authorized business and project purposes.</p>
+            <p>You are responsible for the accuracy of submitted information and for confirming that you have permission to request review of a website or project.</p>
+          </>}
+          {!isPrivacy && !isTerms && <>
             <p>
               OrbWeaver performs periodic scans of publicly accessible websites and public information sources. OrbWeaver's 
               scanning system does not collect private customer account information, purchase records, private communications, 
@@ -54,12 +66,15 @@ const LegalPage: React.FC<LegalPageProps> = ({ type }) => {
               The goal is to responsibly preserve and combine useful public knowledge so that broader patterns and future 
               research value may become clearer over time.
             </p>
+          </>}
         </div>
 
         <footer className="mt-8 border-t border-slate-200 pt-5 text-xs leading-6 text-slate-500">
           <p>Pro Prime Series Orb Weaver. All rights reserved.</p>
           <nav className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
             <a className={linkClass} href="/sitemap.xml">Site Map</a>
+            <a className={linkClass} href="/privacy">Privacy Statement</a>
+            <a className={linkClass} href="/terms">Terms</a>
             <a className={linkClass} href="/weaving">Practice of Weaving</a>
             <a className={linkClass} href="https://spruked.com">spruked.com</a>
             <a className={linkClass} href="https://truemarkmint.com">truemarkmint.com</a>

@@ -816,8 +816,8 @@
 .ow-v2-morb-pointer {
   position: fixed;
   z-index: 2147483001;
-  width: 35px;
-  height: 35px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   pointer-events: none;
   transition: left 1.15s cubic-bezier(.22, .78, .25, 1), top 1.15s cubic-bezier(.22, .78, .25, 1);
@@ -877,7 +877,7 @@
 }
 
 .ow-v2-morb-pointer.pinging {
-  animation: ow-v2-morb-ping 760ms ease-out 1;
+  animation: ow-v2-morb-ping 900ms ease-out 1;
 }
 
 .ow-v2-morb-pointer.dissolving {

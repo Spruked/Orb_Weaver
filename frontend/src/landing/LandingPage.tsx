@@ -569,7 +569,7 @@ const LandingPage: React.FC = () => {
       <section id="beat-4" data-beat-id="beat4" className={beatClassName('beat4')}>
         <div className="ow-cut-shell ow-cut-shell-single">
           <div className="ow-cut-copy" data-orb-copy-region="true">
-            <p>That's why ORB Weaver exists.</p>
+            <p data-orb-target="orb-weaver-begins-work">That's why ORB Weaver exists.</p>
             <p>It doesn't stop when it finds your website.</p>
             <p><strong>That's where the real work begins.</strong></p>
           </div>
@@ -600,7 +600,7 @@ const LandingPage: React.FC = () => {
         <div className="ow-cut-shell ow-cut-shell-reveal">
           <div className="ow-cut-copy" data-orb-copy-region="true">
             <p>When the final weave is complete, something new exists.</p>
-            <h2 className="ow-cut-orb-reveal">A Website ORB.</h2>
+            <h2 data-orb-target="website-orb-reveal" className="ow-cut-orb-reveal">A Website ORB.</h2>
           </div>
         </div>
       </section>
@@ -614,7 +614,7 @@ const LandingPage: React.FC = () => {
             <p>They stop asking the same questions twice.</p>
             <p>They stop leaving because they couldn't find what they needed.</p>
             <p className="ow-cut-pause" />
-            <p className="ow-cut-emphasis"><strong>Instead — they're greeted. Guided. Understood. Helped. Finished.</strong></p>
+            <p data-orb-target="website-orb-outcome" className="ow-cut-emphasis"><strong>Instead — they're greeted. Guided. Understood. Helped. Finished.</strong></p>
             <h2>Your website becomes the best-informed employee you'll ever hire.</h2>
             <p className="ow-cut-emphasis"><strong>Not a service you rent.</strong></p>
             <p className="ow-cut-emphasis"><strong>An intelligence you own.</strong></p>

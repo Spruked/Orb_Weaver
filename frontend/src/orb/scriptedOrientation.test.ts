@@ -85,4 +85,11 @@ describe('scripted orientation', () => {
     })?.text).toContain('Choose which account and scan updates reach you.');
     expect(scriptedPageOrientation('/features')?.text).toContain('check the live page again whenever you need me');
   });
+
+  test('names crawl and audit records by their function instead of numeric IDs', () => {
+    expect(scriptedPageOrientation('/crawl/16')?.text).toContain('Crawl Results page');
+    expect(scriptedPageOrientation('/crawl/16')?.text).not.toContain('16 page');
+    expect(scriptedPageOrientation('/audit/9')?.text).toContain('SEO Audit Results page');
+    expect(scriptedPageOrientation('/audit/9')?.text).not.toContain('9 page');
+  });
 });

@@ -154,7 +154,7 @@ function App() {
     return renderPublicPage(<PublicOrbWeaverArtifact />);
   }
   if (publicPath === '/privacy' || publicPath === '/terms') {
-    return renderPublicPage(<Navigate to="/" replace />);
+    return renderPublicPage(<LegalPage type={publicPath === '/privacy' ? 'privacy' : 'terms'} />);
   }
   if (!customer && publicPath === '/weaving') {
     return renderPublicPage(<LegalPage type="weaving" />);

@@ -28,7 +28,7 @@ import {
   getActiveOrbProjectContext,
 } from "../orb/activeProjectContext";
 import { OrbRoboticsMovementController } from "../orb/robotics/movementController";
-import { observedUseCasePointerRecords } from "../orb/siteAuthoredUseCasePointers";
+import { observedDesktopOrbPointerRecords, observedUseCasePointerRecords } from "../orb/siteAuthoredUseCasePointers";
 import { authorizeMovement, assertMovementAuthorization } from "../orb/robotics/movementPolicy";
 import type { RobotCommand } from "../orb/robotics/robotMovement.types";
 import { buildLidarGuidanceMap, evaluateLidarPose, inspectCornerExclusion, Lidar2DMappingCoordinateCache } from "../orb/lidar_2d_mapping";
@@ -264,6 +264,34 @@ const onboardingFirstTargetRecord = (): WebsiteOrbPointerRecord => ({
   structural_context: { tag: "input" },
   runtime_policy: { may_point: true, requires_live_verification: true },
 });
+
+const signupWalkthroughPointerRecords = (): WebsiteOrbPointerRecord[] => [
+  ['full-name-field', 'Full name', 'form_field', 'input'],
+  ['business-name-field', 'Business name', 'form_field', 'input'],
+  ['email-field', 'Email address', 'form_field', 'input'],
+  ['password-container', 'Password', 'form_field', 'div'],
+  ['continue', 'Continue to website setup', 'button', 'button'],
+  ['website-url-field', 'Website URL', 'form_field', 'input'],
+  ['website-confirmation-field', 'Website confirmation', 'form_field', 'input'],
+  ['privacy-disclaimer', 'Privacy statement', 'other', 'div'],
+  ['terms-acknowledgement', 'Account and authorized-use acknowledgement', 'form_field', 'input'],
+  ['privacy-acknowledgement', 'Data-handling acknowledgement', 'form_field', 'input'],
+  ['create-account', 'Create Account', 'button', 'button'],
+].map(([targetId, meaning, targetType, tag]) => ({
+  target_id: targetId,
+  page_route: ONBOARDING_ROUTE,
+  target_type: targetType as WebsiteOrbPointerRecord['target_type'],
+  meaning,
+  direct_aliases: [meaning.toLowerCase()],
+  intent_aliases: ['create workspace', 'account creation', 'signup walkthrough'],
+  content_fingerprint: `onboarding:${targetId}:live-route`,
+  semantic_locator: `[data-orb-target="${targetId}"]`,
+  confidence: 1,
+  confidence_class: 'VERIFIED',
+  pointer_health: 'OWNER_VERIFIED',
+  structural_context: { tag },
+  runtime_policy: { may_point: true, requires_live_verification: true },
+}));
 const EMPTY_FIRST_ENCOUNTER_STATE: FirstEncounterState = {
   voice_ready: false,
   entrance_complete: false,
@@ -541,6 +569,8 @@ export const AutonomousOrb: React.FC<Props> = ({
   const scriptedOrientationRunningRef = useRef(false);
   const scriptedOrientationInterruptedRef = useRef(false);
   const scriptedLandingOpeningCompleteRef = useRef(false);
+  const signupWalkthroughStartedRef = useRef(false);
+  const signupWalkthroughAbortRef = useRef<AbortController | null>(null);
   const demonstrationStateRef = useRef<DemonstrationState>({ controller: "tour_controller", capability: "none", receipts: [] });
   const liveTourReadyRef = useRef(window.sessionStorage.getItem(LANDING_STARTUP_READINESS_SESSION_KEY) === "READY");
   const routeArrivalInFlightRef = useRef<string | null>(null);
@@ -920,12 +950,14 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, []);
 
   const routePointerRecords = useCallback(() => {
-    const authored = observedUseCasePointerRecords();
-    const authoredIds = new Set(authored.map(record => record.target_id));
+    const authored = [...observedUseCasePointerRecords(), ...observedDesktopOrbPointerRecords()];
+    const signupRecords = window.location.pathname === ONBOARDING_ROUTE ? signupWalkthroughPointerRecords() : [];
+    const routeAuthored = [...authored, ...signupRecords];
+    const authoredIds = new Set(routeAuthored.map(record => record.target_id));
     const scanned = pointerRecordsRef.current.filter(record => !authoredIds.has(record.target_id));
     return onboardingLiveRecordRef.current
-      ? [...scanned, ...authored, onboardingLiveRecordRef.current]
-      : [...scanned, ...authored];
+      ? [...scanned, ...routeAuthored, onboardingLiveRecordRef.current]
+      : [...scanned, ...routeAuthored];
   }, []);
 
   const mappedPointerEvidence = useCallback(() => {
@@ -1011,6 +1043,25 @@ export const AutonomousOrb: React.FC<Props> = ({
       (feature.hardExclusion || feature.dynamic || feature.kind === "text_block" ||
         (!feature.occluded && ["interactive", "image"].includes(feature.kind)))
     ));
+    // The LiDAR map can intentionally collapse several text nodes into a
+    // parent feature. Keep a DOM-level readable-copy guard as the final
+    // authority so a large host ORB can never settle over a heading, label,
+    // paragraph, list item, or form copy when the page has a clear alternative.
+    const readableTextRects = Array.from(document.querySelectorAll<HTMLElement>(
+      "h1,h2,h3,h4,h5,h6,p,li,blockquote,label,dt,dd",
+    )).filter((element) => {
+      if (element.closest('.ow-v2-orb-position, [data-orb-caption-state], [aria-hidden="true"]')) return false;
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity || "1") > 0;
+    }).map((element) => element.getBoundingClientRect());
+    const readableTextOverlap = (rect: { left: number; top: number; right: number; bottom: number }) =>
+      readableTextRects.reduce((total, textRect) => total + intersects(rect, {
+        x: textRect.left,
+        y: textRect.top,
+        width: textRect.width,
+        height: textRect.height,
+      }), 0);
 
     const candidates: Array<{
       point: { x: number; y: number };
@@ -1041,9 +1092,9 @@ export const AutonomousOrb: React.FC<Props> = ({
           continue;
         }
         const collisions = relevantFeatures.reduce((total, feature) => total + intersects(rect, feature.rect), 0);
-        const textCollisions = relevantFeatures
+        const textCollisions = Math.max(readableTextOverlap(rect), relevantFeatures
           .filter((feature) => feature.kind === "text_block")
-          .reduce((total, feature) => total + intersects(rect, feature.rect), 0);
+          .reduce((total, feature) => total + intersects(rect, feature.rect), 0));
         const interactiveCollisions = relevantFeatures
           .filter((feature) => feature.hardExclusion || feature.kind === "interactive")
           .reduce((total, feature) => total + intersects(
@@ -1117,9 +1168,9 @@ export const AutonomousOrb: React.FC<Props> = ({
             return;
           }
           const collisions = relevantFeatures.reduce((total, item) => total + intersects(rect, item.rect), 0);
-          const textCollisions = relevantFeatures
+          const textCollisions = Math.max(readableTextOverlap(rect), relevantFeatures
             .filter((item) => item.kind === "text_block")
-            .reduce((total, item) => total + intersects(rect, item.rect), 0);
+            .reduce((total, item) => total + intersects(rect, item.rect), 0));
           const interactiveCollisions = relevantFeatures
             .filter((item) => item.hardExclusion || item.kind === "interactive")
             .reduce((total, item) => total + intersects(rect, item.rect), 0);
@@ -1149,8 +1200,9 @@ export const AutonomousOrb: React.FC<Props> = ({
     const lowestTextCollision = candidates.length
       ? Math.min(...candidates.map((candidate) => candidate.textCollisions))
       : 0;
-    const viableCandidates = candidates.filter((candidate) => (
-      candidate.textCollisions <= lowestTextCollision + 0.5
+    const clearTextCandidates = candidates.filter((candidate) => candidate.textCollisions === 0);
+    const viableCandidates = (clearTextCandidates.length ? clearTextCandidates : candidates).filter((candidate) => (
+      candidate.textCollisions <= (clearTextCandidates.length ? 0 : lowestTextCollision + 0.5)
     ));
     const best = viableCandidates.reduce<typeof candidates[number] | null>(
       (selected, candidate) => !selected || candidate.score > selected.score ? candidate : selected,
@@ -1688,7 +1740,13 @@ export const AutonomousOrb: React.FC<Props> = ({
         return { candidate, evidence, travelCost, score: evidence.freeSpaceProximity * 20 + evidence.purposeProximity * 30 - travelCost * 0.04 - index * 2 };
       })
       .sort((a, b) => b.score - a.score);
-    const guidedDestination = rankedStances[0]?.candidate;
+    // Authored site-tour demonstrations deploy the tiny pointer MORB from
+    // Weaver's current safe host position. They should not require the large
+    // host ORB to occupy a second stance beside the target; that made the
+    // left-column use cases fail while the right-column use cases succeeded.
+    const guidedDestination = options.launchMorbOnly
+      ? positionRef.current
+      : rankedStances[0]?.candidate;
     const mappedTarget = guidanceMap.features.find(feature => feature.targetId === record.target_id);
     if (rankedStances.length) emitOrbRuntimeEvent("lidar_present_stance_selected", {
       route: guidanceMap.route,
@@ -1803,7 +1861,14 @@ export const AutonomousOrb: React.FC<Props> = ({
 
     setPointerWaltzPhase("LAUNCH");
     playMorbLaunchSound();
-    const morbTrajectory = morbTrajectoryForGuidance(guidanceSequence);
+    const pathX = finalTargetX - orbCenterX;
+    const pathY = finalTargetY - orbCenterY;
+    const pathLength = Math.max(1, Math.hypot(pathX, pathY));
+    // Farther targets earn a more legible spiral/swirl transit instead of
+    // being compressed into a short widget-like hop.
+    const morbTrajectory = pathLength > 760
+      ? "swirl"
+      : morbTrajectoryForGuidance(guidanceSequence);
     setMorbPointer({
       targetId: record.target_id,
       role,
@@ -1819,9 +1884,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     if (options.signal?.aborted) return finishGuidance(false, 'tour_interrupted');
     setPointerWaltzPhase("TRAVEL");
     startMorbTravelSound();
-    const morbTravelDuration = Math.max(760, Math.min(1500,
-      Math.round(Math.hypot(finalTargetX - orbCenterX, finalTargetY - orbCenterY) * 1.25),
-    ));
+    const morbTravelDuration = Math.max(760, Math.round(pathLength * 1.25));
     const moveMorbAlongLivePath = (x: number, y: number) => {
       setMorbPointer((currentMorb) => currentMorb ? {
         ...currentMorb,
@@ -1831,9 +1894,6 @@ export const AutonomousOrb: React.FC<Props> = ({
         phase: "TRAVEL",
       } : null);
     };
-    const pathX = finalTargetX - orbCenterX;
-    const pathY = finalTargetY - orbCenterY;
-    const pathLength = Math.max(1, Math.hypot(pathX, pathY));
     const normalX = -pathY / pathLength;
     const normalY = pathX / pathLength;
 
@@ -2623,6 +2683,7 @@ export const AutonomousOrb: React.FC<Props> = ({
           const guided = await guideToPointerRecord(
             target,
             "Demonstrate verified visual navigation without activating the target",
+            { launchMorbOnly: true },
           );
           emitOrbRuntimeEvent(guided ? "scripted_tour_pointer_demonstrated" : "scripted_tour_pointer_unavailable", {
             orientationId,
@@ -2722,6 +2783,7 @@ export const AutonomousOrb: React.FC<Props> = ({
               const target = await waitForPointerRecord(useCaseTargetId);
               let speechAtPing: Promise<boolean> | undefined;
               const guided = target && await guideToPointerRecord(target, spokenText, {
+                launchMorbOnly: true,
                 onPing: () => {
                   speechAtPing = speakWithGeneratedAudio(spokenText, tts.tts_audio_url, tts.tts_provider, playbackOptions);
                 },
@@ -4392,13 +4454,9 @@ export const AutonomousOrb: React.FC<Props> = ({
             resumed_session: true,
           });
 
-          if (!continuation.guidedAt) {
-            const guided = await guideToPointerRecord(record, "Continue onboarding with your full name", { signal: controller.signal });
-            if (!cancelled && guided) {
-              saveOnboardingContinuation({ ...continuation, guidedAt: Date.now() });
-              emitOrbRuntimeEvent("onboarding_first_target_guided", { targetId: record.target_id });
-            }
-          }
+          // The dedicated signup walkthrough owns the full ordered sequence,
+          // including this first target. Keeping the live record here preserves
+          // the Preflight handoff without launching a duplicate MORB.
           return;
         }
         await awaitAbortable(wait(80), controller.signal).catch(() => undefined);
@@ -4411,7 +4469,113 @@ export const AutonomousOrb: React.FC<Props> = ({
       cancelled = true;
       controller.abort();
     };
-  }, [guideToPointerRecord, location.pathname]);
+  }, [location.pathname]);
+
+  const runSignupWalkthrough = useCallback(async (signal: AbortSignal) => {
+    const prompts: Record<string, string> = {
+      'full-name-field': 'Type your full name here.',
+      'business-name-field': 'Type your business or organization name here.',
+      'email-field': 'Type your email address here.',
+      'password-container': 'Create a password of at least eight characters here.',
+      continue: 'When those account details are complete, choose Continue.',
+      'website-url-field': 'Type the website URL you want Weaver to review here.',
+      'website-confirmation-field': 'Type the same website URL again here.',
+      'privacy-disclaimer': 'Review the privacy statement here, including the link to the full Privacy Statement.',
+      'terms-acknowledgement': 'Confirm the account and authorized-use requirements here.',
+      'privacy-acknowledgement': 'Confirm the data-handling acknowledgement here.',
+      'create-account': 'When everything is complete, choose Create Account.',
+    };
+    const stepOne = ['full-name-field', 'business-name-field', 'email-field', 'password-container', 'continue'];
+    const stepTwo = ['website-url-field', 'website-confirmation-field', 'privacy-disclaimer', 'terms-acknowledgement', 'privacy-acknowledgement', 'create-account'];
+
+    const guideTarget = async (targetId: string) => {
+      if (signal.aborted) return false;
+      const target = await waitForPointerRecord(targetId);
+      if (!target) {
+        emitOrbRuntimeEvent('signup_walkthrough_target_unavailable', { targetId });
+        return false;
+      }
+      const prompt = prompts[targetId];
+      let speechAtPing: Promise<boolean> | undefined;
+      try {
+        const tts = await api.websiteOrbTts(prompt, signal);
+        const guided = await guideToPointerRecord(target, prompt, {
+          launchMorbOnly: true,
+          signal,
+          onPing: () => {
+            speechAtPing = speakWithGeneratedAudio(prompt, tts.tts_audio_url, tts.tts_provider, {
+              playbackRate: TOUR_SPEECH_PLAYBACK_RATE,
+            });
+          },
+        });
+        if (guided) await (speechAtPing || Promise.resolve(false));
+        emitOrbRuntimeEvent(guided ? 'signup_walkthrough_target_completed' : 'signup_walkthrough_target_skipped', { targetId });
+        return guided;
+      } catch (error) {
+        emitOrbRuntimeEvent('signup_walkthrough_target_error', {
+          targetId,
+          error: error instanceof Error ? error.message : 'unknown',
+        });
+        return false;
+      }
+    };
+
+    emitOrbRuntimeEvent('signup_walkthrough_started', { targetCount: stepOne.length + stepTwo.length });
+    for (const targetId of stepOne) {
+      if (signal.aborted || document.querySelector('[data-orb-auth-mode="signup"]') === null) return;
+      await guideTarget(targetId);
+      await awaitAbortable(wait(260), signal).catch(() => undefined);
+    }
+
+    // Continue is never activated by the tour. Wait for the visitor to make
+    // that choice, then resume against the newly rendered website step.
+    for (let attempt = 0; attempt < 120 && !signal.aborted; attempt += 1) {
+      if (document.querySelector('[data-orb-target="website-url-field"]')) break;
+      await awaitAbortable(wait(250), signal).catch(() => undefined);
+    }
+    if (signal.aborted || !document.querySelector('[data-orb-target="website-url-field"]')) {
+      emitOrbRuntimeEvent('signup_walkthrough_paused', { reason: 'waiting_for_continue' });
+      return;
+    }
+
+    for (const targetId of stepTwo) {
+      if (signal.aborted) return;
+      await guideTarget(targetId);
+      await awaitAbortable(wait(260), signal).catch(() => undefined);
+    }
+    emitOrbRuntimeEvent('signup_walkthrough_completed', { targetCount: stepOne.length + stepTwo.length });
+  }, [guideToPointerRecord, speakWithGeneratedAudio, waitForPointerRecord]);
+
+  useEffect(() => {
+    if (location.pathname !== ONBOARDING_ROUTE) {
+      signupWalkthroughStartedRef.current = false;
+      signupWalkthroughAbortRef.current?.abort();
+      signupWalkthroughAbortRef.current = null;
+      return;
+    }
+    if (signupWalkthroughStartedRef.current) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    signupWalkthroughAbortRef.current = controller;
+    const startWhenSignupIsRendered = async () => {
+      for (let attempt = 0; attempt < 80 && !cancelled && !controller.signal.aborted; attempt += 1) {
+        const signup = document.querySelector('[data-orb-auth-mode="signup"]');
+        const firstTarget = document.querySelector('[data-orb-target="full-name-field"]');
+        if (signup && firstTarget) {
+          signupWalkthroughStartedRef.current = true;
+          await runSignupWalkthrough(controller.signal);
+          return;
+        }
+        await awaitAbortable(wait(150), controller.signal).catch(() => undefined);
+      }
+    };
+    void startWhenSignupIsRendered();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (signupWalkthroughAbortRef.current === controller) signupWalkthroughAbortRef.current = null;
+    };
+  }, [location.pathname, runSignupWalkthrough]);
 
   useEffect(() => {
     api.websiteOrbCapabilities()

@@ -55,6 +55,12 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
     if (isSignup) trackOnboardingEvent('onboarding_started', { intent: intent.intent });
   }, [intent.intent, isSignup]);
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('orbweaver:signup-step-changed', {
+      detail: { mode, step },
+    }));
+  }, [mode, step]);
+
   const update = (field: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [field]: value }));
   };
@@ -151,7 +157,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
   return (
     <div className="onboarding-shell">
       <PublicHeader theme="light" />
-      <main data-orb-target="tour-account-creation" className="onboarding-layout">
+      <main data-orb-target="tour-account-creation" data-orb-auth-mode={mode} className="onboarding-layout">
         <section className="onboarding-card" aria-labelledby="onboarding-title">
           <div className="onboarding-brand">
             <img src="/orbweaverlogo1024.png" alt="Orb Weaver logo - intelligent website host" />
@@ -198,10 +204,14 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
               <label htmlFor="onboarding-website">Website URL</label>
               <input id="onboarding-website" data-orb-target="website-url-field" type="url" inputMode="url" placeholder="https://example.com" value={form.website_url} onChange={(event) => update('website_url', event.target.value)} />
               <label htmlFor="onboarding-website-confirmation">Confirm website</label>
-              <input id="onboarding-website-confirmation" type="url" inputMode="url" placeholder="Enter the same website again" value={form.website_confirmation} onChange={(event) => update('website_confirmation', event.target.value)} />
+              <input id="onboarding-website-confirmation" data-orb-target="website-confirmation-field" type="url" inputMode="url" placeholder="Enter the same website again" value={form.website_confirmation} onChange={(event) => update('website_confirmation', event.target.value)} />
+              <div className="onboarding-disclaimer" data-orb-target="privacy-disclaimer" role="note">
+                <strong>Privacy statement</strong>
+                <span>We use your account details and website URL to create and operate this workspace. Read the <a href="/privacy">Privacy Statement</a> before continuing.</span>
+              </div>
               <div className="onboarding-legal">
-                <label><input type="checkbox" checked={legal.terms} onChange={(event) => setLegal({ ...legal, terms: event.target.checked })} /> I confirm the account and authorized-use requirements.</label>
-                <label><input type="checkbox" checked={legal.privacy} onChange={(event) => setLegal({ ...legal, privacy: event.target.checked })} /> I confirm the data-handling acknowledgement.</label>
+                <label className="onboarding-legal-box"><input data-orb-target="terms-acknowledgement" type="checkbox" checked={legal.terms} onChange={(event) => setLegal({ ...legal, terms: event.target.checked })} /> <span>I acknowledge the account and authorized-use requirements. <a href="/terms">Terms</a></span></label>
+                <label className="onboarding-legal-box"><input data-orb-target="privacy-acknowledgement" type="checkbox" checked={legal.privacy} onChange={(event) => setLegal({ ...legal, privacy: event.target.checked })} /> <span>I acknowledge the data-handling statement and Privacy Statement.</span></label>
               </div>
             </div>
           )}
