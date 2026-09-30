@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .doctrine_gate import apply_doctrine_gate
+from .technique_skg import behavior_pack_metadata, technique_guidance_prompt
 from .tpc_pipeline import run_tpc
 from ..storage import record_skg_provenance, skg_storage_paths
 from ..runtime.intent_router import classify_intent
@@ -121,7 +122,12 @@ def answer_from_world(
     # A Priori/A Posteriori may supply the factual answer, but every returned
     # visitor answer still travels through TPC and the final doctrine boundary.
     skg_context = site_guidance_context(route, message)
-    route_record = {**route_record, "semantic_guidance": skg_context}
+    situational_guidance = technique_guidance_prompt()
+    route_record = {
+        **route_record,
+        "semantic_guidance": skg_context,
+        "situational_guidance": situational_guidance,
+    }
     maintenance_result = maintenance.answer(message) if maintenance is not None else None
     vault_result = maintenance_result or _try_vault(message)
     intent, _score = classify_intent(message, route_record)
@@ -164,6 +170,8 @@ def answer_from_world(
         },
         "governance_trace": governance_trace,
         "skg_context": skg_context,
+        "situational_guidance": situational_guidance,
+        "behavior_pack": behavior_pack_metadata(),
     }
     if vault_result is not None:
         result["vault_trace"] = {

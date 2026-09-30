@@ -14,6 +14,7 @@ from typing import Any, Dict, Iterable, Optional
 
 from app.core.config import settings
 from app.core.storage import client_root, require_vault_path
+from app.core.timekeeping import event_timestamp, stamp_record
 
 
 EVIDENCE_DIRECTORIES = (
@@ -36,7 +37,7 @@ EVIDENCE_DIRECTORIES = (
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return event_timestamp(source="orb_weaver.lifecycle")["standard_timestamp"]
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -85,7 +86,8 @@ def write_json_artifact(root: Path, relative_path: str, payload: Any) -> Path:
     target = require_vault_path((root / relative_path).resolve(), "Lifecycle evidence artifact")
     if root.resolve() not in target.parents:
         raise ValueError("Evidence artifact path must remain inside the run root")
-    _write_json_atomic(target, payload)
+    stamped_payload = stamp_record(payload, source="orb_weaver.lifecycle") if isinstance(payload, dict) else payload
+    _write_json_atomic(target, stamped_payload)
     return target
 
 

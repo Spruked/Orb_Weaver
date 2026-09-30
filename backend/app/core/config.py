@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: Optional[str] = "http://127.0.0.1:11434"
     OLLAMA_MODEL: Optional[str] = "qwen2.5:3b"
     OPENAI_COMPATIBLE_BASE_URL: Optional[str] = "http://127.0.0.1:16520"
+    # True Mark receives signed ORB certification requests. Missing values keep
+    # manufacturing local and leave the request explicitly pending.
+    TRUEMARK_BASE_URL: Optional[str] = None
+    TRUEMARK_ORB_CERTIFICATION_PATH: str = "/api/integrations/orb-weaver/certification-requests"
+    TRUEMARK_ORB_SHARED_SECRET: Optional[str] = None
+    TRUEMARK_TIMEOUT_SECONDS: float = 15.0
     LOCAL_LLM_TIMEOUT_SECONDS: float = 60.0
     LOCAL_LLM_KEEP_ALIVE: str = "30m"
     LOCAL_LLM_NUM_CTX: int = 512

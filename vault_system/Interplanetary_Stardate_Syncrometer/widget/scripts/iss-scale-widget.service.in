@@ -1,0 +1,16 @@
+[Unit]
+Description=ISS Scale always-on-top desktop widget
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=__ISS_WIDGET_ROOT__
+ExecStart=__ISS_WIDGET_BINARY__
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=0
+Environment=ISS_WIDGET_API=http://127.0.0.1:8000/api/time
+
+[Install]
+WantedBy=default.target

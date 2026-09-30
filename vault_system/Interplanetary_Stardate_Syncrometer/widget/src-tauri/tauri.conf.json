@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ISS Scale Widget",
+  "version": "0.1.0",
+  "identifier": "com.truemark.iss-scale-widget",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1421",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "ISS Scale",
+        "width": 360,
+        "height": 190,
+        "minWidth": 360,
+        "minHeight": 190,
+        "maxWidth": 360,
+        "maxHeight": 190,
+        "resizable": false,
+        "fullscreen": false,
+        "alwaysOnTop": true,
+        "decorations": false,
+        "transparent": false,
+        "center": true
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": { "active": true, "targets": "all", "icon": [] }
+}

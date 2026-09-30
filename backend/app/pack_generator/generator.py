@@ -9,6 +9,13 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.core.storage import require_vault_path
+from app.core.timekeeping import event_timestamp
+from app.orb.identity import ensure_orb_identity
+from app.true_mark.adapter import (
+    build_certification_request,
+    record_pending_certification_request,
+    submit_certification_request,
+)
 from app.orb.site_learning import clean_slate_files, learning_loop_template
 
 
@@ -104,8 +111,10 @@ def generate_pack_file(
     else:
         output_root = require_vault_path(requested_output, "ORB pack output")
     output_root.mkdir(parents=True, exist_ok=True)
-    generated_at = datetime.utcnow().isoformat()
-    filename = f"{_safe_name(domain)}_{tier}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.orbpack"
+    pack_timestamp = event_timestamp(source="orb_weaver.pack_generator")
+    generated_at = pack_timestamp["standard_timestamp"]
+    filename_stamp = pack_timestamp["local_display_time"].replace("-", "").replace(":", "").replace("+", "Z").replace(".", "")
+    filename = f"{_safe_name(domain)}_{tier}_{filename_stamp}.orbpack"
     pack_path = output_root / filename
     client_key = _safe_name(domain)
     dock_station = Path(assembled_dock_station).resolve() if assembled_dock_station else None
@@ -118,12 +127,34 @@ def generate_pack_file(
     if dock_station and (not dock_station.is_dir() or not embedded_vault.is_dir()):
         raise ValueError("Assembled Dock Station must contain its manufactured vault_system")
     vault_root = "website-orb/runtime/vault_system" if website_orb else "dock-station/app/orb/template/runtime/vault_system" if dock_station else "vault_system"
+    build_identity = str((manufacturing_result or {}).get("build_id") or f"{site_id}:{domain}")
+    orb_identity = ensure_orb_identity(
+        identity_key=build_identity,
+        site_id=str(site_id),
+        domain=domain,
+        product_edition="Website ORB",
+        build_id=build_identity,
+    )
+    certification_request = build_certification_request(orb_identity=orb_identity)
+    certification_request_path = record_pending_certification_request(certification_request)
+    certification_submission = submit_certification_request(certification_request)
     manifest = {
         "schema": "orb_weaver.tpc_pack.v1",
         "site_id": site_id,
         "domain": domain,
         "tier": tier,
         "generated_at": generated_at,
+        "timestamp_envelope": pack_timestamp,
+        "timestamp_schema": "orb_weaver.iss_timestamp.v1",
+        "orb_identity": orb_identity,
+        "true_mark_certification": {
+            "status": certification_submission["status"],
+            "request_id": certification_request["request_id"],
+            "request_vault_path": "vault_system/integrations/true_mark/orb_certification_requests",
+            "issuance_fee_usd": certification_request["issuance_fee_usd"],
+            "no_runtime_dependency": True,
+            "artifacts_issued": False,
+        },
         "source": "orb_weaver",
         "storage_contract": {
             "schema": "orb_weaver.single_vault.v1",
@@ -156,6 +187,9 @@ def generate_pack_file(
         "client_key": client_key,
         "single_storage_authority": True,
         "generated_at": generated_at,
+        "timestamp_envelope": pack_timestamp,
+        "timestamp_schema": "orb_weaver.iss_timestamp.v1",
+        "orb_identity": orb_identity,
         "namespaces": [path.rstrip("/") for path in VAULT_DIRECTORIES],
     }
     vault_readme = """# ORB Vault System\n\nThis is the downloaded ORB's only storage authority.\n\nAll scans and site-specific data belong under `clients/<domain>/`. Runtime, cognition, reports, indexes, manifests, databases, and backups remain separate namespaces inside this same `vault_system/` directory. No adapter or component may create another vault system elsewhere.\n"""
@@ -185,6 +219,9 @@ def generate_pack_file(
         "size_bytes": pack_path.stat().st_size,
         "sha256": _sha256(pack_path),
         "generated_at": generated_at,
+        "orb_identity": orb_identity,
+        "true_mark_certification": certification_request,
+        "true_mark_submission": certification_submission,
         "tier": tier,
         "domain": domain,
         "assembled_dock_station": bool(dock_station),

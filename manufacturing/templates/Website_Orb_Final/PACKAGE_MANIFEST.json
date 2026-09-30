@@ -3,13 +3,29 @@
     "name": "Website ORB Final Merge",
     "package_role": "merged_local_orb_runtime",
     "target_domain": "orbweaver.spruked.com",
-    "runtime_contract": "precompiled_skg_lookup_with_tpc_fields",
-    "cognitive_pipeline": "TPC-only runtime with resident site records, HLSF adjacency, and EGF telemetry",
+  "runtime_contract": "versioned_website_orb_behavior_pack_with_site_payload",
+  "behavior_pack": {
+    "id": "website-orb-standard-behavior",
+    "version": "1.0.0",
+    "startup_contract": "short_scripted_startup_then_live_runtime",
+    "customer_payload_is": "site_world_evidence_and_configuration_only"
+  },
+  "timestamp_system": {
+    "id": "interplanetary-stardate-syncrometer",
+    "version": "1.1.0",
+    "authoritative_ordering_field": "iss_time_ns",
+    "runtime_adapter": "backend/timekeeping/iss.py",
+    "vendor_source": "backend/vendor/interplanetary_stardate_syncrometer/iss_module",
+    "audit_envelope": "orb_weaver.iss_timestamp.v1",
+    "required_representations": ["epoch", "standard", "julian", "iss"]
+  },
+  "cognitive_pipeline": "standard startup, NOCK/SKG cognition, Site World/Vault, LLM articulation, and governed actions",
     "no_electron_runtime": true,
     "dockstation_boundary": "adapter_only",
     "active_tpc_components": {
     "runtime": "backend/cognition/tpc_runtime.py",
     "pipeline": "backend/cognition/tpc_pipeline.py",
+    "situational_skg": "backend/cognition/technique_skg.py",
     "hlsf": "backend/cognition/hlsf_geometry/engine.py",
     "egf": "backend/cognition/Epistemic_Gravity_Field/space_field.py"
   },

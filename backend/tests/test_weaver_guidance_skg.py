@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from app.orb.nine_of_clubs import GuidanceSKG, MAX_GUIDANCE_BYTES, guidance_skg, showcase_guidance_mode
 from app.orb.site_lexicon import weaver_lexical_context
+from app.orb.technique_skg import behavior_pack_metadata, technique_skg
 
 
 @pytest.mark.parametrize("route,mode", [("/signup", "account_setup"), ("/login", "login"),
@@ -23,6 +24,25 @@ def test_policy_validation_rejects_incomplete_rules():
     policy["modes"].pop("login")
     with pytest.raises(ValidationError):
         GuidanceSKG.model_validate(policy)
+
+
+def test_41_technique_registry_is_validated_and_advisory():
+    registry = technique_skg()
+    assert len(registry.techniques) == 41
+    assert registry.techniques[0].id == "Technique_1_SPIN"
+    assert registry.techniques[-1].id == "Technique_41_ConsentComplianceGate"
+    assert all(item.sequenced_by == "NockNineOfClubs" for item in registry.techniques)
+    assert "no execution authority" in registry.prompt_summary().lower()
+    assert "Rule_ConsentRequired" in registry.prompt_summary()
+
+
+def test_behavior_pack_declares_factory_owned_runtime_boundary():
+    metadata = behavior_pack_metadata()
+    assert metadata["id"] == "website-orb-standard-behavior"
+    assert metadata["version"] == "1.0.0"
+    assert metadata["startup_contract"] == "short_scripted_startup_then_live_runtime"
+    assert "site_world_evidence" in metadata["customer_payload_scope"]
+    assert "visitor_override" in metadata["layers"]
 
 
 def test_host_uses_its_scan_lexicon_without_leaking_to_customer():

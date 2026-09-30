@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ISS Timekeeping</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; background: #101722; color: #eef3f7; }
+    main { max-width: 900px; margin: 0 auto; padding: 48px 24px; }
+    h1 { margin-bottom: 8px; }
+    p { color: #aeb9c5; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 32px; }
+    .card { padding: 20px; border: 1px solid #344354; border-radius: 12px; background: #182230; }
+    .label { color: #d5b45a; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; }
+    .value { margin-top: 10px; font-size: 20px; word-break: break-word; }
+    code { color: #b9d9f5; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="label">ISS / TIMEKEEPING</div>
+    <h1>Current Time Anchors</h1>
+    <p>ISS Scale — one immutable coordinate clock with four derived time concepts.</p>
+    <section class="grid" id="times"><div class="card">Loading…</div></section>
+    <p>API documentation: <a href="/api/docs">/api/docs</a></p>
+  </main>
+  <script>
+    const labels = { epoch: 'Epoch Time (ns)', standard: 'Standard UTC / ISO', julian: 'Julian Date', iss: 'ISS Scale', human_iss_precise: 'ISS Scale / Precise', iss_time_ns: 'Raw ISS_TIME (ns)', proper_time_ns: 'Proper Time', mission_elapsed_ns: 'Mission Elapsed', anchor_hash: 'Anchor Hash' };
+    async function refresh() {
+      const response = await fetch('/api/time');
+      const data = await response.json();
+      document.getElementById('times').innerHTML = Object.entries(labels).map(([key, label]) => `<article class="card"><div class="label">${label}</div><div class="value"><code>${data[key] ?? '—'}</code></div></article>`).join('');
+    }
+    refresh();
+    setInterval(refresh, 1000);
+  </script>
+</body>
+</html>

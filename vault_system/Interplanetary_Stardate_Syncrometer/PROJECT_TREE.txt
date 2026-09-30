@@ -1,0 +1,25 @@
+ISS_Module/
+├── README.md                         # ISS Scale specification and runbook
+├── DEVLOG.md                         # implementation record
+├── SITE_MAP.md                       # route and module map
+├── PROJECT_TREE.txt                  # this repository tree
+├── LICENSE
+├── requirements.txt                  # Python service dependencies
+├── setup.py                           # Python package metadata
+├── docs/RELATIVISTIC_TIME_MODEL.md    # coordinate/proper time doctrine
+├── iss_module/
+│   ├── __init__.py
+│   ├── service.py                     # local FastAPI process entry point
+│   ├── api/api.py                     # dashboard and time API routes
+│   ├── core/ISS.py                    # ISS service status/heartbeat
+│   ├── core/utils.py                  # epoch, standard, Julian, ISS conversions
+│   └── templates/dashboard.html       # browser dashboard
+└── widget/
+    ├── README.md                      # desktop widget instructions
+    ├── package.json                   # Vite/Tauri scripts
+    ├── package-lock.json
+    ├── index.html
+    ├── src/main.js                    # live API client
+    ├── src/styles.css                 # compact widget visual system
+    ├── src-tauri/                     # Tauri 2/Rust native shell
+    └── scripts/                       # login start and crash restart

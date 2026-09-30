@@ -12,6 +12,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .technique_skg import technique_guidance_prompt
+
 GuidanceMode = Literal[
     "tour_narration", "tour_question", "discovery", "account_setup", "login",
     "preflight", "preflight_review", "beta", "investor",
@@ -20,7 +22,7 @@ ShowcaseInteraction = Literal["tour_question", "account_setup"]
 _MODES = frozenset(GuidanceMode.__args__)
 _POLICY_PATH = Path(__file__).with_name("nine_of_clubs_skg.json")
 _SHOWCASE_HOSTS = frozenset({"orbweaver.spruked.com", "localhost", "127.0.0.1"})
-MAX_GUIDANCE_BYTES = 4096
+MAX_GUIDANCE_BYTES = 8192
 
 
 class GuidanceSKG(BaseModel):
@@ -61,6 +63,8 @@ class GuidanceSKG(BaseModel):
         return (
             "NINE OF CLUBS GUIDANCE (private wording policy; no execution authority):\n"
             + "\n".join((*self.common_rules, *self.modes[mode]))
+            + "\n\n"
+            + technique_guidance_prompt()
         )
 
 

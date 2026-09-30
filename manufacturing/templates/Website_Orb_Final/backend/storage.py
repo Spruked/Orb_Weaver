@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from .timekeeping import stamp_record
 
 
 VAULT_ENV = "ORB_WEAVER_VAULT_ROOT"
@@ -59,12 +60,11 @@ def record_skg_provenance(event: str, payload: dict[str, Any]) -> Path:
     root = canonical_vault_root()
     trace = require_vault_path(root / "audit" / "glyph_trace" / "skg_runtime.jsonl", "SKG glyph provenance")
     trace.parent.mkdir(parents=True, exist_ok=True)
-    record = {
+    record = stamp_record({
         "schema": "orb_weaver.manufactured_skg_provenance.v1",
         "event": event,
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
         **payload,
-    }
+    }, source="website_orb_skg")
     line = json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n"
     with trace.open("a", encoding="utf-8") as handle:
         handle.write(line)
@@ -78,12 +78,11 @@ def record_runtime_audit(event: str, payload: dict[str, Any]) -> Path:
     root = canonical_vault_root()
     trace = require_vault_path(root / "audit" / "glyph_trace" / "website_orb_runtime.jsonl", "Website ORB runtime audit")
     trace.parent.mkdir(parents=True, exist_ok=True)
-    record = {
+    record = stamp_record({
         "schema": "orb_weaver.manufactured_runtime_audit.v1",
         "event": event,
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
         **payload,
-    }
+    }, source="website_orb_runtime")
     with trace.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n")
         handle.flush()

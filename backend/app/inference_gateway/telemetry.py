@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
+
+from app.core.timekeeping import stamp_record
 
 
 class VaultTelemetry:
@@ -17,10 +18,9 @@ class VaultTelemetry:
         self._lock = asyncio.Lock()
 
     async def record(self, event: Dict[str, Any]) -> None:
-        payload = {
-            "recorded_at": datetime.now(timezone.utc).isoformat(),
+        payload = stamp_record({
             **event,
-        }
+        }, source="orb_weaver.inference_gateway")
         line = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
         async with self._lock:
             await asyncio.to_thread(self._append_sync, line)

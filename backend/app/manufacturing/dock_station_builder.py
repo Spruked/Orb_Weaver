@@ -72,6 +72,8 @@ def _copy_website_orb_template(template_root: Path, destination: Path) -> Dict[s
         {"path": "frontend/widget.js", "type": "file"},
         {"path": "run.py", "type": "file"},
         {"path": "INSTALL.md", "type": "file"},
+        {"path": "backend/timekeeping/iss.py", "type": "file"},
+        {"path": "backend/vendor/interplanetary_stardate_syncrometer/iss_module/core/utils.py", "type": "file"},
         {"path": "Orb_Vault_System/orb_vault_skg/vault/orb_assistant/vault_coordinator.py", "type": "file"},
     ]
     validation = validate_required_paths(template_root, required)

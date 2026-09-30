@@ -7,6 +7,8 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from bs4 import BeautifulSoup, Tag
 
+from app.core.timekeeping import event_timestamp
+
 
 TARGET_TYPES = {
     "nav",
@@ -110,7 +112,8 @@ def extract_pointer_plot_records(
         base_rank, rank_evidence = _importance_rank(
             element, target_type, text, semantic_analysis or {}, entity_analysis or {}, route_category,
         )
-        observed_at = datetime.utcnow().isoformat()
+        observation_timestamp = event_timestamp(source="orb_weaver.pointer_scan")
+        observed_at = observation_timestamp["standard_timestamp"]
         records.append(
             {
                 "target_id": target_id,
@@ -150,6 +153,8 @@ def extract_pointer_plot_records(
                 "finding_subreason": "initial_extraction_not_independently_verified",
                 "pointer_health": "NEW",
                 "source": "scan",
+                "timestamp_envelope": observation_timestamp,
+                "timestamp_schema": "orb_weaver.iss_timestamp.v1",
             }
         )
 
@@ -174,9 +179,12 @@ def pointer_plot_map_from_pages(pages: Iterable[Any]) -> Dict[str, Any]:
 
     _mark_route_locator_conflicts(records)
     diagnostics = pointer_map_diagnostics(records)
+    map_timestamp = event_timestamp(source="orb_weaver.pointer_map")
     return {
         "schema": "orb_weaver.pointer_plot_map.v1",
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": map_timestamp["standard_timestamp"],
+        "timestamp_envelope": map_timestamp,
+        "timestamp_schema": "orb_weaver.iss_timestamp.v1",
         "record_count": len(records),
         "guidance_record_count": diagnostics["live_guidance_candidates"],
         "reference_record_count": diagnostics["semantic_reference_records"],

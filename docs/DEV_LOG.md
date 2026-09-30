@@ -1,5 +1,79 @@
 # Orb Weaver Development Log
 
+## 2026-09-29 — ORB identity and True Mark certification boundary wired
+
+- Added permanent, idempotent ORB serial allocation in the canonical Vault.
+- Added package identity binding so an ORB serial remains separate from the
+  current website deployment and site knowledge.
+- Added an auditable True Mark certification request record with the locked
+  `$12.88` ORB Weaver → True Mark service fee and explicit pending status.
+- Kept True Mark certification, KL-NFT issuance, licensing, Polygon evidence,
+  and signatures outside the ORB runtime authority boundary.
+- Inspected the True Mark repository: its current generic payment/mint routes
+  are not yet a dedicated ORB certification adapter. No endpoint was invented;
+  the integration remains fail-closed until True Mark provides the contract.
+- Recorded unresolved requirements: formal license, NFT metadata, royalty
+  enforcement, transfer lifecycle, certificate response, and legal review.
+
+## 2026-09-29 — True Mark ORB certification intake integrated
+
+- Added the dedicated True Mark route
+  `/api/integrations/orb-weaver/certification-requests`.
+- Added HMAC request authentication using the backend-only
+  `TRUEMARK_ORB_INTEGRATION_SECRET` and idempotent storage by ORB serial and
+  request ID.
+- Orb Weaver submits only when its True Mark base URL and shared secret are
+  configured; otherwise the local Vault remains explicitly pending.
+- The intake boundary returns pending review only. It does not simulate or
+  issue a COA, KL-NFT, license, provenance record, payment, or blockchain
+  transaction.
+- Focused Orb Weaver manufacturing/timekeeping/pack tests pass: 21 passed.
+- True Mark source compiles and passes diff validation; full HTTP smoke testing
+  is pending installation of its missing `reportlab` runtime dependency in the
+  current WSL environment.
+
+## 2026-09-29 — ISS Syncrometer wired into Vault and manufactured ORBs
+
+- Added the Interplanetary Stardate Syncrometer as the canonical timestamp
+  source for Vault ordering and audit records.
+- Added complete ISS envelopes to Glyph Trace objects/events, governance
+  artifacts, lifecycle evidence, inference telemetry, and manufactured SKG/
+  runtime audit streams while preserving legacy timestamp fields.
+- Added the Syncrometer runtime adapter and a Git-free core copy to the
+  `Website_Orb_Final` manufacturing template.
+- Updated the Website ORB package manifest with the timestamp-system contract,
+  required representations, source version, and authoritative `iss_time_ns`
+  ordering field.
+- Removed the nested Syncrometer `.git` metadata from the source component;
+  the Orb Weaver repository `.git` metadata remains intact.
+
+## 2026-09-27 — 41-technique SKG carried into manufactured Website ORBs
+
+- Copied the exact supplied 41-technique JSON registry into the
+  `Website_Orb_Final` template so manufactured packages are self-contained.
+- Added package-local validation for the complete 1–41 sequence, including the
+  final Consent & Compliance Gate.
+- Added the bounded advisory summary to manufactured cognition context. It does
+  not grant navigation, pointer, payment, publication, authorization, or
+  other execution authority; existing governors remain authoritative.
+- Added manufactured-template regression coverage for registry integrity and
+  advisory boundaries.
+- Declared the factory-owned `website-orb-standard-behavior` pack at version
+  `1.0.0`, including the startup-to-live-runtime handoff contract and the
+  customer payload boundary.
+
+## 2026-09-27 — 41-technique situational SKG wired as advisory cognition
+
+* Added the supplied 41-technique JSON-LD-style registry and Nock-Nine of
+  Clubs Graphviz topology.
+* Added strict validation for the canonical 1–41 sequence, technique types,
+  sequencer identity, and Technique 41 Consent & Compliance Gate.
+* Wired a bounded registry summary into the existing Nine-of-Clubs cognition
+  prompt. The registry shapes wording only; the Governor, live DOM validation,
+  authorization, payment, and pointer controls remain authoritative.
+* Added regression coverage for registry integrity and prompt safety. No
+  technique can create an action or execution grant.
+
 ## 2026-09-27 — Dock Station owner-instruction UX completed
 
 * Added consistent owner-facing explanations for Business Objectives,

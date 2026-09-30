@@ -1,0 +1,806 @@
+digraph ORB_SKG_41 {
+  graph [
+    rankdir=LR,
+    fontname="Helvetica",
+    fontsize=12,
+    bgcolor="white",
+    compound=true,
+    splines=polyline,
+    overlap=false,
+    nodesep=0.35,
+    ranksep=0.7
+  ];
+
+  node [
+    fontname="Helvetica",
+    fontsize=9,
+    style="filled,rounded",
+    shape=box,
+    color="#666666",
+    penwidth=0.8
+  ];
+
+  edge [
+    fontname="Helvetica",
+    fontsize=7,
+    color="#888888",
+    arrowsize=0.6
+  ];
+
+  // ------------------------------------------------------------
+  // LEGEND
+  // ------------------------------------------------------------
+  subgraph cluster_legend {
+    label="Legend";
+    style="rounded,dashed";
+    color="#999999";
+
+    Legend_Technique [label="Technique", shape=box, fillcolor="#d9ead3"];
+    Legend_Condition [label="Condition", shape=diamond, fillcolor="#fce5cd"];
+    Legend_Evidence [label="Evidence", shape=note, fillcolor="#cfe2f3"];
+    Legend_Rule [label="Governor Rule", shape=hexagon, fillcolor="#f4cccc"];
+    Legend_Prevent [label="Prevented Outcome", shape=oval, fillcolor="#e6b8af"];
+    Legend_Nock [label="Nock-Nine", shape=ellipse, fillcolor="#ffd966", color="#bf9000", penwidth=2];
+  }
+
+  // ------------------------------------------------------------
+  // META / GOVERNOR NODES
+  // ------------------------------------------------------------
+  NockNineOfClubs [
+    label="Nock-Nine of Clubs\n(Meta-Technique / Governor Sequencer)",
+    shape=ellipse,
+    fillcolor="#ffd966",
+    color="#bf9000",
+    penwidth=2
+  ];
+
+  SituationalBehaviorPattern [label="SituationalBehaviorPattern", shape=box, fillcolor="#efefef"];
+  MetaTechnique [label="MetaTechnique", shape=box, fillcolor="#efefef"];
+  IrrelevantBranch [label="IrrelevantBranch", shape=oval, fillcolor="#f4cccc"];
+  HighProbabilityCluster [label="HighProbabilityCluster", shape=oval, fillcolor="#d9ead3"];
+  FinalFitPath [label="FinalFitPath", shape=oval, fillcolor="#c9daf8"];
+  VisitorStatedPriority [label="VisitorStatedPriority", shape=oval, fillcolor="#c9daf8"];
+  Overpitching [label="Overpitching", shape=oval, fillcolor="#e6b8af"];
+  IrrelevantDetail [label="IrrelevantDetail", shape=oval, fillcolor="#e6b8af"];
+  CognitiveOverload [label="CognitiveOverload", shape=oval, fillcolor="#e6b8af"];
+  EthicalViolation [label="EthicalViolation", shape=oval, fillcolor="#e6b8af"];
+  AllTechniques [label="AllTechniques", shape=box, fillcolor="#efefef"];
+
+  NockNineOfClubs -> MetaTechnique [label="is_a"];
+  NockNineOfClubs -> IrrelevantBranch [label="eliminates"];
+  NockNineOfClubs -> HighProbabilityCluster [label="narrows_to"];
+  NockNineOfClubs -> FinalFitPath [label="selects"];
+  NockNineOfClubs -> VisitorStatedPriority [label="ensures_alignment_with"];
+  NockNineOfClubs -> Overpitching [label="prevents"];
+  NockNineOfClubs -> IrrelevantDetail [label="prevents"];
+  NockNineOfClubs -> CognitiveOverload [label="prevents"];
+  NockNineOfClubs -> EthicalViolation [label="prevents"];
+
+  // ------------------------------------------------------------
+  // TECHNIQUE NODES
+  // ------------------------------------------------------------
+  subgraph cluster_T1_10 {
+    label="Techniques 1-10";
+    style="rounded,dashed";
+    color="#999999";
+    node [shape=box, style="rounded,filled", fillcolor="#d9ead3"];
+
+    Technique_1_SPIN [label="1. SPIN Selling"];
+    Technique_2_Socratic [label="2. Socratic Questioning"];
+    Technique_3_SummaryClose [label="3. Summary Close"];
+    Technique_4_MinorPointClose [label="4. Minor-Point Close"];
+    Technique_5_ChoiceClose [label="5. Choice Close"];
+    Technique_6_TrialClose [label="6. Trial Close"];
+    Technique_7_ConditionalClose [label="7. Conditional Close"];
+    Technique_8_SharpAngleClose [label="8. Sharp-Angle Close"];
+    Technique_9_ScaleClose [label="9. Scale Close"];
+    Technique_10_ObjectionIsolation [label="10. Objection Isolation"];
+  }
+
+  subgraph cluster_T11_20 {
+    label="Techniques 11-20";
+    style="rounded,dashed";
+    color="#999999";
+    node [shape=box, style="rounded,filled", fillcolor="#d9ead3"];
+
+    Technique_11_Boomerang [label="11. Boomerang"];
+    Technique_12_Reframing [label="12. Reframing"];
+    Technique_13_FuturePacing [label="13. Future Pacing"];
+    Technique_14_ProblemAgitateSolve [label="14. Problem-Agitate-Solve"];
+    Technique_15_FeatureAdvantageBenefit [label="15. Feature-Advantage-Benefit"];
+    Technique_16_ValueStack [label="16. Value Stack"];
+    Technique_17_ContrastPrinciple [label="17. Contrast Principle"];
+    Technique_18_CommitmentConsistency [label="18. Commitment & Consistency"];
+    Technique_19_LossAvoidance [label="19. Loss Avoidance"];
+    Technique_20_SocialProof [label="20. Social Proof"];
+  }
+
+  subgraph cluster_T21_30 {
+    label="Techniques 21-30";
+    style="rounded,dashed";
+    color="#999999";
+    node [shape=box, style="rounded,filled", fillcolor="#d9ead3"];
+
+    Technique_21_Anchoring [label="21. Anchoring"];
+    Technique_22_FramingEffect [label="22. Framing Effect"];
+    Technique_23_GuidedDiscovery [label="23. Guided Discovery"];
+    Technique_24_PriorityLadder [label="24. Priority Ladder"];
+    Technique_25_RiskClarification [label="25. Risk Clarification"];
+    Technique_26_ExpectationSetting [label="26. Expectation Setting"];
+    Technique_27_MicroCommitments [label="27. Micro-Commitments"];
+    Technique_28_ReverseSummary [label="28. Reverse Summary"];
+    Technique_29_BenefitEchoing [label="29. Benefit Echoing"];
+    Technique_30_ConstraintSurfacing [label="30. Constraint Surfacing"];
+  }
+
+  subgraph cluster_T31_41 {
+    label="Techniques 31-41";
+    style="rounded,dashed";
+    color="#999999";
+    node [shape=box, style="rounded,filled", fillcolor="#d9ead3"];
+
+    Technique_31_DecisionAcceleration [label="31. Decision Acceleration"];
+    Technique_32_ObjectionForecasting [label="32. Objection Forecasting"];
+    Technique_33_MotivationMapping [label="33. Motivation Mapping"];
+    Technique_34_GoalReversal [label="34. Goal Reversal"];
+    Technique_35_ContextBridging [label="35. Context Bridging"];
+    Technique_36_SelectiveDeepDive [label="36. Selective Deep Dive"];
+    Technique_37_MomentumLinking [label="37. Momentum Linking"];
+    Technique_38_CognitiveLoadReduction [label="38. Cognitive Load Reduction"];
+    Technique_39_IntentVerification [label="39. Intent Verification"];
+    Technique_40_OutcomeHighlighting [label="40. Outcome Highlighting"];
+    Technique_41_ConsentComplianceGate [label="41. Consent & Compliance Gate"];
+  }
+
+  // ------------------------------------------------------------
+  // CONDITIONS
+  // ------------------------------------------------------------
+  node [shape=diamond, fillcolor="#fce5cd"];
+  Condition_VisitorHasUnclearProblem [label="VisitorHasUnclearProblem"];
+  Condition_VisitorIsExploring [label="VisitorIsExploring"];
+  Condition_VisitorSignalsReadiness [label="VisitorSignalsReadiness"];
+  Condition_VisitorAgreesOnSmallPoint [label="VisitorAgreesOnSmallPoint"];
+  Condition_VisitorIsDecidingBetweenOptions [label="VisitorIsDecidingBetweenOptions"];
+  Condition_VisitorShowsInterest [label="VisitorShowsInterest"];
+  Condition_VisitorHasConditionalInterest [label="VisitorHasConditionalInterest"];
+  Condition_VisitorIsHesitant [label="VisitorIsHesitant"];
+  Condition_VisitorNeedsToQuantifyInterest [label="VisitorNeedsToQuantifyInterest"];
+  Condition_VisitorRaisesObjection [label="VisitorRaisesObjection"];
+  Condition_VisitorObjectionCanBeTurned [label="VisitorObjectionCanBeTurned"];
+  Condition_VisitorHasNegativeFrame [label="VisitorHasNegativeFrame"];
+  Condition_VisitorImaginesOutcome [label="VisitorImaginesOutcome"];
+  Condition_VisitorHasAcutePain [label="VisitorHasAcutePain"];
+  Condition_VisitorNeedsValueClarity [label="VisitorNeedsValueClarity"];
+  Condition_VisitorQuestionsValue [label="VisitorQuestionsValue"];
+  Condition_VisitorComparesOptions [label="VisitorComparesOptions"];
+  Condition_VisitorMadePriorCommitment [label="VisitorMadePriorCommitment"];
+  Condition_VisitorFearsLoss [label="VisitorFearsLoss"];
+  Condition_VisitorSeeksValidation [label="VisitorSeeksValidation"];
+  Condition_VisitorNeedsReferencePoint [label="VisitorNeedsReferencePoint"];
+  Condition_VisitorInterpretsInformation [label="VisitorInterpretsInformation"];
+  Condition_VisitorNeedsSelfDiscovery [label="VisitorNeedsSelfDiscovery"];
+  Condition_VisitorHasMultiplePriorities [label="VisitorHasMultiplePriorities"];
+  Condition_VisitorPerceivesRisk [label="VisitorPerceivesRisk"];
+  Condition_VisitorHasUnclearExpectations [label="VisitorHasUnclearExpectations"];
+  Condition_VisitorIsCautious [label="VisitorIsCautious"];
+  Condition_VisitorNeedsConfirmation [label="VisitorNeedsConfirmation"];
+  Condition_VisitorStatesBenefit [label="VisitorStatesBenefit"];
+  Condition_VisitorHasHiddenConstraints [label="VisitorHasHiddenConstraints"];
+  Condition_VisitorDelaysDecision [label="VisitorDelaysDecision"];
+  Condition_ObjectionLikely [label="ObjectionLikely"];
+  Condition_VisitorMotivationUnclear [label="VisitorMotivationUnclear"];
+  Condition_VisitorFixatesOnObstacle [label="VisitorFixatesOnObstacle"];
+  Condition_VisitorContextDiffers [label="VisitorContextDiffers"];
+  Condition_VisitorNeedsDetailOnOneArea [label="VisitorNeedsDetailOnOneArea"];
+  Condition_VisitorShowsMomentum [label="VisitorShowsMomentum"];
+  Condition_VisitorOverwhelmed [label="VisitorOverwhelmed"];
+  Condition_VisitorIntentAmbiguous [label="VisitorIntentAmbiguous"];
+  Condition_VisitorExpressesDesiredOutcome [label="VisitorExpressesDesiredOutcome"];
+  Condition_VisitorEngages [label="VisitorEngages"];
+
+  // ------------------------------------------------------------
+  // EVIDENCE
+  // ------------------------------------------------------------
+  node [shape=note, fillcolor="#cfe2f3"];
+  Evidence_StatedPainPoint [label="StatedPainPoint"];
+  Evidence_VisitorStatements [label="VisitorStatements"];
+  Evidence_SummarizedNeeds [label="SummarizedNeeds"];
+  Evidence_MinorAgreement [label="MinorAgreement"];
+  Evidence_PresentedOptions [label="PresentedOptions"];
+  Evidence_InterestSignal [label="InterestSignal"];
+  Evidence_StatedCondition [label="StatedCondition"];
+  Evidence_HesitationSignal [label="HesitationSignal"];
+  Evidence_ScaleResponse [label="ScaleResponse"];
+  Evidence_SpecificObjection [label="SpecificObjection"];
+  Evidence_ObjectionStatement [label="ObjectionStatement"];
+  Evidence_StatedFrame [label="StatedFrame"];
+  Evidence_DesiredFutureState [label="DesiredFutureState"];
+  Evidence_PainPoint [label="PainPoint"];
+  Evidence_ImpactStatement [label="ImpactStatement"];
+  Evidence_FeatureList [label="FeatureList"];
+  Evidence_VisitorPriority [label="VisitorPriority"];
+  Evidence_ValueComponents [label="ValueComponents"];
+  Evidence_ComparisonContext [label="ComparisonContext"];
+  Evidence_PriorCommitment [label="PriorCommitment"];
+  Evidence_LossScenario [label="LossScenario"];
+  Evidence_PeerEvidence [label="PeerEvidence"];
+  Evidence_AnchorValue [label="AnchorValue"];
+  Evidence_CurrentFrame [label="CurrentFrame"];
+  Evidence_VisitorQuestions [label="VisitorQuestions"];
+  Evidence_RankedPriorities [label="RankedPriorities"];
+  Evidence_RiskStatement [label="RiskStatement"];
+  Evidence_StatedExpectations [label="StatedExpectations"];
+  Evidence_SmallAgreements [label="SmallAgreements"];
+  Evidence_VisitorSummary [label="VisitorSummary"];
+  Evidence_StatedBenefit [label="StatedBenefit"];
+  Evidence_ConstraintStatement [label="ConstraintStatement"];
+  Evidence_DelayReason [label="DelayReason"];
+  Evidence_HistoricalPatterns [label="HistoricalPatterns"];
+  Evidence_MotivationCues [label="MotivationCues"];
+  Evidence_StatedGoal [label="StatedGoal"];
+  Evidence_ContextDetails [label="ContextDetails"];
+  Evidence_FocusArea [label="FocusArea"];
+  Evidence_ProgressSignal [label="ProgressSignal"];
+  Evidence_ConfusionSignal [label="ConfusionSignal"];
+  Evidence_StatedIntent [label="StatedIntent"];
+  Evidence_OutcomePriority [label="OutcomePriority"];
+  Evidence_ConsentGiven [label="ConsentGiven"];
+
+  // ------------------------------------------------------------
+  // GOVERNOR RULES
+  // ------------------------------------------------------------
+  node [shape=hexagon, fillcolor="#f4cccc"];
+  Rule_NoAssumptions [label="Rule_NoAssumptions"];
+  Rule_NoLeadingQuestions [label="Rule_NoLeadingQuestions"];
+  Rule_ConfirmBeforeClose [label="Rule_ConfirmBeforeClose"];
+  Rule_NoPressure [label="Rule_NoPressure"];
+  Rule_OptionsMustBeRelevant [label="Rule_OptionsMustBeRelevant"];
+  Rule_NoCommitmentPressure [label="Rule_NoCommitmentPressure"];
+  Rule_ConditionsMustBeExplicit [label="Rule_ConditionsMustBeExplicit"];
+  Rule_NoAggression [label="Rule_NoAggression"];
+  Rule_ScaleMustBeDefined [label="Rule_ScaleMustBeDefined"];
+  Rule_IsolateBeforeAnswer [label="Rule_IsolateBeforeAnswer"];
+  Rule_NoManipulation [label="Rule_NoManipulation"];
+  Rule_TruthfulReframe [label="Rule_TruthfulReframe"];
+  Rule_NoFalsePromises [label="Rule_NoFalsePromises"];
+  Rule_NoExaggeration [label="Rule_NoExaggeration"];
+  Rule_BenefitMustBeRelevant [label="Rule_BenefitMustBeRelevant"];
+  Rule_NoOverclaiming [label="Rule_NoOverclaiming"];
+  Rule_FairComparison [label="Rule_FairComparison"];
+  Rule_NoCoercion [label="Rule_NoCoercion"];
+  Rule_NoFearManipulation [label="Rule_NoFearManipulation"];
+  Rule_EvidenceMustBeVerifiable [label="Rule_EvidenceMustBeVerifiable"];
+  Rule_AnchorMustBeReasonable [label="Rule_AnchorMustBeReasonable"];
+  Rule_NoDeceptiveFraming [label="Rule_NoDeceptiveFraming"];
+  Rule_PrioritiesMustBeVisitorStated [label="Rule_PrioritiesMustBeVisitorStated"];
+  Rule_NoRiskMinimization [label="Rule_NoRiskMinimization"];
+  Rule_NoOverpromising [label="Rule_NoOverpromising"];
+  Rule_ConfirmAccuracy [label="Rule_ConfirmAccuracy"];
+  Rule_NoMisquoting [label="Rule_NoMisquoting"];
+  Rule_NoConstraintIgnoring [label="Rule_NoConstraintIgnoring"];
+  Rule_NoArtificialUrgency [label="Rule_NoArtificialUrgency"];
+  Rule_NoPreemptiveManipulation [label="Rule_NoPreemptiveManipulation"];
+  Rule_NoAssumedMotives [label="Rule_NoAssumedMotives"];
+  Rule_NoGoalDistortion [label="Rule_NoGoalDistortion"];
+  Rule_NoContextAssumption [label="Rule_NoContextAssumption"];
+  Rule_NoIrrelevantDetail [label="Rule_NoIrrelevantDetail"];
+  Rule_NoForcedMomentum [label="Rule_NoForcedMomentum"];
+  Rule_NoInformationDumping [label="Rule_NoInformationDumping"];
+  Rule_VerifyBeforeProceed [label="Rule_VerifyBeforeProceed"];
+  Rule_ConsentRequired [label="Rule_ConsentRequired"];
+  Rule_ComplianceEnforced [label="Rule_ComplianceEnforced"];
+
+  // ------------------------------------------------------------
+  // PREVENTED OUTCOMES
+  // ------------------------------------------------------------
+  node [shape=oval, fillcolor="#e6b8af"];
+  Prevent_PrematurePitch [label="PrematurePitch"];
+  Prevent_AssumptionBias [label="AssumptionBias"];
+  Prevent_Misalignment [label="Misalignment"];
+  Prevent_Overwhelm [label="Overwhelm"];
+  Prevent_DecisionParalysis [label="DecisionParalysis"];
+  Prevent_PrematureCommitment [label="PrematureCommitment"];
+  Prevent_HiddenContingencies [label="HiddenContingencies"];
+  Prevent_Defensiveness [label="Defensiveness"];
+  Prevent_Ambiguity [label="Ambiguity"];
+  Prevent_ObjectionStacking [label="ObjectionStacking"];
+  Prevent_Argument [label="Argument"];
+  Prevent_CognitiveDistortion [label="CognitiveDistortion"];
+  Prevent_UnrealisticExpectations [label="UnrealisticExpectations"];
+  Prevent_FearMongering [label="FearMongering"];
+  Prevent_FeatureDumping [label="FeatureDumping"];
+  Prevent_ValueAmbiguity [label="ValueAmbiguity"];
+  Prevent_FalseDichotomy [label="FalseDichotomy"];
+  Prevent_InconsistencyPressure [label="InconsistencyPressure"];
+  Prevent_AnxietyInduction [label="AnxietyInduction"];
+  Prevent_FalseConsensus [label="FalseConsensus"];
+  Prevent_PriceShock [label="PriceShock"];
+  Prevent_BiasExploitation [label="BiasExploitation"];
+  Prevent_DirectiveBias [label="DirectiveBias"];
+  Prevent_PriorityMismatch [label="PriorityMismatch"];
+  Prevent_UninformedDecision [label="UninformedDecision"];
+  Prevent_ExpectationGap [label="ExpectationGap"];
+  Prevent_CommitmentFear [label="CommitmentFear"];
+  Prevent_Miscommunication [label="Miscommunication"];
+  Prevent_ValueLoss [label="ValueLoss"];
+  Prevent_UnworkableSolution [label="UnworkableSolution"];
+  Prevent_StalledProcess [label="StalledProcess"];
+  Prevent_SurpriseObjection [label="SurpriseObjection"];
+  Prevent_MismatchedPitch [label="MismatchedPitch"];
+  Prevent_GoalAbandonment [label="GoalAbandonment"];
+  Prevent_ContextMismatch [label="ContextMismatch"];
+  Prevent_InformationOverload [label="InformationOverload"];
+  Prevent_MomentumLoss [label="MomentumLoss"];
+  Prevent_CognitiveOverload [label="CognitiveOverload"];
+  Prevent_MisalignedAction [label="MisalignedAction"];
+  Prevent_OutcomeNeglect [label="OutcomeNeglect"];
+  Prevent_EthicalViolation [label="EthicalViolation"];
+  Prevent_ComplianceBreach [label="ComplianceBreach"];
+  Prevent_PrivacyViolation [label="PrivacyViolation"];
+
+  // ------------------------------------------------------------
+  // TECHNIQUE EDGES
+  // ------------------------------------------------------------
+
+  // 1 SPIN
+  Technique_1_SPIN -> SituationalBehaviorPattern [label="is_a"];
+  Technique_1_SPIN -> Condition_VisitorHasUnclearProblem [label="activates_when"];
+  Technique_1_SPIN -> Evidence_StatedPainPoint [label="requires_evidence"];
+  Technique_1_SPIN -> Rule_NoAssumptions [label="governor_rule"];
+  Technique_1_SPIN -> Technique_2_Socratic [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_1_SPIN -> Technique_23_GuidedDiscovery [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_1_SPIN -> Prevent_PrematurePitch [label="prevents"];
+
+  // 2 Socratic
+  Technique_2_Socratic -> SituationalBehaviorPattern [label="is_a"];
+  Technique_2_Socratic -> Condition_VisitorIsExploring [label="activates_when"];
+  Technique_2_Socratic -> Evidence_VisitorStatements [label="requires_evidence"];
+  Technique_2_Socratic -> Rule_NoLeadingQuestions [label="governor_rule"];
+  Technique_2_Socratic -> Technique_1_SPIN [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_2_Socratic -> Technique_23_GuidedDiscovery [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_2_Socratic -> Prevent_AssumptionBias [label="prevents"];
+
+  // 3 Summary Close
+  Technique_3_SummaryClose -> SituationalBehaviorPattern [label="is_a"];
+  Technique_3_SummaryClose -> Condition_VisitorSignalsReadiness [label="activates_when"];
+  Technique_3_SummaryClose -> Evidence_SummarizedNeeds [label="requires_evidence"];
+  Technique_3_SummaryClose -> Rule_ConfirmBeforeClose [label="governor_rule"];
+  Technique_3_SummaryClose -> Technique_4_MinorPointClose [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_3_SummaryClose -> Technique_28_ReverseSummary [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_3_SummaryClose -> Prevent_Misalignment [label="prevents"];
+
+  // 4 Minor-Point Close
+  Technique_4_MinorPointClose -> SituationalBehaviorPattern [label="is_a"];
+  Technique_4_MinorPointClose -> Condition_VisitorAgreesOnSmallPoint [label="activates_when"];
+  Technique_4_MinorPointClose -> Evidence_MinorAgreement [label="requires_evidence"];
+  Technique_4_MinorPointClose -> Rule_NoPressure [label="governor_rule"];
+  Technique_4_MinorPointClose -> Technique_5_ChoiceClose [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_4_MinorPointClose -> Technique_27_MicroCommitments [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_4_MinorPointClose -> Prevent_Overwhelm [label="prevents"];
+
+  // 5 Choice Close
+  Technique_5_ChoiceClose -> SituationalBehaviorPattern [label="is_a"];
+  Technique_5_ChoiceClose -> Condition_VisitorIsDecidingBetweenOptions [label="activates_when"];
+  Technique_5_ChoiceClose -> Evidence_PresentedOptions [label="requires_evidence"];
+  Technique_5_ChoiceClose -> Rule_OptionsMustBeRelevant [label="governor_rule"];
+  Technique_5_ChoiceClose -> Technique_21_Anchoring [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_5_ChoiceClose -> Technique_22_FramingEffect [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_5_ChoiceClose -> Prevent_DecisionParalysis [label="prevents"];
+
+  // 6 Trial Close
+  Technique_6_TrialClose -> SituationalBehaviorPattern [label="is_a"];
+  Technique_6_TrialClose -> Condition_VisitorShowsInterest [label="activates_when"];
+  Technique_6_TrialClose -> Evidence_InterestSignal [label="requires_evidence"];
+  Technique_6_TrialClose -> Rule_NoCommitmentPressure [label="governor_rule"];
+  Technique_6_TrialClose -> Technique_3_SummaryClose [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_6_TrialClose -> Technique_39_IntentVerification [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_6_TrialClose -> Prevent_PrematureCommitment [label="prevents"];
+
+  // 7 Conditional Close
+  Technique_7_ConditionalClose -> SituationalBehaviorPattern [label="is_a"];
+  Technique_7_ConditionalClose -> Condition_VisitorHasConditionalInterest [label="activates_when"];
+  Technique_7_ConditionalClose -> Evidence_StatedCondition [label="requires_evidence"];
+  Technique_7_ConditionalClose -> Rule_ConditionsMustBeExplicit [label="governor_rule"];
+  Technique_7_ConditionalClose -> Technique_25_RiskClarification [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_7_ConditionalClose -> Technique_26_ExpectationSetting [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_7_ConditionalClose -> Prevent_HiddenContingencies [label="prevents"];
+
+  // 8 Sharp-Angle Close
+  Technique_8_SharpAngleClose -> SituationalBehaviorPattern [label="is_a"];
+  Technique_8_SharpAngleClose -> Condition_VisitorIsHesitant [label="activates_when"];
+  Technique_8_SharpAngleClose -> Evidence_HesitationSignal [label="requires_evidence"];
+  Technique_8_SharpAngleClose -> Rule_NoAggression [label="governor_rule"];
+  Technique_8_SharpAngleClose -> Technique_10_ObjectionIsolation [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_8_SharpAngleClose -> Technique_32_ObjectionForecasting [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_8_SharpAngleClose -> Prevent_Defensiveness [label="prevents"];
+
+  // 9 Scale Close
+  Technique_9_ScaleClose -> SituationalBehaviorPattern [label="is_a"];
+  Technique_9_ScaleClose -> Condition_VisitorNeedsToQuantifyInterest [label="activates_when"];
+  Technique_9_ScaleClose -> Evidence_ScaleResponse [label="requires_evidence"];
+  Technique_9_ScaleClose -> Rule_ScaleMustBeDefined [label="governor_rule"];
+  Technique_9_ScaleClose -> Technique_24_PriorityLadder [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_9_ScaleClose -> Technique_33_MotivationMapping [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_9_ScaleClose -> Prevent_Ambiguity [label="prevents"];
+
+  // 10 Objection Isolation
+  Technique_10_ObjectionIsolation -> SituationalBehaviorPattern [label="is_a"];
+  Technique_10_ObjectionIsolation -> Condition_VisitorRaisesObjection [label="activates_when"];
+  Technique_10_ObjectionIsolation -> Evidence_SpecificObjection [label="requires_evidence"];
+  Technique_10_ObjectionIsolation -> Rule_IsolateBeforeAnswer [label="governor_rule"];
+  Technique_10_ObjectionIsolation -> Technique_11_Boomerang [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_10_ObjectionIsolation -> Technique_12_Reframing [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_10_ObjectionIsolation -> Prevent_ObjectionStacking [label="prevents"];
+
+  // 11 Boomerang
+  Technique_11_Boomerang -> SituationalBehaviorPattern [label="is_a"];
+  Technique_11_Boomerang -> Condition_VisitorObjectionCanBeTurned [label="activates_when"];
+  Technique_11_Boomerang -> Evidence_ObjectionStatement [label="requires_evidence"];
+  Technique_11_Boomerang -> Rule_NoManipulation [label="governor_rule"];
+  Technique_11_Boomerang -> Technique_12_Reframing [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_11_Boomerang -> Technique_20_SocialProof [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_11_Boomerang -> Prevent_Argument [label="prevents"];
+
+  // 12 Reframing
+  Technique_12_Reframing -> SituationalBehaviorPattern [label="is_a"];
+  Technique_12_Reframing -> Condition_VisitorHasNegativeFrame [label="activates_when"];
+  Technique_12_Reframing -> Evidence_StatedFrame [label="requires_evidence"];
+  Technique_12_Reframing -> Rule_TruthfulReframe [label="governor_rule"];
+  Technique_12_Reframing -> Technique_11_Boomerang [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_12_Reframing -> Technique_22_FramingEffect [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_12_Reframing -> Prevent_CognitiveDistortion [label="prevents"];
+
+  // 13 Future Pacing
+  Technique_13_FuturePacing -> SituationalBehaviorPattern [label="is_a"];
+  Technique_13_FuturePacing -> Condition_VisitorImaginesOutcome [label="activates_when"];
+  Technique_13_FuturePacing -> Evidence_DesiredFutureState [label="requires_evidence"];
+  Technique_13_FuturePacing -> Rule_NoFalsePromises [label="governor_rule"];
+  Technique_13_FuturePacing -> Technique_40_OutcomeHighlighting [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_13_FuturePacing -> Technique_33_MotivationMapping [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_13_FuturePacing -> Prevent_UnrealisticExpectations [label="prevents"];
+
+  // 14 Problem-Agitate-Solve
+  Technique_14_ProblemAgitateSolve -> SituationalBehaviorPattern [label="is_a"];
+  Technique_14_ProblemAgitateSolve -> Condition_VisitorHasAcutePain [label="activates_when"];
+  Technique_14_ProblemAgitateSolve -> Evidence_PainPoint [label="requires_evidence"];
+  Technique_14_ProblemAgitateSolve -> Evidence_ImpactStatement [label="requires_evidence"];
+  Technique_14_ProblemAgitateSolve -> Rule_NoExaggeration [label="governor_rule"];
+  Technique_14_ProblemAgitateSolve -> Technique_1_SPIN [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_14_ProblemAgitateSolve -> Technique_16_ValueStack [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_14_ProblemAgitateSolve -> Prevent_FearMongering [label="prevents"];
+
+  // 15 Feature-Advantage-Benefit
+  Technique_15_FeatureAdvantageBenefit -> SituationalBehaviorPattern [label="is_a"];
+  Technique_15_FeatureAdvantageBenefit -> Condition_VisitorNeedsValueClarity [label="activates_when"];
+  Technique_15_FeatureAdvantageBenefit -> Evidence_FeatureList [label="requires_evidence"];
+  Technique_15_FeatureAdvantageBenefit -> Evidence_VisitorPriority [label="requires_evidence"];
+  Technique_15_FeatureAdvantageBenefit -> Rule_BenefitMustBeRelevant [label="governor_rule"];
+  Technique_15_FeatureAdvantageBenefit -> Technique_16_ValueStack [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_15_FeatureAdvantageBenefit -> Technique_29_BenefitEchoing [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_15_FeatureAdvantageBenefit -> Prevent_FeatureDumping [label="prevents"];
+
+  // 16 Value Stack
+  Technique_16_ValueStack -> SituationalBehaviorPattern [label="is_a"];
+  Technique_16_ValueStack -> Condition_VisitorQuestionsValue [label="activates_when"];
+  Technique_16_ValueStack -> Evidence_ValueComponents [label="requires_evidence"];
+  Technique_16_ValueStack -> Rule_NoOverclaiming [label="governor_rule"];
+  Technique_16_ValueStack -> Technique_15_FeatureAdvantageBenefit [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_16_ValueStack -> Technique_17_ContrastPrinciple [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_16_ValueStack -> Prevent_ValueAmbiguity [label="prevents"];
+
+  // 17 Contrast Principle
+  Technique_17_ContrastPrinciple -> SituationalBehaviorPattern [label="is_a"];
+  Technique_17_ContrastPrinciple -> Condition_VisitorComparesOptions [label="activates_when"];
+  Technique_17_ContrastPrinciple -> Evidence_ComparisonContext [label="requires_evidence"];
+  Technique_17_ContrastPrinciple -> Rule_FairComparison [label="governor_rule"];
+  Technique_17_ContrastPrinciple -> Technique_16_ValueStack [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_17_ContrastPrinciple -> Technique_21_Anchoring [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_17_ContrastPrinciple -> Prevent_FalseDichotomy [label="prevents"];
+
+  // 18 Commitment & Consistency
+  Technique_18_CommitmentConsistency -> SituationalBehaviorPattern [label="is_a"];
+  Technique_18_CommitmentConsistency -> Condition_VisitorMadePriorCommitment [label="activates_when"];
+  Technique_18_CommitmentConsistency -> Evidence_PriorCommitment [label="requires_evidence"];
+  Technique_18_CommitmentConsistency -> Rule_NoCoercion [label="governor_rule"];
+  Technique_18_CommitmentConsistency -> Technique_27_MicroCommitments [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_18_CommitmentConsistency -> Technique_37_MomentumLinking [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_18_CommitmentConsistency -> Prevent_InconsistencyPressure [label="prevents"];
+
+  // 19 Loss Avoidance
+  Technique_19_LossAvoidance -> SituationalBehaviorPattern [label="is_a"];
+  Technique_19_LossAvoidance -> Condition_VisitorFearsLoss [label="activates_when"];
+  Technique_19_LossAvoidance -> Evidence_LossScenario [label="requires_evidence"];
+  Technique_19_LossAvoidance -> Rule_NoFearManipulation [label="governor_rule"];
+  Technique_19_LossAvoidance -> Technique_14_ProblemAgitateSolve [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_19_LossAvoidance -> Technique_25_RiskClarification [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_19_LossAvoidance -> Prevent_AnxietyInduction [label="prevents"];
+
+  // 20 Social Proof
+  Technique_20_SocialProof -> SituationalBehaviorPattern [label="is_a"];
+  Technique_20_SocialProof -> Condition_VisitorSeeksValidation [label="activates_when"];
+  Technique_20_SocialProof -> Evidence_PeerEvidence [label="requires_evidence"];
+  Technique_20_SocialProof -> Rule_EvidenceMustBeVerifiable [label="governor_rule"];
+  Technique_20_SocialProof -> Technique_11_Boomerang [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_20_SocialProof -> Technique_32_ObjectionForecasting [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_20_SocialProof -> Prevent_FalseConsensus [label="prevents"];
+
+  // 21 Anchoring
+  Technique_21_Anchoring -> SituationalBehaviorPattern [label="is_a"];
+  Technique_21_Anchoring -> Condition_VisitorNeedsReferencePoint [label="activates_when"];
+  Technique_21_Anchoring -> Evidence_AnchorValue [label="requires_evidence"];
+  Technique_21_Anchoring -> Rule_AnchorMustBeReasonable [label="governor_rule"];
+  Technique_21_Anchoring -> Technique_5_ChoiceClose [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_21_Anchoring -> Technique_17_ContrastPrinciple [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_21_Anchoring -> Prevent_PriceShock [label="prevents"];
+
+  // 22 Framing Effect
+  Technique_22_FramingEffect -> SituationalBehaviorPattern [label="is_a"];
+  Technique_22_FramingEffect -> Condition_VisitorInterpretsInformation [label="activates_when"];
+  Technique_22_FramingEffect -> Evidence_CurrentFrame [label="requires_evidence"];
+  Technique_22_FramingEffect -> Rule_NoDeceptiveFraming [label="governor_rule"];
+  Technique_22_FramingEffect -> Technique_12_Reframing [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_22_FramingEffect -> Technique_21_Anchoring [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_22_FramingEffect -> Prevent_BiasExploitation [label="prevents"];
+
+  // 23 Guided Discovery
+  Technique_23_GuidedDiscovery -> SituationalBehaviorPattern [label="is_a"];
+  Technique_23_GuidedDiscovery -> Condition_VisitorNeedsSelfDiscovery [label="activates_when"];
+  Technique_23_GuidedDiscovery -> Evidence_VisitorQuestions [label="requires_evidence"];
+  Technique_23_GuidedDiscovery -> Rule_NoLeadingQuestions [label="governor_rule"];
+  Technique_23_GuidedDiscovery -> Technique_1_SPIN [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_23_GuidedDiscovery -> Technique_2_Socratic [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_23_GuidedDiscovery -> Prevent_DirectiveBias [label="prevents"];
+
+  // 24 Priority Ladder
+  Technique_24_PriorityLadder -> SituationalBehaviorPattern [label="is_a"];
+  Technique_24_PriorityLadder -> Condition_VisitorHasMultiplePriorities [label="activates_when"];
+  Technique_24_PriorityLadder -> Evidence_RankedPriorities [label="requires_evidence"];
+  Technique_24_PriorityLadder -> Rule_PrioritiesMustBeVisitorStated [label="governor_rule"];
+  Technique_24_PriorityLadder -> Technique_9_ScaleClose [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_24_PriorityLadder -> Technique_30_ConstraintSurfacing [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_24_PriorityLadder -> Prevent_PriorityMismatch [label="prevents"];
+
+  // 25 Risk Clarification
+  Technique_25_RiskClarification -> SituationalBehaviorPattern [label="is_a"];
+  Technique_25_RiskClarification -> Condition_VisitorPerceivesRisk [label="activates_when"];
+  Technique_25_RiskClarification -> Evidence_RiskStatement [label="requires_evidence"];
+  Technique_25_RiskClarification -> Rule_NoRiskMinimization [label="governor_rule"];
+  Technique_25_RiskClarification -> Technique_7_ConditionalClose [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_25_RiskClarification -> Technique_19_LossAvoidance [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_25_RiskClarification -> Prevent_UninformedDecision [label="prevents"];
+
+  // 26 Expectation Setting
+  Technique_26_ExpectationSetting -> SituationalBehaviorPattern [label="is_a"];
+  Technique_26_ExpectationSetting -> Condition_VisitorHasUnclearExpectations [label="activates_when"];
+  Technique_26_ExpectationSetting -> Evidence_StatedExpectations [label="requires_evidence"];
+  Technique_26_ExpectationSetting -> Rule_NoOverpromising [label="governor_rule"];
+  Technique_26_ExpectationSetting -> Technique_7_ConditionalClose [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_26_ExpectationSetting -> Technique_40_OutcomeHighlighting [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_26_ExpectationSetting -> Prevent_ExpectationGap [label="prevents"];
+
+  // 27 Micro-Commitments
+  Technique_27_MicroCommitments -> SituationalBehaviorPattern [label="is_a"];
+  Technique_27_MicroCommitments -> Condition_VisitorIsCautious [label="activates_when"];
+  Technique_27_MicroCommitments -> Evidence_SmallAgreements [label="requires_evidence"];
+  Technique_27_MicroCommitments -> Rule_NoPressure [label="governor_rule"];
+  Technique_27_MicroCommitments -> Technique_4_MinorPointClose [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_27_MicroCommitments -> Technique_18_CommitmentConsistency [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_27_MicroCommitments -> Prevent_CommitmentFear [label="prevents"];
+
+  // 28 Reverse Summary
+  Technique_28_ReverseSummary -> SituationalBehaviorPattern [label="is_a"];
+  Technique_28_ReverseSummary -> Condition_VisitorNeedsConfirmation [label="activates_when"];
+  Technique_28_ReverseSummary -> Evidence_VisitorSummary [label="requires_evidence"];
+  Technique_28_ReverseSummary -> Rule_ConfirmAccuracy [label="governor_rule"];
+  Technique_28_ReverseSummary -> Technique_3_SummaryClose [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_28_ReverseSummary -> Technique_39_IntentVerification [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_28_ReverseSummary -> Prevent_Miscommunication [label="prevents"];
+
+  // 29 Benefit Echoing
+  Technique_29_BenefitEchoing -> SituationalBehaviorPattern [label="is_a"];
+  Technique_29_BenefitEchoing -> Condition_VisitorStatesBenefit [label="activates_when"];
+  Technique_29_BenefitEchoing -> Evidence_StatedBenefit [label="requires_evidence"];
+  Technique_29_BenefitEchoing -> Rule_NoMisquoting [label="governor_rule"];
+  Technique_29_BenefitEchoing -> Technique_15_FeatureAdvantageBenefit [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_29_BenefitEchoing -> Technique_40_OutcomeHighlighting [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_29_BenefitEchoing -> Prevent_ValueLoss [label="prevents"];
+
+  // 30 Constraint Surfacing
+  Technique_30_ConstraintSurfacing -> SituationalBehaviorPattern [label="is_a"];
+  Technique_30_ConstraintSurfacing -> Condition_VisitorHasHiddenConstraints [label="activates_when"];
+  Technique_30_ConstraintSurfacing -> Evidence_ConstraintStatement [label="requires_evidence"];
+  Technique_30_ConstraintSurfacing -> Rule_NoConstraintIgnoring [label="governor_rule"];
+  Technique_30_ConstraintSurfacing -> Technique_24_PriorityLadder [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_30_ConstraintSurfacing -> Technique_38_CognitiveLoadReduction [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_30_ConstraintSurfacing -> Prevent_UnworkableSolution [label="prevents"];
+
+  // 31 Decision Acceleration
+  Technique_31_DecisionAcceleration -> SituationalBehaviorPattern [label="is_a"];
+  Technique_31_DecisionAcceleration -> Condition_VisitorDelaysDecision [label="activates_when"];
+  Technique_31_DecisionAcceleration -> Evidence_DelayReason [label="requires_evidence"];
+  Technique_31_DecisionAcceleration -> Rule_NoArtificialUrgency [label="governor_rule"];
+  Technique_31_DecisionAcceleration -> Technique_6_TrialClose [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_31_DecisionAcceleration -> Technique_32_ObjectionForecasting [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_31_DecisionAcceleration -> Prevent_StalledProcess [label="prevents"];
+
+  // 32 Objection Forecasting
+  Technique_32_ObjectionForecasting -> SituationalBehaviorPattern [label="is_a"];
+  Technique_32_ObjectionForecasting -> Condition_ObjectionLikely [label="activates_when"];
+  Technique_32_ObjectionForecasting -> Evidence_HistoricalPatterns [label="requires_evidence"];
+  Technique_32_ObjectionForecasting -> Rule_NoPreemptiveManipulation [label="governor_rule"];
+  Technique_32_ObjectionForecasting -> Technique_10_ObjectionIsolation [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_32_ObjectionForecasting -> Technique_20_SocialProof [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_32_ObjectionForecasting -> Prevent_SurpriseObjection [label="prevents"];
+
+  // 33 Motivation Mapping
+  Technique_33_MotivationMapping -> SituationalBehaviorPattern [label="is_a"];
+  Technique_33_MotivationMapping -> Condition_VisitorMotivationUnclear [label="activates_when"];
+  Technique_33_MotivationMapping -> Evidence_MotivationCues [label="requires_evidence"];
+  Technique_33_MotivationMapping -> Rule_NoAssumedMotives [label="governor_rule"];
+  Technique_33_MotivationMapping -> Technique_9_ScaleClose [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_33_MotivationMapping -> Technique_13_FuturePacing [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_33_MotivationMapping -> Prevent_MismatchedPitch [label="prevents"];
+
+  // 34 Goal Reversal
+  Technique_34_GoalReversal -> SituationalBehaviorPattern [label="is_a"];
+  Technique_34_GoalReversal -> Condition_VisitorFixatesOnObstacle [label="activates_when"];
+  Technique_34_GoalReversal -> Evidence_StatedGoal [label="requires_evidence"];
+  Technique_34_GoalReversal -> Rule_NoGoalDistortion [label="governor_rule"];
+  Technique_34_GoalReversal -> Technique_12_Reframing [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_34_GoalReversal -> Technique_40_OutcomeHighlighting [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_34_GoalReversal -> Prevent_GoalAbandonment [label="prevents"];
+
+  // 35 Context Bridging
+  Technique_35_ContextBridging -> SituationalBehaviorPattern [label="is_a"];
+  Technique_35_ContextBridging -> Condition_VisitorContextDiffers [label="activates_when"];
+  Technique_35_ContextBridging -> Evidence_ContextDetails [label="requires_evidence"];
+  Technique_35_ContextBridging -> Rule_NoContextAssumption [label="governor_rule"];
+  Technique_35_ContextBridging -> Technique_23_GuidedDiscovery [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_35_ContextBridging -> Technique_30_ConstraintSurfacing [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_35_ContextBridging -> Prevent_ContextMismatch [label="prevents"];
+
+  // 36 Selective Deep Dive
+  Technique_36_SelectiveDeepDive -> SituationalBehaviorPattern [label="is_a"];
+  Technique_36_SelectiveDeepDive -> Condition_VisitorNeedsDetailOnOneArea [label="activates_when"];
+  Technique_36_SelectiveDeepDive -> Evidence_FocusArea [label="requires_evidence"];
+  Technique_36_SelectiveDeepDive -> Rule_NoIrrelevantDetail [label="governor_rule"];
+  Technique_36_SelectiveDeepDive -> Technique_15_FeatureAdvantageBenefit [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_36_SelectiveDeepDive -> Technique_38_CognitiveLoadReduction [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_36_SelectiveDeepDive -> Prevent_InformationOverload [label="prevents"];
+
+  // 37 Momentum Linking
+  Technique_37_MomentumLinking -> SituationalBehaviorPattern [label="is_a"];
+  Technique_37_MomentumLinking -> Condition_VisitorShowsMomentum [label="activates_when"];
+  Technique_37_MomentumLinking -> Evidence_ProgressSignal [label="requires_evidence"];
+  Technique_37_MomentumLinking -> Rule_NoForcedMomentum [label="governor_rule"];
+  Technique_37_MomentumLinking -> Technique_18_CommitmentConsistency [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_37_MomentumLinking -> Technique_31_DecisionAcceleration [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_37_MomentumLinking -> Prevent_MomentumLoss [label="prevents"];
+
+  // 38 Cognitive Load Reduction
+  Technique_38_CognitiveLoadReduction -> SituationalBehaviorPattern [label="is_a"];
+  Technique_38_CognitiveLoadReduction -> Condition_VisitorOverwhelmed [label="activates_when"];
+  Technique_38_CognitiveLoadReduction -> Evidence_ConfusionSignal [label="requires_evidence"];
+  Technique_38_CognitiveLoadReduction -> Rule_NoInformationDumping [label="governor_rule"];
+  Technique_38_CognitiveLoadReduction -> Technique_30_ConstraintSurfacing [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_38_CognitiveLoadReduction -> Technique_36_SelectiveDeepDive [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_38_CognitiveLoadReduction -> Prevent_CognitiveOverload [label="prevents"];
+
+  // 39 Intent Verification
+  Technique_39_IntentVerification -> SituationalBehaviorPattern [label="is_a"];
+  Technique_39_IntentVerification -> Condition_VisitorIntentAmbiguous [label="activates_when"];
+  Technique_39_IntentVerification -> Evidence_StatedIntent [label="requires_evidence"];
+  Technique_39_IntentVerification -> Rule_VerifyBeforeProceed [label="governor_rule"];
+  Technique_39_IntentVerification -> Technique_6_TrialClose [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_39_IntentVerification -> Technique_28_ReverseSummary [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_39_IntentVerification -> Prevent_MisalignedAction [label="prevents"];
+
+  // 40 Outcome Highlighting
+  Technique_40_OutcomeHighlighting -> SituationalBehaviorPattern [label="is_a"];
+  Technique_40_OutcomeHighlighting -> Condition_VisitorExpressesDesiredOutcome [label="activates_when"];
+  Technique_40_OutcomeHighlighting -> Evidence_OutcomePriority [label="requires_evidence"];
+  Technique_40_OutcomeHighlighting -> Rule_NoOverclaiming [label="governor_rule"];
+  Technique_40_OutcomeHighlighting -> Technique_13_FuturePacing [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_40_OutcomeHighlighting -> Technique_29_BenefitEchoing [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_40_OutcomeHighlighting -> Prevent_OutcomeNeglect [label="prevents"];
+
+  // 41 Consent & Compliance Gate
+  Technique_41_ConsentComplianceGate -> SituationalBehaviorPattern [label="is_a"];
+  Technique_41_ConsentComplianceGate -> Condition_VisitorEngages [label="activates_when"];
+  Technique_41_ConsentComplianceGate -> Evidence_ConsentGiven [label="requires_evidence"];
+  Technique_41_ConsentComplianceGate -> Rule_ConsentRequired [label="governor_rule"];
+  Technique_41_ConsentComplianceGate -> Rule_NoManipulation [label="governor_rule"];
+  Technique_41_ConsentComplianceGate -> Rule_ComplianceEnforced [label="governor_rule"];
+  Technique_41_ConsentComplianceGate -> AllTechniques [label="compatible_with", style=dashed, dir=none, color="#3c78d8"];
+  Technique_41_ConsentComplianceGate -> Prevent_EthicalViolation [label="prevents"];
+  Technique_41_ConsentComplianceGate -> Prevent_ComplianceBreach [label="prevents"];
+  Technique_41_ConsentComplianceGate -> Prevent_PrivacyViolation [label="prevents"];
+
+  // ------------------------------------------------------------
+  // NOCK-NINE SEQUENCING EDGES
+  // ------------------------------------------------------------
+  NockNineOfClubs -> Technique_1_SPIN [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_2_Socratic [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_3_SummaryClose [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_4_MinorPointClose [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_5_ChoiceClose [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_6_TrialClose [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_7_ConditionalClose [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_8_SharpAngleClose [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_9_ScaleClose [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_10_ObjectionIsolation [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_11_Boomerang [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_12_Reframing [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_13_FuturePacing [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_14_ProblemAgitateSolve [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_15_FeatureAdvantageBenefit [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_16_ValueStack [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_17_ContrastPrinciple [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_18_CommitmentConsistency [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_19_LossAvoidance [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_20_SocialProof [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_21_Anchoring [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_22_FramingEffect [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_23_GuidedDiscovery [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_24_PriorityLadder [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_25_RiskClarification [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_26_ExpectationSetting [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_27_MicroCommitments [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_28_ReverseSummary [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_29_BenefitEchoing [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_30_ConstraintSurfacing [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_31_DecisionAcceleration [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_32_ObjectionForecasting [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_33_MotivationMapping [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_34_GoalReversal [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_35_ContextBridging [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_36_SelectiveDeepDive [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_37_MomentumLinking [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_38_CognitiveLoadReduction [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_39_IntentVerification [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_40_OutcomeHighlighting [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+  NockNineOfClubs -> Technique_41_ConsentComplianceGate [label="controls_sequence_for", color="#bf9000", penwidth=1.2];
+
+  // Reverse sequenced_by edges for explicit schema compliance
+  Technique_1_SPIN -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_2_Socratic -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_3_SummaryClose -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_4_MinorPointClose -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_5_ChoiceClose -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_6_TrialClose -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_7_ConditionalClose -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_8_SharpAngleClose -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_9_ScaleClose -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_10_ObjectionIsolation -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_11_Boomerang -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_12_Reframing -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_13_FuturePacing -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_14_ProblemAgitateSolve -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_15_FeatureAdvantageBenefit -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_16_ValueStack -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_17_ContrastPrinciple -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_18_CommitmentConsistency -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_19_LossAvoidance -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_20_SocialProof -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_21_Anchoring -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_22_FramingEffect -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_23_GuidedDiscovery -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_24_PriorityLadder -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_25_RiskClarification -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_26_ExpectationSetting -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_27_MicroCommitments -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_28_ReverseSummary -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_29_BenefitEchoing -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_30_ConstraintSurfacing -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_31_DecisionAcceleration -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_32_ObjectionForecasting -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_33_MotivationMapping -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_34_GoalReversal -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_35_ContextBridging -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_36_SelectiveDeepDive -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_37_MomentumLinking -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_38_CognitiveLoadReduction -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_39_IntentVerification -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_40_OutcomeHighlighting -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+  Technique_41_ConsentComplianceGate -> NockNineOfClubs [label="sequenced_by", style=dotted, color="#bf9000", constraint=false];
+}

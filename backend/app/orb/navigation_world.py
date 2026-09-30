@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 from urllib.parse import urlparse
 
+from app.core.timekeeping import event_timestamp
+
 
 NAVIGATION_SCHEMA = "orb_weaver.navigation_world.v1"
 WORLD_STATE_SCHEMA = "orbot.world_state_seed.v1"
@@ -20,7 +22,8 @@ def build_navigation_world(
     pointer_map: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     page_list = [page for page in pages if page is not None]
-    generated_at = datetime.now(timezone.utc).isoformat()
+    world_timestamp = event_timestamp(source="orb_weaver.navigation_world")
+    generated_at = world_timestamp["standard_timestamp"]
     resolved_domain = _domain(domain, page_list)
 
     page_by_route: Dict[str, Any] = {}
@@ -77,6 +80,8 @@ def build_navigation_world(
         "project_id": str(project_id or ""),
         "domain": resolved_domain,
         "generated_at": generated_at,
+        "timestamp_envelope": world_timestamp,
+        "timestamp_schema": "orb_weaver.iss_timestamp.v1",
         "version": version_hash,
         "map_model": "topological_site_graph",
         "route_graph": route_graph,

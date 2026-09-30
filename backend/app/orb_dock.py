@@ -11,6 +11,8 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.timekeeping import event_timestamp
+
 
 DOCK_CONFIGURATION_SCHEMA = "orb_weaver.orb_dock_configuration.v1"
 COMPILED_POLICY_SCHEMA = "orb_weaver.website_orb_operating_policy.v1"
@@ -511,7 +513,8 @@ def compile_configuration(
     if not website_context:
         warnings.append({"path": "site_world", "code": "site_world_unavailable", "message": "Run the project scan before publishing route- or tool-bound policy."})
 
-    compiled_at = datetime.utcnow().isoformat()
+    compile_timestamp = event_timestamp(source="orb_weaver.dock_station")
+    compiled_at = compile_timestamp["standard_timestamp"]
     compiled = {
         "schema": COMPILED_POLICY_SCHEMA,
         "project_id": project_id,
@@ -519,6 +522,7 @@ def compile_configuration(
         "orb_name": configuration.orb_name,
         "version": next_version,
         "compiled_at": compiled_at,
+        "timestamp_envelope": compile_timestamp,
         "locked_doctrine": {"hash": doctrine_hash(), "rules": LOCKED_ORB_DOCTRINE},
         "appearance": {**skin, "customization_state": "FACTORY_DEFAULT" if skin.get("factory_default") else "CUSTOM"},
         "llm": configuration.llm.model_dump(mode="json"),

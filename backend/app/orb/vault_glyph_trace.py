@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
 from app.core.storage import AUDIT_ROOT, require_vault_path
+from app.core.timekeeping import event_timestamp
 
 
 LEDGER_ROOT = AUDIT_ROOT / "glyph_trace"
@@ -55,7 +56,8 @@ def record_vault_object(
     provenance_confidence: str = "verified",
     runtime_eligibility: str = "active",
 ) -> Dict[str, Any]:
-    now = datetime.now(timezone.utc).isoformat()
+    timestamp = event_timestamp(source=f"{actor_type}:{object_type}")
+    now = timestamp["standard_timestamp"]
     content_hash = _hash(content)
     trace_id = f"GT-VLT-{uuid.uuid4().hex}"
     event_id = f"GTE-{uuid.uuid4().hex}"
@@ -94,11 +96,15 @@ def record_vault_object(
         "last_event_id": event_id,
         "integrity_algorithm": "sha256",
         "integrity_verified_at": now,
+        "timestamp_envelope": timestamp,
+        "timestamp_schema": "orb_weaver.iss_timestamp.v1",
     }
     event = {
         "event_id": event_id,
         "glyph_trace_id": trace_id,
         "timestamp": now,
+        "timestamp_envelope": timestamp,
+        "timestamp_schema": "orb_weaver.iss_timestamp.v1",
         "event_type": event_type,
         "actor": actor_type,
         "session_id": None,

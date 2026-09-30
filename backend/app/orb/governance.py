@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.core.storage import IDENTITY_ROOT, LONG_TERM_MEMORY_ROOT, PERSISTENT_CACHE_ROOT, SHORT_TERM_MEMORY_ROOT, require_vault_path
+from app.core.timekeeping import event_timestamp, stamp_record
 from app.orb.vault_glyph_trace import record_vault_object
 from app.orb.weaver_mission import WEAVER_MISSION
 
@@ -214,7 +215,8 @@ def persist_governance_artifacts(
     session_key: str,
 ) -> list[str]:
     """Persist the live binding evidence in the canonical Vault Matrix."""
-    now = datetime.now(timezone.utc).isoformat()
+    timestamp = event_timestamp(source="orb_weaver.governance")
+    now = timestamp["standard_timestamp"]
     versions = compiled["versions"]
     trace_id = str(trace.get("governance_trace_id") or _hash(json.dumps(trace, sort_keys=True)))
     glyph_trace_refs: list[str] = []
@@ -223,7 +225,7 @@ def persist_governance_artifacts(
         path = require_vault_path(path, "Website ORB governance artifact")
         path.parent.mkdir(parents=True, exist_ok=True)
         temp = path.with_name(f".{path.name}.tmp")
-        temp.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+        temp.write_text(json.dumps(stamp_record(payload, source="orb_weaver.governance"), indent=2, ensure_ascii=True), encoding="utf-8")
         temp.replace(path)
 
     write_json(
