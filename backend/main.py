@@ -4776,6 +4776,122 @@ class CaliCrmContactCreate(BaseModel):
     notes: str = ""
 
 
+class PublicLeadSubmission(BaseModel):
+    """Public Beta/Investor intake; the backend owns delivery and durability."""
+
+    form_type: str = Field(min_length=1, max_length=80)
+    fields: Dict[str, Any] = Field(default_factory=dict)
+    source_url: Optional[str] = Field(default=None, max_length=500)
+
+
+def _public_lead_dir() -> Path:
+    folder = INTEGRATIONS_ROOT / "public_leads"
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder
+
+
+def _lead_value(fields: Dict[str, Any], name: str) -> str:
+    value = fields.get(name, "")
+    return str(value or "").strip()
+
+
+async def _post_local_service(client: httpx.AsyncClient, endpoints: List[str], payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    errors: List[str] = []
+    for endpoint in endpoints:
+        try:
+            response = await client.post(endpoint, json=payload, headers=headers or {})
+            if response.status_code < 500:
+                response.raise_for_status()
+                try:
+                    body = response.json()
+                except ValueError:
+                    body = {}
+                return {"status": "synced", "endpoint": endpoint, "http_status": response.status_code, "response": body}
+            errors.append(f"{endpoint}:{response.status_code}")
+        except Exception as exc:
+            errors.append(f"{endpoint}:{exc}")
+    return {"status": "queued", "errors": errors[-3:]}
+
+
+@app.post("/api/public/lead")
+async def receive_public_lead(payload: PublicLeadSubmission):
+    fields = {
+        str(key): str(value or "").strip()
+        for key, value in payload.fields.items()
+        if str(key) and key != "_honey"
+    }
+    full_name = _lead_value(fields, "full_name")
+    email = _normalize_email(_lead_value(fields, "email"))
+    if not full_name or "@" not in email:
+        raise HTTPException(status_code=400, detail="Full name and a valid email are required")
+    if _lead_value(fields, "contact_consent").lower() not in {"yes", "true", "on", "1"}:
+        raise HTTPException(status_code=400, detail="Contact authorization is required")
+
+    lead_id = f"{payload.form_type}_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(5)}"
+    record = {
+        "schema": "orb_weaver.public_lead.v1",
+        "lead_id": lead_id,
+        "form_type": payload.form_type,
+        "received_at": datetime.utcnow().isoformat(),
+        "source_url": payload.source_url,
+        "fields": fields,
+        "delivery": {},
+    }
+    output_path = _public_lead_dir() / f"{lead_id}.json"
+    _write_json(output_path, record)
+
+    viv_base = settings.VIV_COMMUNICATIONS_URL.rstrip("/")
+    viv_contact_payload = {
+        "name": full_name,
+        "email": email,
+        "contact_type": "founding_beta" if payload.form_type == "founding_beta" else "investor",
+        "crm_stage": "prospect",
+        "sync_crm": True,
+        "extra": {"source": "orb_weaver", "lead_id": lead_id, "form_type": payload.form_type, **fields},
+    }
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        viv_contact = await _post_local_service(client, [f"{viv_base}/api/contacts"], viv_contact_payload)
+        notification_text = "\n".join(f"{key}: {value}" for key, value in fields.items() if value)
+        notification = await _post_local_service(
+            client,
+            [f"{viv_base}/api/emails/send"],
+            {
+                "to": settings.VIV_NOTIFICATION_RECIPIENT,
+                "subject": f"ORB Weaver {payload.form_type.replace('_', ' ').title()}",
+                "text": f"New public lead {lead_id} received from {full_name} ({email}).\n\n{notification_text}",
+                "from_name": "ORB Weaver",
+            },
+        )
+
+        crm_base = settings.CALI_CRM_URL.rstrip("/")
+        crm_headers = {"Authorization": f"Bearer {settings.CALI_CRM_TOKEN}"} if settings.CALI_CRM_TOKEN else {}
+        vector_vault = await _post_local_service(
+            client,
+            [f"{crm_base}/cali/contacts", f"{crm_base}/api/cali/contacts"],
+            {
+                "name": full_name,
+                "email": email,
+                "contact_type": viv_contact_payload["contact_type"],
+                "crm_stage": "prospect",
+                "lead_source": "orb_weaver",
+                "notes": f"Public {payload.form_type} submission {lead_id}.",
+                "owner": "orb_weaver",
+            },
+            crm_headers,
+        )
+
+    record["delivery"] = {"viv_contact": viv_contact, "notification": notification, "vector_vault": vector_vault}
+    _write_json(output_path, record)
+    return {
+        "status": "received",
+        "lead_id": lead_id,
+        "recorded": True,
+        "viv_contact": viv_contact["status"],
+        "notification": notification["status"],
+        "vector_vault": vector_vault["status"],
+    }
+
+
 def _customer_crm_import_record(customer: Customer, db: Session) -> Dict:
     projects = db.query(Project).filter(Project.customer_id == customer.id).all()
     return {

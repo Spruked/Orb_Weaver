@@ -45,6 +45,10 @@ services:
       - ORB_WEAVER_VAULT_ROOT=/app/vault_system
       - ORB_WEAVER_SUBSTRATE_ROOT=/app/vault_system
       - PUBLIC_BASE_URL=http://127.0.0.1:16510
+      - VIV_COMMUNICATIONS_URL=${VIV_COMMUNICATIONS_URL:-http://host.docker.internal:19000}
+      - VIV_NOTIFICATION_RECIPIENT=${VIV_NOTIFICATION_RECIPIENT:-bryan@spruked.com}
+      - CALI_CRM_URL=${CALI_CRM_URL:-http://host.docker.internal:21010}
+      - CALI_CRM_TOKEN=${CALI_CRM_TOKEN:-spruked-admin-local}
       - CHROME_PATH=/usr/bin/chromium
       - CHROME_BIN=/usr/bin/chromium
       - CHROME_DEVTOOLS_CLI=chrome-devtools

@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     PUBLIC_BASE_URL: str = "https://orbweaver.spruked.com"
     CALI_CRM_URL: str = "http://localhost:21000/"
     PRIME_MAIL_URL: str = "http://localhost:19000/"
+    VIV_COMMUNICATIONS_URL: str = "http://host.docker.internal:19000"
+    VIV_NOTIFICATION_RECIPIENT: str = "bryan@spruked.com"
     CALI_CRM_TOKEN: Optional[str] = "spruked-admin-local"
     CALI_CRM_SYNC_ON_SIGNUP: bool = True
     # Orb Weaver owns only the outbound CRM bridge records it creates. Those

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { FormEvent, useEffect, useState } from 'react';
 import PublicHeader from '../components/PublicHeader';
 import './PublicLeadPage.css';
 
@@ -6,20 +6,44 @@ type PublicLeadPageProps = {
   type: 'beta' | 'investor';
 };
 
-const FORM_ENDPOINT = 'https://formsubmit.co/bryanspruk7@outlook.com';
-
 const PublicLeadPage: React.FC<PublicLeadPageProps> = ({ type }) => {
   const isBeta = type === 'beta';
-  const submitted = new URLSearchParams(window.location.search).get('submitted') === '1';
-  const pageUrl = isBeta
-    ? 'https://orbweaver.spruked.com/founding-beta?submitted=1'
-    : 'https://orbweaver.spruked.com/investor-contact?submitted=1';
+  const [submitted, setSubmitted] = useState(new URLSearchParams(window.location.search).get('submitted') === '1');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
     document.title = isBeta
       ? 'Join the Founding Beta | ORB Weaver'
       : 'Private Investor Discussion | ORB Weaver';
   }, [isBeta]);
+
+  const submitLead = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitting(true);
+    setSubmitError('');
+    const form = new FormData(event.currentTarget);
+    const fields = Object.fromEntries(form.entries());
+    try {
+      const response = await fetch('/api/public/lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          form_type: isBeta ? 'founding_beta' : 'private_investor_discussion',
+          source_url: window.location.href,
+          fields,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.detail || 'The request could not be submitted.');
+      setSubmitted(true);
+      window.history.replaceState({}, '', `${window.location.pathname}?submitted=1`);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'The request could not be submitted.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <main data-orb-target={isBeta ? 'tour-founding-beta' : 'tour-investor-contact'} className="ow-lead-page ow-campaign-page">
@@ -111,11 +135,7 @@ const PublicLeadPage: React.FC<PublicLeadPageProps> = ({ type }) => {
                 <p>Fields marked with an asterisk are required.</p>
               </div>
 
-              <form className="ow-lead-form" action={FORM_ENDPOINT} method="POST">
-                <input type="hidden" name="_subject" value={isBeta ? 'ORB Weaver Founding Beta Application' : 'ORB Weaver Private Investor Discussion Request'} />
-                <input type="hidden" name="_next" value={pageUrl} />
-                <input type="hidden" name="_template" value="table" />
-                <input type="hidden" name="_captcha" value="false" />
+              <form className="ow-lead-form" onSubmit={submitLead}>
                 <input type="hidden" name="form_type" value={isBeta ? 'founding_beta' : 'private_investor_discussion'} />
                 <input className="ow-lead-honey" type="text" name="_honey" tabIndex={-1} autoComplete="off" />
 
@@ -229,8 +249,10 @@ const PublicLeadPage: React.FC<PublicLeadPageProps> = ({ type }) => {
                   <span>I authorize ORB Weaver to contact me about this request. *</span>
                 </label>
 
-                <button className="ow-lead-submit" type="submit">
-                  {isBeta ? 'Submit Founding Beta Application' : 'Request a Private Discussion'}
+                {submitError && <p className="ow-lead-error" role="alert">{submitError}</p>}
+
+                <button className="ow-lead-submit" type="submit" disabled={submitting}>
+                  {submitting ? 'Sending securely…' : (isBeta ? 'Submit Founding Beta Application' : 'Request a Private Discussion')}
                 </button>
 
                 <p className="ow-lead-fineprint">
