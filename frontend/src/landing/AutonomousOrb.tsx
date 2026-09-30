@@ -70,7 +70,7 @@ const TOUR_SPEECH_PLAYBACK_RATE = 1.08;
 // settling after the intro's audio-ended proof.
 const INTRO_TO_TOUR_SETTLE_MS = 650;
 const SCRIPTED_STEP_MIN_DWELL_MS = 2200;
-const SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY = "orbweaver-scripted-orientation-progress-v1";
+const SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY = "orbweaver-scripted-orientation-progress-v2";
 const ACCOUNT_CREATION_GUIDE_PROTOCOL = [
   "Guide the current account form one relevant question or field at a time using the server-owned Nine of Clubs policy.",
   "Preserve visitor control and keep credentials private.",
@@ -199,7 +199,7 @@ const STARTUP_GREETING_SESSION_KEY = "orbweaver-startup-greeting-played";
 const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
 const LANDING_SPLASH_COMPLETE_SESSION_KEY = "orbweaver-landing-splash-complete";
 const LANDING_STARTUP_READINESS_SESSION_KEY = "orbweaver-landing-startup-readiness";
-const SCRIPTED_ORIENTATION_SESSION_KEY = "orbweaver-scripted-orientation-v1";
+const SCRIPTED_ORIENTATION_SESSION_KEY = "orbweaver-scripted-orientation-v2";
 const AMBIENT_VANTAGE_STORAGE_KEY = "orbweaver-ambient-vantage";
 const STARTUP_GATE_COMPLETE_EVENT = "orbweaver:startup-gate-complete";
 const INTRO_SPEECH_STATE_DATASET_KEY = "orbWeaverIntroVoiceState";
