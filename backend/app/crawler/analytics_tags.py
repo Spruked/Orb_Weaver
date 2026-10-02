@@ -9,6 +9,7 @@ snapshots and client packages preserve it automatically.
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
@@ -162,8 +163,12 @@ def summarize_analytics_tags(page_findings: Iterable[Dict[str, Any]]) -> Dict[st
     }
 
 
+def _configured_credentials_path() -> Optional[str]:
+    return getattr(settings, "GA4_CREDENTIALS_PATH", None) or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
+
 def _credentials():
-    path = getattr(settings, "GA4_CREDENTIALS_PATH", None)
+    path = _configured_credentials_path()
     if not path:
         return None
     from google.oauth2 import service_account
@@ -187,7 +192,7 @@ def resolve_ga4_property(measurement_id: str) -> Dict[str, Any]:
     normalized = (measurement_id or "").upper().strip()
     if not normalized:
         return {"status": "measurement_id_missing", "measurement_id": None, "property_id": None, "verified": False}
-    if not getattr(settings, "GA4_CREDENTIALS_PATH", None):
+    if not _configured_credentials_path():
         return {"status": "authentication_required", "measurement_id": normalized, "property_id": None, "verified": False}
 
     try:

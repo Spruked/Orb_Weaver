@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity,
@@ -48,6 +48,12 @@ const PROJECT_TABS: Array<{ id: ProjectTab; label: string }> = [
   { id: 'pointer', label: 'Pointer Map' },
   { id: 'jobs', label: 'Jobs' },
 ];
+
+type ScrollSnapshot = {
+  windowX: number;
+  windowY: number;
+  elements: Array<{ element: HTMLElement; left: number; top: number }>;
+};
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return 'Unavailable';
@@ -184,6 +190,58 @@ const Projects: React.FC = () => {
   const [decidingReviewItemId, setDecidingReviewItemId] = useState('');
   const [decidingPointerTargetId, setDecidingPointerTargetId] = useState('');
   const [error, setError] = useState('');
+  const projectsRootRef = useRef<HTMLDivElement | null>(null);
+  const pollingScrollSnapshotRef = useRef<ScrollSnapshot | null>(null);
+  const userScrollIntentRef = useRef(false);
+
+  const captureProjectsScroll = useCallback((): ScrollSnapshot => {
+    const elements: ScrollSnapshot['elements'] = [];
+    let current = projectsRootRef.current?.parentElement || null;
+    while (current) {
+      if (current.scrollHeight > current.clientHeight || current.scrollWidth > current.clientWidth) {
+        elements.push({ element: current, left: current.scrollLeft, top: current.scrollTop });
+      }
+      current = current.parentElement;
+    }
+    return { windowX: window.scrollX, windowY: window.scrollY, elements };
+  }, []);
+
+  const restoreProjectsScroll = useCallback(() => {
+    const snapshot = pollingScrollSnapshotRef.current;
+    if (!snapshot || userScrollIntentRef.current) return;
+    window.scrollTo({ left: snapshot.windowX, top: snapshot.windowY, behavior: 'auto' });
+    snapshot.elements.forEach(({ element, left, top }) => {
+      element.scrollLeft = left;
+      element.scrollTop = top;
+    });
+  }, []);
+
+  useEffect(() => {
+    const markUserScrollIntent = () => { userScrollIntentRef.current = true; };
+    window.addEventListener('wheel', markUserScrollIntent, { passive: true });
+    window.addEventListener('touchstart', markUserScrollIntent, { passive: true });
+    window.addEventListener('pointerdown', markUserScrollIntent, { passive: true });
+    window.addEventListener('keydown', markUserScrollIntent);
+    return () => {
+      window.removeEventListener('wheel', markUserScrollIntent);
+      window.removeEventListener('touchstart', markUserScrollIntent);
+      window.removeEventListener('pointerdown', markUserScrollIntent);
+      window.removeEventListener('keydown', markUserScrollIntent);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!pollingScrollSnapshotRef.current) return undefined;
+    const firstFrame = window.requestAnimationFrame(() => {
+      restoreProjectsScroll();
+      const secondFrame = window.requestAnimationFrame(() => restoreProjectsScroll());
+      window.setTimeout(() => {
+        window.cancelAnimationFrame(secondFrame);
+        pollingScrollSnapshotRef.current = null;
+      }, 140);
+    });
+    return () => window.cancelAnimationFrame(firstFrame);
+  }, [crawlJobs, lifecycleJobs, projects, restoreProjectsScroll]);
 
   const loadLifecycles = useCallback(async (projectList: Project[]) => {
     const entries = projectList.map((project) => [project.id, project.recent_lifecycle_jobs || []] as const);
@@ -194,6 +252,10 @@ const Projects: React.FC = () => {
 
   const loadProjects = useCallback(async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
+    if (!showLoading) {
+      pollingScrollSnapshotRef.current = captureProjectsScroll();
+      userScrollIntentRef.current = false;
+    }
     setError('');
     try {
       const [projectList, nextCrawlJobs] = await Promise.all([
@@ -303,6 +365,7 @@ const Projects: React.FC = () => {
   }, [selectedProject, selectedProjectCrawlJobs]);
 
   const handleSelectProject = (projectId: string) => {
+    pollingScrollSnapshotRef.current = null;
     setSelectedProjectId(projectId);
     setActiveTab('overview');
     setOpenMenuProjectId('');
@@ -627,6 +690,12 @@ const Projects: React.FC = () => {
                     {measuredLifecycleCount(job) != null && <span className="text-xs font-semibold text-slate-500">{measuredLifecycleCount(job)?.toLocaleString()} items</span>}
                   </div>
                   <p className="mt-1 text-sm text-slate-500">{lifecycleEvidenceSummary(job)}</p>
+                  {job && (job.status === 'FAILED' || job.status === 'REJECTED') && typeof job.result.error === 'string' && (
+                    <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                      <p className="font-bold">Stage failure</p>
+                      <p className="mt-1 break-words">{job.result.error}</p>
+                    </div>
+                  )}
                   {openReview && (
                     <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
                       <p className="text-xs font-bold text-amber-900">{openReview.title}</p>
@@ -863,7 +932,7 @@ const Projects: React.FC = () => {
   };
 
   return (
-    <div className="space-y-5">
+    <div ref={projectsRootRef} className="space-y-5">
       <header className="rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm sm:px-6">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
           <div>

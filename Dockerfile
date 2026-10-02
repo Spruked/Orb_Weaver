@@ -2,6 +2,10 @@ FROM node:18-alpine AS frontend-build
 
 WORKDIR /app/frontend
 
+# Production source maps are not served by the container and substantially
+# increase CRA optimizer memory/time during the multi-stage image build.
+ENV GENERATE_SOURCEMAP=false
+
 COPY frontend/package*.json ./
 RUN npm ci
 

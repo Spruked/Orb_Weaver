@@ -185,12 +185,18 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
       if (selected.id !== requestedProjectId) {
         setSearchParams({ project: selected.id }, { replace: true });
       }
-      const [combined, preflight] = await Promise.all([
-        api.getCombinedDashboard(selected.id),
-        api.getProjectPreflight(selected.id).catch(() => null)
-      ]);
+      // Preflight is supporting evidence, not a prerequisite for rendering the
+      // dashboard. Do not make the whole page wait on a second filesystem/API
+      // read before showing the audit the visitor came to review.
+      const combined = await api.getCombinedDashboard(selected.id);
       setDashboardData(combined);
-      setPreflightReport(preflight);
+      setIsLoading(false);
+
+      // Load the supporting card after the primary dashboard is visible. A
+      // missing/stale preflight must never blank an otherwise usable dashboard.
+      void api.getProjectPreflight(selected.id)
+        .then((preflight) => setPreflightReport(preflight))
+        .catch(() => setPreflightReport(null));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
     } finally {
@@ -208,6 +214,10 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
   const scores = report?.scores || dashboardData?.audit_scores || null;
   const summary = report?.summary || dashboardData?.audit_issues || null;
   const pointerSummary = report?.pointer_summary;
+  const pointerStatus = String(pointerSummary?.status || '').toUpperCase();
+  const pointerHasData = Number(pointerSummary?.record_count || 0) > 0;
+  const pointerGuidanceCount = Number(pointerSummary?.guidance_eligible_count || 0);
+  const pointerGuidanceBlocked = pointerStatus === 'BLOCKED' || pointerSummary?.runtime_guidance_status === 'BLOCKED' || pointerSummary?.recovery_required;
   const plannedToolCalls = report?.planned_tool_calls || [];
   const allIssues = useMemo(() => report ? [
     ...report.issues.critical,
@@ -531,15 +541,23 @@ const Dashboard: React.FC<DashboardProps> = ({ customer }) => {
             </div>
           </div>
 
-          <div className={`card ${pointerSummary?.status === 'passed' ? 'border-emerald-200' : 'border-amber-200'}`}>
+          <div className={`card ${pointerHasData && !pointerGuidanceBlocked ? 'border-emerald-200' : pointerHasData ? 'border-amber-200' : 'border-red-200'}`}>
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3"><Target className="h-5 w-5 text-brand-accent" /><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">Pointer map</p><h2 className="text-lg font-bold text-slate-950">Interaction coverage</h2></div></div>
-              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${pointerSummary?.status === 'passed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{pointerSummary?.status || 'not available'}</span>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${pointerHasData && !pointerGuidanceBlocked ? 'bg-emerald-100 text-emerald-700' : pointerHasData ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                {pointerHasData ? (pointerGuidanceBlocked ? 'Data found · guidance blocked' : 'Ready') : (pointerSummary?.status || 'not available')}
+              </span>
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-3">
+            <p className="mt-3 text-sm text-slate-600">
+              {pointerHasData
+                ? `${pointerSummary?.record_count} pointer targets were extracted across ${pointerSummary?.routes_with_pointers || 0} routes. ${pointerGuidanceBlocked ? 'Runtime guidance remains blocked until Pointer Recovery/live verification is complete.' : `${pointerGuidanceCount} targets are ready for guidance.`}`
+                : 'No pointer targets were extracted from the available crawl evidence.'}
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <DataTile label="Pointers" value={pointerSummary?.record_count ?? 0} />
               <DataTile label="Routes" value={pointerSummary?.routes_with_pointers ?? 0} />
               <DataTile label="Duplicates" value={pointerSummary?.duplicate_target_ids ?? 0} />
+              <DataTile label="Guidance ready" value={pointerSummary?.guidance_eligible_count ?? 0} />
             </div>
             {Object.keys(targetCounts).length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">

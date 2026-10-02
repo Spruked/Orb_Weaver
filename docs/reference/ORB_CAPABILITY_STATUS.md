@@ -10,6 +10,20 @@ Status language is evidence-based:
 - **Runtime verification required** — crawler evidence cannot fabricate live DOM geometry or interaction truth.
 - **Runtime capability not crawl-verified** — the capability belongs to the manufactured runtime/product layer and requires Live Test evidence.
 
+## Evidence selection rule
+
+The newest crawl and the newest usable evidence baseline are tracked
+separately. A failed or cancelled retry remains visible as the current run,
+but Report Compiler and capability inventory use the latest completed crawl
+until a newer crawl completes. This prevents one failed retry from changing
+previously measured Discovery, Content, Commerce, Interface, Site World, and
+reporting capabilities to `not run`.
+
+Pointer extraction is also intentionally separate from runtime authority. A
+pointer map can contain extracted targets while Selective Pointer Authority and
+Website ORB visitor guidance remain blocked pending live DOM geometry,
+recovery, and owner verification.
+
 ## Current Crawl #4 rollup
 
 The existing Crawl #4 artifact contains 34 fetched pages, 833 extracted pointer targets, 86 guidance-eligible candidates, 317 uncertain targets, and 67 route/locator conflicts. It reached login walls on protected routes. JavaScript rendering completed 30 of 32 required renders. Pointer verification and runtime guidance are blocked until live verification and recovery run.

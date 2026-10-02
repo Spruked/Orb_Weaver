@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Activity,
   CheckCircle2,
+  DollarSign,
   FileStack,
   Globe2,
   Layers3,
@@ -21,6 +22,7 @@ type ModeDefinition = {
   title: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
+  pricing: string;
 };
 
 const MODES: ModeDefinition[] = [
@@ -30,6 +32,7 @@ const MODES: ModeDefinition[] = [
     title: 'Rebuild the complete website baseline',
     description: 'Crawl the full same-domain site, refresh every measured page, and produce a new complete Site World baseline.',
     icon: Globe2,
+    pricing: '$48.88 for the first 500 pages · $8.88 for each additional 50 pages',
   },
   {
     id: 'section',
@@ -37,6 +40,7 @@ const MODES: ModeDefinition[] = [
     title: 'Refresh one or more website sections',
     description: 'Start from selected section paths and follow links only while they remain inside those approved path boundaries.',
     icon: Layers3,
+    pricing: '$0.88 per section',
   },
   {
     id: 'exact',
@@ -44,6 +48,7 @@ const MODES: ModeDefinition[] = [
     title: 'Scan only the pages you name',
     description: 'Measure the listed pages without following their links. Untouched pages are carried forward from the last baseline.',
     icon: ListChecks,
+    pricing: '$1.88 per page',
   },
   {
     id: 'changed',
@@ -51,6 +56,7 @@ const MODES: ModeDefinition[] = [
     title: 'Update pages changed since the last scan',
     description: 'Use this after editing a known set of pages. Only those URLs are replaced in the authoritative ORB context.',
     icon: RefreshCw,
+    pricing: '$1.88 per page',
   },
 ];
 
@@ -125,6 +131,15 @@ const ScanCenter: React.FC = () => {
   const invalidTargetCount = Math.max(enteredTargetCount - normalizedTargets.length, 0);
   const requiresTargets = mode !== 'full';
   const canStart = !!selectedProject && (!requiresTargets || normalizedTargets.length > 0) && !starting;
+  const estimatedPrice = useMemo(() => {
+    if (mode === 'section') return normalizedTargets.length * 0.88;
+    if (mode === 'exact' || mode === 'changed') return normalizedTargets.length * 1.88;
+    const pages = Math.max(1, maxPages);
+    return 48.88 + Math.max(0, Math.ceil((pages - 500) / 50)) * 8.88;
+  }, [maxPages, mode, normalizedTargets.length]);
+  const priceLabel = mode === 'full' || normalizedTargets.length > 0
+    ? `Estimated total: $${estimatedPrice.toFixed(2)}`
+    : 'Add targets to calculate total';
 
   const startScan = async () => {
     if (!selectedProject || !canStart) return;
@@ -195,21 +210,30 @@ const ScanCenter: React.FC = () => {
       ) : (
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 bg-slate-50 px-4 py-4 sm:px-6">
-            <div className="flex flex-wrap gap-2">
-              {MODES.map(({ id, label, icon: Icon }) => {
-                const active = mode === id;
-                return (
-                  <button
-                    key={id}
-                    onClick={() => setMode(id)}
-                    className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-bold transition-all duration-200 ${active
-                      ? 'border-brand-orange bg-brand-orange text-brand-dark shadow-sm'
-                      : 'border-slate-300 bg-white text-slate-600 hover:-translate-y-0.5 hover:border-cyan-400 hover:bg-cyan-50 hover:text-cyan-800 hover:shadow-sm'}`}
-                  >
-                    <Icon className="h-4 w-4" /> {label}
-                  </button>
-                );
-              })}
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex flex-wrap gap-2">
+                {MODES.map(({ id, label, icon: Icon }) => {
+                  const active = mode === id;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => setMode(id)}
+                      className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-bold transition-all duration-200 ${active
+                        ? 'border-brand-orange bg-brand-orange text-brand-dark shadow-sm'
+                        : 'border-slate-300 bg-white text-slate-600 hover:-translate-y-0.5 hover:border-cyan-400 hover:bg-cyan-50 hover:text-cyan-800 hover:shadow-sm'}`}
+                    >
+                      <Icon className="h-4 w-4" /> {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-3 rounded-xl border border-cyan-200 bg-white px-4 py-3 shadow-sm xl:max-w-xl">
+                <DollarSign className="h-5 w-5 shrink-0 text-brand-accent" />
+                <div>
+                  <p className="text-xs font-extrabold uppercase tracking-[0.12em] text-slate-500">{selectedMode.label} pricing</p>
+                  <p className="text-sm font-extrabold text-slate-950">{selectedMode.pricing}</p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -271,6 +295,12 @@ const ScanCenter: React.FC = () => {
                 {starting ? <Activity className="h-4 w-4 animate-pulse" /> : <Play className="h-4 w-4 fill-current" />}
                 {starting ? 'Starting scan…' : `Run ${selectedMode.label} Scan`}
               </button>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm">
+                <span className="font-extrabold text-slate-950">{priceLabel}</span>
+                {mode === 'full' && <span className="text-slate-600">Based on the maximum pages above.</span>}
+                {mode === 'section' && <span className="text-slate-600">Each approved section path counts once.</span>}
+                {(mode === 'exact' || mode === 'changed') && <span className="text-slate-600">Only accepted page targets are billed.</span>}
+              </div>
             </div>
 
             <aside className="space-y-4">

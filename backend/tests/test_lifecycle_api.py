@@ -482,6 +482,194 @@ def test_orb_scan_automatically_queues_exactly_one_pointer_recovery_pass(tmp_pat
         ).count() == 1
 
 
+def test_map_crawl_failure_preserves_child_error(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    token = signup(client, "map-failure@example.com")
+    project_id = int(client.post(
+        "/api/projects",
+        headers=auth(token),
+        json={"name": "Map Failure", "domain": "map-failure.test"},
+    ).json()["id"])
+    with main.SessionLocal() as db:
+        job = main.LifecycleJob(
+            project_id=project_id,
+            job_type="MAP_CRAWL",
+            status="PENDING",
+            phase="queued",
+            config={"max_pages": 1, "max_depth": 1, "delay": 0.1},
+        )
+        db.add(job)
+        db.commit()
+        job_id = job.id
+
+    async def failed_crawl(crawl_id, _config, lifecycle_job_id=None):
+        with main.SessionLocal() as db:
+            crawl = db.get(main.CrawlJob, crawl_id)
+            crawl.status = "failed"
+            crawl.config = {**(crawl.config or {}), "error": "browser launch failed"}
+            db.commit()
+        return "browser launch failed"
+
+    root = tmp_path / "vault_system" / "evidence" / str(job_id)
+    root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(main, "initialize_evidence_run", lambda _domain, _run_id: root)
+    monkeypatch.setattr(main, "run_crawl_job", failed_crawl)
+
+    asyncio.run(main.run_lifecycle_job(job_id))
+
+    with main.SessionLocal() as db:
+        failed = db.get(main.LifecycleJob, job_id)
+        assert failed.status == "FAILED"
+        assert failed.result["error"] == "browser launch failed"
+
+
+def test_full_audit_verification_failure_preserves_child_error(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    token = signup(client, "audit-failure@example.com")
+    project_id = int(client.post(
+        "/api/projects",
+        headers=auth(token),
+        json={"name": "Audit Failure", "domain": "audit-failure.test"},
+    ).json()["id"])
+    with main.SessionLocal() as db:
+        crawl = main.CrawlJob(project_id=project_id, status="completed")
+        db.add(crawl)
+        db.flush()
+        orb = main.LifecycleJob(
+            project_id=project_id,
+            job_type="ORB_SCAN",
+            status="COMPLETED",
+            phase="complete",
+            result={"crawl_job_id": str(crawl.id)},
+        )
+        db.add(orb)
+        db.flush()
+        audit = main.LifecycleJob(
+            project_id=project_id,
+            job_type="FULL_AUDIT",
+            status="PENDING",
+            phase="queued",
+            config={"source_job_id": orb.id, "max_pages": 1, "max_depth": 1, "delay": 0.1},
+        )
+        db.add(audit)
+        db.commit()
+        audit_id = audit.id
+
+    async def failed_verification(crawl_id, _config, lifecycle_job_id=None):
+        with main.SessionLocal() as db:
+            verification = db.get(main.CrawlJob, crawl_id)
+            verification.status = "failed"
+            verification.config = {**(verification.config or {}), "error": "verification timeout"}
+            db.commit()
+        return "verification timeout"
+
+    root = tmp_path / "vault_system" / "evidence" / str(audit_id)
+    root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(main, "initialize_evidence_run", lambda _domain, _run_id: root)
+    monkeypatch.setattr(main, "run_crawl_job", failed_verification)
+
+    asyncio.run(main.run_lifecycle_job(audit_id))
+
+    with main.SessionLocal() as db:
+        failed = db.get(main.LifecycleJob, audit_id)
+        assert failed.status == "FAILED"
+        assert failed.result["error"] == "verification timeout"
+
+
+def test_pointer_recovery_failure_preserves_capture_error(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    token = signup(client, "recovery-failure@example.com")
+    project_id = int(client.post(
+        "/api/projects",
+        headers=auth(token),
+        json={"name": "Recovery Failure", "domain": "recovery-failure.test"},
+    ).json()["id"])
+    with main.SessionLocal() as db:
+        crawl = main.CrawlJob(project_id=project_id, status="completed")
+        db.add(crawl)
+        db.flush()
+        db.add(main.CrawledPage(
+            crawl_job_id=crawl.id,
+            url="https://recovery-failure.test/",
+            semantic_analysis={"pointer_plot_records": [{
+                "target_id": "cta",
+                "page_route": "/",
+                "target_type": "button",
+                "meaning": "button: Contact",
+                "semantic_locator": "#cta",
+                "content_fingerprint": "cta",
+                "allowed_actions": ["point"],
+            }]},
+        ))
+        orb = main.LifecycleJob(
+            project_id=project_id,
+            job_type="ORB_SCAN",
+            status="POINTER_RECOVERY_REQUIRED",
+            phase="pointer_recovery_queued",
+            result={"crawl_job_id": str(crawl.id)},
+        )
+        db.add(orb)
+        db.flush()
+        recovery = main.LifecycleJob(
+            project_id=project_id,
+            job_type="POINTER_RECOVERY",
+            status="PENDING",
+            phase="queued",
+            config={"source_job_id": orb.id, "routes": ["/"], "render_passes": 2},
+        )
+        db.add(recovery)
+        db.commit()
+        recovery_id = recovery.id
+
+    def failed_capture(*_args, **_kwargs):
+        raise RuntimeError("Chromium capture failed")
+
+    root = tmp_path / "vault_system" / "evidence" / str(recovery_id)
+    root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(main, "initialize_evidence_run", lambda _domain, _run_id: root)
+    monkeypatch.setattr(main, "run_pointer_recovery_capture", failed_capture)
+
+    asyncio.run(main.run_lifecycle_job(recovery_id))
+
+    with main.SessionLocal() as db:
+        failed = db.get(main.LifecycleJob, recovery_id)
+        assert failed.status == "FAILED"
+        assert failed.result["error"] == "Chromium capture failed"
+
+
+def test_report_inventory_keeps_last_completed_baseline_after_failed_retry(tmp_path, monkeypatch):
+    main, client = load_app(tmp_path, monkeypatch)
+    token = signup(client, "inventory-baseline@example.com")
+    project_id = int(client.post(
+        "/api/projects",
+        headers=auth(token),
+        json={"name": "Inventory Baseline", "domain": "inventory-baseline.test"},
+    ).json()["id"])
+    with main.SessionLocal() as db:
+        completed = main.CrawlJob(
+            project_id=project_id,
+            status="completed",
+            pages_crawled=1,
+            pages_found=1,
+            config={"stats": {"discovered_urls": 1, "visited_urls": 1}},
+        )
+        db.add(completed)
+        db.flush()
+        db.add(main.CrawledPage(crawl_job_id=completed.id, url="https://inventory-baseline.test/"))
+        failed = main.CrawlJob(project_id=project_id, status="failed", config={"error": "retry failed"})
+        db.add(failed)
+        db.commit()
+        completed_id = completed.id
+
+    response = client.get(f"/api/projects/{project_id}/report-compiler", headers=auth(token))
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["latest_crawl"]["status"] == "failed"
+    assert payload["coverage_crawl_id"] == str(completed_id)
+    discovery = next(item for item in payload["data_inventory"] if item["id"] == "discovery")
+    assert discovery["status"] != "not_run"
+
+
 def test_evidence_manifest_detects_tampering_and_snapshots_absolute_sqlite(tmp_path, monkeypatch):
     backend_path = str((Path.cwd() / "backend").resolve())
     if backend_path not in sys.path:

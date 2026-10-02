@@ -324,6 +324,7 @@ class PreflightScanner:
         self.session: Optional[aiohttp.ClientSession] = None
         self.semaphore: Optional[asyncio.Semaphore] = None
         self._start_time: float = 0.0
+        self._response_cache: Dict[tuple[str, str], Optional[FetchedResponse]] = {}
         self._pages_scanned: int = 0
         self._visited: Set[str] = set()
         self._external_domains: Set[str] = set()
@@ -372,11 +373,16 @@ class PreflightScanner:
     async def _fetch(self, url: str, method: str = "GET") -> Optional[FetchedResponse]:
         if self.session is None:
             return None
+        cache_key = (method.upper(), url)
+        if cache_key in self._response_cache:
+            return self._response_cache[cache_key]
         try:
             async with self.semaphore:
                 async with self.session.request(method, url, allow_redirects=True) as resp:
                     text = await resp.text()
-                    return FetchedResponse(resp.status, text)
+                    fetched = FetchedResponse(resp.status, text)
+                    self._response_cache[cache_key] = fetched
+                    return fetched
         except Exception as exc:
             logger.warning("Fetch failed for %s: %s", url, str(exc))
             return None
@@ -523,22 +529,30 @@ class PreflightScanner:
     async def _connection_matrix_check(self, urls: List[str]) -> Dict[str, Any]:
         matrix: List[Dict[str, Any]] = []
         seen: Set[str] = set()
+        candidates: List[str] = []
         for raw_url in urls:
-            if len(matrix) >= 40:
+            if len(candidates) >= 40:
                 break
             if not raw_url or raw_url in seen or not self._is_same_domain(raw_url):
                 continue
             seen.add(raw_url)
+            candidates.append(raw_url)
+
+        async def check(raw_url: str) -> Dict[str, Any]:
             resp = await self._fetch(raw_url, method="HEAD")
             if resp is None or resp.status in (405, 403):
                 resp = await self._fetch(raw_url, method="GET")
             status = resp.status if resp else 0
-            matrix.append({
+            return {
                 "url": raw_url,
                 "status": status,
                 "ok": 200 <= status < 400,
                 "risk": "low" if 200 <= status < 400 else "moderate" if status in (401, 403, 405) else "high",
-            })
+            }
+
+        # These checks are independent. Running them concurrently keeps a
+        # single slow/broken URL from serially delaying the whole scan.
+        matrix = list(await asyncio.gather(*(check(url) for url in candidates)))
         return {
             "checked": len(matrix),
             "broken": [item["url"] for item in matrix if not item["ok"]],
@@ -639,6 +653,9 @@ class PreflightScanner:
         except Exception as exc:
             logger.warning("Failed to read body for %s: %s", url, str(exc))
             text = ""
+        # Keep the fetched body available to the aggregation phase so it does
+        # not issue another full request just to identify the framework.
+        result["html"] = text
 
         result["chat_widget"] = self._detect_chat_widget(text)
         result["external_assistant_endpoint"] = self._detect_external_assistant_endpoint(text)
@@ -892,10 +909,7 @@ class PreflightScanner:
                     break
             cms_framework = None
             for r in page_results:
-                cf = self._detect_cms_framework(
-                    await (await self._fetch(r["url"])).text()
-                    if r["status"] == 200 else ""
-                )
+                cf = self._detect_cms_framework(r.get("html", "")) if r["status"] == 200 else None
                 if cf:
                     cms_framework = cf
                     break

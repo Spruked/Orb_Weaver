@@ -953,6 +953,76 @@ export interface AccountWorkspaceSummary {
   project: Pick<Project, 'id' | 'name' | 'domain' | 'created_at'> | null;
   latest_crawl: CrawlJob | null;
   latest_audit: { id: string; score?: number | null; created_at?: string | null } | null;
+  financial_ledger: AccountFinancialLedger;
+}
+
+export interface AccountFinancialLedger {
+  current_year: number;
+  paid_this_year_cents: number;
+  outstanding_balance_cents: number;
+  prepaid_bundles_active: number;
+  prepaid_entitlements_recorded: boolean;
+  scans_purchased_this_year: number;
+  available_to_run: {
+    exact_pages: number | null;
+    changed_pages: number | null;
+    full_site_scans: number | null;
+    sections: number | null;
+  };
+  usage: {
+    full_site_scans: number;
+    exact_page_scans: number;
+    changed_page_scans: number;
+    section_scans: number;
+    total_scans: number;
+  };
+  yearly_totals: Array<{
+    year: number;
+    full_site_scans: number;
+    exact_page_scans: number;
+    changed_page_scans: number;
+    section_scans: number;
+    scan_bundles: number;
+    other_services: number;
+    total_paid: number;
+  }>;
+  account_year?: number;
+  year_to_date_paid_cents?: number;
+  yearly_breakdown?: Record<string, Record<string, number>>;
+  prior_years?: Array<Record<string, number>>;
+  paid_orders?: Array<Record<string, unknown>>;
+  open_charges?: Array<Record<string, unknown>>;
+  purchase_lines?: Array<Record<string, unknown>>;
+  entitlements?: Array<Record<string, unknown>>;
+  usage_records?: Array<Record<string, unknown>>;
+  bundles?: Array<Record<string, unknown>>;
+  refunds?: Array<Record<string, unknown>>;
+  credits?: Array<Record<string, unknown>>;
+  adjustments?: Array<Record<string, unknown>>;
+  entitlement_data_status?: string;
+  available_years: number[];
+  purchases: Array<{
+    id: string;
+    order_id: string;
+    date?: string | null;
+    purchase: string;
+    quantity: number;
+    rate_cents: number;
+    total_cents: number;
+    currency: string;
+    status: string;
+    category: string;
+    bundle?: { includes: number; used: number; remaining: number; status: string } | null;
+  }>;
+  current_invoice: {
+    invoice_number?: string | null;
+    charges_cents: number;
+    credits_cents: number;
+    amount_due_cents: number;
+    due_date?: string | null;
+    status: string;
+  };
+  open_order_count: number;
 }
 
 export interface PagesResponse {

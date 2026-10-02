@@ -225,7 +225,8 @@ const GA4Dashboard: React.FC = () => {
         </div>
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Collection</p>
-          <p className="mt-1 flex items-center gap-2 font-semibold text-green-700"><Radio className="h-4 w-4" /> Tag firing</p>
+          <p className="mt-1 flex items-center gap-2 font-semibold text-green-700"><Radio className="h-4 w-4" /> Tag detected</p>
+          <p className="mt-1 text-xs text-gray-500">Public collection ID detected; reporting access is separate.</p>
           {lastUpdated && <p className="mt-1 text-xs text-gray-500">Data refreshed {lastUpdated.toLocaleTimeString()}</p>}
         </div>
       </div>

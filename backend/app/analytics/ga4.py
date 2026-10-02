@@ -11,20 +11,30 @@ from google.analytics.data_v1beta.types import (
 from google.oauth2 import service_account
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
+import os
+from pathlib import Path
 import pandas as pd
 from app.core.config import settings
 
 class GA4Connector:
     def __init__(self, property_id: str = None, credentials_path: str = None):
         self.property_id = property_id or settings.GA4_PROPERTY_ID
-        self.credentials_path = credentials_path or settings.GA4_CREDENTIALS_PATH
+        self.credentials_path = credentials_path or settings.GA4_CREDENTIALS_PATH or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
         self.client = None
         self._init_client()
 
     def _init_client(self):
         if self.credentials_path:
+            credentials_path = Path(self.credentials_path).expanduser()
+            if not credentials_path.is_absolute():
+                credentials_path = (Path.cwd() / credentials_path).resolve()
+            if not credentials_path.is_file():
+                raise RuntimeError(
+                    "GA4 reporting credentials file was not found at "
+                    f"{credentials_path}. Mount the service-account JSON and grant it Viewer access to the GA4 property."
+                )
             credentials = service_account.Credentials.from_service_account_file(
-                self.credentials_path,
+                str(credentials_path),
                 scopes=settings.GA4_SCOPES
             )
             self.client = BetaAnalyticsDataClient(credentials=credentials)

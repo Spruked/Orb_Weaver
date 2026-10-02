@@ -4,6 +4,32 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 
 The current capability and wiring boundary is maintained in the [ORB capability status review](docs/reference/ORB_CAPABILITY_STATUS.md). It lists all 22 Master Capability List categories and 161 atomic capabilities, separates crawl evidence from runtime verification, and records the remaining work required before a generated Website ORB package is treated as downloadable and deployable.
 
+### Evidence continuity and capability status
+
+Capability inventory is evidence-backed. A failed or cancelled retry remains
+visible as the newest run, but it must not erase the latest completed crawl
+baseline from Report Compiler or Site World reporting. The API exposes both the
+latest run and the `coverage_crawl_id` used for the last successful evidence
+package.
+
+`not run` means the selected evidence package did not execute that category;
+it does not mean the capability was removed from Orb Weaver. Runtime-only
+capabilities—such as voice playback, Dock Station, deployment, Marketplace,
+and Web Weaver—require Live Test evidence and are not fabricated by a crawl.
+Pointer extraction is also separate from pointer authority: extracted targets
+can be reported while live DOM geometry, recovery, and owner policy keep
+visitor guidance blocked.
+
+### GA4 reporting setup
+
+The public Measurement ID identifies the collection tag but is not the GA4
+Property ID and does not grant reporting access. Configure the numeric Property
+ID and mount a Google service-account JSON file at
+`/app/vault_system/secrets/ga4-key.json` in Docker, or set
+`GA4_CREDENTIALS_PATH`/`GOOGLE_APPLICATION_CREDENTIALS` to the deployment path.
+Grant that service account Viewer access to the GA4 property. Missing files are
+reported as credential setup failures; they are not treated as zero analytics.
+
 > [!IMPORTANT]
 > **IMMUTABLE STORAGE LAW:** `vault_system/` is the sole authoritative data system. Every persisted scan, raw-data artifact, customer record, authentication session, project, checkout order, verified payment, entitlement, workflow state, report, cache, and learned observation must be written into and read back from the canonical Vault. Component-local or parallel stores are prohibited. See [IMMUTABLE_VAULT_STORAGE_LAW.md](./IMMUTABLE_VAULT_STORAGE_LAW.md).
 

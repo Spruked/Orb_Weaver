@@ -1,5 +1,39 @@
 # Orb Weaver Development Log
 
+## 2026-10-01 — Scan evidence continuity, lifecycle failures, pointer reporting, and GA4 readiness
+
+- Preserved child-crawl errors through all lifecycle stages: Map Crawl, Full
+  Audit verification, and the generic lifecycle failure handler no longer
+  replace an underlying exception with `None`. Pointer Recovery capture errors
+  retain their subprocess/timeout details.
+- Added lifecycle regression coverage for Map Crawl, Pointer Recovery, Full
+  Audit verification failures, and report inventory continuity. The focused
+  lifecycle suite passes with 15 tests.
+- Changed Report Compiler evidence selection so a failed or cancelled retry
+  remains visible as the newest run but cannot erase the latest completed
+  evidence baseline. The response now exposes `coverage_crawl_id` and
+  `coverage_crawl_status`.
+- Clarified Pointer Map presentation: extracted pointer data is shown
+  separately from runtime guidance readiness. A map may contain hundreds of
+  targets while Point/Ping remains blocked until live DOM verification and
+  recovery complete.
+- Hardened GA4 credential resolution for Docker's
+  `GOOGLE_APPLICATION_CREDENTIALS` path, added an actionable missing-key
+  message, corrected the GA4 connection test argument, and changed the UI
+  label from `Tag firing` to `Tag detected`. A public Measurement ID does not
+  prove Analytics Data API access; the service account still needs property
+  Viewer access.
+- Docker image build and deployment remain separate from this source change
+  until the verification checks and Buildx image build complete.
+- Disabled CRA source-map emission in the production Docker build to keep the
+  Buildx optimizer bounded; runtime bundles and the universal ORB loader are
+  unchanged.
+- Buildx dependency installation and ORB loader compilation passed, but two
+  bounded `linux/amd64 --load` attempts stalled in CRA's
+  `Creating an optimized production build` phase without an emitted compiler
+  error. The image was not tagged as complete or deployed; frontend optimizer
+  investigation remains open.
+
 ## 2026-09-29 — ORB identity and True Mark certification boundary wired
 
 - Added permanent, idempotent ORB serial allocation in the canonical Vault.

@@ -231,7 +231,17 @@ def _resolve_database_url() -> str:
 
 def _engine_kwargs(database_url: str) -> Dict:
     if database_url.startswith("sqlite"):
-        return {"connect_args": {"check_same_thread": False}}
+        # Lifecycle workers keep a dedicated session while the UI polls job
+        # status and the crawler persists progress. The default SQLAlchemy
+        # SQLite QueuePool (5 connections + 10 overflow) is too small for
+        # that legitimate overlap and can fail a crawl before the target site
+        # is even the problem.
+        return {
+            "connect_args": {"check_same_thread": False, "timeout": 60},
+            "pool_size": 20,
+            "max_overflow": 20,
+            "pool_timeout": 60,
+        }
     return {}
 
 
@@ -7704,8 +7714,9 @@ class LifecycleCancellationRequested(RuntimeError):
     """Raised between lifecycle phases after a user requests cancellation."""
 
 
-async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: Optional[int] = None):
+async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: Optional[int] = None) -> Optional[str]:
     db = SessionLocal()
+    crawl_error: Optional[str] = None
     try:
         crawl_job = db.query(CrawlJob).filter(CrawlJob.id == crawl_job_id).first()
         if not crawl_job:
@@ -8044,7 +8055,9 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
                 lifecycle_job.end_time = datetime.utcnow()
                 lifecycle_job.result = {**(lifecycle_job.result or {}), "cancelled_reason": str(exc)}
         db.commit()
+        crawl_error = str(exc)
     except Exception as exc:
+        crawl_error = str(exc) or exc.__class__.__name__
         crawl_job = db.query(CrawlJob).filter(CrawlJob.id == crawl_job_id).first()
         if crawl_job:
             crawl_job.status = "failed"
@@ -8059,6 +8072,16 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             config["scan_stage_execution"] = execution
             crawl_job.config = config
             db.commit()
+        if lifecycle_job_id:
+            lifecycle_job = db.get(LifecycleJob, lifecycle_job_id)
+            if lifecycle_job:
+                lifecycle_job.result = {
+                    **(lifecycle_job.result or {}),
+                    "crawl_job_id": str(crawl_job_id),
+                    "error": crawl_error,
+                }
+                lifecycle_job.phase = "crawl_failed"
+                db.commit()
     finally:
         if 'authenticated_storage_state_path' in locals() and authenticated_storage_state_path:
             try:
@@ -8066,6 +8089,7 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             except FileNotFoundError:
                 pass
         db.close()
+    return crawl_error
 
 
 async def run_lifecycle_job(lifecycle_job_id: int) -> None:
@@ -8138,14 +8162,19 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
             job.result = {"crawl_job_id": str(crawl.id)}
             db.commit()
 
-            await run_crawl_job(crawl.id, crawl_config.model_dump(), lifecycle_job_id=job.id)
+            crawl_error = await run_crawl_job(crawl.id, crawl_config.model_dump(), lifecycle_job_id=job.id)
             db.expire_all()
             job = db.get(LifecycleJob, lifecycle_job_id)
             crawl = db.get(CrawlJob, crawl.id)
             if crawl and crawl.status == "cancelled":
                 raise LifecycleCancellationRequested(f"MAP_CRAWL job {job.id} was stopped by the user")
             if not crawl or crawl.status != "completed":
-                raise RuntimeError((crawl.config or {}).get("error") if crawl else "Map crawl disappeared")
+                raise RuntimeError(
+                    crawl_error
+                    or ((crawl.config or {}).get("error") if crawl else None)
+                    or ((job.result or {}).get("error") if job else None)
+                    or "Map crawl failed without a recorded error"
+                )
             pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == crawl.id).all()
             map_dataset = {
                 "schema": "orb_weaver.map_crawl.v1",
@@ -8440,14 +8469,23 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
                 "verification_crawl_job_id": str(verification_crawl.id),
             }
             db.commit()
-            await run_crawl_job(verification_crawl.id, verification_config.model_dump(), lifecycle_job_id=job.id)
+            crawl_error = await run_crawl_job(
+                verification_crawl.id,
+                verification_config.model_dump(),
+                lifecycle_job_id=job.id,
+            )
             db.expire_all()
             job = db.get(LifecycleJob, lifecycle_job_id)
             verification_crawl = db.get(CrawlJob, verification_crawl.id)
             if verification_crawl and verification_crawl.status == "cancelled":
                 raise LifecycleCancellationRequested(f"FULL_AUDIT job {job.id} was stopped by the user")
             if not verification_crawl or verification_crawl.status != "completed":
-                raise RuntimeError((verification_crawl.config or {}).get("error") if verification_crawl else "Verification crawl disappeared")
+                raise RuntimeError(
+                    crawl_error
+                    or ((verification_crawl.config or {}).get("error") if verification_crawl else None)
+                    or ((job.result or {}).get("error") if job else None)
+                    or "Full Audit verification crawl failed without a recorded error"
+                )
             verification_pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == verification_crawl.id).all()
             verification_pointer_map = pointer_plot_map_from_pages(verification_pages)
             write_json_artifact(root, "verification/map/map_dataset.json", {
@@ -8602,9 +8640,10 @@ async def run_lifecycle_job(lifecycle_job_id: int) -> None:
             job.status = "FAILED"
             job.phase = "failed"
             job.end_time = datetime.utcnow()
-            job.result = {**(job.result or {}), "error": str(exc)}
+            error_message = str(exc) or exc.__class__.__name__
+            job.result = {**(job.result or {}), "error": error_message}
             if root:
-                write_failure_diagnostic(root, stage=job.job_type, category="lifecycle_stage_failure", error=str(exc))
+                write_failure_diagnostic(root, stage=job.job_type, category="lifecycle_stage_failure", error=error_message)
                 project = db.get(Project, job.project_id)
                 manifest = finalize_evidence_run(
                     root,
@@ -11530,7 +11569,12 @@ async def account_workspace_summary(
         .first()
     )
     if not project:
-        return {"project": None, "latest_crawl": None, "latest_audit": None}
+        return {
+            "project": None,
+            "latest_crawl": None,
+            "latest_audit": None,
+            "financial_ledger": _account_financial_ledger(customer, db),
+        }
     latest_crawl = (
         db.query(CrawlJob)
         .filter(CrawlJob.project_id == project.id)
@@ -11556,6 +11600,175 @@ async def account_workspace_summary(
             "score": latest_audit.overall_score,
             "created_at": latest_audit.created_at.isoformat() if latest_audit.created_at else None,
         } if latest_audit else None,
+        "financial_ledger": _account_financial_ledger(customer, db),
+    }
+
+
+def _account_financial_ledger(customer: Customer, db: Session) -> Dict[str, Any]:
+    """Build a customer-facing financial/usage view from authoritative records.
+
+    Checkout orders are payment records; crawl and lifecycle rows are usage
+    evidence. We intentionally do not infer prepaid entitlements when no
+    entitlement record exists.
+    """
+    now = datetime.utcnow()
+    current_year = now.year
+    orders = (
+        db.query(CheckoutOrder)
+        .filter(CheckoutOrder.customer_id == customer.id)
+        .order_by(CheckoutOrder.created_at.desc(), CheckoutOrder.id.desc())
+        .all()
+    )
+    projects = db.query(Project).filter(Project.customer_id == customer.id).all()
+    project_ids = [project.id for project in projects]
+    crawl_jobs = db.query(CrawlJob).filter(CrawlJob.project_id.in_(project_ids)).all() if project_ids else []
+    lifecycle_jobs = db.query(LifecycleJob).filter(LifecycleJob.project_id.in_(project_ids)).all() if project_ids else []
+
+    def is_paid(order: CheckoutOrder) -> bool:
+        return order.status == "paid" or order.payment_verified_at is not None
+
+    def category(name: str, sku: str = "") -> str:
+        value = f"{name} {sku}".lower()
+        if "bundle" in value:
+            return "scan_bundles"
+        if "full" in value or "audit" in value:
+            return "full_site_scans"
+        if "exact" in value:
+            return "exact_page_scans"
+        if "changed" in value:
+            return "changed_page_scans"
+        if "section" in value:
+            return "section_scans"
+        return "other_services"
+
+    paid_orders = [order for order in orders if is_paid(order)]
+    open_orders = [order for order in orders if not is_paid(order) and order.status in {"created", "checkout_created", "payment_due"}]
+    purchases: List[Dict[str, Any]] = []
+    paid_order_records: List[Dict[str, Any]] = []
+    open_charge_records: List[Dict[str, Any]] = []
+    yearly: Dict[int, Dict[str, int]] = {}
+    for order in paid_orders:
+        paid_at = order.payment_verified_at or order.updated_at or order.created_at or now
+        year = paid_at.year
+        totals = yearly.setdefault(year, {key: 0 for key in ("full_site_scans", "exact_page_scans", "changed_page_scans", "section_scans", "scan_bundles", "other_services", "total_paid")})
+        paid_order_records.append({
+            "order_id": str(order.id),
+            "paid_at": paid_at.isoformat(),
+            "amount_cents": int(order.amount_cents or 0),
+            "currency": order.currency,
+            "status": "paid",
+        })
+        for item in order.line_items or []:
+            item_name = str(item.get("name") or item.get("sku") or "Purchase")
+            item_sku = str(item.get("sku") or "")
+            line_total = int(item.get("line_total_cents") or 0)
+            item_category = category(item_name, item_sku)
+            totals[item_category] += line_total
+            purchases.append({
+                "id": f"{order.id}:{item_sku or item_name}",
+                "order_id": str(order.id),
+                "date": (order.payment_verified_at or order.updated_at or order.created_at).isoformat() if (order.payment_verified_at or order.updated_at or order.created_at) else None,
+                "purchase": item_name,
+                "quantity": int(item.get("quantity") or 1),
+                "rate_cents": int(item.get("unit_amount_cents") or 0),
+                "total_cents": line_total,
+                "currency": order.currency,
+                "status": "Paid",
+                "category": item_category,
+                "bundle": {"includes": int(item.get("quantity") or 1), "used": 0, "remaining": int(item.get("quantity") or 1), "status": "Active"} if item_category == "scan_bundles" else None,
+            })
+        totals["total_paid"] += int(order.amount_cents or 0)
+
+    for order in open_orders:
+        open_charge_records.append({
+            "order_id": str(order.id),
+            "created_at": order.created_at.isoformat() if order.created_at else None,
+            "amount_cents": int(order.amount_cents or 0),
+            "currency": order.currency,
+            "status": order.status,
+        })
+
+    usage_records = [
+        {
+            "usage_id": f"crawl:{job.id}",
+            "source": "crawl_job",
+            "scan_job_id": str(job.id),
+            "scan_type": "full_site_scan",
+            "status": job.status,
+            "pages_measured": int(job.pages_crawled or 0),
+            "entitlement_id": None,
+            "billing_status": "unlinked_without_entitlement",
+        }
+        for job in crawl_jobs if job.status == "completed"
+    ] + [
+        {
+            "usage_id": f"lifecycle:{job.id}",
+            "source": "lifecycle_job",
+            "scan_job_id": str(job.id),
+            "scan_type": str(job.job_type).lower(),
+            "status": job.status,
+            "pages_measured": int((job.result or {}).get("page_count") or (job.result or {}).get("route_count") or 0),
+            "entitlement_id": None,
+            "billing_status": "unlinked_without_entitlement",
+        }
+        for job in lifecycle_jobs if job.status in {"COMPLETED", "APPROVED"}
+    ]
+
+    usage = {
+        "full_site_scans": sum(1 for job in crawl_jobs if job.status == "completed" and (job.pages_found or 0) >= 500),
+        "exact_page_scans": 0,
+        "changed_page_scans": 0,
+        "section_scans": 0,
+        "total_scans": sum(1 for job in crawl_jobs if job.status == "completed") + sum(1 for job in lifecycle_jobs if job.status in {"COMPLETED", "APPROVED"}),
+    }
+    current_totals = yearly.get(current_year, {key: 0 for key in ("full_site_scans", "exact_page_scans", "changed_page_scans", "section_scans", "scan_bundles", "other_services", "total_paid")})
+    outstanding = sum(int(order.amount_cents or 0) for order in open_orders)
+    latest_open = open_orders[0] if open_orders else None
+    return {
+        "current_year": current_year,
+        "paid_this_year_cents": current_totals["total_paid"],
+        "outstanding_balance_cents": outstanding,
+        "prepaid_bundles_active": 0,
+        "prepaid_entitlements_recorded": False,
+        "scans_purchased_this_year": sum(1 for order in paid_orders if (order.payment_verified_at or order.updated_at or order.created_at or now).year == current_year),
+        "available_to_run": {"exact_pages": None, "changed_pages": None, "full_site_scans": None, "sections": None},
+        "usage": usage,
+        "yearly_totals": [
+            {"year": year, **totals}
+            for year, totals in sorted(yearly.items(), reverse=True)
+        ],
+        "yearly_breakdown": {str(year): totals for year, totals in sorted(yearly.items(), reverse=True)},
+        "available_years": sorted(set([current_year, current_year - 1, current_year - 2] + list(yearly.keys())), reverse=True),
+        "purchases": purchases,
+        # Explicit concepts: these must be populated by entitlement/billing
+        # records, never inferred from a product name or payment amount.
+        "account_year": current_year,
+        "year_to_date_paid_cents": current_totals["total_paid"],
+        "outstanding_balance_cents": outstanding,
+        "paid_orders": paid_order_records,
+        "open_charges": open_charge_records,
+        "purchase_lines": purchases,
+        "entitlements": [],
+        "usage_records": usage_records,
+        "bundles": [],
+        "refunds": [],
+        "credits": [],
+        "adjustments": [],
+        "prior_years": [
+            {"year": year, **totals}
+            for year, totals in sorted(yearly.items(), reverse=True)
+            if year != current_year
+        ],
+        "entitlement_data_status": "unavailable_until_entitlement_records_exist",
+        "current_invoice": {
+            "invoice_number": f"OW-{current_year}-{latest_open.id:05d}" if latest_open else None,
+            "charges_cents": outstanding,
+            "credits_cents": 0,
+            "amount_due_cents": outstanding,
+            "due_date": None,
+            "status": "Open" if latest_open else "Paid",
+        },
+        "open_order_count": len(open_orders),
     }
 
 
@@ -12452,12 +12665,17 @@ async def report_compiler(project_id: str, db: Session = Depends(get_db), custom
         .order_by(AuditReport.id.desc())
         .first()
     )
-    latest_crawl_pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == latest_crawl.id).all() if latest_crawl else []
+    # A failed or cancelled retry must not erase the last authoritative
+    # evidence package from the report inventory. Keep the newest run visible
+    # above, but calculate capability coverage from the newest completed
+    # baseline when one exists.
+    evidence_crawl = latest_completed_crawl or latest_crawl
+    latest_crawl_pages = db.query(CrawledPage).filter(CrawledPage.crawl_job_id == evidence_crawl.id).all() if evidence_crawl else []
     scan_assembly = _scan_assembly_status(
-        latest_crawl,
+        evidence_crawl,
         latest_crawl_pages,
-        (latest_crawl.config or {}).get("stats") or {},
-    ) if latest_crawl else None
+        (evidence_crawl.config or {}).get("stats") or {},
+    ) if evidence_crawl else None
 
     report_dir = _project_report_dir(project)
     files = sorted([p.name for p in report_dir.glob("*.json")])
@@ -12502,7 +12720,9 @@ async def report_compiler(project_id: str, db: Session = Depends(get_db), custom
         "latest_audit": _serialize_audit_report(latest_audit) if latest_audit and latest_audit.report_data else None,
         "files": files,
         "report_access": report_access,
-        "data_inventory": _report_data_inventory(project, latest_crawl, latest_audit, db),
+        "data_inventory": _report_data_inventory(project, evidence_crawl, latest_audit, db),
+        "coverage_crawl_id": str(evidence_crawl.id) if evidence_crawl else None,
+        "coverage_crawl_status": evidence_crawl.status if evidence_crawl else "not_run",
         "capability_coverage": scan_assembly.get("capability_coverage") if scan_assembly else None,
         "completion_contract": scan_assembly.get("completion_contract") if scan_assembly else None,
     }
@@ -13205,7 +13425,7 @@ async def reaudit_project(
 async def connect_ga4(config: GA4Config):
     try:
         connector = GA4Connector(property_id=config.property_id, credentials_path=config.credentials_path)
-        overview = connector.get_traffic_overview(daysAgo="7daysAgo", end_date="today")
+        overview = connector.get_traffic_overview(start_date="7daysAgo", end_date="today")
         return {
             "status": "connected",
             "property_id": config.property_id,
