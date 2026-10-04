@@ -94,7 +94,9 @@ class OrbUserMemory(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False, index=True)
+    account_id = Column(String(120), nullable=True, index=True)
     category = Column(String(80), nullable=False, index=True)
+    memory_type = Column(String(80), nullable=True, index=True)
     key = Column(String(160), nullable=False, index=True)
     value = Column(Text, nullable=False)
     source = Column(String(255), nullable=False)
@@ -104,8 +106,23 @@ class OrbUserMemory(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     expires_at = Column(DateTime, nullable=True)
+    consent_version = Column(String(80), nullable=True)
+    retention_policy_version = Column(String(120), nullable=True)
 
     customer = relationship("Customer", back_populates="orb_memories")
+
+
+class OrbMemoryDeletionEvent(Base):
+    """Auditable deletion marker that contains no deleted memory content."""
+
+    __tablename__ = "orb_memory_deletion_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(String(120), nullable=False, index=True)
+    memory_id = Column(String(80), nullable=False)
+    deleted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    reason = Column(String(120), nullable=False, default="account_user_delete")
+    retention_policy_version = Column(String(120), nullable=False)
 
 
 class OrbRecentContext(Base):
@@ -586,6 +603,27 @@ def init_db(engine):
     _ensure_lookup_indexes(engine)
     _ensure_default_admin_customer(engine)
     _ensure_marketplace_number_sequence(engine)
+    _ensure_memory_governance_columns(engine)
+
+
+def _ensure_memory_governance_columns(engine):
+    """Add governance fields to installations created before policy v1."""
+    inspector = inspect(engine)
+    if "orb_user_memory" not in inspector.get_table_names():
+        return
+    existing = {column["name"] for column in inspector.get_columns("orb_user_memory")}
+    columns = {
+        "account_id": "VARCHAR(120)",
+        "memory_type": "VARCHAR(80)",
+        "consent_version": "VARCHAR(80)",
+        "retention_policy_version": "VARCHAR(120)",
+    }
+    with engine.begin() as connection:
+        for name, type_name in columns.items():
+            if name not in existing:
+                connection.execute(text(f"ALTER TABLE orb_user_memory ADD COLUMN {name} {type_name}"))
+        connection.execute(text("UPDATE orb_user_memory SET account_id = CAST(customer_id AS TEXT) WHERE account_id IS NULL"))
+        connection.execute(text("UPDATE orb_user_memory SET memory_type = category WHERE memory_type IS NULL"))
 
 
 def _ensure_json_columns(engine):

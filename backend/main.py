@@ -102,6 +102,16 @@ from app.orb.governance import (
 from app.orb.vault_glyph_trace import record_vault_object
 from app.orb.vault_skg_adapter import get_vault_skg_adapter, materialize_site_apriori
 from app.orb.aims_memory import context_for_turn as aims_context_for_turn, record_turn_result as record_aims_turn_result
+from app.orb.aims_memory import end_session as end_aims_session
+from app.orb.memory_governance import (
+    CONSENT_VERSION,
+    RETENTION_ALLOWLIST,
+    RETENTION_POLICY_VERSION,
+    MemoryCandidate,
+    MemoryPolicyRejection,
+    allowlist_document,
+    authorize_account_memory,
+)
 from app.orb.agency_cognition import AgencyCognitionRequest, agency_cognition
 from app.orb.nine_of_clubs import ShowcaseInteraction, guidance_prompt, showcase_guidance_mode
 from app.orb.site_lexicon import weaver_lexical_context
@@ -126,6 +136,7 @@ from app.models.database import (
     MarketplaceThemeSetting,
     OrbDockPolicy,
     OrbRecentContext,
+    OrbMemoryDeletionEvent,
     OrbToolCache,
     OrbUserMemory,
     OrbsBuildOrder,
@@ -665,6 +676,8 @@ class OrbMemoryUpsert(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     enabled: bool = True
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    consent_version: str = Field(default=CONSENT_VERSION, min_length=1, max_length=80)
+    inferred: bool = False
 
 
 class CartItemUpsert(BaseModel):
@@ -1510,7 +1523,7 @@ def _validate_memory_payload(payload: OrbMemoryUpsert) -> tuple[str, str]:
         raise HTTPException(status_code=400, detail=f"Unsupported memory category: {payload.category}")
     if not key:
         raise HTTPException(status_code=400, detail="Memory key is required")
-    risk_text = f"{category} {key} {payload.source}".lower()
+    risk_text = f"{category} {key}".lower()
     if any(term in risk_text for term in ORB_SENSITIVE_MEMORY_TERMS):
         raise HTTPException(status_code=400, detail="That memory type is not allowed")
     return category, key
@@ -1529,6 +1542,10 @@ def _serialize_orb_memory(item: OrbUserMemory) -> Dict[str, Any]:
         "created_at": item.created_at.isoformat() if item.created_at else None,
         "updated_at": item.updated_at.isoformat() if item.updated_at else None,
         "expires_at": item.expires_at.isoformat() if item.expires_at else None,
+        "account_id": item.account_id or str(item.customer_id),
+        "memory_type": item.memory_type or item.category,
+        "consent_version": item.consent_version,
+        "retention_policy_version": item.retention_policy_version,
     }
 
 
@@ -1578,21 +1595,18 @@ def _orb_memory_summary(
         .filter(
             OrbUserMemory.customer_id == customer.id,
             OrbUserMemory.enabled == True,  # noqa: E712
+            OrbUserMemory.consent_version == CONSENT_VERSION,
+            OrbUserMemory.retention_policy_version == RETENTION_POLICY_VERSION,
+            OrbUserMemory.memory_type.in_(tuple(RETENTION_ALLOWLIST)),
         )
         .filter(or_(OrbUserMemory.expires_at == None, OrbUserMemory.expires_at > now))  # noqa: E711
         .order_by(OrbUserMemory.updated_at.desc(), OrbUserMemory.id.desc())
         .limit(ORB_MEMORY_SUMMARY_LIMIT)
         .all()
     )
-    recent = (
-        db.query(OrbRecentContext)
-        .filter(
-            OrbRecentContext.customer_id == customer.id,
-            OrbRecentContext.expires_at > now,
-        )
-        .order_by(OrbRecentContext.updated_at.desc(), OrbRecentContext.id.desc())
-        .first()
-    )
+    # Legacy authenticated recent-context rows are intentionally not read.
+    # Account memory must come only from the governed allowlisted table.
+    recent = None
     return {
         "scope": "authenticated_user",
         "durable": True,
@@ -1612,12 +1626,27 @@ def _orb_memory_summary(
             "recent_context_ttl_days": ORB_RECENT_CONTEXT_TTL_DAYS,
             "recent_context_max_chars": ORB_RECENT_CONTEXT_MAX_CHARS,
             "tool_cache_default_ttl_seconds": ORB_TOOL_CACHE_DEFAULT_TTL_SECONDS,
+            "retention_policy_version": RETENTION_POLICY_VERSION,
+            "consent_version": CONSENT_VERSION,
         },
     }
 
 
 def _upsert_orb_memory(customer: Customer, payload: OrbMemoryUpsert, db: Session) -> OrbUserMemory:
     category, key = _validate_memory_payload(payload)
+    try:
+        authorization = authorize_account_memory(
+            MemoryCandidate(
+                memory_type=category,
+                value=payload.value,
+                source="account_user_action",
+                account_id=str(customer.id),
+                consent_version=payload.consent_version,
+                inferred=payload.inferred,
+            )
+        )
+    except MemoryPolicyRejection as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     item = (
         db.query(OrbUserMemory)
         .filter(
@@ -1639,13 +1668,27 @@ def _upsert_orb_memory(customer: Customer, payload: OrbMemoryUpsert, db: Session
             if oldest:
                 db.delete(oldest)
                 db.flush()
-        item = OrbUserMemory(customer_id=customer.id, category=category, key=key)
+        item = OrbUserMemory(
+            customer_id=customer.id,
+            account_id=authorization.account_id,
+            category=category,
+            memory_type=authorization.memory_type,
+            key=key,
+            consent_version=authorization.consent_version,
+            retention_policy_version=authorization.retention_policy_version,
+        )
         db.add(item)
     item.value = payload.value.strip()[:2000]
-    item.source = payload.source.strip()[:255]
+    # Source is established by this authenticated endpoint, never trusted
+    # from the request body.
+    item.source = "account_user_action"
     item.confidence = float(payload.confidence)
     item.enabled = bool(payload.enabled)
     item.metadata_json = dict(payload.metadata or {})
+    item.account_id = authorization.account_id
+    item.memory_type = authorization.memory_type
+    item.consent_version = authorization.consent_version
+    item.retention_policy_version = authorization.retention_policy_version
     item.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(item)
@@ -1679,39 +1722,10 @@ def _update_orb_recent_context(
             "expires_at": now_epoch + _ANONYMOUS_ORB_CONTEXT_TTL_SECONDS,
         }
         return
-    now = datetime.utcnow()
-    session_key = "website_orb"
-    context = (
-        db.query(OrbRecentContext)
-        .filter(
-            OrbRecentContext.customer_id == customer.id,
-            OrbRecentContext.session_key == session_key,
-        )
-        .first()
-    )
-    if not context:
-        context = OrbRecentContext(customer_id=customer.id, session_key=session_key)
-        db.add(context)
-
-    existing_lines = [
-        line.strip()
-        for line in (context.summary or "").splitlines()
-        if line.strip().startswith("Visitor intent:")
-    ]
-    existing_lines.append(_neutral_recent_context_line(transcript))
-    summary = "\n".join(existing_lines[-ORB_RECENT_CONTEXT_MAX_LINES:])
-    context.summary = summary[-ORB_RECENT_CONTEXT_MAX_CHARS:]
-    context.turn_count = int(context.turn_count or 0) + 1
-    context.last_source = "website_orb"
-    context.metadata_json = {
-        "source": "orb_conversation_summary",
-        "bounded": True,
-        "format": "neutral_visitor_intent",
-        "stores_generated_answers": False,
-    }
-    context.updated_at = now
-    context.expires_at = now + timedelta(days=ORB_RECENT_CONTEXT_TTL_DAYS)
-    db.commit()
+    # Conversation summaries are session memory. They are never promoted to
+    # account memory merely because the visitor is authenticated. Explicit
+    # account memory writes go through _upsert_orb_memory and its policy gate.
+    return
 
 
 def _cache_key_for_tool(scope: str, tool: str, normalized_input: Dict[str, Any]) -> str:
@@ -10518,6 +10532,24 @@ async def read_orb_memory(
     return _orb_memory_summary(customer, db)
 
 
+@app.get("/api/orb/memory/policy")
+async def read_orb_memory_policy(customer: Customer = Depends(get_current_customer)):
+    """Expose the exact allowlist and versions used by the write gate."""
+    return allowlist_document()
+
+
+@app.delete("/api/orb/session/{session_id}")
+async def end_orb_session(
+    session_id: str,
+    customer: Customer = Depends(get_current_customer),
+):
+    """Purge only the authenticated visitor's volatile session memory."""
+    if not _valid_anonymous_session_id(session_id):
+        raise HTTPException(status_code=400, detail="Invalid session id")
+    purged = end_aims_session(f"authenticated:{session_id}", account_id=str(customer.id))
+    return {"status": "purged", "session_id": session_id, "account_id": str(customer.id), "purged": purged}
+
+
 @app.post("/api/orb/memory")
 async def upsert_orb_memory(
     payload: OrbMemoryUpsert,
@@ -10544,6 +10576,12 @@ async def clear_orb_memory_item(
     )
     if not item:
         raise HTTPException(status_code=404, detail="Memory item not found")
+    db.add(OrbMemoryDeletionEvent(
+        account_id=str(customer.id),
+        memory_id=str(item.id),
+        reason="account_user_delete",
+        retention_policy_version=RETENTION_POLICY_VERSION,
+    ))
     db.delete(item)
     db.commit()
     return {"status": "deleted", "id": str(memory_id)}
@@ -10554,11 +10592,19 @@ async def clear_all_orb_memory(
     db: Session = Depends(get_db),
     customer: Customer = Depends(get_current_customer),
 ):
-    deleted = db.query(OrbUserMemory).filter(OrbUserMemory.customer_id == customer.id).delete()
+    items = db.query(OrbUserMemory).filter(OrbUserMemory.customer_id == customer.id).all()
+    for item in items:
+        db.add(OrbMemoryDeletionEvent(
+            account_id=str(customer.id),
+            memory_id=str(item.id),
+            reason="account_user_delete_all",
+            retention_policy_version=RETENTION_POLICY_VERSION,
+        ))
+        db.delete(item)
     db.query(OrbRecentContext).filter(OrbRecentContext.customer_id == customer.id).delete()
     db.query(OrbToolCache).filter(OrbToolCache.customer_id == customer.id).delete()
     db.commit()
-    return {"status": "deleted", "deleted_memory_items": int(deleted)}
+    return {"status": "deleted", "deleted_memory_items": len(items)}
 
 
 @app.post("/api/public/browser-review")

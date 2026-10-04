@@ -30,7 +30,9 @@ class AimsMemoryBridgeTests(unittest.TestCase):
         aims_memory.record_turn_result(context, "Here is the next verified stop.")
         active = aims_memory._aims().session_context(context["session_id"], "verified")
         self.assertGreater(active["session"]["event_count"], 48)
-        self.assertEqual(aims_memory._aims().retrieval_ledger.outcome_statistics()["total"], 1)
+        # Routine visitor turns are session-only; durable outcome retention is
+        # reserved for the explicit verified-outcome path.
+        self.assertEqual(aims_memory._aims().retrieval_ledger.outcome_statistics()["total"], 0)
 
     def test_agency_context_retrieval_does_not_manufacture_visitor_messages(self):
         session = "d" * 24
@@ -47,7 +49,7 @@ class AimsMemoryBridgeTests(unittest.TestCase):
         self.assertNotIn("Current governed tour objective", texts)
         self.assertIn("I want to see guidance", texts)
 
-    def test_authenticated_prior_outcome_is_pseudonymous_and_retrieved(self):
+    def test_authenticated_prior_outcome_is_not_retrieved_across_visitor_sessions(self):
         session = "b" * 24
         context = aims_memory.context_for_turn("checkout", session, "customer-42")
         system = aims_memory._aims()
@@ -56,7 +58,7 @@ class AimsMemoryBridgeTests(unittest.TestCase):
             visitor_key=aims_memory._visitor_key("customer-42"),
         )
         returned = aims_memory.context_for_turn("checkout again", "c" * 24, "customer-42")
-        self.assertEqual(returned["prior_session_outcomes"][0]["outcome_package"]["outcome"], "completed")
+        self.assertEqual(returned["prior_session_outcomes"], [])
 
 
 if __name__ == "__main__":

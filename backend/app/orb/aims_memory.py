@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import hashlib
 import sys
+import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -25,6 +27,8 @@ from memory_core.skg import graphqlite_backend_factory  # noqa: E402
 
 
 _system: Optional[AIMSMemorySystem] = None
+VISITOR_SESSION_TTL_SECONDS = 30 * 60
+_visitor_session_accounts: Dict[str, str] = {}
 
 
 def _aims() -> AIMSMemorySystem:
@@ -56,9 +60,10 @@ def _session_id(anonymous_session_id: Optional[str], customer_id: Optional[str])
     if anonymous_session_id:
         scope = "authenticated" if customer_id else "anonymous"
         return f"{scope}:{anonymous_session_id}"
-    # Legacy callers without the browser session id still receive memory, but
-    # cannot accidentally obtain durable cross-visitor context.
-    return f"request-scope:{_visitor_key(customer_id) or 'anonymous'}"
+    # Without an explicit browser session id, isolate this request rather than
+    # deriving a reusable key from an account. This prevents accidental
+    # cross-session identity carry-over.
+    return f"request-scope:{uuid.uuid4().hex}"
 
 
 def _compact(value: Any, depth: int = 0) -> Any:
@@ -73,26 +78,39 @@ def _compact(value: Any, depth: int = 0) -> Any:
     return value
 
 
+def _prune_expired_visitor_sessions(now: Optional[float] = None) -> None:
+    """Sweep only Website ORB visitor sessions; other A.I.M.S. users are untouched."""
+    current = now if now is not None else time.time()
+    aims = _aims()
+    for session_id, session in list(aims.sessions.items()):
+        if not (session_id.startswith("anonymous:") or
+                session_id.startswith("authenticated:") or
+                session_id.startswith("request-scope:")):
+            continue
+        if current - float(getattr(session, "created_at", current)) >= VISITOR_SESSION_TTL_SECONDS:
+            aims.sessions.pop(session_id, None)
+            _visitor_session_accounts.pop(session_id, None)
+
+
 def _selected_context(
     query: str, anonymous_session_id: Optional[str], customer_id: Optional[str], limit: int = 12,
 ) -> Dict[str, Any]:
     """Read bounded A.I.M.S. context without manufacturing a new visitor event."""
     aims = _aims()
+    _prune_expired_visitor_sessions()
     session_id = _session_id(anonymous_session_id, customer_id)
     if session_id not in aims.sessions:
         aims.start_session(session_id)
+    if customer_id and anonymous_session_id:
+        _visitor_session_accounts[session_id] = str(customer_id)
     selected = aims.session_context(session_id, query, limit=limit)
-    prior: List[Dict[str, Any]] = []
-    key = _visitor_key(customer_id)
-    if key:
-        prior = aims.retrieve_prior_session_outcomes(key, query, limit=3)
     return {
         "provider": "aims",
         "session_id": session_id,
         "full_session_event_count": selected["session"]["event_count"],
         "relevant_session_context": [_compact(event) for event in selected["context"]],
-        "prior_session_outcomes": prior,
-        "authority_note": "AIMS context is advisory only; Vault/SKG evidence and Stage Governor remain authoritative.",
+        "prior_session_outcomes": [],
+        "authority_note": "AIMS context is advisory, session-scoped, and not cross-session account memory.",
     }
 
 
@@ -102,9 +120,12 @@ def context_for_turn(
 ) -> Dict[str, Any]:
     """Record a real visitor turn and return only selected session/prior context."""
     aims = _aims()
+    _prune_expired_visitor_sessions()
     session_id = _session_id(anonymous_session_id, customer_id)
     if session_id not in aims.sessions:
         aims.start_session(session_id)
+    if customer_id and anonymous_session_id:
+        _visitor_session_accounts[session_id] = str(customer_id)
     aims.remember_session_event(session_id, "message", {"text": transcript}, tags=["visitor"], relevance=0.9)
     if target_url:
         aims.remember_session_event(session_id, "page_visit", {"url": target_url}, tags=["navigation"], relevance=0.65)
@@ -122,6 +143,7 @@ def context_for_agency(
     explicit Website ORB turn/observe paths. Candidate selection, question
     compilation, and semantic classification are retrieval operations only.
     """
+    _prune_expired_visitor_sessions()
     return _selected_context(query, anonymous_session_id, customer_id)
 
 
@@ -144,15 +166,22 @@ def record_turn_result(
         aims.remember_session_event(session_id, "action", _compact(action), tags=["governed_action"], relevance=0.85)
     if result:
         aims.remember_session_event(session_id, "tool_result", _compact(result), tags=["result"], relevance=0.85)
-    aims.record_outcome_signal(OutcomeSignal(
-        session_id=session_id,
-        cognitive_event_id=f"turn:{aims_context['full_session_event_count']}",
-        outcome="response_delivered", quality=0.25, confidence=0.5,
-        action_id=str((action or {}).get("action_id") or "") or None,
-        capability=str((action or {}).get("capability") or "") or None,
-        result="observed" if result else "not_observed",
-        visitor_response="pending",
-    ))
+    # Routine delivery is not a retained account memory or durable learning
+    # event. It remains in the active in-process session only.
+
+
+def end_session(session_id: str, account_id: Optional[str] = None) -> bool:
+    """Purge volatile A.I.M.S. session state at session termination."""
+    aims = _aims()
+    if not (session_id.startswith("anonymous:") or
+            session_id.startswith("authenticated:") or
+            session_id.startswith("request-scope:")):
+        return False
+    if session_id.startswith("authenticated:"):
+        if not account_id or _visitor_session_accounts.get(session_id) != str(account_id):
+            return False
+        _visitor_session_accounts.pop(session_id, None)
+    return aims.sessions.pop(session_id, None) is not None
 
 
 def record_verified_outcome(
