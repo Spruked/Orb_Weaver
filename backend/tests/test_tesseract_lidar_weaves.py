@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 
-from app.crawler.tesseract_weave import (
+from motion_runtime.server.spatial_intelligence.tesseract_weave import (
     build_lidar_candidate_inventory,
     collect_tesseract_candidates,
     summarize_weaves,

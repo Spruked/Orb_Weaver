@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 
-from app.orb.pointer_plot import extract_pointer_plot_records, mark_route_locator_conflicts, pointer_map_diagnostics
+from motion_runtime.server.pointer.pointer_plot import extract_pointer_plot_records, mark_route_locator_conflicts, pointer_map_diagnostics
 
 
 def test_extracts_same_route_cta_links_outside_navigation():

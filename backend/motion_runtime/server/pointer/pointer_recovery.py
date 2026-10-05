@@ -17,7 +17,7 @@ from urllib.parse import urljoin, urlparse
 
 from app.core.config import settings
 from app.core.storage import require_vault_path
-from app.orb.pointer_plot import pointer_conflict_key
+from motion_runtime.server.pointer.pointer_plot import pointer_conflict_key
 
 
 DEFAULT_THRESHOLDS = {

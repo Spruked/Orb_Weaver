@@ -1,0 +1,34 @@
+{
+  "name": "motion-runtime",
+  "version": "1.0.0",
+  "description": "Generic site-agnostic motion runtime: orbital SKG, LiDAR sensing, pointer/MORB control",
+  "main": "index.ts",
+  "types": "index.ts",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./MotionRuntime": "./MotionRuntime.ts",
+    "./types": "./types.ts"
+  },
+  "files": [
+    "orbital_behavior_skg",
+    "lidar",
+    "pointer",
+    "types.ts",
+    "MotionRuntime.ts",
+    "index.ts",
+    "README.md",
+    "example-usage.ts"
+  ],
+  "keywords": [
+    "motion",
+    "runtime",
+    "orbital",
+    "lidar",
+    "pointer",
+    "morb",
+    "viewport"
+  ],
+  "license": "UNLICENSED",
+  "private": true
+}

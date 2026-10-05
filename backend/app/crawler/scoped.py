@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 import aiohttp
 
 from app.core.storage import client_root
-from app.crawler.tesseract_weave import (
+from motion_runtime.server.spatial_intelligence.tesseract_weave import (
     build_lidar_candidate_inventory,
     collect_tesseract_candidates,
     summarize_weaves,

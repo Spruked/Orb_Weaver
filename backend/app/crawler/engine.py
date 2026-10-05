@@ -16,9 +16,9 @@ import re
 from collections import Counter
 from xml.etree import ElementTree as ET
 
-from app.crawler.tesseract_weave import collect_tesseract_candidates, build_lidar_candidate_inventory, summarize_weaves
+from motion_runtime.server.spatial_intelligence.tesseract_weave import collect_tesseract_candidates, build_lidar_candidate_inventory, summarize_weaves
 from app.core.config import settings
-from app.orb.pointer_plot import extract_pointer_plot_records
+from motion_runtime.server.pointer.pointer_plot import extract_pointer_plot_records
 
 @dataclass
 class PageData:

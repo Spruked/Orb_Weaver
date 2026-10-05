@@ -714,7 +714,7 @@ def test_evidence_manifest_detects_tampering_and_snapshots_absolute_sqlite(tmp_p
 
 def test_ordinary_crawl_preserves_owner_approval_and_rejection_everywhere(tmp_path, monkeypatch):
     from types import SimpleNamespace
-    from app.orb.pointer_recovery import promote_owner_verified_pointer, reject_owner_pointer
+    from motion_runtime.server.pointer.pointer_recovery import promote_owner_verified_pointer, reject_owner_pointer
 
     main, _client = load_app(tmp_path, monkeypatch)
 

@@ -1,4 +1,4 @@
-from app.orb.pointer_map_optimizer import optimize_pointer_map
+from motion_runtime.server.pointer.pointer_map_optimizer import optimize_pointer_map
 
 
 def _record(target_id: str, route: str = "https://example.test/"):

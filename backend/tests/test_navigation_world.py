@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from app.orb.navigation_world import (
+from motion_runtime.server.pointer.navigation_world import (
     build_navigation_world,
     localize_route,
     plan_route_path,

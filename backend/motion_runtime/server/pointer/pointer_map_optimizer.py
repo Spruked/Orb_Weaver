@@ -9,7 +9,7 @@ from statistics import median
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlparse
 
-from app.orb.pointer_recovery import _candidate_matches_record
+from motion_runtime.server.pointer.pointer_recovery import _candidate_matches_record
 
 
 DOM_MUTABILITY_VALUES = {

@@ -1,4 +1,4 @@
-from app.orb.pointer_intent import requires_guidance, resolve_pointer_intent
+from motion_runtime.server.pointer.pointer_intent import requires_guidance, resolve_pointer_intent
 
 
 def pointer(target_id, route, meaning, aliases, confidence_class="VERIFIED"):

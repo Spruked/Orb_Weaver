@@ -53,7 +53,7 @@ from app.core.storage import (
 )
 from app.crawler.engine import OrbWeaverCrawler, PageData
 from app.crawler.capability_coverage import build_capability_coverage
-from app.crawler.tesseract_weave import summarize_weaves
+from motion_runtime.server.spatial_intelligence.tesseract_weave import summarize_weaves
 from app.orb.tour_evaluation import (
     TourActContext,
     TourChapterEvaluation,
@@ -74,9 +74,9 @@ from app.lifecycle import (
     write_json_artifact,
 )
 from app.orb import scan_semantic_topology
-from app.orb.pointer_intent import requires_guidance, resolve_pointer_intent
-from app.orb.pointer_plot import mark_route_locator_conflicts, pointer_map_diagnostics, pointer_plot_map_from_pages, pointer_runtime_policy
-from app.orb.pointer_recovery import (
+from motion_runtime.server.pointer.pointer_intent import requires_guidance, resolve_pointer_intent
+from motion_runtime.server.pointer.pointer_plot import mark_route_locator_conflicts, pointer_map_diagnostics, pointer_plot_map_from_pages, pointer_runtime_policy
+from motion_runtime.server.pointer.pointer_recovery import (
     assess_pointer_quality,
     guidance_eligible_pointer_count,
     merge_canonical_pointer_authority,
@@ -166,7 +166,11 @@ from app.orb_dock import (
     public_runtime_policy,
     safe_model_name,
 )
-from app.routers.orb_telemetry import router as orb_telemetry_router, trigger_pointer_lock
+from motion_runtime.server.adapters.orb_telemetry import (
+    orb_telemetry_endpoint,
+    trigger_pointer_lock,
+)
+from motion_runtime.server.adapters.lidar_2d_mapping_telemetry import lidar_2d_mapping_endpoint
 from app.orbs_governor import (
     GovernorRejection,
     active_entitlement,
@@ -220,7 +224,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(orb_telemetry_router)
+app.add_api_websocket_route('/ws/orb-pointer', orb_telemetry_endpoint)
+app.add_api_websocket_route('/ws/lidar-2d-mapping', lidar_2d_mapping_endpoint)
 
 
 @app.middleware("http")
@@ -1567,6 +1572,11 @@ def _prune_anonymous_orb_contexts(now: Optional[float] = None) -> None:
     for session_id, record in list(_anonymous_orb_contexts.items()):
         if float(record.get("expires_at") or 0) <= current:
             _anonymous_orb_contexts.pop(session_id, None)
+
+
+def _end_anonymous_orb_session(session_id: str) -> bool:
+    """Purge process-local anonymous context on explicit session end."""
+    return _anonymous_orb_contexts.pop(session_id, None) is not None
 
 
 def _orb_memory_summary(

@@ -16,8 +16,8 @@ def install_pointer_recovery_optimizer() -> None:
       viewport geometry from its existing Playwright capture.
     """
 
-    from app.orb import pointer_plot, pointer_recovery
-    from app.orb.pointer_map_optimizer import optimize_pointer_map
+    from motion_runtime.server.pointer import pointer_plot, pointer_recovery
+    from motion_runtime.server.pointer.pointer_map_optimizer import optimize_pointer_map
 
     original_map_builder = pointer_plot.pointer_plot_map_from_pages
     if not getattr(original_map_builder, "_orb_pointer_optimizer_installed", False):

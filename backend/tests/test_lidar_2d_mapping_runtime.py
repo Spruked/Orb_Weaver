@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.crawler import OrbWeaverCrawler
-from app.routers.orb_telemetry import router as orb_telemetry_router
+from motion_runtime.server.adapters.lidar_2d_mapping_telemetry import lidar_2d_mapping_endpoint
 
 
 def test_canonical_crawler_has_lidar_weave_support_installed():
@@ -14,7 +14,7 @@ def test_canonical_crawler_has_lidar_weave_support_installed():
 def test_lidar_websocket_is_registered_under_runtime_ws_namespace():
     """The same router included by backend/main.py must expose the LiDAR lane."""
     app = FastAPI()
-    app.include_router(orb_telemetry_router)
+    app.add_api_websocket_route("/ws/lidar-2d-mapping", lidar_2d_mapping_endpoint)
     client = TestClient(app)
 
     with client.websocket_connect("/ws/lidar-2d-mapping") as websocket:

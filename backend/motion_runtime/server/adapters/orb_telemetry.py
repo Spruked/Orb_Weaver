@@ -7,13 +7,19 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel, Field, ValidationError
 
-from app.routers.lidar_2d_mapping_telemetry import router as lidar_2d_mapping_router
-from app.routers.lidar_2d_mapping_telemetry import trigger_lidar_2d_mapping_target_lock
+from .lidar_2d_mapping_telemetry import (
+  lidar_2d_mapping_endpoint,
+  trigger_lidar_2d_mapping_target_lock,
+)
 
 logger = logging.getLogger('orb.telemetry')
 
 router = APIRouter(prefix='/ws', tags=['orb-telemetry'])
-router.include_router(lidar_2d_mapping_router)
+router.add_api_websocket_route(
+  '/lidar-2d-mapping',
+  lidar_2d_mapping_endpoint,
+  name='lidar_2d_mapping_endpoint',
+)
 
 
 class TelemetryFrame(BaseModel):
