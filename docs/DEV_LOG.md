@@ -1,5 +1,16 @@
 # Orb Weaver Development Log
 
+## 2026-10-10 — Rebuilt Weaver runtime and verified voice/STT path
+
+- Recreated `orb_weaver-orb-weaver-1` from the rebuilt image and confirmed the
+  backend became operational on port `16500`.
+- From inside the Weaver container, `host.docker.internal` resolved to
+  `172.17.0.1` and Faster-Whisper `/health` returned HTTP 200. Whisper remains
+  bound only to `172.17.0.1:13000`.
+- Uploaded a real audio probe through `/api/orb/website-voice` with
+  `transcribe_only=true`; the returned transcript was `Hey Pops, can you hear
+  me?`, confirming the rebuilt Weaver → host Whisper STT path.
+
 ## 2026-10-10 — Governed Dandy promotional pack output
 
 - Made `dandy_packs/` a standard, parallel output of each client crawl while
