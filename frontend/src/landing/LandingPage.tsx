@@ -421,6 +421,18 @@ const LandingPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const cancelLandingExperience = () => {
+      introAudioRef.current?.pause();
+      introAudioRef.current = null;
+      introPlaybackRequestRef.current = null;
+      setIntroCaption(null);
+      setSplashTrigger(0);
+    };
+    window.addEventListener("orbweaver:cancel-landing-experience", cancelLandingExperience);
+    return () => window.removeEventListener("orbweaver:cancel-landing-experience", cancelLandingExperience);
+  }, []);
+
+  useEffect(() => {
     if (!splashTrigger) return;
     window.dispatchEvent(new CustomEvent("orbweaver:startup-gate-started", {
       detail: { splash_state: "playing" },
@@ -580,7 +592,7 @@ const LandingPage: React.FC = () => {
       <section id="beat-5" data-beat-id="beat5" className={beatClassName('beat5', 'accent')}>
         <div className="ow-cut-shell ow-cut-shell-split">
           <div className="ow-cut-visual" aria-hidden="true">
-            <img className="ow-cut-visual-image" src="/WORKORB1600.png" alt="Website ORB processing and weaving business data into contextual intelligence" />
+            <img className="ow-cut-visual-image" src="/WORKORB1600-clean-edge.png" alt="Website ORB processing and weaving business data into contextual intelligence" />
           </div>
           <div className="ow-cut-copy" data-orb-copy-region="true">
             <p data-orb-target="weave-page-knowledge">Imagine taking every page.</p>
@@ -641,10 +653,12 @@ const LandingPage: React.FC = () => {
             <h2>How does it actually work?</h2>
             <h2>Beneath the Weave</h2>
             <p data-orb-target="pointer-intelligence-proof"><strong>28-Weave™ Assembly.</strong></p>
-            <p>Not a crawl. Not an audit. A manufacturing process — twenty-eight explicit weaves that compile your website into verified knowledge, live pointer intelligence, and a learning system that gets smarter every month.</p>
-            <p>Four of those weaves exist nowhere else: <strong>a priori knowledge</strong> compiled from your own verified facts and policies, <strong>a posteriori knowledge</strong> that keeps learning after launch, <strong>multi-funnel continuity</strong> across every path a visitor can take, and <strong>pointer intelligence</strong> that turns "click here" into something verified, not guessed.</p>
-            <p>The rest — SEO, accessibility, performance, security, schema — get handled too. But that's not what makes this a Website ORB instead of a website audit.</p>
-            <p>Under the experience, ORB Weaver compiles website structure, verifies navigation targets, and coordinates guidance using governed runtime capabilities — so every answer is precise, not improvised.</p>
+            <p>Not a crawl. Not an audit. A manufacturing process — twenty-eight explicit weaves that turn your website into an operating layer: verified knowledge for answers, live geometry for guidance, and measured learning for what happens after launch.</p>
+            <p>Each weave has a job. The foundation maps pages, products, services, people, policies, forms, and the relationships between them. Verification checks that important routes, controls, and claims are real. Runtime assembly then makes that structure available to the Website ORB without giving it permission to invent, improvise, or act outside its boundaries.</p>
+            <p>Four weaves create the difference. <strong>A priori knowledge</strong> compiles the facts your business already knows — approved offers, policies, terminology, destinations, and constraints — so the ORB starts from your source material. <strong>A posteriori learning</strong> captures verified outcomes after launch — where visitors hesitate, what they ask, and which guidance helps — so improvement is tied to evidence rather than silent self-modification.</p>
+            <p><strong>Multi-funnel continuity</strong> connects the journeys that normally get treated as separate: discovery, comparison, support, signup, booking, checkout, and return visits. A visitor can change direction without losing the context that makes the next step useful. <strong>Pointer intelligence</strong> adds the spatial layer, turning “click here” into a verified target, a visible cue, or a precise handoff based on the live page — not a guessed coordinate.</p>
+            <p>The remaining weaves cover the disciplines a serious website still needs — SEO, accessibility, performance, security, schema, content structure, analytics, and operational readiness. They matter because the ORB must operate inside a dependable website. But they are not the whole product: an audit reports what exists; a Website ORB uses verified structure to help people move through it.</p>
+            <p>Under the experience, ORB Weaver compiles evidence, tests navigation targets, separates source facts from generated guidance, and coordinates every response through governed runtime capabilities. That means the system can explain what it knows, show where a visitor should go, preserve context across the journey, and stay honest when the site does not provide an answer.</p>
             <p className="ow-cut-emphasis"><strong>28-Weave™ becomes one web.</strong></p>
             <p>Not the web you already know. A new one — built from your own pages, products, and knowledge. Stronger every day, in the hands of ORB Weaver.</p>
             

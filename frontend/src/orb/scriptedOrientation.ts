@@ -2,9 +2,6 @@ export type ScriptedOrientationStep = {
   route?: string;
   selector?: string;
   pointerTargetIds?: readonly string[];
-  simulation?: 'product_price_research' | 'desktop_diagnostics';
-  /** Audit batches are deliberately prime-sized to make omissions obvious. */
-  auditTaskCount?: 3 | 5 | 7 | 11;
   /** Ends authored narration and returns control to the guest-led ORB. */
   handoffToLiveConversation?: boolean;
   /** Scroll the page independently while this stop is being narrated. */
@@ -67,7 +64,7 @@ export const LANDING_FULL_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
   {
     selector: '#beat-9',
     pointerTargetIds: ['pointer-intelligence-proof', 'business-outcomes'],
-    text: 'Orb Weaver builds that intelligence through the 28-Weave process: explicit, structured work that compiles website knowledge, live pointer intelligence, and a learning system that improves over time. Its distinct weaves include a priori knowledge (what the site declares), a posteriori learning (what visitors reveal), multi-funnel continuity (journey stitching across sessions and paths), and pointer intelligence (LiDAR-inspired geometry that lets me move and highlight with precision rather than guess).',
+    text: 'Orb Weaver builds that intelligence through the 28-Weave process: explicit, structured work that compiles website knowledge, live pointer intelligence, and a learning system that improves over time. Its distinct weaves include a priori knowledge (what the site declares), a posteriori learning (what visitors reveal), multi-funnel continuity (journey stitching across sessions and paths), and spatial mapping and movement that let me move and highlight with precision rather than guess.',
   },
   {
     selector: '#weave-business-outcomes',
@@ -85,12 +82,14 @@ export const LANDING_FULL_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
 export const LANDING_OPENING_SCRIPT = LANDING_FULL_TOUR_SCRIPT;
 
 const SECURITY_TOUR_STOPS: readonly ScriptedOrientationStep[] = [
+  { route: '/security', pointerTargetIds: ['security-hero'], text: 'This page is the security boundary for the Website ORB. Trust is built into the architecture: the system can explain and guide from verified state without receiving unchecked authority to execute.' },
   { route: '/security', pointerTargetIds: ['security-quick-1'], text: 'What can the ORB do? It can understand page context, answer visitor questions, guide attention to verified next steps, and help people finish the journeys your website was built to support.' },
   { pointerTargetIds: ['security-quick-2'], text: 'What can the ORB not do? It cannot invent permissions, pretend a control exists, claim an action succeeded without verification, or act outside the runtime control layer.' },
   { pointerTargetIds: ['security-quick-3'], text: "The ORB cannot control your customer’s computer. A Website ORB operates inside the website experience and does not take control of a visitor device, desktop, files, or operating system." },
   { pointerTargetIds: ['security-quick-4'], text: 'The ORB does not click buttons automatically by default. It can guide to a verified target and explain the next step, while execution remains bounded by runtime permissions and approval rules.' },
   { pointerTargetIds: ['security-quick-5'], text: 'The ORB cannot purchase things for a visitor. It may explain an offer or reach the correct checkout step, but it cannot complete a purchase on the visitor’s behalf.' },
   { pointerTargetIds: ['security-quick-6'], text: 'The ORB does not submit forms without control. Guidance and reasoning remain separate from consequential execution so the visitor stays in charge.' },
+  { pointerTargetIds: ['security-trust-design'], text: 'The trust design is deliberately separated. Reasoning can interpret and recommend, while the runtime verifies state, enforces permissions, and controls what can actually run.' },
   { pointerTargetIds: ['security-trust-1'], text: 'The Control Plane owns execution. AI can interpret, explain, and recommend, while the runtime control layer decides what tools exist and what actions are permitted.' },
   { pointerTargetIds: ['security-trust-2'], text: 'Verification means Orb Weaver checks state before claiming success. If a fact, target, or action has not been verified, the ORB presents that uncertainty honestly.' },
   { pointerTargetIds: ['security-trust-3'], text: 'The Stage Governor defines the current objective and allowed actions. The AI does not decide its own authority; it operates inside the stage rules it has been given.' },
@@ -109,12 +108,6 @@ export const SITE_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
     route: '/features',
     pointerTargetIds: ['tour-features'],
     text: 'Now we move into the Website ORB feature set — the place where the experience becomes practical. Here I can recognize a visitor’s context, explain what is actually on the page from verified evidence, and visibly guide them toward a next step that has been checked against the live site. The important point is not a chat bubble floating over a website. It is a guided environment built on real page evidence, governed permissions, and continuous validation.',
-  },
-  {
-    pointerTargetIds: ['tour-features'],
-    simulation: 'product_price_research',
-    auditTaskCount: 3,
-    text: 'Watch this Morb research deployment. I am staging three independently auditable product-and-price research tasks. Morbs are single-function researchers: they investigate a bounded question and return evidence for review. The batch size is deliberately prime so any omission is obvious. In this demo the work stays entirely on-site, makes no live price claims, and initiates no purchase. It simply shows how specialized, auditable research can extend a guided visitor experience without breaking the trust boundary.',
   },
   {
     route: '/use-cases',
@@ -160,7 +153,7 @@ export const SITE_TOUR_SCRIPT: readonly ScriptedOrientationStep[] = [
   {
     route: '/lidar-guidance',
     pointerTargetIds: ['tour-lidar-guidance'],
-    text: 'This is the navigation system behind the movement you are watching. I build a live, LiDAR-inspired two-dimensional map of the page, reconcile it with verified targets, and validate the geometry again before I point. That is why I can leave the text I was reading, travel toward the correct control, and ping it with precision. I do not guess coordinates or click on the visitor’s behalf. Every movement is checked against current page geometry so the guidance remains trustworthy even as the layout changes.',
+    text: 'This is the spatial mapping and movement system behind the guidance you are watching. I build a live two-dimensional map of the page, reconcile it with verified targets, and validate the geometry again before I point. That is why I can leave the text I was reading, travel toward the correct control, and ping it with precision. I do not guess coordinates or click on the visitor’s behalf. Every movement is checked against current page geometry so the guidance remains trustworthy even as the layout changes.',
   },
   {
     route: '/how-it-works',
@@ -208,7 +201,7 @@ const PAGE_ORIENTATIONS: Record<string, string> = {
   '/use-cases':
     'This page shows eight practical use cases for a Website ORB: product discovery, sales and conversion, forms and applications, bookings, customer support, onboarding, guided tours, and complex decisions. The common thread is helping visitors preserve direction across a real website journey.',
   '/lidar-guidance':
-    'This is the page that explains the LiDAR-inspired two-dimensional visual navigation system. Weaver builds a live geometric map of the page, reconciles it with verified targets, and re-validates before every pointer movement so guidance remains precise even as layouts change.',
+    'This is the page that explains Orb Weaver’s spatial mapping and movement system. Weaver builds a live geometric map of the page, reconciles it with verified targets, and re-validates before every pointer movement so guidance remains precise even as layouts change.',
   '/how-it-works':
     'This page explains how Orb Weaver turns website evidence into governed, useful guidance. The sequence is deliberate: discover what is present, reconcile with verified knowledge, confirm allowed paths, then present a next step. Knowledge becomes action only after the checks pass.',
   '/security':

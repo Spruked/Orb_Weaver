@@ -2507,82 +2507,6 @@ export const AutonomousOrb: React.FC<Props> = ({
     return speak(normalizedText, audioUrl, provider, options);
   }, [freezeOrbInPlace, showStatus, speak]);
 
-  const runMorbWorkSimulation = useCallback(async (
-    work: "product_price_research" | "desktop_diagnostics",
-    auditTaskCount: 3 | 5 | 7 | 11 = 3,
-  ): Promise<void> => {
-    // This is intentionally separate from pointer guidance: a MORB scouts a
-    // bounded task area, does not acquire a clickable DOM target, and cannot
-    // navigate, purchase, or change external state.
-    const rect = orbElementRef.current?.getBoundingClientRect();
-    const originX = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
-    const originY = rect ? rect.top + rect.height / 2 : window.innerHeight / 2;
-    const destinationX = Math.min(window.innerWidth - MORB_HALF - 24, Math.max(MORB_HALF + 24, window.innerWidth * .69));
-    const destinationY = Math.min(window.innerHeight - MORB_HALF - 24, Math.max(MORB_HALF + 24, window.innerHeight * .56));
-    const role: MorbWorkRole = work === "product_price_research" ? "comparison" : "sequence";
-    const targetId = `morb-${work}-audit-${auditTaskCount}`;
-
-    demonstrationStateRef.current = {
-      controller: scriptedOrientationRunningRef.current ? "scripted_orientation" : "tour_controller",
-      capability: "bounded MORB deployment",
-      morb: { status: "requested", work },
-      receipts: [{ event: "morb_requested", capability: "MORB", status: work, at: Date.now() }],
-    };
-
-    emitOrbRuntimeEvent("morb_single_function_deployment_started", {
-      work,
-      audit_task_count: auditTaskCount,
-      audit_task_count_is_prime: true,
-      pointer_guidance: false,
-      external_navigation: false,
-      purchase_authority: false,
-      mutation_authority: false,
-    });
-    playMorbLaunchSound();
-    demonstrationStateRef.current = {
-      ...demonstrationStateRef.current,
-      morb: { status: "launched", work },
-      receipts: [...demonstrationStateRef.current.receipts, { event: "morb_launched", capability: "MORB", status: work, at: Date.now() }].slice(-8),
-    };
-    setMorbPointer({
-      targetId,
-      role,
-      left: originX - MORB_HALF,
-      top: originY - MORB_HALF,
-      visible: true,
-      pinging: false,
-      dissolving: false,
-      phase: "LAUNCH",
-      trajectory: "swirl",
-    });
-    await wait(160);
-    startMorbTravelSound();
-    setMorbPointer((current) => current ? {
-      ...current,
-      left: destinationX - MORB_HALF,
-      top: destinationY - MORB_HALF,
-      phase: "TRAVEL",
-    } : null);
-    await wait(900);
-    stopMorbTravelSound();
-    setMorbPointer((current) => current ? { ...current, phase: "COMPLETE" } : null);
-    emitOrbRuntimeEvent("morb_single_function_deployment_completed", {
-      work,
-      audit_task_count: auditTaskCount,
-      audit_task_count_is_prime: true,
-      result: "mock_complete",
-    });
-    demonstrationStateRef.current = {
-      ...demonstrationStateRef.current,
-      morb: { status: "completed", work },
-      receipts: [...demonstrationStateRef.current.receipts, { event: "morb_deployment_completed", capability: "MORB", status: "mock_complete", at: Date.now() }].slice(-8),
-    };
-    await wait(480);
-    setMorbPointer((current) => current ? { ...current, phase: "DISSOLVE", dissolving: true } : null);
-    await wait(320);
-    setMorbPointer(null);
-  }, [playMorbLaunchSound, startMorbTravelSound, stopMorbTravelSound]);
-
   const runScriptedOrientation = useCallback(async (
     orientationId: string,
     steps: readonly ScriptedOrientationStep[],
@@ -2793,14 +2717,26 @@ export const AutonomousOrb: React.FC<Props> = ({
               },
             };
             if (useCaseTargetId) {
-              const target = await waitForPointerRecord(useCaseTargetId);
+              const targetElement = document.querySelector<HTMLElement>(`[data-orb-target="${useCaseTargetId}"]`);
+              targetElement?.scrollIntoView({ behavior: "auto", block: "center", inline: "nearest" });
+              bumpWorldStateSequence();
+              await wait(180);
+              let target = await waitForPointerRecord(useCaseTargetId);
               let speechAtPing: Promise<boolean> | undefined;
-              const guided = target && await guideToPointerRecord(target, spokenText, {
-                launchMorbOnly: true,
-                onPing: () => {
-                  speechAtPing = speakWithGeneratedAudio(spokenText, tts.tts_audio_url, tts.tts_provider, playbackOptions);
-                },
-              });
+              let guided = false;
+              for (let attempt = 0; attempt < 2 && !guided; attempt += 1) {
+                if (attempt > 0) {
+                  bumpWorldStateSequence();
+                  target = await waitForPointerRecord(useCaseTargetId);
+                  await wait(180);
+                }
+                guided = Boolean(target && await guideToPointerRecord(target, spokenText, {
+                  launchMorbOnly: true,
+                  onPing: () => {
+                    speechAtPing = speakWithGeneratedAudio(spokenText, tts.tts_audio_url, tts.tts_provider, playbackOptions);
+                  },
+                }));
+              }
               emitOrbRuntimeEvent(guided ? "scripted_tour_pointer_demonstrated" : "scripted_tour_pointer_unavailable", {
                 orientationId, index, targetId: useCaseTargetId,
               });
@@ -2844,19 +2780,6 @@ export const AutonomousOrb: React.FC<Props> = ({
           continue;
         }
         if (scriptedOrientationInterruptedRef.current) continue;
-        if (step.simulation) {
-          const auditTaskCount = step.auditTaskCount || (step.simulation === "product_price_research" ? 3 : 5);
-          await runMorbWorkSimulation(step.simulation, auditTaskCount);
-          emitOrbRuntimeEvent(`scripted_morb_${step.simulation}_simulation`, {
-            orientationId,
-            index,
-            mode: "mock",
-            audit_task_count: auditTaskCount,
-            audit_task_count_is_prime: true,
-            external_navigation: false,
-            purchase_authority: false,
-          });
-        }
         // A completed authored stop is the same TAMP handoff as any other
         // completed response: acquire a new Phase Zero-approved ambient pose
         // before the next stop can begin.
@@ -2881,7 +2804,7 @@ export const AutonomousOrb: React.FC<Props> = ({
     } finally {
       scriptedOrientationRunningRef.current = false;
     }
-  }, [findPointerRecordById, guideToPointerRecord, invalidateAmbientPose, navigate, resumeAutonomousPresence, runMorbWorkSimulation, showStatus, speakWithGeneratedAudio, waitForPointerRecord, waitForPointerRecords]);
+  }, [bumpWorldStateSequence, findPointerRecordById, guideToPointerRecord, invalidateAmbientPose, navigate, resumeAutonomousPresence, showStatus, speakWithGeneratedAudio, waitForPointerRecord, waitForPointerRecords]);
 
   const diagnosticNarrationText = useCallback(() => {
     return [
@@ -4975,6 +4898,25 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, [move]);
 
   // Voice resources are cancelled only when this ORB component unmounts.
+  useEffect(() => {
+    const cancelLandingExperience = () => {
+      scriptedOrientationInterruptedRef.current = true;
+      motionInterruptionSequenceRef.current += 1;
+      activeVoiceAbortControllerRef.current?.abort();
+      activeVoiceAbortControllerRef.current = null;
+      speechPlaybackSettlementRef.current?.cancel();
+      speechPlaybackSettlementRef.current = null;
+      speechAudioRef.current?.pause();
+      pointerPingAudioRef.current?.pause();
+      stopOrbRecording(true);
+      stopBrowserSpeechRecognition(true);
+      movementControllerRef.current?.dispose();
+      move.stop();
+    };
+    window.addEventListener('orbweaver:cancel-landing-experience', cancelLandingExperience);
+    return () => window.removeEventListener('orbweaver:cancel-landing-experience', cancelLandingExperience);
+  }, [move, stopBrowserSpeechRecognition, stopOrbRecording]);
+
   useEffect(() => {
     return () => {
       speechAudioRef.current?.pause();

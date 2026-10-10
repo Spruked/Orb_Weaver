@@ -20,8 +20,8 @@ describe('scripted orientation', () => {
     expect(LANDING_FULL_TOUR_SCRIPT[1].text).not.toMatch(/site-specific intelligence/i);
   });
 
-  test('uses the authored LiDAR orientation', () => {
-    expect(scriptedPageOrientation('/lidar-guidance')?.text).toMatch(/LiDAR-inspired two-dimensional visual navigation system/i);
+  test('uses the authored spatial mapping and movement orientation', () => {
+    expect(scriptedPageOrientation('/lidar-guidance')?.text).toMatch(/spatial mapping and movement system/i);
   });
 
   test('visits every native public explainer before account creation', () => {
@@ -34,12 +34,12 @@ describe('scripted orientation', () => {
     expect(SITE_TOUR_SCRIPT.at(-1)?.text).toBeUndefined();
   });
 
-  test('keeps every routed demo stop pointer-backed and keeps research non-destructive', () => {
+  test('keeps every routed tour stop pointer-backed and excludes unverified research demos', () => {
     const routedStops = SITE_TOUR_SCRIPT.filter((step) => step.route);
     expect(routedStops.filter((step) => !step.handoffToLiveConversation)
       .every((step) => (step.pointerTargetIds?.length || 0) > 0)).toBe(true);
     expect(SITE_TOUR_SCRIPT.some((step) => step.route?.startsWith('/marketplace'))).toBe(false);
-    expect(SITE_TOUR_SCRIPT.find((step) => step.simulation === 'product_price_research')?.route).toBeUndefined();
+    expect(SITE_TOUR_SCRIPT.some((step) => /research deployment|prime/i.test(step.text || ''))).toBe(false);
     expect(SITE_TOUR_SCRIPT.at(-1)?.route).toBe('/signup');
     expect(scriptedPageOrientation('/signup')).toBeNull();
     expect(scriptedPageOrientation('/use-cases')?.text).toMatch(/eight practical use cases/i);
@@ -65,15 +65,6 @@ describe('scripted orientation', () => {
     });
     expect(preflight?.text).toMatch(/account creation comes next/i);
     expect(preflight?.text).toMatch(/optionally review.*before.*full-site scan/i);
-  });
-
-  test('uses single-function MORBs only for prime-sized research and diagnostic audits', () => {
-    const simulations = SITE_TOUR_SCRIPT.filter((step) => step.simulation);
-    expect(simulations.map((step) => [step.simulation, step.auditTaskCount])).toEqual([
-      ['product_price_research', 3],
-      ['desktop_diagnostics', 5],
-    ]);
-    expect(simulations.every((step) => [3, 5, 7, 11].includes(step.auditTaskCount || 0))).toBe(true);
   });
 
   test('provides a concise orientation for an otherwise unmapped route', () => {

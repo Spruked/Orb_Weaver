@@ -53,7 +53,7 @@ export function observedSecurityPointerRecords(): WebsiteOrbPointerRecord[] {
       intent_aliases: ['security', 'trust architecture', title],
       content_fingerprint: `security:${targetId}:${title.toLowerCase()}`,
       semantic_locator: `[data-orb-target="${targetId}"]`,
-      structural_context: { tag: 'article' },
+      structural_context: { tag: expectedTag.toLowerCase() },
       confidence: 1,
       confidence_class: 'VERIFIED',
       runtime_policy: {
@@ -65,7 +65,9 @@ export function observedSecurityPointerRecords(): WebsiteOrbPointerRecord[] {
       },
     });
   };
+  addRecord('security-hero', 'Trust is built into the architecture', 'SECTION');
   SECURITY_QUICK_TITLES.forEach((title, index) => addRecord(`security-quick-${index + 1}`, title));
+  addRecord('security-trust-design', 'The system is separated on purpose', 'SECTION');
   SECURITY_TRUST_TITLES.forEach((title, index) => addRecord(`security-trust-${index + 1}`, title));
   addRecord('security-bottom-line', 'The ORB helps visitors move forward.', 'SECTION');
   return records;

@@ -53,9 +53,9 @@ reported as credential setup failures; they are not treated as zero analytics.
 
 ## Current landing-tour target
 
-[Target One](docs/TARGET_ONE_LANDING_TOUR.md) is the approved five-chapter, nine-stop landing-page tour: Meet Weaver → Why Weaving Exists → Trust → How Orb Weaver Builds Intelligence → Preflight Decision. The Target One marker is implemented: it retains the existing introduction, cognition, TTS, verified Pointer/LiDAR, and interruption/resume paths. The controller waits for an explicit visitor choice; it never automatically starts Preflight or continues into later workflows.
+[Target One](docs/TARGET_ONE_LANDING_TOUR.md) is the approved five-chapter, nine-stop landing-page tour: Meet Weaver → Why Weaving Exists → Trust → How Orb Weaver Builds Intelligence → Preflight Decision. The Target One marker is implemented: it retains the existing introduction, cognition, TTS, verified Pointer, spatial mapping and movement, and interruption/resume paths. The controller waits for an explicit visitor choice; it never automatically starts Preflight or continues into later workflows.
 
-Target One is the full Home / Landing Page walkthrough. Future targets are Features, LiDAR Guidance, How It Works, and Preflight, followed by authentication and the customer purchase/onboarding flow. They are not part of the current landing controller. See the [development log](docs/DEV_LOG.md) for the current handoff and validation boundary.
+Target One is the full Home / Landing Page walkthrough. Future targets are Features, Spatial Mapping and Movement, How It Works, and Preflight, followed by authentication and the customer purchase/onboarding flow. They are not part of the current landing controller. See the [development log](docs/DEV_LOG.md) for the current handoff and validation boundary.
 
 ## Features
 
@@ -286,9 +286,9 @@ The landing startup remains a single, governed visitor handoff: the historical
 splash introduction finishes before ORIENT may begin, while cognition warmup
 and the Kokoro probe run concurrently. Development-only React Strict Mode
 remounts reuse one in-flight readiness proof rather than starting duplicate
-inference or speech warmups. A LiDAR coordinate cache also skips a redundant
+inference or speech warmups. A spatial coordinate cache also skips a redundant
 rebuild when its pointer records are unchanged. These changes preserve the
-existing Pointer/LiDAR and Stage Governor authority; they do not add automatic
+existing Pointer, spatial mapping and movement, and Stage Governor authority; they do not add automatic
 tour advancement.
 
 Orb Weaver now includes:
@@ -304,7 +304,7 @@ Orb Weaver now includes:
 - Dock Station owner policy controls for behavior, greeting, voice posture, model/provider selection, job description, and must-follow/must-not rules.
 - Website ORB site-learning loop with posteriori interaction records, Stump Ledger, verified-case reuse, and clean-slate pack templates.
 - CCO runtime trace active in the Website ORB answer path.
-- Dynamic Preflight presentation binds report-scoped rendered cards to the existing live DOM/LiDAR verification path. A cached scan coordinate never authorizes a Point/Ping.
+- Dynamic Preflight presentation binds report-scoped rendered cards to the existing live DOM/spatial verification path. A cached scan coordinate never authorizes a Point/Ping.
 - Manufacture no longer duplicates A Priori/A Posteriori data into `Orb_Vault_System`; it ships SKG implementation code only, strips inactive vendored TPC persistence surfaces, and records SKG lineage in the package canonical Vault.
 
 The implemented onboarding path is:

@@ -9,7 +9,7 @@ export type VerifiedRouteNavigation = {
 // the arrival handler still requires the live pointer registry and DOM check
 // before presenting any target on the destination page.
 export const VERIFIED_ROUTE_NAVIGATIONS: readonly VerifiedRouteNavigation[] = [
-  { route: '/lidar-guidance', pointerTargetId: 'tour-lidar-guidance', label: 'LiDAR visual navigation', aliases: ['navigation page', 'lidar navigation', 'lidar guidance', 'visual navigation'] },
+  { route: '/lidar-guidance', pointerTargetId: 'tour-lidar-guidance', label: 'spatial mapping and movement', aliases: ['navigation page', 'spatial mapping', 'spatial movement', 'visual navigation'] },
   { route: '/features', pointerTargetId: 'tour-features', label: 'Website ORB features', aliases: ['features page', 'orb features'] },
   { route: '/use-cases', pointerTargetId: 'tour-use-cases', label: 'Website ORB use cases', aliases: ['use cases', 'use-case page', 'orb use cases'] },
   { route: '/how-it-works', pointerTargetId: 'tour-how-it-works', label: 'how Orb Weaver works', aliases: ['how it works', 'how does it work'] },

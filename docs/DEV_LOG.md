@@ -1,5 +1,29 @@
 # Orb Weaver Development Log
 
+## 2026-10-10 — Public guidance terminology and verified ping coverage
+
+- Reframed the public navigation explainer as **Spatial Mapping and Movement**;
+  the visitor-facing page, feature link, route narration, and direct-navigation
+  label no longer present the retired LiDAR terminology.
+- Added owner-authored Security page Point/Ping targets for the hero, trust
+  design section, quick-answer cards, trust layers, and bottom line. Each target
+  is accepted only when its expected live DOM element and source text are
+  present.
+- Removed the unverified prime-sized research deployment claim and mock research
+  stop from the public scripted tour.
+- Hardened the eight use-case tour stops to reacquire live card geometry and
+  retry one verified Point/Ping when a stale world-state transition would skip
+  a left-column target.
+
+## 2026-10-10 — Clean edge for the moving tied orb visual
+
+- Added a transparent, de-fringed version of the tied orb image for the
+  landing-page weaving section, removing the pale rectangular background and
+  halo around the sphere and tie.
+- Kept the existing `ow-cut-float` animation and image layout unchanged; this
+  is a visual-asset-only replacement. The original source asset remains in
+  place for other uses.
+
 ## 2026-10-10 — Rebuilt Weaver runtime and verified voice/STT path
 
 - Recreated `orb_weaver-orb-weaver-1` from the rebuilt image and confirmed the

@@ -5,7 +5,7 @@ import '../landing/Landing.css';
 
 const LidarGuidance: React.FC = () => {
   useEffect(() => {
-    document.title = 'LiDAR-Inspired Guidance | ORB Weaver';
+    document.title = 'Spatial Mapping and Movement | ORB Weaver';
   }, []);
 
   return (
@@ -41,7 +41,7 @@ const LidarGuidance: React.FC = () => {
               color: '#1a1a1a',
               marginBottom: '24px'
             }}>
-              LiDAR-Inspired Guidance Mesh™
+              Spatial Mapping and Movement™
             </h1>
             <p style={{
               fontSize: 'clamp(22px, 2.5vw, 34px)',
@@ -86,7 +86,7 @@ const LidarGuidance: React.FC = () => {
           </div>
 
           <div className="rounded-2xl border border-cyan-300/20 bg-white/[0.05] p-6 md:p-8">
-            <h2 className="text-3xl font-bold text-white mt-0">Inspired by 2D LiDAR</h2>
+            <h2 className="text-3xl font-bold text-white mt-0">A Live Spatial Model</h2>
             <p className="text-lg text-slate-200">
               Autonomous robots don't repeatedly guess where obstacles are.
             </p>
@@ -195,14 +195,14 @@ const LidarGuidance: React.FC = () => {
           </div>
 
           <div className="rounded-2xl border border-cyan-300/30 bg-cyan-950/20 p-6 md:p-8">
-            <h2 className="text-3xl font-bold text-white mt-0">Why LiDAR?</h2>
+            <h2 className="text-3xl font-bold text-white mt-0">Why Spatial Mapping?</h2>
             <p className="text-lg text-slate-200">
               The inspiration is architectural rather than literal.
             </p>
             <div className="grid md:grid-cols-2 gap-6 my-6">
               <div className="text-center p-4 rounded-lg border border-cyan-500/30 bg-cyan-950/40">
-                <p className="text-sm uppercase tracking-wide text-cyan-300 mb-2">LiDAR</p>
-                <p className="text-xl font-semibold text-white">Measures physical space</p>
+                <p className="text-sm uppercase tracking-wide text-cyan-300 mb-2">Spatial mapping</p>
+                <p className="text-xl font-semibold text-white">Measures the page environment</p>
               </div>
               <div className="text-center p-4 rounded-lg border border-cyan-500/30 bg-cyan-950/40">
                 <p className="text-sm uppercase tracking-wide text-cyan-300 mb-2">ORB Weaver</p>
@@ -220,7 +220,7 @@ const LidarGuidance: React.FC = () => {
           <div className="rounded-2xl border border-green-500/30 bg-green-950/20 p-6 md:p-8">
             <h2 className="text-3xl font-bold text-white mt-0">Faster Guidance</h2>
             <p className="text-lg text-slate-200 mb-6">
-              The LiDAR-inspired guidance layer enables:
+              The spatial mapping and movement layer enables:
             </p>
             <div className="grid md:grid-cols-2 gap-4">
               {[

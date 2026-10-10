@@ -94,7 +94,7 @@ const PublicSecurity: React.FC = () => {
       </div>
 
       <div className="relative mx-auto w-full max-w-6xl px-6 py-10 md:px-8">
-        <section className="py-10 md:py-16">
+        <section data-orb-target="security-hero" className="py-10 md:py-16">
           <p className="text-sm font-semibold tracking-[0.22em] text-cyan-300">SECURITY AND TRUST</p>
           <h1 className="mt-3 max-w-4xl text-4xl font-black leading-tight md:text-6xl">
             Trust is built into the architecture, not added as a disclaimer.
@@ -114,7 +114,7 @@ const PublicSecurity: React.FC = () => {
           ))}
         </section>
 
-        <section className="mt-12">
+        <section data-orb-target="security-trust-design" className="mt-12">
           <div className="max-w-3xl">
             <p className="text-sm font-semibold tracking-[0.22em] text-cyan-300">DELIBERATE TRUST DESIGN</p>
             <h2 className="mt-3 text-3xl font-black leading-tight md:text-5xl">
