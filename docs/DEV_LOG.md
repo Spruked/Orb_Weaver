@@ -35,6 +35,20 @@
   `transcribe_only=true`; the returned transcript was `Hey Pops, can you hear
   me?`, confirming the rebuilt Weaver → host Whisper STT path.
 
+## 2026-10-10 — Web-TAMP foundational contracts
+
+- Added the factory-independent `packages/web-tamp-contracts` package with
+  equivalent Pydantic/Python and TypeScript contracts for Task,
+  Harvest/Motion Primitive, Observation, World Model, Approval, Proposal,
+  Authorization, and Execution Receipt.
+- Kept Planner Proposal separate from governor-issued Authorization. No
+  generated contract or planner output can grant execution authority.
+- Added a website-domain fixture, Python validation/serialization tests,
+  TypeScript compile validation, and factory/frontend import boundaries.
+- This is Migration Step 1 only. Crawler, Planner, World Model persistence,
+  frontend motion authority, and manufactured-runtime behavior remain for
+  later migration steps.
+
 ## 2026-10-10 — Governed Dandy promotional pack output
 
 - Renamed generated draft `approved_claims` to `candidate_claims` so source

@@ -2,6 +2,18 @@
 
 Orb Weaver is a local-first website intelligence platform with authenticated customer workspaces, website crawling, preflight scanning, ORB-readable semantic scoring, report generation, checkout records, client intelligence packs, and Cloudflare Tunnel deployment support.
 
+### Web-TAMP foundational contracts
+
+The canonical Web-TAMP contracts live in
+[`packages/web-tamp-contracts`](packages/web-tamp-contracts/README.md). They
+define Tasks, Harvest/Motion Primitives, Observations, the versioned World
+Model, Approvals, Planner Proposals, Governor Authorizations, and Execution
+Receipts for website, desktop, app, hybrid, and future physical domains.
+Planner proposals and governor authorizations are separate contracts: the
+Planner cannot authorize execution. The factory backend and frontend consume
+the package through thin import boundaries; manufactured ORBs receive it as a
+deployment dependency.
+
 The current capability and wiring boundary is maintained in the [ORB capability status review](docs/reference/ORB_CAPABILITY_STATUS.md). It lists all 22 Master Capability List categories and 161 atomic capabilities, separates crawl evidence from runtime verification, and records the remaining work required before a generated Website ORB package is treated as downloadable and deployable.
 
 ### Dandy promotional intelligence

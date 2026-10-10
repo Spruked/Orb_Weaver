@@ -5,8 +5,13 @@ WORKDIR /app/frontend
 # Production source maps are not served by the container and substantially
 # increase CRA optimizer memory/time during the multi-stage image build.
 ENV GENERATE_SOURCEMAP=false
+# CRA's production optimizer needs a bounded heap on this repository's large
+# frontend. Keep the build deterministic instead of allowing the optimizer to
+# stall under Node's default memory ceiling.
+ENV NODE_OPTIONS=--max_old_space_size=4096
 
 COPY frontend/package*.json ./
+COPY packages/web-tamp-contracts /app/packages/web-tamp-contracts
 RUN npm ci
 
 COPY frontend/ ./
@@ -83,7 +88,9 @@ RUN mkdir -p \
 RUN npm install -g chrome-devtools-mcp@1.3.0
 
 COPY backend/requirements.txt /app/backend/requirements.txt
-RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+COPY packages/web-tamp-contracts /app/packages/web-tamp-contracts
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt \
+    && pip install --no-cache-dir -e /app/packages/web-tamp-contracts/python
 
 COPY backend /app/backend
 RUN chown -R orbweaver:orbweaver /app/backend

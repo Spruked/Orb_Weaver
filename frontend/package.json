@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
+    "@orb-weaver/web-tamp-contracts": "file:../packages/web-tamp-contracts",
     "@headlessui/react": "^1.7.17",
     "@heroicons/react": "^2.0.18",
     "axios": "^1.6.2",
@@ -48,6 +49,7 @@
     ]
   },
   "devDependencies": {
+    "@types/jest": "^27.5.1",
     "@types/node": "^25.9.1",
     "@types/react": "^18.3.30",
     "@types/react-dom": "^18.3.7",

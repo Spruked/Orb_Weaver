@@ -1,0 +1,17 @@
+{
+  "name": "@orb-weaver/web-tamp-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Canonical Web-TAMP contracts shared by Orb Weaver factory and manufactured ORB runtimes.",
+  "types": "typescript/index.ts",
+  "exports": {
+    ".": {
+      "types": "./typescript/index.ts",
+      "default": "./typescript/index.ts"
+    },
+    "./validation": {
+      "types": "./typescript/validation.ts",
+      "default": "./typescript/validation.ts"
+    }
+  }
+}
