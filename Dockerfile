@@ -10,6 +10,10 @@ COPY frontend/package*.json ./
 RUN npm ci
 
 COPY frontend/ ./
+# The frontend's existing motion-runtime tests import the shared TypeScript
+# authority from the repository-level backend/motion_runtime tree. Keep this
+# build-only source available without changing the runtime image boundary.
+COPY backend/motion_runtime /app/backend/motion_runtime
 ARG REACT_APP_API_URL=
 ENV REACT_APP_API_URL=${REACT_APP_API_URL}
 RUN npm run build

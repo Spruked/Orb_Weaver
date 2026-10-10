@@ -64,6 +64,7 @@ from app.orb.tour_evaluation import (
 )
 from app.orb.weaver_mission import WEAVER_AUTHORITY_BOUNDARY, WEAVER_LLM_MUST_NOT, WEAVER_MISSION
 from app.catalog.compiler import compile_commercial_catalog
+from app.dandy import build_approved_dandy_payload, build_dandy_promo_pack
 from app.reporting.audit_reporting import build_audit_pdf, enrich_audit_report
 from app.lifecycle import (
     finalize_evidence_run,
@@ -606,6 +607,14 @@ class WebsiteOrbStartupReadinessRequest(BaseModel):
 
 class WebsiteOrbTtsVoiceRequest(BaseModel):
     voice: str = Field(..., min_length=2, max_length=80)
+
+
+class DandyPackApprovalRequest(BaseModel):
+    approve_all: bool = False
+    approved_claim_ids: List[str] = Field(default_factory=list, max_length=50)
+    approved_offer_ids: List[str] = Field(default_factory=list, max_length=50)
+    approved_ad_read_ids: List[str] = Field(default_factory=list, max_length=10)
+    note: str = Field(default="", max_length=2000)
 
 
 class WebsiteOrbTtsResponse(BaseModel):
@@ -6175,6 +6184,10 @@ def _index_crawl_pack(project: Project, crawl_job: CrawlJob, payload: Dict, json
             "INSERT OR REPLACE INTO context_documents(key, kind, json_path, updated_at) VALUES (?, ?, ?, ?)",
             ("pointer_plot_map", "website_orb_pointer_plot_map", str(_client_intelligence_root(project) / "website_orb_context" / "pointer_plot_map.json"), payload.get("saved_at")),
         )
+        connection.execute(
+            "INSERT OR REPLACE INTO context_documents(key, kind, json_path, updated_at) VALUES (?, ?, ?, ?)",
+            ("dandy_promo_pack", "dandy_promo_pack", str(_client_intelligence_root(project) / "dandy_packs" / "latest_pack.json"), payload.get("saved_at")),
+        )
         connection.executemany(
             "INSERT OR REPLACE INTO context_documents(key, kind, json_path, updated_at) VALUES (?, ?, ?, ?)",
             [
@@ -6458,7 +6471,96 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
                 _write_json(root / "website_orb_context" / filename, artifact)
         _write_json(root / "crm_context" / "latest_context.json", {"schema": "orb_weaver.crm_context.v0.1", "status": "not_connected"})
         _write_json(root / "mail_context" / "latest_context.json", {"schema": "orb_weaver.mail_context.v0.1", "status": "not_connected"})
-        _write_json(root / "dandy_sponsor_pack" / "latest_pack.json", {"schema": "orb_weaver.dandy_sponsor_pack.v0.1", "status": "not_configured"})
+        # Dandy promotional intelligence is a parallel product. It is built
+        # from the same persisted crawl evidence, but failure here must never
+        # turn a completed site crawl into a failed scan.
+        dandy_path = root / "dandy_packs" / "latest_pack.json"
+        dandy_pack: Optional[Dict[str, Any]] = None
+        try:
+            dandy_pack = build_dandy_promo_pack(
+                [_page_to_dict(page) for page in pages],
+                domain=project.domain,
+                crawl_job_id=crawl_job.id,
+                catalog=(crawl_job.config or {}).get("commercial_catalog"),
+            )
+            _write_json(dandy_path, dandy_pack)
+            _write_json(root / "dandy_packs" / f"crawl_{crawl_job.id}.json", dandy_pack)
+            dandy_status = {
+                "status": dandy_pack.get("status"),
+                "path": str(dandy_path),
+                "schema": dandy_pack.get("schema"),
+                "generated_at": dandy_pack.get("generated_at"),
+                "approved_claim_count": len(dandy_pack.get("approved_claims") or []),
+                "risky_claim_count": len(dandy_pack.get("risky_claims") or []),
+                "approval_status": (dandy_pack.get("owner_approval") or {}).get("status", "pending"),
+            }
+            _write_json(root / "dandy_sponsor_pack" / "latest_pack.json", {
+                "schema": "orb_weaver.dandy_sponsor_pack.v0.1",
+                "status": "available",
+                "replacement": "../dandy_packs/latest_pack.json",
+                "latest_pack": dandy_path.name,
+            })
+        except Exception as exc:
+            dandy_status = {
+                "status": "failed",
+                "path": str(dandy_path),
+                "schema": "orb_weaver.dandy_promo_pack.v1",
+                "error": str(exc),
+            }
+            try:
+                _write_json(dandy_path, {
+                    "schema": "orb_weaver.dandy_promo_pack.v1",
+                    "status": "failed",
+                    "source": {"crawl_job_id": str(crawl_job.id), "domain": project.domain},
+                    "error": str(exc),
+                    "owner_approval": {"status": "unavailable", "owner_approved": False},
+                })
+            except Exception:
+                pass
+            try:
+                _write_json(root / "dandy_sponsor_pack" / "latest_pack.json", {
+                    "schema": "orb_weaver.dandy_sponsor_pack.v0.1",
+                    "status": "failed",
+                    "replacement": "../dandy_packs/latest_pack.json",
+                    "error": str(exc),
+                })
+            except Exception:
+                pass
+        crawl_config = dict(crawl_job.config or {})
+        crawl_config["dandy_pack"] = dandy_status
+        execution = dict(crawl_config.get("scan_stage_execution") or {})
+        execution["dandy_promo_pack"] = {
+            "status": "COMPLETE" if dandy_status.get("status") in {"complete", "empty"} else "FAILED",
+            "started_at": dandy_pack.get("generated_at") if dandy_pack else None,
+            "completed_at": datetime.utcnow().isoformat(),
+            "input_count": len(pages),
+            "output_count": len((dandy_pack or {}).get("approved_claims") or []) if dandy_pack else 0,
+            "artifact": str(dandy_path),
+            "error": dandy_status.get("error"),
+            "version": "1",
+            "blocking": False,
+        }
+        crawl_config["scan_stage_execution"] = execution
+        crawl_job.config = crawl_config
+        db.commit()
+        _append_jsonl(
+            _global_intelligence_root() / "dandy_promo_inventory.jsonl",
+            {
+                "schema": "orb_weaver.dandy_promo_inventory.v1",
+                "domain": project.domain,
+                "crawl_job_id": str(crawl_job.id),
+                "status": dandy_status.get("status"),
+                "business_name": (dandy_pack or {}).get("business", {}).get("name"),
+                "offer_count": len((dandy_pack or {}).get("offers") or []),
+                "approved_claim_count": dandy_status.get("approved_claim_count", 0),
+                "risky_claim_count": dandy_status.get("risky_claim_count", 0),
+                "approval_status": (dandy_pack or {}).get("owner_approval", {}).get("status", "unavailable"),
+                "updated_at": datetime.utcnow().isoformat(),
+            },
+        )
+        payload["dandy_pack"] = dandy_status
+        _write_json(latest_path, payload)
+        _write_json(history_path, payload)
         _index_crawl_pack(project, crawl_job, payload, history_path)
         _append_jsonl(
             _global_intelligence_root() / "crawl_patterns.jsonl",
@@ -7819,7 +7921,7 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
                     "commercial_catalog_index_build", "mobile_ux_analysis", "semantic_indexing", "lexical_indexing",
                     "entity_extraction", "relationship_mapping",
                     "internal_link_graph", "authority_analysis", "route_classification", "template_detection",
-                    "pointer_mapping", "knowledge_chunking", "retrieval_index_build", "source_validation",
+                    "pointer_mapping", "knowledge_chunking", "retrieval_index_build", "source_validation", "dandy_promo_pack",
                 )
             } | {
                 stage_id: {
@@ -12573,6 +12675,122 @@ async def get_crawl_commercial_catalog(
         "crawl_id": str(crawl_job.id),
         "project_id": str(crawl_job.project_id),
         **catalog,
+    }
+
+
+@app.get("/api/projects/{project_id}/dandy-pack")
+async def get_project_dandy_pack(
+    project_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    """Return the latest source-grounded Dandy pack for an owned client site."""
+    project = _owned_project(project_id, customer, db)
+    pack_path = client_root(project.domain) / "dandy_packs" / "latest_pack.json"
+    if not pack_path.is_file():
+        raise HTTPException(status_code=404, detail="Dandy promotional pack is not ready")
+    return json.loads(pack_path.read_text(encoding="utf-8"))
+
+
+@app.post("/api/projects/{project_id}/dandy-pack/approval")
+async def approve_project_dandy_pack(
+    project_id: str,
+    request: DandyPackApprovalRequest,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    """Record explicit owner authorization for selected Dandy draft material."""
+    project = _owned_project(project_id, customer, db)
+    pack_path = client_root(project.domain) / "dandy_packs" / "latest_pack.json"
+    if not pack_path.is_file():
+        raise HTTPException(status_code=404, detail="Dandy promotional pack is not ready")
+    pack = json.loads(pack_path.read_text(encoding="utf-8"))
+    if pack.get("status") == "failed":
+        raise HTTPException(status_code=409, detail="Dandy promotional pack generation failed")
+
+    available_claims = {str(row.get("claim_id")) for row in pack.get("approved_claims") or []}
+    available_offers = {str(row.get("offer_id")) for row in pack.get("offers") or []}
+    available_reads = {f"ad_read_{key}" for key in (pack.get("suggested_ad_reads") or {})}
+    if request.approve_all:
+        claim_ids = available_claims
+        offer_ids = available_offers
+        ad_read_ids = available_reads
+    else:
+        claim_ids = set(request.approved_claim_ids)
+        offer_ids = set(request.approved_offer_ids)
+        ad_read_ids = set(request.approved_ad_read_ids)
+    if not claim_ids and not offer_ids and not ad_read_ids:
+        raise HTTPException(status_code=400, detail="Select at least one claim, offer, or ad read for approval")
+    if claim_ids - available_claims or offer_ids - available_offers or ad_read_ids - available_reads:
+        raise HTTPException(status_code=400, detail="Approval contains an item that is not in the current pack")
+
+    approved_at = datetime.now(timezone.utc).isoformat()
+    pack["owner_approval"] = {
+        "status": "approved",
+        "owner_approved": True,
+        "approved_at": approved_at,
+        "approved_by": {"customer_id": str(customer.id), "email": customer.email},
+        "approved_claim_ids": sorted(claim_ids),
+        "approved_offer_ids": sorted(offer_ids),
+        "approved_ad_read_ids": sorted(ad_read_ids),
+        "note": request.note,
+        "rule": "Only explicitly selected owner-approved material may be exported to Dandy production inventory.",
+    }
+    _write_json(pack_path, pack)
+    _append_jsonl(
+        _global_intelligence_root() / "dandy_promo_inventory.jsonl",
+        {
+            "schema": "orb_weaver.dandy_promo_inventory.v1",
+            "domain": project.domain,
+            "crawl_job_id": str((pack.get("source") or {}).get("crawl_job_id") or ""),
+            "status": pack.get("status"),
+            "business_name": (pack.get("business") or {}).get("name"),
+            "offer_count": len(pack.get("offers") or []),
+            "approved_claim_count": len(claim_ids),
+            "risky_claim_count": len(pack.get("risky_claims") or []),
+            "approval_status": "approved",
+            "approved_at": approved_at,
+            "updated_at": approved_at,
+        },
+    )
+    return pack
+
+
+@app.get("/api/projects/{project_id}/dandy-pack/approved")
+async def get_approved_project_dandy_pack(
+    project_id: str,
+    db: Session = Depends(get_db),
+    customer: Customer = Depends(get_current_customer),
+):
+    """Dandy consumption boundary: return no draft or risky material."""
+    project = _owned_project(project_id, customer, db)
+    pack_path = client_root(project.domain) / "dandy_packs" / "latest_pack.json"
+    if not pack_path.is_file():
+        raise HTTPException(status_code=404, detail="Dandy promotional pack is not ready")
+    try:
+        return build_approved_dandy_payload(json.loads(pack_path.read_text(encoding="utf-8")))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/admin/dandy-promo-inventory")
+async def admin_dandy_promo_inventory(_admin: Customer = Depends(require_admin)):
+    """Return the latest Dandy inventory row for each scanned client domain."""
+    inventory_path = _global_intelligence_root() / "dandy_promo_inventory.jsonl"
+    latest: Dict[str, Dict[str, Any]] = {}
+    if inventory_path.is_file():
+        for line in inventory_path.read_text(encoding="utf-8").splitlines():
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            domain = str(row.get("domain") or "").strip().lower()
+            if domain:
+                latest[domain] = row
+    return {
+        "schema": "orb_weaver.dandy_promo_inventory.v1",
+        "count": len(latest),
+        "clients": sorted(latest.values(), key=lambda row: str(row.get("domain") or "")),
     }
 
 

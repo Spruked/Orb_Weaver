@@ -55,6 +55,7 @@ CLIENT_DIRECTORIES = (
     "website_orb_context/",
     "claims/",
     "reports/",
+    "dandy_packs/",
     "visitor_questions/",
     "owner_seed_changes/",
     "local_index/",

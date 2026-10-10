@@ -1,5 +1,27 @@
 # Orb Weaver Development Log
 
+## 2026-10-10 — Governed Dandy promotional pack output
+
+- Made `dandy_packs/` a standard, parallel output of each client crawl while
+  keeping generation non-blocking for the core audit/crawl result.
+- Added deterministic, source-grounded business extraction, public offers and
+  prices, proof points, target-customer signals, promotional angles, listener
+  URLs, risky-claim flags, and draft 15/30/60-second ad reads.
+- Separated source screening from authorization. Packs now begin in pending
+  owner-review state; an owner must explicitly select
+  claims, offers, and ad reads through the approval endpoint. A generated
+  approval flag is not accepted as authorization.
+- Added the approved-only Dandy export boundary. It fails closed before owner
+  approval and excludes risky and unapproved content. The admin inventory is
+  restricted and stores matching metadata without client filesystem paths or
+  private pack contents.
+- Documented that Dandy packs are marketing artifacts, not Website ORB runtime
+  dependencies or customer-runtime authority.
+- Focused Dandy tests pass, Python compilation passes, and the Docker image
+  rebuild completed after adding the repository-level motion-runtime source to
+  the frontend build stage. The live container was not restarted so an active
+  crawl was not interrupted.
+
 ## 2026-10-01 — Scan evidence continuity, lifecycle failures, pointer reporting, and GA4 readiness
 
 - Preserved child-crawl errors through all lifecycle stages: Map Crawl, Full

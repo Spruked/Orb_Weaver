@@ -54,7 +54,7 @@ vault_system/clients/<domain>/
     pointer_manifest.json
     site_world.json
     tool_cache.json
-  dandy_sponsor_pack/
+  dandy_packs/
     latest_pack.json
   crm_context/
     latest_context.json
@@ -70,6 +70,14 @@ vault_system/clients/<domain>/
   local_index/
     client_index.sqlite
 ```
+
+`dandy_packs/` is a parallel, source-grounded marketing-intelligence output
+of a client scan. It is not a Website ORB runtime dependency and is not copied
+into the customer-facing runtime payload as an authority or executable
+component. Generated claims, offers, and ad reads remain drafts until the
+client owner explicitly approves selected item IDs through Orb Weaver. Dandy
+consumption must use the approved-only export endpoint; risky claims and
+unapproved drafts are never eligible for production insertion.
 
 ## Local Index
 

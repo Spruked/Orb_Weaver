@@ -4,6 +4,24 @@ Orb Weaver is a local-first website intelligence platform with authenticated cus
 
 The current capability and wiring boundary is maintained in the [ORB capability status review](docs/reference/ORB_CAPABILITY_STATUS.md). It lists all 22 Master Capability List categories and 161 atomic capabilities, separates crawl evidence from runtime verification, and records the remaining work required before a generated Website ORB package is treated as downloadable and deployable.
 
+### Dandy promotional intelligence
+
+Every completed client crawl also attempts a non-blocking `dandy_packs/`
+artifact. It extracts source-grounded business details, public offers and
+prices, proof points, target-customer signals, promotional angles, listener
+URLs, and draft 15/30/60-second ad reads. A Dandy pack failure does not fail
+the core crawl.
+
+Generated material is never production-authorized by the scan. The client owner
+must explicitly approve selected claim, offer, and ad-read IDs through
+`POST /api/projects/{project_id}/dandy-pack/approval`. Dandy production
+consumption is restricted to
+`GET /api/projects/{project_id}/dandy-pack/approved`, which fails closed until
+approval and excludes risky or unapproved content. The global inventory is
+admin-only and contains matching metadata, not client filesystem paths or
+private pack contents. The pack is a marketing artifact, not a runtime
+dependency of the customer-facing Website ORB.
+
 ### Evidence continuity and capability status
 
 Capability inventory is evidence-backed. A failed or cancelled retry remains
