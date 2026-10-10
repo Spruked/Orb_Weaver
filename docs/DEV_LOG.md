@@ -37,6 +37,17 @@
 
 ## 2026-10-10 — Governed Dandy promotional pack output
 
+- Renamed generated draft `approved_claims` to `candidate_claims` so source
+  extraction cannot be confused with owner authorization.
+- Added a shared sensitive-route policy that excludes admin, account, cart,
+  checkout, dashboard, login, and signup pages from commercial catalog and
+  Dandy marketing evidence.
+- Added commercial catalog quality reporting for fragment entries, missing
+  descriptions, prices, and SKUs. Dandy packs are marked `blocked_quality` and
+  cannot be approved or exported when catalog quality is contaminated,
+  insufficient, or partial.
+- Extended capability coverage with separate SEO, Marketing, and ORB-readiness
+  dimension statuses and catalog-quality evidence.
 - Made `dandy_packs/` a standard, parallel output of each client crawl while
   keeping generation non-blocking for the core audit/crawl result.
 - Added deterministic, source-grounded business extraction, public offers and

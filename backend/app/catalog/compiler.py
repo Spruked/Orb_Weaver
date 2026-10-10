@@ -16,6 +16,8 @@ import re
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 from urllib.parse import urljoin
 
+from app.route_policy import is_sensitive_route
+
 
 COMMERCIAL_SCHEMA_TYPES = {
     "product",
@@ -309,7 +311,7 @@ def compile_commercial_catalog(pages: Sequence[Any]) -> Dict[str, Any]:
 
     for page in pages:
         page_url = str(getattr(page, "url", "") or "")
-        if not page_url:
+        if not page_url or is_sensitive_route(page_url):
             continue
         for payload in _schema_payloads(page):
             for node in _walk_json(payload):
@@ -389,6 +391,18 @@ def compile_commercial_catalog(pages: Sequence[Any]) -> Dict[str, Any]:
         "variant_count": variant_count,
         "specification_count": specification_count,
         "source_page_count": len(source_pages),
+        "data_quality": {
+            "status": _catalog_quality_status(entries, priced_entries, sku_entries),
+            "public_source_only": True,
+            "fragment_entry_count": sum(1 for entry in entries if _is_fragment_entry(entry)),
+            "missing_description_count": sum(1 for entry in entries if not entry.get("description")),
+            "missing_price_count": sum(1 for entry in entries if not any(
+                offer.get("price") or offer.get("low_price") or offer.get("high_price")
+                for offer in entry.get("offers") or []
+            )),
+            "missing_sku_count": sum(1 for entry in entries if not entry.get("sku") and not entry.get("gtin")),
+            "quality_gate": "marketing_claims_must_not_use_catalog_until_status_is_usable",
+        },
         "entries": entries,
         "indexes": {
             "by_name": dict(by_name),
@@ -403,3 +417,23 @@ def compile_commercial_catalog(pages: Sequence[Any]) -> Dict[str, Any]:
             "source_evidence_required": True,
         },
     }
+
+
+def _is_fragment_entry(entry: Mapping[str, Any]) -> bool:
+    name = str(entry.get("name") or "").strip()
+    description = str(entry.get("description") or "").strip()
+    return len(name) < 3 or (len(name.split()) == 1 and not description and not entry.get("offers"))
+
+
+def _catalog_quality_status(entries: Sequence[Mapping[str, Any]], priced_entries: int, sku_entries: int) -> str:
+    if not entries:
+        return "empty"
+    fragment_count = sum(1 for entry in entries if _is_fragment_entry(entry))
+    described_count = sum(1 for entry in entries if str(entry.get("description") or "").strip())
+    if fragment_count and fragment_count / len(entries) > 0.25:
+        return "contaminated"
+    if described_count == 0 and priced_entries == 0 and sku_entries == 0:
+        return "insufficient"
+    if described_count < len(entries) or priced_entries < len(entries) or sku_entries < len(entries):
+        return "partial"
+    return "usable"

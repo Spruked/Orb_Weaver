@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
 
+from app.route_policy import is_sensitive_route
+
 
 DANDY_PACK_SCHEMA = "orb_weaver.dandy_promo_pack.v1"
 DANDY_APPROVED_SCHEMA = "orb_weaver.dandy_approved_promo_payload.v1"
@@ -173,10 +175,16 @@ def build_dandy_promo_pack(
     catalog: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a source-grounded Dandy sponsor/promotional pack from crawl pages."""
-    page_rows = [page for page in pages if isinstance(page, Mapping) and page.get("url")]
+    page_rows = [
+        page for page in pages
+        if isinstance(page, Mapping) and page.get("url") and not is_sensitive_route(str(page.get("url")))
+    ]
     business_name, business_source = _first_business_name(page_rows, domain)
     offers = _offers(page_rows, catalog)
-    approved_claims, risky_claims = _claims(page_rows)
+    catalog_quality = (catalog or {}).get("data_quality") if isinstance(catalog, Mapping) else None
+    catalog_quality_status = str((catalog_quality or {}).get("status") or "not_available")
+    quality_blocked = catalog_quality_status in {"contaminated", "insufficient", "partial"}
+    candidate_claims, risky_claims = _claims(page_rows)
     target_customer = _target_customers(page_rows)
     prices = _public_prices(page_rows, offers)
     listener_urls = _unique([str(page.get("url")) for page in page_rows], limit=30)
@@ -189,17 +197,17 @@ def build_dandy_promo_pack(
                 cta_label = next((text for text in _page_text(page) if _CTA.search(text)), cta_label)
                 break
 
-    proof_points = approved_claims[:8]
-    differentiators = _unique([row["claim"] for row in approved_claims if len(row["claim"]) > 40], limit=8)
-    what_they_sell = _unique([offer["name"] for offer in offers] + [row["claim"] for row in approved_claims[:4]], limit=8)
+    proof_points = candidate_claims[:8]
+    differentiators = _unique([row["claim"] for row in candidate_claims if len(row["claim"]) > 40], limit=8)
+    what_they_sell = _unique([offer["name"] for offer in offers] + [row["claim"] for row in candidate_claims[:4]], limit=8)
     promo_angles = []
     for offer in offers[:5]:
         promo_angles.append({"angle": f"Spotlight {offer['name']}", "evidence": [offer.get("url")], "approval": "source_grounded"})
-    for claim in approved_claims[:5]:
+    for claim in candidate_claims[:5]:
         promo_angles.append({"angle": claim["claim"], "evidence": [claim.get("source_url")], "approval": "source_grounded"})
     promo_angles = promo_angles[:10]
     offer_line = offers[0]["name"] if offers else (what_they_sell[0] if what_they_sell else "the business")
-    claim_line = approved_claims[0]["claim"] if approved_claims else f"Learn more about {business_name}."
+    claim_line = candidate_claims[0]["claim"] if candidate_claims else f"Learn more about {business_name}."
     destination = cta_url or domain
     ad_reads = {
         "15s": f"Looking for {offer_line}? {business_name} offers {claim_line} Visit {destination} to learn more.",
@@ -207,22 +215,23 @@ def build_dandy_promo_pack(
         "60s": f"Today’s sponsor is {business_name}. Their site highlights {offer_line}. {claim_line} Explore the source and current details at {destination}.",
     }
     offers = [{"offer_id": f"offer_{index:03d}", **offer} for index, offer in enumerate(offers, 1)]
-    approved_claims = [{"claim_id": f"claim_{index:03d}", **claim} for index, claim in enumerate(approved_claims, 1)]
+    candidate_claims = [{"claim_id": f"claim_{index:03d}", **claim} for index, claim in enumerate(candidate_claims, 1)]
     risky_claims = [{"claim_id": f"risky_{index:03d}", **claim} for index, claim in enumerate(risky_claims, 1)]
     return {
         "schema": DANDY_PACK_SCHEMA,
-        "status": "complete" if page_rows else "empty",
+        "status": "blocked_quality" if quality_blocked else ("complete" if page_rows else "empty"),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source": {"crawl_job_id": str(crawl_job_id) if crawl_job_id is not None else None, "domain": domain, "page_count": len(page_rows)},
         "business": {"name": business_name, "name_source_url": business_source, "what_they_sell": what_they_sell},
         "offers": offers,
+        "catalog_quality": catalog_quality or {"status": "not_available"},
         "pricing_public": prices,
         "proof_points": proof_points,
         "differentiators": differentiators,
         "target_customer": target_customer,
         "promo_angles": promo_angles,
         "cta": {"label": cta_label, "url": cta_url, "approval": "source_grounded" if cta_url else "missing"},
-        "approved_claims": approved_claims,
+        "candidate_claims": candidate_claims,
         "risky_claims": risky_claims,
         "suggested_ad_reads": ad_reads,
         "sponsor_read_talking_points": _unique([offer["name"] for offer in offers] + differentiators, limit=12),
@@ -235,7 +244,7 @@ def build_dandy_promo_pack(
             "approved_claim_ids": [],
             "approved_offer_ids": [],
             "approved_ad_read_ids": [],
-            "rule": "Generated source-grounded content is draft material. Explicit owner authorization is required before Dandy production insertion.",
+            "rule": "Generated source-grounded content is draft material. Explicit owner authorization is required before Dandy production insertion. Catalog quality must be usable before production consideration.",
         },
     }
 
@@ -245,11 +254,13 @@ def build_approved_dandy_payload(pack: Mapping[str, Any]) -> dict[str, Any]:
     approval = pack.get("owner_approval") if isinstance(pack.get("owner_approval"), Mapping) else {}
     if approval.get("status") != "approved" or approval.get("owner_approved") is not True:
         raise ValueError("Dandy pack has not received explicit owner approval")
+    if pack.get("status") == "blocked_quality":
+        raise ValueError("Dandy pack is blocked by commercial catalog data quality")
 
     claim_ids = set(str(value) for value in approval.get("approved_claim_ids") or [])
     offer_ids = set(str(value) for value in approval.get("approved_offer_ids") or [])
     ad_read_ids = set(str(value) for value in approval.get("approved_ad_read_ids") or [])
-    claims = [row for row in pack.get("approved_claims") or [] if row.get("claim_id") in claim_ids]
+    claims = [row for row in pack.get("candidate_claims") or [] if row.get("claim_id") in claim_ids]
     offers = [row for row in pack.get("offers") or [] if row.get("offer_id") in offer_ids]
     reads = {
         key: value

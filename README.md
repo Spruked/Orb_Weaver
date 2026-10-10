@@ -22,6 +22,14 @@ admin-only and contains matching metadata, not client filesystem paths or
 private pack contents. The pack is a marketing artifact, not a runtime
 dependency of the customer-facing Website ORB.
 
+Draft claims are named `candidate_claims`; only explicit owner-selected IDs are
+approved. Sensitive routes such as admin, account, cart, checkout, dashboard,
+login, and signup paths are excluded from catalog and promotional evidence.
+Commercial catalog output includes a data-quality gate, and Dandy production
+eligibility is blocked when the catalog is contaminated, insufficient, or only
+partial. Capability coverage reports separate SEO, Marketing, and ORB-readiness
+dimensions.
+
 ### Evidence continuity and capability status
 
 Capability inventory is evidence-backed. A failed or cancelled retry remains

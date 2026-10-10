@@ -6076,7 +6076,7 @@ def _ensure_client_pack(project: Project) -> Path:
         "reports",
         "visitor_questions",
         "owner_seed_changes",
-        "approved_claims",
+        "candidate_claims",
         "banned_claims",
         "dandy_packs",
     ):
@@ -6490,7 +6490,7 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
                 "path": str(dandy_path),
                 "schema": dandy_pack.get("schema"),
                 "generated_at": dandy_pack.get("generated_at"),
-                "approved_claim_count": len(dandy_pack.get("approved_claims") or []),
+                "candidate_claim_count": len(dandy_pack.get("candidate_claims") or []),
                 "risky_claim_count": len(dandy_pack.get("risky_claims") or []),
                 "approval_status": (dandy_pack.get("owner_approval") or {}).get("status", "pending"),
             }
@@ -6530,11 +6530,15 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
         crawl_config["dandy_pack"] = dandy_status
         execution = dict(crawl_config.get("scan_stage_execution") or {})
         execution["dandy_promo_pack"] = {
-            "status": "COMPLETE" if dandy_status.get("status") in {"complete", "empty"} else "FAILED",
+            "status": (
+                "COMPLETE" if dandy_status.get("status") in {"complete", "empty"}
+                else "BLOCKED" if dandy_status.get("status") == "blocked_quality"
+                else "FAILED"
+            ),
             "started_at": dandy_pack.get("generated_at") if dandy_pack else None,
             "completed_at": datetime.utcnow().isoformat(),
             "input_count": len(pages),
-            "output_count": len((dandy_pack or {}).get("approved_claims") or []) if dandy_pack else 0,
+            "output_count": len((dandy_pack or {}).get("candidate_claims") or []) if dandy_pack else 0,
             "artifact": str(dandy_path),
             "error": dandy_status.get("error"),
             "version": "1",
@@ -6552,7 +6556,7 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
                 "status": dandy_status.get("status"),
                 "business_name": (dandy_pack or {}).get("business", {}).get("name"),
                 "offer_count": len((dandy_pack or {}).get("offers") or []),
-                "approved_claim_count": dandy_status.get("approved_claim_count", 0),
+                "candidate_claim_count": dandy_status.get("candidate_claim_count", 0),
                 "risky_claim_count": dandy_status.get("risky_claim_count", 0),
                 "approval_status": (dandy_pack or {}).get("owner_approval", {}).get("status", "unavailable"),
                 "updated_at": datetime.utcnow().isoformat(),
@@ -12707,8 +12711,10 @@ async def approve_project_dandy_pack(
     pack = json.loads(pack_path.read_text(encoding="utf-8"))
     if pack.get("status") == "failed":
         raise HTTPException(status_code=409, detail="Dandy promotional pack generation failed")
+    if pack.get("status") == "blocked_quality":
+        raise HTTPException(status_code=409, detail="Dandy promotional pack is blocked by commercial catalog data quality")
 
-    available_claims = {str(row.get("claim_id")) for row in pack.get("approved_claims") or []}
+    available_claims = {str(row.get("claim_id")) for row in pack.get("candidate_claims") or []}
     available_offers = {str(row.get("offer_id")) for row in pack.get("offers") or []}
     available_reads = {f"ad_read_{key}" for key in (pack.get("suggested_ad_reads") or {})}
     if request.approve_all:

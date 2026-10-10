@@ -83,7 +83,8 @@ def _status_for_category(
         catalog = stats.get("commercial_catalog") or {}
         if stage("commercial_catalog_extraction") != "COMPLETE":
             return "partial" if catalog else "not_run"
-        return "verified" if int(catalog.get("entry_count") or 0) > 0 else "partial"
+        quality = (catalog.get("data_quality") or {}).get("status")
+        return "verified" if int(catalog.get("entry_count") or 0) > 0 and quality == "usable" else "partial"
     if category_id.startswith("6_interface"):
         return "partial" if stage("pointer_mapping") == "COMPLETE" else "blocked"
     if category_id.startswith("7_lidar"):
@@ -142,6 +143,33 @@ def build_capability_coverage(
             "evidence": {"stage_ids": sorted(stages.keys()), "runtime_evidence": runtime_evidence, "runtime_evidence_state": runtime_state},
         })
     unresolved = sum(value for key, value in counts.items() if key != "verified")
+    def stage_status(name: str) -> str:
+        return str((stages.get(name) or {}).get("status") or "NOT_STARTED").upper()
+
+    def dimension_status(stage_names: Sequence[str], *, quality: str | None = None) -> str:
+        statuses = [stage_status(name) for name in stage_names]
+        if quality in {"contaminated", "insufficient", "partial"}:
+            return "blocked_quality"
+        if statuses and all(status == "COMPLETE" for status in statuses):
+            return "verified"
+        if any(status in {"COMPLETE", "BLOCKED"} for status in statuses):
+            return "partial"
+        return "not_run"
+
+    catalog_quality = (stats.get("commercial_catalog") or {}).get("data_quality") or {}
+    dimensions = {
+        "seo": dimension_status((
+            "url_discovery", "crawl_control", "page_fetch", "content_structure_extraction",
+            "schema_extraction", "lexical_indexing", "source_validation",
+        )),
+        "marketing": dimension_status((
+            "commercial_catalog_extraction", "commercial_catalog_index_build", "dandy_promo_pack",
+        ), quality=str(catalog_quality.get("status") or "not_available")),
+        "orb_readiness": dimension_status((
+            "relationship_mapping", "knowledge_chunking", "pointer_mapping",
+            "pointer_verification", "pointer_recovery", "runtime_guidance",
+        )),
+    }
     return {
         "schema": "orb_weaver.capability_coverage.v1",
         "source": MASTER_NAME,
@@ -149,6 +177,8 @@ def build_capability_coverage(
         "category_count": len(categories),
         "item_count": sum(len(category["items"]) for category in categories),
         "status_counts": counts,
+        "dimensions": dimensions,
+        "data_quality": {"commercial_catalog": catalog_quality},
         "runtime_evidence": runtime_evidence,
         "runtime_promotion_rule": "Live Test must persist status COMPLETE and explicitly list verified category IDs before runtime-only categories can become verified.",
         "categories": categories,
