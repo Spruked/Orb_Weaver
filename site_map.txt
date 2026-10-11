@@ -1,0 +1,85 @@
+ORB WEAVER SITE MAP
+===================
+
+Source of truth: frontend/src/App.tsx and frontend/src/components/{PublicHeader,PublicFooter,Layout}.tsx
+SEO companion: frontend/public/sitemap.xml
+Generated: 2026-10-09
+
+PUBLIC WEBSITE
+--------------
+/                         Home / Website ORB host and guided landing tour
+/features                 Product capabilities
+/use-cases                Visitor and business use cases
+/lidar-guidance           LiDAR guidance and spatial runtime
+/how-it-works             Product and operating model explanation
+/security                 Security and product philosophy
+/orb-weaver                Public Orb Weaver artifact/showcase
+/now/desktop-orb          Desktop ORB overview and entry point
+/preflight                Public Preflight Scanner
+/founding-beta            Founding Beta lead page
+/investor-contact         Investor contact lead page
+/marketplace              Redirect to the configured ORB Marketplace
+/marketplace/*            Redirect for Marketplace subpaths
+
+ACCOUNT ACCESS
+--------------
+/login                    Login form; supports an optional next query parameter
+/signup                   Signup form; supports onboarding intent/query parameters
+/diagnostics              Authentication gate when signed out; diagnostics when signed in
+
+LEGAL AND PRACTICE
+------------------
+/privacy                  Privacy Statement
+/terms                    Terms of Use
+/weaving                  Practice of Weaving (public when signed out)
+/sitemap.xml              Machine-readable public URL sitemap
+/robots.txt               Crawler policy
+
+AUTHENTICATED WORKSPACE
+-----------------------
+/                         Dashboard when signed in
+/dashboard                Dashboard
+/welcome                  Workspace setup and guest-session merge handoff
+/projects                 Project list and project workspace
+/scan-center              Scan Center
+/crawl                    Crawl job list
+/crawl/:jobId             Crawl job details
+/audit/:auditId           Audit report details
+/orbs/:projectId          Website ORB project integration
+/orbs/:projectId/dock     ORB Dock Station
+/ga4                     GA4 Analytics overview
+/ga4/:propertyId          GA4 property analytics
+/reports                 Report Compiler
+/reports/:projectId       Project report compiler
+/web-weave               Site Update workflow
+/cart                    Cart and checkout state
+/checkout/success        Checkout completion state
+/now/desktop-orb         Desktop ORB workspace entry
+/diagnostics             Diagnostics workspace
+/account                 Account settings and logout
+
+ADMINISTRATIVE
+--------------
+/admin/customers          Customer administration (admin accounts only)
+
+PARAMETER CONVENTIONS
+---------------------
+:projectId               Project identifier
+:jobId                   Crawl/lifecycle job identifier
+:auditId                 Audit report identifier
+:propertyId              GA4 property identifier
+
+PRIMARY VISITOR JOURNEYS
+------------------------
+1. Discover: / → /features | /use-cases | /how-it-works | /security
+2. Evaluate: / → /lidar-guidance | /orb-weaver | /now/desktop-orb
+3. Validate: / → /preflight → /signup?intent=...
+4. Convert: /founding-beta or /investor-contact
+5. Operate: /login → /dashboard → /projects → /scan-center → /crawl → /audit/:auditId
+6. Build and publish: /projects → /orbs/:projectId → /orbs/:projectId/dock → /reports/:projectId
+
+ROUTE OWNERSHIP
+---------------
+Public routes are rendered before authentication in App.tsx. Signed-in routes render inside
+Layout.tsx and use the workspace navigation. Unknown signed-out paths fall back to AuthPage;
+unknown signed-in paths remain inside the authenticated route shell without a catch-all page.

@@ -1,0 +1,291 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>ORBS ROI Estimator</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a two-panel preflight worksheet. Owner's figures on the left, the labeled scenario on the right; stacks to one column on a phone. */
+:root {
+  --bg: #EDF0F5;
+  --surface: #FFFFFF;
+  --sunken: #F5F7FA;
+  --ink: #15213B;
+  --muted: #586579;
+  --line: #D2D9E3;
+  --accent: #2946C4;
+  --accent-ink: #FFFFFF;
+  --flag: #8A5200;
+  --flag-bg: #FBF0DA;
+  --flag-line: #E7C98E;
+  --error: #A82A2A;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D131F; --surface: #161F30; --sunken: #111928; --ink: #E7ECF4; --muted: #9BA8BD;
+    --line: #2B364B; --accent: #9DB0FF; --accent-ink: #0D131F; --flag: #EDB964; --flag-bg: #2A2212;
+    --flag-line: #5A4520; --error: #FF9A9A; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D131F; --surface: #161F30; --sunken: #111928; --ink: #E7ECF4; --muted: #9BA8BD;
+  --line: #2B364B; --accent: #9DB0FF; --accent-ink: #0D131F; --flag: #EDB964; --flag-bg: #2A2212;
+  --flag-line: #5A4520; --error: #FF9A9A; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 48px; display: flex; flex-direction: column; gap: 22px; }
+.eyebrow { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin: 0; }
+h1 { font-family: var(--display); font-size: clamp(28px, 5vw, 40px); line-height: 1.05; margin: 4px 0 0; text-wrap: balance; }
+h2 { font-family: var(--display); font-size: 21px; line-height: 1.2; margin: 0; text-wrap: balance; }
+h3 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0; font-weight: 600; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 62ch; }
+.grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 22px; align-items: start; }
+@media (max-width: 820px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 22px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+form { display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+label, legend { font-weight: 500; font-size: 14px; }
+.hint { color: var(--muted); font-size: 13px; }
+input[type="text"] { font-family: var(--mono); font-size: 16px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--sunken); color: var(--ink); width: 100%; }
+input[type="text"]:focus-visible, button:focus-visible, input[type="radio"]:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.radio { display: flex; gap: 8px; align-items: center; font-weight: 400; }
+.radio input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+.divider { border: 0; border-top: 1px solid var(--line); margin: 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+button { font-family: var(--body); font-size: 15px; font-weight: 600; border-radius: 6px; padding: 10px 16px; cursor: pointer; border: 1px solid var(--accent); }
+.primary { background: var(--accent); color: var(--accent-ink); }
+.ghost { background: transparent; color: var(--accent); border-color: var(--line); }
+.error { color: var(--error); font-size: 14px; font-weight: 500; }
+.tag { display: inline-block; align-self: flex-start; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600; color: var(--flag); background: var(--flag-bg); border: 1px solid var(--flag-line); border-radius: 4px; padding: 4px 8px; }
+.src { color: var(--muted); font-size: 13px; }
+.stale { color: var(--flag); font-size: 14px; font-weight: 500; }
+#resbody { display: flex; flex-direction: column; gap: 18px; }
+#resbody.dim { opacity: 0.45; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.tile { background: var(--sunken); border: 1px solid var(--line); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tile .k { font-size: 13px; color: var(--muted); }
+.tile .v { font-family: var(--mono); font-size: clamp(20px, 3.4vw, 26px); line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+thead th { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+td.n, th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+thead th.n { font-family: var(--body); }
+.verdict { border: 1px solid var(--flag-line); background: var(--flag-bg); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.verdict strong { color: var(--flag); }
+.fine { font-size: 13px; color: var(--muted); }
+.none { background: var(--sunken); border: 1px dashed var(--line); border-radius: 8px; padding: 18px; display: flex; flex-direction: column; gap: 6px; }
+details { border-top: 1px solid var(--line); padding-top: 12px; }
+summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+details ul { margin: 10px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+details li span { font-family: var(--mono); }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">ORB Weaver Preflight</p>
+    <h1>Website ROI Assessment</h1>
+  </header>
+  <p class="lede">A scenario calculator for a website owner's own figures. It shows what a 20% to 70% relative improvement in completed actions would be worth, and how much traffic it would take to confirm one.</p>
+
+  <div class="grid">
+    <section class="panel" aria-labelledby="in-h">
+      <div>
+        <h2 id="in-h">Your Website's Opportunity</h2>
+        <p class="hint" style="margin-top:6px">Three quick figures help estimate the potential value of improving your visitor experience.</p>
+      </div>
+      <form id="f" novalidate>
+        <div class="field">
+          <label for="visitors">Monthly website visitors</label>
+          <input type="text" inputmode="decimal" id="visitors" autocomplete="off">
+          <span class="hint">Unique visitors in a month, not page views or sessions.</span>
+        </div>
+        <div class="field">
+          <label for="completions">Monthly completed sales or actions</label>
+          <input type="text" inputmode="decimal" id="completions" autocomplete="off">
+          <span class="hint">The number of visitors who completed at least one sale, booking or enquiry. Count a visitor once, even if they bought several times.</span>
+        </div>
+        <div class="field">
+          <label for="value">Average value per completed sale or action ($)</label>
+          <input type="text" inputmode="decimal" id="value" autocomplete="off">
+          <span class="hint">What one of those visitors is worth in the month: their total spend, or the value of a lead.</span>
+        </div>
+        <fieldset>
+          <legend>Where did these figures come from?</legend>
+          <label class="radio" for="src-own"><input type="radio" name="src" id="src-own" value="own"> My own estimate</label>
+          <label class="radio" for="src-rec"><input type="radio" name="src" id="src-rec" value="records"> Analytics or sales records</label>
+        </fieldset>
+        <hr class="divider">
+        <h3>Optional, for the return calculation</h3>
+        <div class="field">
+          <label for="price">ORB purchase price ($, one time)</label>
+          <input type="text" inputmode="decimal" id="price" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="margin">Contribution margin (%)</label>
+          <input type="text" inputmode="decimal" id="margin" autocomplete="off">
+          <span class="hint">What is left from each sale after the direct cost of delivering it. Payback is only calculated when this is filled in.</span>
+        </div>
+        <p class="error" id="err" role="alert" hidden></p>
+        <div class="actions">
+          <button type="submit" class="primary" id="go">Evaluate Scenario</button>
+          <button type="button" class="ghost" id="clear">Clear figures</button>
+          <button type="button" class="ghost" id="example">Load example</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel" aria-labelledby="tag" aria-live="polite">
+      <span class="tag" id="tag">Illustrative example</span>
+      <p class="src" id="src"></p>
+      <p class="stale" id="stale" hidden>Figures changed. Select Evaluate Scenario to update.</p>
+      <div class="none" id="none" hidden>
+        <strong>Insufficient data to calculate an opportunity range.</strong>
+        <span class="fine">All three figures are needed: monthly visitors, monthly completed sales or actions, and average value per completion. Nothing is filled in on your behalf.</span>
+      </div>
+      <div id="resbody"></div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  var LOW = 0.20, HIGH = 0.70, FLAG = 25, Z2 = Math.pow(1.959964 + 0.841621, 2);
+  var $ = function (id) { return document.getElementById(id); };
+  var ids = ["visitors", "completions", "value", "price", "margin"];
+  var isExample = false;
+
+  function num(id) {
+    var s = $(id).value.trim().replace(/^\$\s*/, "").replace(/\s*%$/, "");
+    if (s === "") return null;
+    // Commas count only as thousands separators (10,000). Anything else, such as 2,5 or 10,00, is rejected rather than guessed at.
+    if (!/^(\d{1,3}(,\d{3})+|\d+)?(\.\d+)?$/.test(s)) return NaN;
+    return Number(s.replace(/,/g, ""));
+  }
+  function money(n) {
+    var a = Math.abs(n), d = a < 100 && a % 1 !== 0 ? 2 : 0;
+    return (n < 0 ? "−" : "") + "$" + a.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function count(n) { return n.toLocaleString("en-US", { maximumFractionDigits: n < 10 ? 1 : 0 }); }
+  function span(m) {
+    if (m < 1) { var d = Math.max(1, Math.round(m * 30)); return "about " + d + (d === 1 ? " day" : " days"); }
+    if (m < 24) return "about " + m.toFixed(1) + " months";
+    return "about " + (m / 12).toFixed(1) + " years";
+  }
+  // Visitors needed in a two-group comparison (95% confidence, 80% power) to confirm a relative lift.
+  function testSize(rate, lift) {
+    var p2 = rate * (1 + lift);
+    if (rate <= 0 || p2 >= 1) return null;
+    return 2 * Z2 * (rate * (1 - rate) + p2 * (1 - p2)) / Math.pow(p2 - rate, 2);
+  }
+  function calc(v, c, a, price, margin) {
+    var rate = c / v, out = { rate: rate, s: [] };
+    [LOW, HIGH].forEach(function (lift) {
+      var extra = c * lift, rev = extra * a;
+      var profit = margin == null ? null : rev * margin / 100;
+      var roi = price != null && profit != null;
+      var n = testSize(rate, lift);
+      out.s.push({
+        lift: lift, extra: extra, rev: rev, profit: profit,
+        payback: roi && profit > 0 ? price / profit : null,
+        test: n, testMonths: n == null ? null : n / v
+      });
+    });
+    return out;
+  }
+
+  function row(label, lo, hi) { return "<tr><td>" + label + "</td><td class='n'>" + lo + "</td><td class='n'>" + hi + "</td></tr>"; }
+
+  function render() {
+    var err = $("err"), body = $("resbody"), none = $("none");
+    err.hidden = true; $("stale").hidden = true; body.classList.remove("dim");
+    var v = num("visitors"), c = num("completions"), a = num("value"), price = num("price"), margin = num("margin");
+    var srcEl = document.querySelector("input[name=src]:checked");
+
+    function fail(msg) { err.textContent = msg; err.hidden = false; body.innerHTML = ""; none.hidden = false; }
+
+    $("tag").textContent = isExample ? "Illustrative example" : "Scenario based on your figures";
+    $("src").textContent = isExample ? "These are sample figures, not a real website. Replace them with your own."
+      : !srcEl ? "" : srcEl.value === "own" ? "Figures: the owner's own estimate."
+      : "Figures: the owner's analytics or sales records, as reported. Not independently verified.";
+
+    if (v == null || c == null || a == null) { body.innerHTML = ""; none.hidden = false; return; }
+    if ([v, c, a, price, margin].some(function (x) { return x !== null && isNaN(x); })) return fail("One of the figures isn't in a format this form can read. Use digits, with commas only as thousands separators, such as 10,000.");
+    if (v <= 0 || c < 0 || a <= 0) return fail("Visitors and average value must be above zero.");
+    if (c === 0) return fail("With no completed actions recorded there is no baseline to scale.");
+    if (c > v) return fail("Completed actions can't be higher than visitors. Check both figures.");
+    if (price !== null && price <= 0) return fail("Enter a purchase price above zero, or leave it blank.");
+    if (margin !== null && (margin <= 0 || margin > 100)) return fail("Contribution margin must be between 1 and 100, or left blank.");
+    if (!isExample && !srcEl) return fail("Choose where these figures came from.");
+    none.hidden = true;
+
+    var r = calc(v, c, a, price, margin), lo = r.s[0], hi = r.s[1];
+    var roi = price != null && margin != null;
+    var h = "";
+
+    h += "<div class='tiles'>";
+    h += "<div class='tile'><span class='k'>Additional completed actions/month</span><span class='v'>" + count(lo.extra) + "–" + count(hi.extra) + "</span></div>";
+    h += "<div class='tile'><span class='k'>Potential additional gross revenue/month</span><span class='v'>" + money(lo.rev) + "–" + money(hi.rev) + "</span></div>";
+    h += "</div>";
+
+    h += "<div class='scroll'><table><thead><tr><th>Hypothetical scenario</th><th class='n'>20% lift</th><th class='n'>70% lift</th></tr></thead><tbody>";
+    h += row("Additional completed actions/month", count(lo.extra), count(hi.extra));
+    h += row("Potential additional gross revenue/month", money(lo.rev), money(hi.rev));
+    if (margin != null) h += row("Potential additional contribution profit/month", money(lo.profit), money(hi.profit));
+    if (roi) {
+      h += row("Hypothetical payback period, before ongoing expenses", lo.payback == null ? "n/a" : span(lo.payback), hi.payback == null ? "n/a" : span(hi.payback));
+    }
+    h += "</tbody></table></div>";
+
+    if (roi) {
+      h += "<p class='fine'>Payback is based on contribution profit at a " + count(margin) + "% margin. It is before ongoing expenses such as maintenance, rescans and the cost of running the ORB.</p>";
+    } else if (price != null) {
+      h += "<p class='fine'>Payback is not calculated without a contribution margin, because revenue is not profit. This scenario shows the revenue opportunity only.</p>";
+    } else {
+      h += "<p class='fine'>Add the ORB purchase price" + (margin == null ? " and a contribution margin" : "") + " to see a payback period for each scenario.</p>";
+    }
+
+    h += "<div class='verdict'><h3>Volume verdict</h3>";
+    h += c < FLAG
+      ? "<p><strong>Low-volume warning.</strong> At under " + FLAG + " completed actions a month, confirming a lift on this site would take a long time. The comparison size below shows how long.</p>"
+      : "<p><strong>Further statistical evaluation required</strong> before claiming a measurable lift.</p>";
+    if (lo.test != null && hi.test != null) {
+      h += "<p>A controlled comparison, with half of visitors seeing the ORB and half not, would need about " + count(Math.round(lo.test / 100) * 100) +
+        " visitors (" + span(lo.testMonths) + " at this traffic) to confirm a 20% lift, and about " + count(Math.round(hi.test / 100) * 100) +
+        " visitors (" + span(hi.testMonths) + ") to confirm a 70% lift.</p>";
+    }
+    h += "<p class='fine'>The " + FLAG + "-completion line is a preliminary flag, not a statistical proof threshold. Traffic, seasonality and buying patterns shift on their own, so only a controlled comparison separates ORB impact from ordinary fluctuation.</p></div>";
+
+    h += "<p class='fine'>20%–70% relative improvement is hypothetical, not an observed ORB performance range. Even the 20% end is not a guaranteed minimum. Revenue is not profit.</p>";
+
+    h += "<details><summary>How these numbers were calculated</summary><ul>";
+    h += "<li>Current completion rate: <span>" + count(c) + " ÷ " + count(v) + " = " + (r.rate * 100).toFixed(2) + "%</span></li>";
+    h += "<li>20% scenario: <span>" + count(c) + " × 0.20 = " + count(lo.extra) + "</span> additional actions, <span>× " + money(a) + " = " + money(lo.rev) + "</span></li>";
+    h += "<li>70% scenario: <span>" + count(c) + " × 0.70 = " + count(hi.extra) + "</span> additional actions, <span>× " + money(a) + " = " + money(hi.rev) + "</span></li>";
+    if (margin != null) h += "<li>Contribution profit: <span>gross revenue × " + count(margin) + "%</span></li>";
+    if (roi) h += "<li>Payback period: <span>" + money(price) + " ÷ monthly contribution profit</span></li>";
+    h += "<li>Comparison size: the standard two-group calculation at 95% confidence and 80% power, using the current completion rate.</li>";
+    h += "</ul></details>";
+
+    body.innerHTML = h;
+  }
+
+  function setAll(vals) { ids.forEach(function (id, i) { $(id).value = vals[i]; }); }
+  function clearSrc() { document.querySelectorAll("input[name=src]").forEach(function (r) { r.checked = false; }); }
+
+  $("f").addEventListener("submit", function (e) { e.preventDefault(); render(); });
+  $("f").addEventListener("input", function () {
+    isExample = false;
+    if ($("resbody").innerHTML) { $("stale").hidden = false; $("resbody").classList.add("dim"); }
+  });
+  $("clear").addEventListener("click", function () { isExample = false; setAll(["", "", "", "", ""]); clearSrc(); render(); });
+  $("example").addEventListener("click", function () { isExample = true; setAll(["10,000", "250", "100", "988", "30"]); clearSrc(); render(); });
+
+  isExample = true; setAll(["10,000", "250", "100", "988", "30"]); render();
+})();
+</script>
+
+</body></html>

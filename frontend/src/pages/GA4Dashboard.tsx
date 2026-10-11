@@ -15,10 +15,10 @@ import {
 } from 'recharts';
 import { Users, Eye, MousePointer, TrendingUp, Calendar, Globe, RefreshCw, Radio, UserPlus, Clock } from 'lucide-react';
 import { api, GA4FullReport, Project } from '../services/api';
+import { GA4_MEASUREMENT_ID } from '../services/analytics';
 
 const COLORS = ['#18CFE3', '#073B5C', '#0E7490', '#8EEAF3', '#061A33'];
 const ORB_STREAM_ID = '15285875409';
-const ORB_MEASUREMENT_ID = 'G-5BR1CYDQGS';
 
 const GA4Dashboard: React.FC = () => {
   const { propertyId: routePropertyId } = useParams();
@@ -89,7 +89,7 @@ const GA4Dashboard: React.FC = () => {
     try {
       const updated = await api.updateProjectGA4Config(orbProject.id, {
         ga4_property_id: propertyInput.trim(),
-        ga4_measurement_id: ORB_MEASUREMENT_ID,
+        ga4_measurement_id: GA4_MEASUREMENT_ID,
       });
       setOrbProject(updated);
     } catch (err) {
@@ -221,7 +221,7 @@ const GA4Dashboard: React.FC = () => {
         </div>
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Measurement ID</p>
-          <p className="mt-1 font-mono text-sm text-gray-900">{ORB_MEASUREMENT_ID}</p>
+          <p className="mt-1 font-mono text-sm text-gray-900">{GA4_MEASUREMENT_ID}</p>
         </div>
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Collection</p>

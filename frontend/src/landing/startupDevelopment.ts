@@ -1,6 +1,37 @@
 export const DEV_FULL_TOUR_QUERY_KEY = 'orbDevFullTour';
 export const DEV_INTRO_VARIANT_QUERY_KEY = 'orbIntroVariant';
 export const DEV_LLM_SCRIPTED_TOUR_QUERY_KEY = 'orbLlmScriptedTour';
+export const RETURNING_VISITOR_STORAGE_KEY = 'orbweaver-returning-visitor-v1';
+
+export type EntryRouteDecision = 'landing' | 'login' | 'workspace';
+
+export const entryRouteDecision = (
+  authenticated: boolean,
+  returningVisitor: boolean,
+): EntryRouteDecision => authenticated ? 'workspace' : returningVisitor ? 'login' : 'landing';
+
+export const hasReturningVisitorMarker = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(RETURNING_VISITOR_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+export const markReturningVisitor = (): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(RETURNING_VISITOR_STORAGE_KEY, '1');
+  } catch {
+    // A storage failure must not block a first-time visitor.
+  }
+};
+
+export const cancelLandingExperience = (reason = 'entry_route_redirect'): void => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('orbweaver:cancel-landing-experience', { detail: { reason } }));
+};
 
 export const developmentFullTourOverride = (
   search = window.location.search,

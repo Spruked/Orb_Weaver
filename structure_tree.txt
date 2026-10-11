@@ -1,93 +1,66 @@
 Orb_Weaver/
 ├── AGENTS.md                                  # Repository operating rules
-├── structure_tree.txt                         # This focused live-system map
-├── package.json                               # Root tooling
-├── docker-compose.yml                         # Production container topology
-├── backend/
-│   ├── main.py                                # FastAPI routes and canonical Website ORB turn
-│   ├── inference_gateway.py                   # Dev inference gateway → established llama.cpp
-│   ├── requirements.txt
-│   ├── app/
-│   │   ├── core/
-│   │   │   ├── config.py                      # Runtime configuration / endpoint contract
-│   │   │   └── storage.py                     # Canonical vault roots and safe-path helpers
-│   │   ├── crawler/                           # Crawl and Preflight evidence acquisition
-│   │   ├── orb/
-│   │   │   ├── governance.py                  # Governance assembly, TPC trace, artifact persistence
-│   │   │   ├── turn_resolver.py               # Deterministic resolution order + Doctrine articulation
-│   │   │   ├── articulation.py                # Governance Doctrine V1 final speech checksum
-│   │   │   ├── tour_evaluation.py             # Tour/Preflight speech schema and sanitation
-│   │   │   ├── pointer_intent.py              # Pointer eligibility and intent resolution
-│   │   │   ├── site_learning.py               # Verified A Posteriori lookup/write rules
-│   │   │   └── vault_skg_adapter.py           # Vault SKG retrieval adapter
-│   │   └── services/                          # TTS, browser, and integration services
-│   └── tests/
-│       ├── test_tour_evaluation.py            # Tour speech and dynamic Preflight guardrails
-│       ├── test_website_orb_governance.py
-│       └── test_orb_loader_runtime.py
+├── README.md                                  # Product, architecture, and local runbook
+├── structure_tree.txt                         # This repository structure map
+├── site_map.txt                               # Visitor and application route map
+├── package.json                               # Root tooling metadata
+├── docker-compose.yml                         # Local/production service topology
+├── Dockerfile                                 # Root container build
+├── .env.example                               # Environment variable template
 ├── frontend/
-│   ├── package.json
+│   ├── package.json                           # React application scripts and dependencies
 │   ├── public/
-│   │   └── orb/voice/                         # Public ORB and Point/Ping audio assets
+│   │   ├── index.html                         # SPA document shell
+│   │   ├── robots.txt                         # Crawler policy
+│   │   ├── sitemap.xml                        # Public SEO sitemap
+│   │   ├── orb-loader.js                      # Embeddable ORB loader
+│   │   └── orb-skins/                         # Published skin assets and registry
 │   └── src/
-│       ├── landing/
-│       │   ├── LandingPage.tsx
-│       │   └── AutonomousOrb.tsx              # Live ORB, LiDAR consumer, movement, Point/Ping
-│       ├── pages/
-│       │   └── PublicPreflight.tsx            # Report presentation surface / handoff event
-│       ├── orb/
-│       │   ├── lidar_2d_mapping/              # Shared LiDAR 2D geometry channel
-│       │   ├── robotics/movementController.ts # Live element validation and target refresh
-│       │   └── targetValidation.ts            # Pointer authority checks
-│       ├── services/api.ts                    # /api/orb/website-text client
-│       └── tour/curriculum.ts                 # Landing-tour concepts and source copy
-├── vault_system/                              # Generated runtime evidence; normally gitignored
-│   ├── clients/<domain>/preflight/            # Per-site Preflight report persistence
-│   ├── observations/cognition/                # Runtime cognition evidence
-│   ├── long_term_memory/tpc/                  # TPC trace artifacts
-│   ├── persistent_cache/                      # Governance manifests / caches
-│   └── runtime/tts_cache/                     # Generated Kokoro audio
-├── Orb_Vault_System/                          # Legacy only; never runtime authority
-├── frontend/vault_system/                     # Frontend artifact only; no durable truth
-├── artifacts/
-│   ├── inculcation.md                         # Foundational governance source
-│   └── screen_shots_deployment/               # Visual acceptance evidence
-├── docs/
-│   ├── DEV_LOG.md
-│   ├── README.md
-│   ├── TARGET_ONE_LANDING_TOUR.md
-│   ├── architecture/
-│   │   ├── POINTER_MAP_LIVE_VALIDATION.md
-│   │   └── POINTER_RECOVERY_DOCTRINE.md
-│   └── handoffs/
-├── deploy/
-│   ├── docker/
-│   ├── inference/
-│   └── systemd/user/
-├── scripts/                                   # Dev startup, vault audit, scan and migration tools
-├── manufacturing/                             # Website ORB compiler/templates
-│   └── templates/Website_Orb_Final/
-│       ├── Orb_Vault_System/                  # SKG implementation code; package builder strips vaults/
-│       └── vendor/TPC_Triple_Predicate_Cubed/
-│           ├── vaults/                        # Source/vendor structure; excluded from manufactured package
-│           └── results/                       # Source/vendor structure; excluded from manufactured package
-└── tools/                                     # Inference and toolchain profiles
+│       ├── App.tsx                            # Public/authenticated route boundary
+│       ├── index.tsx                          # React bootstrap
+│       ├── components/                        # Shared layouts, header, footer, and UI
+│       ├── landing/                           # Home page and autonomous Weaver host
+│       ├── pages/                             # Public, workspace, reporting, and admin pages
+│       ├── services/                          # API, analytics, and marketplace clients
+│       ├── orb/                               # ORB runtime, motion, LiDAR, and pointer logic
+│       ├── orb-client/                        # Embeddable host runtime and site observer
+│       ├── onboarding/                        # Guest-to-account onboarding state
+│       ├── state/                             # Shared client state stores
+│       └── tour/                              # Guided tour, discovery, and agency runtime
+├── backend/
+│   ├── main.py                                # FastAPI API, auth, workspace, ORB, and admin routes
+│   ├── inference_gateway.py                   # Model/provider gateway
+│   ├── requirements.txt                       # Python dependencies
+│   ├── app/
+│   │   ├── core/                              # Configuration, storage, and timekeeping
+│   │   ├── crawler/                            # Crawl, rendered DOM, and SEO evidence
+│   │   ├── orb/                               # Governance, cognition, memory, and Site World
+│   │   ├── catalog/                            # Commercial catalog compilation
+│   │   ├── lifecycle/                          # Evidence and review lifecycle
+│   │   ├── manufacturing/                      # Website ORB package assembly and validation
+│   │   ├── services/                           # Browser, desktop, and external integrations
+│   │   └── models/                             # Database models
+│   ├── motion_runtime/                         # Pointer, LiDAR, telemetry, and MORB runtime
+│   └── tests/                                  # Backend and runtime verification
+├── vault_system/                               # Authoritative runtime evidence and memory Vault
+│   ├── clients/<domain>/preflight/             # Per-site preflight artifacts
+│   ├── observations/cognition/                 # Runtime cognition evidence
+│   ├── long_term_memory/tpc/                   # TPC trace artifacts
+│   ├── persistent_cache/                       # Governance manifests and caches
+│   └── runtime/tts_cache/                      # Generated voice assets
+├── manufacturing/                              # Website ORB compiler and package templates
+├── Orb_Vault_System/                            # Legacy/source code provider; not runtime authority
+├── deploy/                                     # Docker, inference, and systemd deployment assets
+├── scripts/                                    # Startup, scans, audits, migrations, and verification
+├── docs/                                       # Architecture, handoffs, contracts, and development log
+├── artifacts/                                  # Acceptance screenshots and governance source material
+├── substrate/                                  # Compatibility-only substrate
+├── tools/                                      # Inference and toolchain profiles
+└── movement_skg.owl                            # Movement ontology source
 
-Excluded from this map: .git/, node_modules/, frontend/build/, Python caches,
-and generated vault payload contents.
-
-Vault topology invariant:
-  • Six physical vault-like directory systems exist in this repository.
+Runtime boundaries:
+  • frontend/src/App.tsx owns the public/authenticated route boundary.
+  • frontend/public/sitemap.xml describes indexable public URLs; it excludes workspace/admin routes.
+  • backend/main.py owns the HTTP API and WebSocket entry points used by the frontend.
   • repository-root vault_system/ is the sole authoritative runtime Vault.
-  • Root Orb_Vault_System/ is an active code provider only; the main runtime
-    injects its data paths beneath the canonical Vault.
-  • A prior manufacturing dual-store defect was repaired at package assembly:
-    new packages carry only runtime/vault_system; SKG receives explicit paths
-    below it and fails closed without that exact canonical root.
-  • The builder excludes vendor TPC API/results/vaults persistence surfaces;
-    source/vendor structures remain in the repository pending separate audit.
-  • frontend/vault_system/ still requires activation/read/write proof before
-    migration, inert treatment, or removal.
-  • substrate/ is compatibility-only, not a seventh Vault.
-  • vault_system/clients/<domain>/.../orb_vault_skg/ directories are legal
-    subordinate namespaces; they must not establish an independent root.
+  • Generated payloads, caches, build output, node_modules, Python caches, and .git/ are excluded from this map.

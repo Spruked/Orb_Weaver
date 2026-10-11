@@ -1,0 +1,40 @@
+{
+  "schema": "orb_weaver.public_lead.v1",
+  "lead_id": "private_investor_discussion_20261006041552_be718b5604",
+  "form_type": "private_investor_discussion",
+  "received_at": "2026-10-06T04:15:52.337300",
+  "source_url": "https://orbweaver.spruked.com/investor-contact",
+  "fields": {
+    "form_type": "private_investor_discussion",
+    "full_name": "Bryan Anthony Spruk",
+    "email": "bspruked@icloud.com",
+    "organization": "FDPS",
+    "role": "",
+    "relationship": "Private investor",
+    "engagement_range": "Under $25,000",
+    "area_of_interest": "fghjoojkjhgrtfgb",
+    "message": "rdfghjpiokl.k,tfgvb",
+    "contact_consent": "yes"
+  },
+  "delivery": {
+    "viv_contact": {
+      "status": "queued",
+      "errors": [
+        "http://host.docker.internal:19000/api/contacts:All connection attempts failed"
+      ]
+    },
+    "notification": {
+      "status": "queued",
+      "errors": [
+        "http://host.docker.internal:19000/api/emails/send:All connection attempts failed"
+      ]
+    },
+    "vector_vault": {
+      "status": "queued",
+      "errors": [
+        "http://host.docker.internal:21010/cali/contacts:All connection attempts failed",
+        "http://host.docker.internal:21010/api/cali/contacts:All connection attempts failed"
+      ]
+    }
+  }
+}

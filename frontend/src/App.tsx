@@ -23,6 +23,7 @@ import AdminCustomers from './pages/AdminCustomers';
 import LegalPage from './pages/LegalPage';
 import RouteScrollReset from './components/RouteScrollReset';
 import GoogleAnalyticsTracker from './components/GoogleAnalyticsTracker';
+import AnalyticsConsentControl from './components/AnalyticsConsentControl';
 import LandingPage from './landing/LandingPage';
 import PublicPreflight from './pages/PublicPreflight';
 import PublicLeadPage from './pages/PublicLeadPage';
@@ -34,6 +35,7 @@ import PublicOrbWeaverArtifact from './pages/PublicOrbWeaverArtifact';
 import LidarGuidance from './pages/LidarGuidance';
 import { api, authStore, Customer } from './services/api';
 import { marketplaceUrl } from './services/marketplaceUrl';
+import { cancelLandingExperience, entryRouteDecision, hasReturningVisitorMarker, markReturningVisitor } from './landing/startupDevelopment';
 import './index.css';
 
 const MarketplaceRedirect: React.FC = () => {
@@ -108,18 +110,28 @@ function App() {
 
   const publicPath = location.pathname;
 
-  const renderPublicPage = (element: React.ReactNode) => (
+  const renderPublicPage = (element: React.ReactNode) => {
+    markReturningVisitor();
+    return (
     <QueryClientProvider client={queryClient}>
       <RouteScrollReset />
       <GoogleAnalyticsTracker />
+      <AnalyticsConsentControl />
       {element}
     </QueryClientProvider>
-  );
+    );
+  };
 
-  // The landing is Weaver's public host surface for every current browser
-  // session. An authenticated existing account still receives the opening;
-  // the mounted host decides whether its post-intro tour is appropriate.
   if (publicPath === '/') {
+    const entryDecision = entryRouteDecision(Boolean(customer), hasReturningVisitorMarker());
+    if (entryDecision === 'workspace') {
+      cancelLandingExperience('authenticated_entry');
+      return <Navigate to="/dashboard" replace />;
+    }
+    if (entryDecision === 'login') {
+      cancelLandingExperience('returning_visitor_entry');
+      return <Navigate to="/login" replace />;
+    }
     return renderPublicPage(<LandingPage />);
   }
 
@@ -182,7 +194,8 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <RouteScrollReset />
-      <GoogleAnalyticsTracker />
+      <GoogleAnalyticsTracker enabled={false} />
+      <AnalyticsConsentControl />
       <Layout customer={customer}>
         <Routes>
           <Route path="/" element={<Dashboard customer={customer} />} />

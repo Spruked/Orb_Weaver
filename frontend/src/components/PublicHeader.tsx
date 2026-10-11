@@ -22,7 +22,7 @@ const publicNavItems: PublicNavItem[] = [
   { href: '/security', label: 'Vision & Product Philosophy' },
   { href: 'https://campaign.orbweaver.spruked.com', label: 'Campaign', external: true },
   { href: '/login?next=/dashboard', label: 'Login' },
-  { href: 'https://campaign.orbweaver.spruked.com/roi-calculator', label: 'Planning Calculator', cta: true, external: true },
+  { href: '/ORBS%20ROI%20Estimator.html', label: 'Planning Calculator', cta: true, external: false },
 ];
 
 const PublicHeader: React.FC<PublicHeaderProps> = ({ theme = 'dark' }) => {
