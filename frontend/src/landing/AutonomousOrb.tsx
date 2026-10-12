@@ -58,7 +58,10 @@ const MORB_TRAVEL_AUDIO_PATHS = [
 const MIN_RECORDING_MS = 700;
 const END_SILENCE_MS = 2200;
 const ABSOLUTE_RECORDING_LIMIT_MS = 22000;
-const SPEECH_LEVEL_THRESHOLD = 0.018;
+// Keep this client-side gate permissive. Microphone gain varies substantially
+// across browsers and laptop hardware; Faster Whisper remains authoritative
+// for deciding whether the captured audio contains speech.
+const SPEECH_LEVEL_THRESHOLD = 0.006;
 const LIDAR_DRIFT_THRESHOLD_PX = 12;
 const ORB_SPEECH_PLAYBACK_RATE = 0.9;
 // Keep the authored site tour brisk without changing the intro or live visitor

@@ -16,7 +16,6 @@ from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urljoin, urlparse
 
 from app.core.config import settings
-from app.core.storage import require_vault_path
 from motion_runtime.server.pointer.pointer_plot import pointer_conflict_key
 
 
@@ -27,6 +26,13 @@ DEFAULT_THRESHOLDS = {
     "maximum_duplicate_conflicts": 3,
     "maximum_automatic_recovery_attempts": 1,
 }
+
+
+def require_vault_path(path: Path | str, purpose: str = "persistent data") -> Path:
+    """Resolve the current storage module so test/runtime vault rebinding is honored."""
+    from app.core.storage import require_vault_path as current_require_vault_path
+
+    return current_require_vault_path(path, purpose)
 
 LIVE_GUIDANCE_TARGET_TYPES = {"nav", "form_field", "button", "price_card", "download", "section"}
 SEMANTIC_REFERENCE_TARGET_TYPES = {"heading", "paragraph", "faq_answer", "policy_line"}
@@ -237,12 +243,34 @@ def reconcile_pointer_recovery(
     recovered: List[Dict[str, Any]] = []
     unresolved: List[Dict[str, Any]] = []
     baseline_by_semantics: Dict[tuple[str, str], List[Dict[str, Any]]] = defaultdict(list)
+    baseline_conflicts: Dict[tuple[str, str, str], List[Dict[str, Any]]] = defaultdict(list)
     for record in baseline:
         baseline_by_semantics[(_route(record.get("page_route")), _meaning(record))].append(record)
+        conflict_key = pointer_conflict_key(record)
+        if conflict_key[2]:
+            baseline_conflicts[conflict_key].append(record)
+
+    live_candidates_by_conflict: Dict[tuple[str, str, str], List[Dict[str, Any]]] = defaultdict(list)
+    for observation in observations:
+        for candidate in observation.get("candidates") or []:
+            if not isinstance(candidate, dict) or not candidate.get("locator"):
+                continue
+            key = (
+                _route(candidate.get("route")),
+                str(candidate.get("parent_scope") or ""),
+                _normalized_locator(candidate.get("locator")),
+            )
+            live_candidates_by_conflict[key].append(candidate)
 
     for record in baseline:
         route = _route(record.get("page_route"))
         semantic_key = (route, _meaning(record))
+        route_observations = [item for item in observations if _route(item.get("route") or item.get("url")) == route]
+        resolved_routes = {
+            _route(item.get("resolved_route") or item.get("resolved_url"))
+            for item in route_observations
+            if item.get("resolved_route") or item.get("resolved_url")
+        }
         matches: List[Dict[str, Any]] = []
         for values in observed_by_key.values():
             matches.extend(
@@ -259,12 +287,28 @@ def reconcile_pointer_recovery(
         render_ids = {str(item["observation"].get("render_id")) for item in matches}
         viewports = {str(item["observation"].get("viewport")) for item in matches}
         locators = {str(item.get("locator") or "") for item in matches if item.get("locator")}
+        live_identity_keys = {
+            str(item.get("identity_key") or "")
+            for item in matches
+            if item.get("identity_key")
+        }
         durable = bool(matches) and all(bool(item.get("durable")) for item in matches)
-        unique = len(baseline_by_semantics[semantic_key]) == 1 and len(locators) <= max(1, len(viewports))
+        live_identity_unique = len(live_identity_keys) == 1
+        unique = (
+            len(baseline_by_semantics[semantic_key]) == 1
+            and len(locators) <= max(1, len(viewports))
+            and live_identity_unique
+        )
         consistent = len(render_ids) >= 2 and durable and unique
         if consistent:
             promoted = dict(record)
             promoted["semantic_locator"] = _preferred_locator(matches)
+            preferred = matches[0]
+            promoted["structural_context"] = {
+                **(record.get("structural_context") or {}),
+                "parent_locator": preferred.get("parent_scope") or (record.get("structural_context") or {}).get("parent_locator") or "",
+                "tag": preferred.get("tag") or (record.get("structural_context") or {}).get("tag") or "",
+            }
             promoted["confidence"] = max(float(record.get("confidence") or 0.0), 0.86)
             promoted["confidence_class"] = "STABLE"
             promoted["runtime_policy"] = {
@@ -279,6 +323,7 @@ def reconcile_pointer_recovery(
                 "render_count": len(render_ids),
                 "viewports": sorted(viewports),
                 "locators": sorted(locators),
+                "live_identity_count": len(live_identity_keys),
                 "last_verified_time": datetime.now(timezone.utc).isoformat(),
                 "visual_ocr": _visual_ocr_summary(matches, visual_ocr),
             }
@@ -304,14 +349,74 @@ def reconcile_pointer_recovery(
             }
             unresolved_record["recovery_status"] = "visual_review_required"
             unresolved_record["uncertainty_reasons"] = list(dict.fromkeys(reasons))
-            if "duplicate_semantic_target" in unresolved_record["uncertainty_reasons"]:
+            if matches and not live_identity_unique:
+                unresolved_record["finding_class"] = "CONFLICT"
+                unresolved_record["finding_subreason"] = "ambiguous_live_locator"
+                unresolved_record["live_identity_evidence"] = {
+                    "identity_count": len(live_identity_keys),
+                    "identity_keys": sorted(live_identity_keys),
+                    "authority": "evidence_only",
+                }
+            conflict_key = pointer_conflict_key(record)
+            live_replacements = _unique_live_conflict_candidates(
+                live_candidates_by_conflict,
+                conflict_key,
+            )
+            moved_route = not matches and route_observations and route not in resolved_routes and len(resolved_routes) == 1
+            if moved_route:
+                moved_to = next(iter(resolved_routes))
+                unresolved_record["status"] = "inactive"
+                unresolved_record["finding_class"] = "NOT_FOUND"
+                unresolved_record["finding_subreason"] = "route_redirected_before_resolution"
+                unresolved_record["pointer_health"] = "MOVED"
+                unresolved_record["recovery_status"] = "route_moved"
+                unresolved_record["uncertainty_reasons"] = ["cross_route_mismatch"]
+                unresolved_record["route_resolution_evidence"] = {
+                    "requested_route": route,
+                    "resolved_route": moved_to,
+                    "authority": "live_browser_evidence",
+                }
+            stale_conflict = (
+                not matches
+                and len(baseline_conflicts.get(conflict_key) or []) > 1
+                and len(live_replacements) == 1
+            )
+            if moved_route:
+                pass
+            elif stale_conflict:
+                replacement = live_replacements[0]
+                unresolved_record["status"] = "inactive"
+                unresolved_record["finding_class"] = "NOT_FOUND"
+                unresolved_record["finding_subreason"] = "stale_identity_unique_live_target"
+                unresolved_record["pointer_health"] = "STALE"
+                unresolved_record["recovery_status"] = "stale_identity"
+                unresolved_record["uncertainty_reasons"] = ["cross_route_mismatch"]
+                unresolved_record["live_replacement_evidence"] = {
+                    "route": replacement.get("route"),
+                    "accessible_name": replacement.get("accessible_name"),
+                    "locator": replacement.get("locator"),
+                    "locator_method": replacement.get("locator_method"),
+                    "durable": replacement.get("durable"),
+                    "identity_key": replacement.get("identity_key"),
+                    "authority": "evidence_only",
+                }
+                unresolved_record["runtime_policy"] = {
+                    "behavior": "voice_only_stale_identity",
+                    "may_point": False,
+                    "must_verify_before_action": True,
+                    "requires_confirmation": True,
+                }
+            elif matches and not live_identity_unique:
+                unresolved_record["finding_class"] = "CONFLICT"
+                unresolved_record["finding_subreason"] = "ambiguous_live_locator"
+            elif "duplicate_semantic_target" in unresolved_record["uncertainty_reasons"]:
                 unresolved_record["finding_class"] = "CONFLICT"
             elif "responsive_variant" in unresolved_record["uncertainty_reasons"]:
                 unresolved_record["finding_class"] = "TRANSIENT"
             else:
                 unresolved_record["finding_class"] = "UNVERIFIED"
-            unresolved_record["finding_subreason"] = unresolved_record["uncertainty_reasons"][0]
-            unresolved_record["pointer_health"] = str(record.get("pointer_health") or "NEW")
+            unresolved_record.setdefault("finding_subreason", unresolved_record["uncertainty_reasons"][0])
+            unresolved_record.setdefault("pointer_health", str(record.get("pointer_health") or "NEW"))
             unresolved_record["confidence_evidence"] = {
                 **(record.get("confidence_evidence") or {}),
                 "visual_ocr": _visual_ocr_summary(matches, visual_ocr),
@@ -336,10 +441,41 @@ def reconcile_pointer_recovery(
             "routes": sorted({_route(item.get("url")) for item in observations}),
             "automatic_attempts_used": 1,
             "automatic_attempts_maximum": 1,
+            "stale_identity_count": sum(1 for item in unresolved if item.get("finding_class") == "NOT_FOUND"),
+            "disposition_counts": dict(Counter(str(item.get("finding_class") or "UNVERIFIED") for item in recovered + unresolved)),
         },
     }
     result_map["quality"] = assess_pointer_quality(result_map)
     return result_map
+
+
+def _normalized_locator(value: Any) -> str:
+    """Compare CSS locators across HTML and JSON escaping conventions."""
+    return str(value or "").replace("\\", "")
+
+
+def _unique_live_conflict_candidates(
+    candidates_by_conflict: Dict[tuple[str, str, str], List[Dict[str, Any]]],
+    conflict_key: tuple[str, str, str],
+) -> List[Dict[str, Any]]:
+    route, parent_scope, locator = conflict_key
+    candidates: List[Dict[str, Any]] = []
+    for (candidate_route, candidate_scope, candidate_locator), values in candidates_by_conflict.items():
+        if candidate_route != route or candidate_locator != _normalized_locator(locator):
+            continue
+        if parent_scope and candidate_scope != parent_scope:
+            continue
+        candidates.extend(values)
+    unique: Dict[str, Dict[str, Any]] = {}
+    for candidate in candidates:
+        identity = str(candidate.get("identity_key") or "|".join([
+            str(candidate.get("route") or ""),
+            str(candidate.get("parent_scope") or ""),
+            str(candidate.get("locator") or ""),
+            str(candidate.get("accessible_name") or candidate.get("text") or ""),
+        ]))
+        unique[identity] = candidate
+    return list(unique.values())
 
 
 def run_pointer_recovery_capture(
@@ -360,7 +496,9 @@ def run_pointer_recovery_capture(
     output_file = output_dir / "browser_capture.json"
     urls = [urljoin(base_url.rstrip("/") + "/", route.lstrip("/")) for route in routes]
     environment = {**os.environ}
-    repo_frontend = Path(__file__).resolve().parents[3] / "frontend" / "node_modules"
+    # pointer_recovery.py lives at backend/motion_runtime/server/pointer. The
+    # repository frontend is a sibling of backend, not a child of it.
+    repo_frontend = Path(__file__).resolve().parents[4] / "frontend" / "node_modules"
     if repo_frontend.is_dir():
         environment["NODE_PATH"] = os.pathsep.join(filter(None, [str(repo_frontend), environment.get("NODE_PATH")]))
     command = [node, str(script), json.dumps(urls), str(output_file), str(max(2, render_passes)), str(output_dir)]
@@ -400,8 +538,15 @@ def promote_owner_verified_pointer(
     signature_hash: str,
     notes: str = "",
     decided_at: Optional[str] = None,
+    authority_state: str = "OWNER_VERIFIED",
 ) -> Dict[str, Any]:
-    """Promote exactly one reviewed pointer without granting any click authority."""
+    """Apply the green/blue authority decision to exactly one pointer.
+
+    The public writer remains the existing pointer-authority decision route;
+    this helper only compiles the requested state into the canonical map.
+    """
+    if authority_state not in {"OWNER_VERIFIED", "OWNER_REVIEWED"}:
+        raise ValueError("Unsupported pointer authority state")
     required_identity = {
         "target_id",
         "page_route",
@@ -426,19 +571,23 @@ def promote_owner_verified_pointer(
             raise ValueError("Only an active pointer may receive owner verification")
         prior_health = str(record.get("pointer_health") or "NEW")
         record["pointer_class"] = "live_guidance"
-        record["confidence"] = max(float(record.get("confidence") or 0.0), 0.95)
-        record["confidence_class"] = "VERIFIED"
+        record["confidence"] = max(float(record.get("confidence") or 0.0), 0.95 if authority_state == "OWNER_VERIFIED" else 0.75)
+        record["confidence_class"] = "VERIFIED" if authority_state == "OWNER_VERIFIED" else "STABLE"
         record["pointer_health"] = "OWNER_VERIFIED"
         record["runtime_policy"] = {
             "behavior": "guide_and_verify_before_action",
-            "may_point": True,
+            "may_point": authority_state == "OWNER_VERIFIED",
             "must_verify_before_action": True,
-            "requires_confirmation": False,
+            "requires_confirmation": authority_state != "OWNER_VERIFIED",
             "may_click": False,
             "may_navigate": False,
         }
+        if authority_state == "OWNER_REVIEWED":
+            record["pointer_health"] = "OWNER_REVIEWED"
+            record["finding_class"] = "UNVERIFIED"
+            record["finding_subreason"] = "admin_marked_blue_runtime_review_required"
         authority = {
-            "state": "OWNER_VERIFIED",
+            "state": authority_state,
             "reviewer": reviewer,
             "signature_hash": signature_hash,
             "decided_at": timestamp,
@@ -449,9 +598,9 @@ def promote_owner_verified_pointer(
         record["authority_history"] = [
             *(record.get("authority_history") or []),
             {
-                "event": "owner_verified",
+                "event": "owner_verified" if authority_state == "OWNER_VERIFIED" else "owner_reviewed",
                 "from": prior_health,
-                "to": "OWNER_VERIFIED",
+                "to": authority_state,
                 **authority,
             },
         ]
@@ -538,7 +687,7 @@ def merge_canonical_pointer_authority(
     previous_owner = {
         str(record.get("target_id")): record
         for record in previous_map.get("records") or []
-        if record.get("pointer_health") in {"OWNER_VERIFIED", "OWNER_REJECTED"}
+        if record.get("pointer_health") in {"OWNER_VERIFIED", "OWNER_REVIEWED", "OWNER_REJECTED"}
     }
     previous_verified_count = sum(
         1 for record in previous_owner.values()
@@ -547,6 +696,10 @@ def merge_canonical_pointer_authority(
     previous_rejected_count = sum(
         1 for record in previous_owner.values()
         if record.get("pointer_health") == "OWNER_REJECTED"
+    )
+    previous_reviewed_count = sum(
+        1 for record in previous_owner.values()
+        if record.get("pointer_health") == "OWNER_REVIEWED"
     )
 
     records: List[Dict[str, Any]] = []
@@ -607,6 +760,33 @@ def merge_canonical_pointer_authority(
                 ]
                 retained_rejected.add(target_id)
 
+            elif prior_health == "OWNER_REVIEWED":
+                record["confidence_class"] = "STABLE"
+                record["pointer_health"] = "OWNER_REVIEWED"
+                record["runtime_policy"] = dict(prior.get("runtime_policy") or {
+                    "behavior": "guide_and_verify_before_action",
+                    "may_point": False,
+                    "must_verify_before_action": True,
+                    "requires_confirmation": True,
+                    "may_click": False,
+                    "may_navigate": False,
+                })
+                if prior.get("owner_authority"):
+                    record["owner_authority"] = dict(prior.get("owner_authority") or {})
+                record["finding_class"] = "UNVERIFIED"
+                record["finding_subreason"] = "admin_marked_blue_runtime_review_required"
+                record["authority_history"] = [
+                    *(prior.get("authority_history") or []),
+                    {
+                        "event": "owner_review_retained_after_rescan",
+                        "from": "OWNER_REVIEWED",
+                        "to": "OWNER_REVIEWED",
+                        "decided_at": timestamp,
+                        "identity_hash": _pointer_identity_hash(record),
+                    },
+                ]
+                retained.add(target_id)
+
             retained.add(target_id)
 
         records.append(record)
@@ -666,6 +846,7 @@ def merge_canonical_pointer_authority(
         "reconciled_at": timestamp,
         "previous_owner_verified_count": previous_verified_count,
         "previous_owner_rejected_count": previous_rejected_count,
+        "previous_owner_reviewed_count": previous_reviewed_count,
         "previous_owner_authority_count": len(previous_owner),
         "retained_count": len(retained),
         "retained_verified_count": len(retained_verified),

@@ -1,10 +1,19 @@
-'use strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
-const fs = require('fs');
-const path = require('path');
+const require = createRequire(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function loadPlaywright() {
-  const candidates = ['playwright', '/app/node_modules/playwright', path.resolve(__dirname, '../../../frontend/node_modules/playwright')];
+  const candidates = [
+    'playwright',
+    '/app/node_modules/playwright',
+    // This file lives at backend/motion_runtime/server/pointer; frontend is a
+    // repository sibling of backend.
+    path.resolve(__dirname, '../../../../frontend/node_modules/playwright'),
+  ];
   for (const candidate of candidates) {
     try { return require(candidate); } catch (_) { /* try next installation */ }
   }
@@ -46,6 +55,21 @@ async function stabilize(page) {
   }
 }
 
+async function dismissBlockingIntro(page) {
+  const candidates = [
+    page.getByRole('button', { name: /skip intro/i }),
+    page.locator('button').filter({ hasText: /skip intro/i }),
+  ];
+  for (const candidate of candidates) {
+    if (await candidate.count() && await candidate.first().isVisible().catch(() => false)) {
+      await candidate.first().click({ timeout: 3000 }).catch(() => undefined);
+      await page.waitForTimeout(500);
+      return { status: 'dismissed', control: 'skip_intro' };
+    }
+  }
+  return { status: 'not_present' };
+}
+
 async function inspectSegment(page, route, segmentIndex) {
   return page.evaluate(({ route, segmentIndex }) => {
     const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim();
@@ -68,11 +92,11 @@ async function inspectSegment(page, route, segmentIndex) {
     const authoredLocator = (element) => {
       const orbTarget = element.getAttribute('data-orb-target');
       if (orbTarget) return `[data-orb-target="${escape(orbTarget)}"]`;
-      if (element.id) return `#${escape(element.id)}`;
       for (const attribute of ['data-orb-id', 'data-testid', 'data-test', 'data-cy', 'name', 'aria-label']) {
         const value = element.getAttribute(attribute);
         if (value) return `[${attribute}="${escape(value)}"]`;
       }
+      if (element.id && !/^:r[0-9a-z]+:$/i.test(element.id)) return `#${escape(element.id)}`;
       return '';
     };
     const siblingIndex = (element) => Array.from(element.parentElement?.children || [])
@@ -91,13 +115,17 @@ async function inspectSegment(page, route, segmentIndex) {
       return `${landmarkLocator} ${local}`;
     };
     const durableLocator = (element) => {
-      if (element.id) return { locator: `#${escape(element.id)}`, method: 'id', durable: true };
       const href = element.getAttribute('href');
       if (element.tagName === 'A' && href) return { locator: `a[href="${escape(href)}"]`, method: 'href', durable: true };
+      for (const attribute of ['data-orb-id', 'data-testid', 'data-test', 'data-cy', 'name']) {
+        const value = element.getAttribute(attribute);
+        if (value) return { locator: `[${attribute}="${escape(value)}"]`, method: attribute, durable: true };
+      }
       const role = element.getAttribute('role');
       const name = accessibleName(element);
       if (role && name) return { locator: `[role="${escape(role)}"][aria-label="${escape(element.getAttribute('aria-label') || name)}"]`, method: 'role_name', durable: !!element.getAttribute('aria-label') };
       if (element.getAttribute('aria-label')) return { locator: `${element.tagName.toLowerCase()}[aria-label="${escape(element.getAttribute('aria-label'))}"]`, method: 'accessible_name', durable: true };
+      if (element.id && !/^:r[0-9a-z]+:$/i.test(element.id)) return { locator: `#${escape(element.id)}`, method: 'id', durable: true };
       const parent = element.closest('[id],main,nav,header,footer,section,article');
       if (parent?.id && name) return { locator: `#${escape(parent.id)} ${element.tagName.toLowerCase()}`, method: 'durable_ancestry', durable: true };
       return { locator: '', method: 'none', durable: false };
@@ -157,7 +185,10 @@ async function inspectSegment(page, route, segmentIndex) {
           const page = await context.newPage();
           await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
           await page.waitForLoadState('networkidle', { timeout: 12000 }).catch(() => undefined);
+          const intro = await dismissBlockingIntro(page);
           await stabilize(page);
+          const resolvedUrl = page.url();
+          const resolvedRoute = new URL(resolvedUrl).pathname.replace(/\/+$/, '') || '/';
           const height = await page.evaluate(() => Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0));
           const step = Math.max(1, Math.floor(viewport.height * 0.8));
           const positions = [];
@@ -170,7 +201,7 @@ async function inspectSegment(page, route, segmentIndex) {
             const y = uniquePositions[segment];
             await page.evaluate((top) => window.scrollTo({ top, behavior: 'instant' }), y);
             await sleep(180);
-            candidates.push(...await inspectSegment(page, route, segment));
+            candidates.push(...await inspectSegment(page, resolvedRoute, segment));
             const screenshotPath = path.join(outputDir, `route-${route.replace(/[^a-z0-9]+/gi, '_') || 'root'}-${viewport.name}-pass${pass}-segment${segment}.png`);
             const screenshotBuffer = await page.screenshot({ path: screenshotPath, fullPage: false });
             const screenshotSize = pngDimensions(screenshotBuffer);
@@ -202,8 +233,11 @@ async function inspectSegment(page, route, segmentIndex) {
             render_id: `${route}:${viewport.name}:${pass}`,
             url,
             route,
+            resolved_url: resolvedUrl,
+            resolved_route: resolvedRoute,
             viewport: viewport.name,
             viewport_size: { width: viewport.width, height: viewport.height },
+            intro,
             document_height: height,
             segment_count: uniquePositions.length,
             segments: segmentMetadata,

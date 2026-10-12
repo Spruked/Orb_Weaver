@@ -245,6 +245,14 @@ def test_owner_pointer_authority_is_signed_and_persisted_in_canonical_vault(tmp_
     )
     assert denied.status_code == 404
 
+    refused_green = client.post(
+        f"/api/lifecycle-jobs/{job_id}/pointers/book-consult/authority",
+        headers=auth(owner_token),
+        json={"decision": "green", "notes": "The live target is missing.", "live_resolution": {"ok": False, "route": "/"}},
+    )
+    assert refused_green.status_code == 409
+    assert "Make Green refused" in refused_green.json()["detail"]
+
     response = client.post(
         f"/api/lifecycle-jobs/{job_id}/pointers/book-consult/authority",
         headers=auth(owner_token),

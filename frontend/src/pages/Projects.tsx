@@ -21,7 +21,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { api, CrawlJob, LifecycleJob, LifecycleJobType, PreflightReport, Project } from '../services/api';
+import { api, CrawlJob, Customer, LifecycleJob, LifecycleJobType, PreflightReport, Project } from '../services/api';
 import { canonicalOrbBaseUrl, setActiveOrbProjectContext } from '../orb/activeProjectContext';
 
 const ACTIVE_CRAWL_STATUSES = new Set(['pending', 'running', 'cancel_requested']);
@@ -162,7 +162,7 @@ const EmptyPanel: React.FC<{ title: string; detail: string }> = ({ title, detail
   </div>
 );
 
-const Projects: React.FC = () => {
+const Projects: React.FC<{ customer?: Customer }> = ({ customer }) => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [crawlJobs, setCrawlJobs] = useState<CrawlJob[]>([]);
@@ -915,6 +915,7 @@ const Projects: React.FC = () => {
               {isStartingAudit ? 'Starting…' : selectedProject.latest_audit_id ? 'Re-audit' : 'Run audit'}
             </button>
             <button onClick={() => navigate(`/reports/${selectedProject.id}`)} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"><FileText className="h-4 w-4" /> Reports</button>
+            {customer?.is_admin && <button onClick={() => navigate(`/admin/pointer-console/${selectedProject.id}`)} className="inline-flex items-center gap-2 rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-sm font-bold text-cyan-800 hover:bg-cyan-100"><ShieldCheck className="h-4 w-4" /> Pointer console</button>}
             {selectedProject.ga4_property_id && <button onClick={() => navigate(`/ga4/${selectedProject.ga4_property_id}`)} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-bold text-blue-700 hover:bg-blue-100"><BarChart3 className="h-4 w-4" /> GA4</button>}
           </div>
         </div>

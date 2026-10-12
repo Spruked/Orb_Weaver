@@ -1393,7 +1393,9 @@ export interface WebsiteOrbPointerRecord {
   confidence_class?: 'VERIFIED' | 'STABLE' | 'UNCERTAIN' | 'BLOCKED';
   finding_class?: 'CONFIRMED' | 'TRANSIENT' | 'DYNAMIC' | 'CONFLICT' | 'UNVERIFIED' | 'PASSED';
   finding_subreason?: string;
-  pointer_health?: 'NEW' | 'VERIFIED' | 'RECOVERED' | 'OWNER_VERIFIED' | 'DEPRECATED' | 'REMOVED';
+  pointer_health?: 'NEW' | 'VERIFIED' | 'RECOVERED' | 'OWNER_VERIFIED' | 'OWNER_REVIEWED' | 'OWNER_REJECTED' | 'MOVED' | 'DEPRECATED' | 'REMOVED';
+  owner_authority?: { state?: string; reviewer?: string; decided_at?: string; notes?: string; signature_hash?: string };
+  authority_history?: Array<Record<string, unknown>>;
   runtime_policy?: {
     may_point?: boolean;
     may_click?: boolean;
@@ -1887,6 +1889,18 @@ export const api = {
       `/api/lifecycle-jobs/${jobId}/pointers/${encodeURIComponent(targetId)}/authority`,
       { method: 'POST', body: JSON.stringify({ decision, notes }) }
     ),
+  getAdminPointerConsole: (projectId: string) =>
+    request<{
+      schema: string;
+      project: { id: string; name?: string | null; domain: string };
+      job_id: string;
+      target_url: string;
+      proxy_url: string;
+      authority_source: string;
+      authority_log: Record<string, unknown>;
+      authority_records: WebsiteOrbPointerRecord[];
+      target_count: number;
+    }>(`/api/admin/pointer-console/${encodeURIComponent(projectId)}`),
   verifyLifecycleEvidence: (jobId: string) =>
     request<{ valid: boolean; previous_manifest_chain_valid: boolean }>(`/api/lifecycle-jobs/${jobId}/evidence/verify`),
   startCrawl: (projectId: string, config: CrawlConfig) =>

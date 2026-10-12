@@ -28,7 +28,7 @@ if REPO_IMPORT_ROOT not in sys.path:
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse, Response
 import httpx
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, or_
@@ -90,6 +90,7 @@ from motion_runtime.server.pointer.pointer_recovery import (
     run_pointer_recovery_capture,
 )
 from app.orb.site_learning import classify_answer_state, lookup_verified_case, record_interaction
+from app.orb.pointer_admin_overlay import build_pointer_admin_overlay
 from app.orb.cco_runtime import build_runtime_trace
 from app.orb.articulation import articulate
 from app.orb.turn_resolver import CanonicalTurnResolver
@@ -723,8 +724,9 @@ class ReviewDecisionRequest(BaseModel):
 
 
 class PointerAuthorityDecisionRequest(BaseModel):
-    decision: str = Field(pattern="^(approve|reject)$")
+    decision: str = Field(pattern="^(approve|reject|green|blue|red)$")
     notes: str = Field(default="", max_length=4000)
+    live_resolution: Optional[Dict[str, Any]] = None
 
 
 class PublicPreflightRequest(BaseModel):
@@ -1219,6 +1221,41 @@ def require_admin(
     if not customer.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     return customer
+
+
+def _pointer_console_project(project_id: str, db: Session) -> Project:
+    project = db.get(Project, int(project_id)) if str(project_id).isdigit() else None
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
+def _pointer_console_records(project: Project) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    context_root = client_root(project.domain) / "website_orb_context"
+    pointer_map = _load_json_if_present(context_root / "pointer_plot_map.json") or {}
+    authority_log = _load_json_if_present(context_root / "pointer_authority.json") or {}
+    latest_decisions = {
+        str(item.get("target_id")): item
+        for item in authority_log.get("decisions") or []
+        if isinstance(item, dict) and item.get("target_id")
+    }
+    records = []
+    for original in pointer_map.get("records") or []:
+        record = dict(original)
+        decision = latest_decisions.get(str(record.get("target_id") or ""))
+        if decision and not record.get("owner_authority"):
+            record["owner_authority"] = {
+                "state": {
+                    "green": "OWNER_VERIFIED",
+                    "blue": "OWNER_REVIEWED",
+                    "red": "OWNER_REJECTED",
+                }.get(str(decision.get("decision") or "").lower(), decision.get("decision")),
+                "reviewer": decision.get("reviewer"),
+                "decided_at": decision.get("decided_at"),
+                "notes": decision.get("notes"),
+            }
+        records.append(record)
+    return authority_log, records
 
 
 def _serialize_cart_item(item: CartItem) -> Dict:
@@ -10981,6 +11018,99 @@ async def admin_browser_lab_tools(_admin: Customer = Depends(require_admin)):
     }
 
 
+@app.get("/api/admin/pointer-console/{project_id}")
+async def admin_pointer_console(
+    project_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    project = _pointer_console_project(project_id, db)
+    authority_log, records = _pointer_console_records(project)
+    job = (
+        db.query(LifecycleJob)
+        .filter(LifecycleJob.project_id == project.id, LifecycleJob.job_type == "POINTER_RECOVERY")
+        .order_by(LifecycleJob.id.desc())
+        .first()
+    )
+    if not job:
+        raise HTTPException(status_code=409, detail="No Pointer Recovery job is available for this project")
+    base_url = str(request.base_url).rstrip("/")
+    return {
+        "schema": "orb_weaver.admin_pointer_console.v1",
+        "project": {"id": str(project.id), "name": project.name, "domain": project.domain},
+        "job_id": str(job.id),
+        "target_url": _project_target_url(project),
+        "proxy_url": f"{base_url}/api/admin/pointer-console/{project.id}/proxy",
+        "authority_source": "pointer_authority.json",
+        "authority_log": authority_log,
+        "authority_records": records,
+        "target_count": len(records),
+    }
+
+
+@app.get("/api/admin/pointer-console/{project_id}/proxy")
+@app.get("/api/admin/pointer-console/{project_id}/proxy/{requested_path:path}")
+async def admin_pointer_console_proxy(
+    project_id: str,
+    request: Request,
+    requested_path: str = "",
+    db: Session = Depends(get_db),
+    _admin: Customer = Depends(require_admin),
+):
+    project = _pointer_console_project(project_id, db)
+    target_root = _project_target_url(project)
+    target = urlparse(target_root)
+    safe_path = "/" + requested_path.lstrip("/") if requested_path else "/"
+    target_url = f"{target.scheme}://{target.netloc}{safe_path}"
+    if request.url.query:
+        target_url = f"{target_url}?{request.url.query}"
+    try:
+        async with httpx.AsyncClient(
+            timeout=30.0,
+            follow_redirects=True,
+            headers={"User-Agent": "Orb-Weaver-Admin-Pointer-Proxy/1.0"},
+        ) as client:
+            upstream = await client.get(target_url)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Customer site proxy failed: {exc}")
+    final = urlparse(str(upstream.url))
+    if final.netloc.lower() != target.netloc.lower():
+        raise HTTPException(status_code=502, detail="Customer site redirected outside its configured host")
+    content_type = upstream.headers.get("content-type", "application/octet-stream")
+    if "text/html" not in content_type.lower():
+        return Response(
+            content=upstream.content,
+            status_code=upstream.status_code,
+            media_type=content_type.split(";", 1)[0],
+            headers={"Cache-Control": "no-store"},
+        )
+    _, records = _pointer_console_records(project)
+    latest_job = (
+        db.query(LifecycleJob)
+        .filter(LifecycleJob.project_id == project.id, LifecycleJob.job_type == "POINTER_RECOVERY")
+        .order_by(LifecycleJob.id.desc())
+        .first()
+    )
+    base_url = str(request.base_url).rstrip("/")
+    overlay_config = {
+        "authority_records": records,
+        "job_id": str(latest_job.id) if latest_job else "",
+        "decision_url": f"{base_url}/api/lifecycle-jobs/{latest_job.id if latest_job else 0}/pointers/__TARGET_ID__/authority",
+        "site_route": final.path.rstrip("/") or "/",
+        "proxy_url": f"{base_url}/api/admin/pointer-console/{project.id}/proxy",
+        "target_origin": f"{target.scheme}://{target.netloc}",
+    }
+    overlay = build_pointer_admin_overlay(overlay_config)
+    html = upstream.text
+    injection = f"<base href=\"{target.scheme}://{target.netloc}/\"><script>{overlay}</script>"
+    if re.search(r"<head(?:\\s[^>]*)?>", html, flags=re.IGNORECASE):
+        html = re.sub(r"(<head(?:\\s[^>]*)?>)", rf"\1{injection}", html, count=1, flags=re.IGNORECASE)
+    else:
+        html = injection + html
+    return HTMLResponse(content=html, status_code=upstream.status_code, headers={"Cache-Control": "no-store"})
+
+
 @app.post("/api/admin/browser-lab/run")
 async def admin_browser_lab_run(
     payload: BrowserLabToolRequest,
@@ -12173,6 +12303,7 @@ async def decide_pointer_authority(
     if not pointer_map:
         raise HTTPException(status_code=409, detail="The canonical pointer map is unavailable")
 
+    admin_console_decision = bool(customer.is_admin and payload.decision in {"green", "blue", "red"})
     matching_item: Optional[ReviewItem] = None
     reviewed_pointer: Optional[Dict[str, Any]] = None
     for review_item in job.review_items:
@@ -12186,7 +12317,7 @@ async def decide_pointer_authority(
                 break
         if reviewed_pointer:
             break
-    if not matching_item or not reviewed_pointer:
+    if not matching_item and not admin_console_decision:
         raise HTTPException(status_code=409, detail="Pointer target is not part of this job's owner review evidence")
 
     canonical_pointer = next(
@@ -12197,8 +12328,17 @@ async def decide_pointer_authority(
         None,
     )
     identity_fields = ("page_route", "meaning", "semantic_locator", "content_fingerprint", "structural_context", "allowed_actions")
-    if not canonical_pointer or any(canonical_pointer.get(field) != reviewed_pointer.get(field) for field in identity_fields):
+    if not canonical_pointer:
+        raise HTTPException(status_code=404, detail="Pointer target not found")
+    if reviewed_pointer and any(canonical_pointer.get(field) != reviewed_pointer.get(field) for field in identity_fields):
         raise HTTPException(status_code=409, detail="Canonical pointer identity changed after review evidence was captured; run a fresh recovery")
+
+    if payload.decision == "green":
+        live = payload.live_resolution or {}
+        canonical_route = urlparse(str(canonical_pointer.get("page_route") or "")).path.rstrip("/") or "/"
+        live_route = str(live.get("route") or "").rstrip("/") or "/"
+        if live.get("ok") is not True or live_route != canonical_route or not live.get("selector") or not isinstance(live.get("rect"), dict):
+            raise HTTPException(status_code=409, detail="Make Green refused: live DOM resolution did not produce a unique, visible, route-matched target")
 
     decided_at = datetime.now(timezone.utc).isoformat()
     notes = payload.notes.strip()
@@ -12216,7 +12356,7 @@ async def decide_pointer_authority(
         json.dumps(signature_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     try:
-        if payload.decision == "approve":
+        if payload.decision in {"approve", "green"}:
             updated_map = promote_owner_verified_pointer(
                 pointer_map,
                 target_id,
@@ -12224,6 +12364,16 @@ async def decide_pointer_authority(
                 signature_hash=signature_hash,
                 notes=notes,
                 decided_at=decided_at,
+            )
+        elif payload.decision == "blue":
+            updated_map = promote_owner_verified_pointer(
+                pointer_map,
+                target_id,
+                reviewer=customer.email,
+                signature_hash=signature_hash,
+                notes=notes,
+                decided_at=decided_at,
+                authority_state="OWNER_REVIEWED",
             )
         else:
             updated_map = reject_owner_pointer(
@@ -12251,25 +12401,26 @@ async def decide_pointer_authority(
     publish_recovered_pointer_map(updated_map, pointer_path)
     publish_recovered_pointer_map(authority_log, authority_path)
 
-    pointers = (matching_item.details or {}).get("pointers") or []
-    details = dict(matching_item.details or {})
-    decisions = dict(details.get("pointer_decisions") or {})
-    decisions[target_id] = decision_record
-    details["pointer_decisions"] = decisions
-    matching_item.details = details
-    expected_ids = {
-        str(pointer.get("target_id"))
-        for pointer in pointers
-        if isinstance(pointer, dict) and pointer.get("target_id")
-    }
-    if expected_ids and expected_ids.issubset(decisions):
-        matching_item.status = "decided"
-        matching_item.decision = "resolved"
-        matching_item.reviewer = customer.email
-        matching_item.decided_at = datetime.fromisoformat(decided_at)
-        matching_item.signature_hash = hashlib.sha256(
-            json.dumps(decisions, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
+    if matching_item:
+        pointers = (matching_item.details or {}).get("pointers") or []
+        details = dict(matching_item.details or {})
+        decisions = dict(details.get("pointer_decisions") or {})
+        decisions[target_id] = decision_record
+        details["pointer_decisions"] = decisions
+        matching_item.details = details
+        expected_ids = {
+            str(pointer.get("target_id"))
+            for pointer in pointers
+            if isinstance(pointer, dict) and pointer.get("target_id")
+        }
+        if expected_ids and expected_ids.issubset(decisions):
+            matching_item.status = "decided"
+            matching_item.decision = "resolved"
+            matching_item.reviewer = customer.email
+            matching_item.decided_at = datetime.fromisoformat(decided_at)
+            matching_item.signature_hash = hashlib.sha256(
+                json.dumps(decisions, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest()
 
     db.flush()
     open_critical = db.query(ReviewItem).filter(
@@ -12277,7 +12428,7 @@ async def decide_pointer_authority(
         ReviewItem.severity == "critical",
         ReviewItem.status == "open",
     ).count()
-    if open_critical == 0:
+    if matching_item and open_critical == 0:
         quality = updated_map.get("quality") or assess_pointer_quality(updated_map)
         guidance_count = guidance_eligible_pointer_count(updated_map)
         # Target guidance is local authority. Global map recovery remains a
@@ -12309,7 +12460,7 @@ async def decide_pointer_authority(
         job.phase = "pointer_authority_review_complete" if guidance_complete else "pointer_authority_threshold_blocked"
     db.commit()
 
-    if open_critical == 0 and baseline_crawl:
+    if matching_item and open_critical == 0 and baseline_crawl:
         _sync_website_orb_execution_context(project, baseline_crawl, updated_map)
 
     if job.evidence_root:

@@ -237,15 +237,42 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
           </div>
         </section>
 
-        <aside className="weaver-guide" aria-live="polite">
-          <button type="button" className="weaver-guide-morb-mark" onClick={activateWeaver} aria-label="Activate Weaver voice guidance">
+        <aside className="weaver-guide" aria-labelledby="morb-guide-title" aria-live="polite">
+          <button type="button" className="weaver-guide-morb-mark" onClick={activateWeaver} aria-label="Activate Weaver guidance">
             <img src="/orb-morbs/purplemorb50px.png" alt="" aria-hidden="true" />
-            <span>MORBS</span>
+            <span>MORB GUIDANCE</span>
           </button>
-          <p className="weaver-guide-label">MORBS · OPTIONAL GUIDANCE</p>
-          <h2>{isSignup ? `Step ${step} of 2` : 'Resume your workspace'}</h2>
-          <p>{guidance}</p>
-          <p className="weaver-guide-footnote">Click Weaver whenever you want more help. Voice begins only when you activate it.</p>
+          <p className="weaver-guide-label">SITE OPERATIONS MESH · OPTIONAL GUIDANCE</p>
+          <h2 id="morb-guide-title">{isSignup ? `Step ${step} of 2` : 'Resume your workspace'}</h2>
+          <p className="weaver-guide-intro">{guidance}</p>
+
+          <div className="weaver-guide-divider" />
+
+          <section className="weaver-guide-section" aria-labelledby="morb-role-title">
+            <h3 id="morb-role-title">What MORBs do</h3>
+            <div className="weaver-guide-capabilities">
+              <div>
+                <span className="weaver-guide-icon" aria-hidden="true">⌕</span>
+                <p><strong>Research & compare</strong><span>Find similar products, prices, and specifications.</span></p>
+              </div>
+              <div>
+                <span className="weaver-guide-icon" aria-hidden="true">⌁</span>
+                <p><strong>Inspect & diagnose</strong><span>Check pages, catalog data, availability, and problems.</span></p>
+              </div>
+              <div>
+                <span className="weaver-guide-icon" aria-hidden="true">↗</span>
+                <p><strong>Report & assist</strong><span>Send findings through the mesh to support the visitor.</span></p>
+              </div>
+            </div>
+          </section>
+
+          <div className="weaver-guide-boundary">
+            <div><span className="weaver-guide-boundary-label">MORBs</span><strong>Inform and assist</strong></div>
+            <span className="weaver-guide-arrow" aria-hidden="true">→</span>
+            <div><span className="weaver-guide-boundary-label">PRIMARY ORB</span><strong>Coordinates & invokes</strong></div>
+          </div>
+          <p className="weaver-guide-footnote">MORBs never repair, build, or change your site. Weaver coordinates the request and invokes governed capabilities; the Governor permits or denies, a bounded runtime executes, and A.I.M.S. retains the evidence.</p>
+          <button type="button" className="weaver-guide-action" onClick={activateWeaver}>Activate Weaver guidance <span aria-hidden="true">→</span></button>
         </aside>
       </main>
     </div>

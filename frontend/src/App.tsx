@@ -20,6 +20,7 @@ import WelcomeWorkspace from './pages/WelcomeWorkspace';
 import Account from './pages/Account';
 import Cart from './pages/Cart';
 import AdminCustomers from './pages/AdminCustomers';
+import AdminPointerConsole from './pages/AdminPointerConsole';
 import LegalPage from './pages/LegalPage';
 import RouteScrollReset from './components/RouteScrollReset';
 import GoogleAnalyticsTracker from './components/GoogleAnalyticsTracker';
@@ -205,7 +206,7 @@ function App() {
           <Route path="/diagnostics" element={<DiagnosticsPlaceholder customer={customer} />} />
           <Route path="/now/desktop-orb" element={<DesktopOrbNow />} />
           <Route path="/web-weave" element={<WebWeave />} />
-          <Route path="/projects" element={<Projects />} />
+          <Route path="/projects" element={<Projects customer={customer} />} />
           <Route path="/scan-center" element={<ScanCenter />} />
           <Route path="/crawl" element={<CrawlJobs />} />
           <Route path="/crawl/:jobId" element={<CrawlJob />} />
@@ -219,6 +220,7 @@ function App() {
           <Route path="/cart" element={<Cart />} />
           <Route path="/checkout/success" element={<Cart />} />
           <Route path="/admin/customers" element={<AdminCustomers />} />
+          <Route path="/admin/pointer-console/:projectId" element={<AdminPointerConsole customer={customer} />} />
           <Route path="/account" element={<Account customer={customer} onLogout={handleLogout} />} />
         </Routes>
       </Layout>

@@ -8,6 +8,7 @@ from motion_runtime.server.pointer.pointer_recovery import (
     reject_owner_pointer,
     reconcile_pointer_recovery,
 )
+from app.orb.pointer_admin_overlay import build_pointer_admin_overlay
 
 
 def record(target_id, confidence_class, locator, meaning="button: Request discussion", route="/"):
@@ -112,6 +113,30 @@ def test_duplicate_targets_use_conflict_finding_class():
     recovered = reconcile_pointer_recovery({"records": duplicated}, {"observations": []})
     assert {pointer["finding_class"] for pointer in recovered["records"]} == {"CONFLICT"}
     assert all(pointer["finding_subreason"] == "selector_not_durable" for pointer in recovered["records"])
+
+
+def test_stale_duplicate_locator_is_disposed_when_live_dom_has_one_replacement():
+    first = record("old-about", "UNCERTAIN", 'a[href="/about"]', "button: About")
+    second = record("old-explore", "UNCERTAIN", 'a[href="/about"]', "button: Explore True Mark")
+    recovered = reconcile_pointer_recovery(
+        {"records": [first, second]},
+        {"observations": [{
+            "render_id": "root:desktop:1",
+            "route": "/",
+            "candidates": [{
+                "identity_key": "/|footer|a|link|how it works|/about",
+                "route": "/",
+                "parent_scope": "footer:nth-of-type(1)",
+                "accessible_name": "How It Works",
+                "locator": 'a[href="\\/about"]',
+                "durable": True,
+            }],
+        }]},
+    )
+    assert {item["finding_class"] for item in recovered["records"]} == {"NOT_FOUND"}
+    assert all(item["status"] == "inactive" for item in recovered["records"])
+    assert recovered["quality"]["duplicate_conflict_count"] == 0
+    assert recovered["recovery"]["stale_identity_count"] == 2
 
 
 def test_recovery_rejects_short_similarly_named_navigation_candidate():
@@ -222,6 +247,47 @@ def test_rescan_retains_exact_owner_rejection_and_keeps_it_excluded():
     assert retained["authority_reconciliation"]["previous_owner_rejected_count"] == 1
     assert retained["authority_reconciliation"]["retained_rejected_count"] == 1
     assert retained["authority_reconciliation"]["demoted_count"] == 0
+
+
+def test_admin_red_authority_persists_across_rescan_with_history():
+    original = record("manual-red", "STABLE", "#manual-red", "button: Manual red")
+    rejected = reject_owner_pointer(
+        {"records": [original]},
+        "manual-red",
+        reviewer="admin@example.com",
+        signature_hash="signed-red",
+        notes="Keep this target blocked.",
+    )
+    rescanned = merge_canonical_pointer_authority(rejected, {"records": [dict(original)]})
+    pointer = rescanned["records"][0]
+    assert pointer["pointer_health"] == "OWNER_REJECTED"
+    assert pointer["runtime_policy"]["may_point"] is False
+    assert pointer["owner_authority"]["state"] == "OWNER_REJECTED"
+    assert any(event["event"] == "owner_rejection_retained_after_rescan" for event in pointer["authority_history"])
+
+
+def test_admin_blue_authority_remains_review_only():
+    reviewed = promote_owner_verified_pointer(
+        {"records": [record("manual-blue", "UNCERTAIN", "#manual-blue")]},
+        "manual-blue",
+        reviewer="admin@example.com",
+        signature_hash="signed-blue",
+        authority_state="OWNER_REVIEWED",
+    )
+    pointer = reviewed["records"][0]
+    assert pointer["pointer_health"] == "OWNER_REVIEWED"
+    assert pointer["runtime_policy"]["may_point"] is False
+    assert pointer["owner_authority"]["state"] == "OWNER_REVIEWED"
+
+
+def test_admin_overlay_embeds_every_authority_record():
+    records = [record(f"target-{index}", "UNCERTAIN", f"#target-{index}") for index in range(3)]
+    script = build_pointer_admin_overlay({"authority_records": records, "decision_url": "/decide"})
+    assert script.count('"target_id":"target-0"') == 1
+    assert script.count('"target_id":"target-1"') == 1
+    assert script.count('"target_id":"target-2"') == 1
+    assert "data-total" in script
+    assert "Make Green" in script and "Make Blue" in script and "Make Red" in script
 
 
 def test_guidance_requires_explicit_target_permission_and_safe_state():
