@@ -2797,8 +2797,9 @@ async def _transcribe_with_faster_whisper(audio: UploadFile) -> str:
         raise HTTPException(status_code=502, detail=f"Faster-whisper STT failed: {exc}") from exc
 
     transcript = str(payload.get("text") or "").strip()
-    if not transcript:
-        raise HTTPException(status_code=422, detail="Faster-whisper did not return a transcript")
+    # Silence is a valid microphone outcome, not a malformed request. The
+    # caller owns the visitor-facing no-speech response and can keep the
+    # voice turn inside the normal governed pipeline.
     return transcript
 
 def _load_orb_controller():

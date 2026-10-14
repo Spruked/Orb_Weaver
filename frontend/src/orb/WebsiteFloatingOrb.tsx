@@ -573,6 +573,12 @@ const WebsiteFloatingOrb: React.FC = () => {
         const audio = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
         audioChunksRef.current = [];
 
+        if (!audio.size) {
+          setStatusLine('I did not hear speech. Tap the ORB when you are ready.');
+          setMode('idle');
+          return;
+        }
+
         try {
           const result = await api.websiteOrbVoice(audio, undefined, {
             target_url: window.location.href,
