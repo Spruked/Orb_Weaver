@@ -71,11 +71,45 @@ reported as credential setup failures; they are not treated as zero analytics.
 > [!IMPORTANT]
 > **IMMUTABLE STORAGE LAW:** `vault_system/` is the sole authoritative data system. Every persisted scan, raw-data artifact, customer record, authentication session, project, checkout order, verified payment, entitlement, workflow state, report, cache, and learned observation must be written into and read back from the canonical Vault. Component-local or parallel stores are prohibited. See [IMMUTABLE_VAULT_STORAGE_LAW.md](./IMMUTABLE_VAULT_STORAGE_LAW.md).
 
+## Developer replay of the introduction and tour
+
+An owner can replay the complete first-visitor introduction and the existing
+full scripted Website ORB tour without creating a new account or clearing
+browser storage:
+
+```text
+https://<orb-weaver-host>/?orbStartupReset=1
+```
+
+The replay command always starts at the landing page, including for an
+authenticated account or a returning visitor. It clears only replay-scoped
+session state—splash/readiness flags, introduction progress, first-encounter
+state, and the Website ORB journey—then runs the existing narrated tour with
+its LiDAR/spatial movement, MORB travel, Point/Ping guidance, and live target
+verification paths. Account records, credentials, authentication sessions,
+and normal customer data are preserved.
+
+Replay remains active while the tour changes routes or reloads. It ends after
+the scripted tour completes; if the tour is interrupted, opening the same URL
+again restarts it cleanly. Outside the explicit replay request, normal
+authenticated and returning-visitor routing is unchanged.
+
+The implementation is covered by the startup and journey regression tests.
+The production bundle and browser replay entry/reset behavior have been
+verified. Full narration, STT, TTS, and live pointer completion require the
+deployed backend and browser permissions/services, so mocked browser smoke
+verification must not be treated as evidence that those external services are
+healthy.
+
 ## Current landing-tour target
 
 [Target One](docs/TARGET_ONE_LANDING_TOUR.md) is the approved five-chapter, nine-stop landing-page tour: Meet Weaver → Why Weaving Exists → Trust → How Orb Weaver Builds Intelligence → Preflight Decision. The Target One marker is implemented: it retains the existing introduction, cognition, TTS, verified Pointer, spatial mapping and movement, and interruption/resume paths. The controller waits for an explicit visitor choice; it never automatically starts Preflight or continues into later workflows.
 
-Target One is the full Home / Landing Page walkthrough. Future targets are Features, Spatial Mapping and Movement, How It Works, and Preflight, followed by authentication and the customer purchase/onboarding flow. They are not part of the current landing controller. See the [development log](docs/DEV_LOG.md) for the current handoff and validation boundary.
+Target One remains the approved five-chapter, nine-stop landing-page
+controller. The developer replay path additionally invokes the existing full
+`SITE_TOUR_SCRIPT` for the broader narrated introduction and tour; it does not
+change the normal visitor handoff or customer onboarding rules. See the
+[development log](docs/DEV_LOG.md) for the current validation boundary.
 
 ## Features
 

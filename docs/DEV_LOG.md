@@ -1,5 +1,32 @@
 # Orb Weaver Development Log
 
+## 2026-10-14 — Authenticated developer replay for the complete introduction and tour
+
+- Corrected `/?orbStartupReset=1` so it reaches the landing experience before
+  the normal authenticated-account or returning-visitor redirect can run.
+- Reset the replay-scoped session state: splash completion, startup readiness,
+  introduction progress, first-encounter state, and the Website ORB journey.
+  Authentication tokens, account records, and the returning-visitor marker
+  remain untouched.
+- Added a session-scoped replay marker so internal tour navigation and reloads
+  remain in replay mode. The marker is removed only after the existing full
+  `SITE_TOUR_SCRIPT` completes; an interrupted tour can therefore be resumed.
+- Preserved normal routing outside replay mode: authenticated visitors still
+  enter the workspace and returning unauthenticated visitors still enter
+  login.
+- Added regression coverage for authenticated, returning, fresh, replay, and
+  journey-state behavior. Focused frontend tests passed: 22 tests.
+- TypeScript typecheck and the production frontend build passed. The build
+  emitted existing ESLint warnings but no compilation errors.
+- Browser smoke verification confirmed that an authenticated token and
+  returning-visitor marker survive the reset while prior journey and
+  first-encounter state are cleared and the landing page is shown. Full
+  production voice/STT and live pointer-target completion still require a
+  deployed backend and real browser service responses; the smoke used mocked
+  API responses and does not claim that external-service verification.
+- Changes were pushed in commit `d8bd366` on branch
+  `memory-consent-boundary`.
+
 ## 2026-10-10 — Public guidance terminology and verified ping coverage
 
 - Reframed the public navigation explainer as **Spatial Mapping and Movement**;
