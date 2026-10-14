@@ -42,6 +42,23 @@ eligibility is blocked when the catalog is contaminated, insufficient, or only
 partial. Capability coverage reports separate SEO, Marketing, and ORB-readiness
 dimensions.
 
+### Customer scan and Website ORB packages
+
+The customer product structure is documented in the
+[downloadable ORB product review](docs/architecture/DOWNLOADABLE_ORB_PRODUCT_REVIEW.md)
+and is presented at the public [`/pricing`](frontend/src/pages/PublicPricing.tsx)
+route. The catalog separates four scan products—Full Website Intelligence,
+SEO, Dandy Ad Data, and Spatial Mapping—from three installable editions:
+Basic Website Visitor ORB, Enhanced Website Intelligence ORB, and Platinum
+Website ORB w/Premium Dock Station.
+
+Package prices intentionally begin as `TBD`. The owner can set price,
+visibility, and purchase availability in the authenticated `/admin/packages`
+controls. A package cannot enter the cart until it has both a price and an
+explicit purchase enablement. The catalog is persisted beneath the canonical
+Vault at `marketing/orb_package_catalog.json`; checkout and fulfillment remain
+subject to the existing ORBS entitlement and manufacturing gates.
+
 ### Evidence continuity and capability status
 
 Capability inventory is evidence-backed. A failed or cancelled retry remains
@@ -714,11 +731,13 @@ Expected artifacts include:
 - `reports/`
 - `local_index/client_index.sqlite`
 
-## Premium Intelligence Pack
+## Legacy service catalog and ORB package catalog
 
-The Premium Intelligence Pack is in the service catalog and checkout flow. It currently creates a cart item and checkout order. The intelligence artifacts are produced when preflight, crawl, and audit jobs run and are preserved into the canonical client vault.
-
-Automatic post-payment entitlement and fulfillment are not yet wired.
+The existing service catalog remains available for compatibility with current
+checkout records. New customer scan and Website ORB offerings are governed by
+the Vault-backed package catalog described above. Intelligence artifacts are
+produced by preflight, crawl, audit, Dandy, and pointer/spatial jobs and are
+preserved in the canonical client Vault.
 
 ## Documentation
 

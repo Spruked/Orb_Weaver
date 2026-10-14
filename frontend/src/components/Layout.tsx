@@ -48,6 +48,7 @@ const Layout: React.FC<LayoutProps> = ({ children, customer }) => {
     { path: '/cart', icon: ShoppingCart, label: 'Cart', hover: 'hover:border-yellow-400/60 hover:bg-yellow-400/15 hover:text-yellow-100' },
     ...(customer.is_admin ? [
       { path: '/admin/customers', icon: Shield, label: 'Admin', hover: 'hover:border-red-400/60 hover:bg-red-400/15 hover:text-red-100' },
+      { path: '/admin/packages', icon: Store, label: 'Package pricing', hover: 'hover:border-cyan-400/60 hover:bg-cyan-400/15 hover:text-cyan-100' },
       { path: 'http://localhost:21010/', icon: BrainCircuit, label: 'CALI CRM', reload: true, hover: 'hover:border-teal-400/60 hover:bg-teal-400/15 hover:text-teal-100' },
       { path: 'http://localhost:19000', icon: Mail, label: 'Prime Mail', reload: true, hover: 'hover:border-lime-400/60 hover:bg-lime-400/15 hover:text-lime-100' },
     ] : []),

@@ -117,6 +117,7 @@ from app.orb.memory_governance import (
 from app.orb.agency_cognition import AgencyCognitionRequest, agency_cognition
 from app.orb.nine_of_clubs import GuidanceMode, guidance_prompt, showcase_guidance_mode
 from app.orb.site_lexicon import weaver_lexical_context
+from app.orb.package_catalog import load_catalog, update_package
 from app.pack_generator import generate_pack_file
 from manufacturing.website_orb import manufacture_website_orb
 from app.services.chrome_devtools import ChromeDevToolsReviewRunner
@@ -862,6 +863,14 @@ class MarketplaceProductStatusPatch(BaseModel):
     approval_status: Optional[str] = Field(default=None, max_length=50)
     is_featured: Optional[bool] = None
     sort_order: Optional[int] = None
+
+
+class CustomerPackagePricingUpdate(BaseModel):
+    price_cents: Optional[int] = Field(default=None, ge=0)
+    currency: str = Field(default="usd", min_length=3, max_length=10)
+    purchasable: bool = False
+    active: bool = True
+    sort_order: Optional[int] = Field(default=None, ge=0)
 
 
 MARKETPLACE_ALLOWED_STATUS = {
@@ -11231,6 +11240,44 @@ async def marketplace_public_products(
     return [_serialize_marketplace_product(product, include_images=True) for product in products]
 
 
+@app.get("/api/orb/package-catalog")
+async def orb_package_catalog():
+    """Public scan and Website ORB package catalog.
+
+    This catalog is intentionally separate from crawled Site World and
+    marketplace provenance.  TBD packages are visible for product discovery
+    but remain unavailable to checkout until an administrator prices and
+    enables them.
+    """
+    return {
+        "schema": "orb_weaver.customer_package_catalog.v1",
+        "packages": load_catalog(VAULT_ROOT),
+    }
+
+
+@app.get("/api/admin/orb/package-catalog")
+async def admin_orb_package_catalog(_admin: Customer = Depends(require_admin)):
+    return {
+        "schema": "orb_weaver.customer_package_catalog.v1",
+        "packages": load_catalog(VAULT_ROOT),
+    }
+
+
+@app.patch("/api/admin/orb/package-catalog/{sku}")
+async def admin_update_orb_package_catalog(
+    sku: str,
+    payload: CustomerPackagePricingUpdate,
+    _admin: Customer = Depends(require_admin),
+):
+    if payload.purchasable and payload.price_cents is None:
+        raise HTTPException(status_code=400, detail="A package must have a price before it can be purchasable")
+    try:
+        packages = update_package(VAULT_ROOT, sku, payload.model_dump(exclude_unset=True))
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Customer package not found")
+    return {"schema": "orb_weaver.customer_package_catalog.v1", "packages": packages}
+
+
 @app.get("/api/marketplace/public/products/{product_id}")
 async def marketplace_public_product_detail(product_id: int, db: Session = Depends(get_db)):
     product = _get_marketplace_product_or_404(product_id, db)
@@ -11609,7 +11656,17 @@ async def admin_patch_marketplace_status(
 
 @app.get("/api/products")
 async def list_products():
-    return list(SERVICE_CATALOG.values())
+    products = list(SERVICE_CATALOG.values())
+    for package in load_catalog(VAULT_ROOT):
+        if package.get("active") and package.get("purchasable") and package.get("price_cents") is not None:
+            products.append({
+                "sku": package["sku"],
+                "name": package["name"],
+                "description": package["description"],
+                "unit_amount_cents": package["price_cents"],
+                "currency": package["currency"],
+            })
+    return products
 
 
 @app.get("/api/cart")
@@ -11624,6 +11681,16 @@ async def upsert_cart_item(
     customer: Customer = Depends(get_current_customer),
 ):
     product = SERVICE_CATALOG.get(payload.sku)
+    if not product:
+        package = next((item for item in load_catalog(VAULT_ROOT) if item.get("sku") == payload.sku), None)
+        if package and package.get("active") and package.get("purchasable") and package.get("price_cents") is not None:
+            product = {
+                "sku": package["sku"],
+                "name": package["name"],
+                "description": package["description"],
+                "unit_amount_cents": package["price_cents"],
+                "currency": package["currency"],
+            }
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     item = db.query(CartItem).filter(CartItem.customer_id == customer.id, CartItem.sku == payload.sku).first()

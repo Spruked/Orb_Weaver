@@ -1,5 +1,29 @@
 # Orb Weaver Development Log
 
+## 2026-10-14 — Downloadable ORB product review and TBD package catalog
+
+- Reviewed `manufacturing/templates/Website_Orb_Final`, the scan-bound
+  manufacturing path, `.orbpack` assembly, install contract, single-Vault
+  boundary, site-world/SKG payloads, commercial catalog, Dandy pack, and
+  pointer/spatial runtime artifacts.
+- Added the customer product review at
+  `docs/architecture/DOWNLOADABLE_ORB_PRODUCT_REVIEW.md`.
+- Defined four evidence products: Full Website Intelligence Scan, SEO Scan,
+  Dandy Ad Data Scan, and Spatial Mapping Scan.
+- Defined three installable editions: Basic Website Visitor ORB, Enhanced
+  Website Intelligence ORB, and Platinum Website ORB w/Premium Dock Station.
+- Added the Vault-backed package catalog. All seven packages begin as TBD and
+  non-purchasable; an admin must set a price and explicitly enable purchase.
+  The cart accepts a package SKU only after that guard passes.
+- Added the public `/pricing` page and authenticated `/admin/packages`
+  controls. Pricing remains TBD until the owner supplies the commercial
+  values.
+- Verification: Python compilation passed, package catalog tests passed 2/2,
+  frontend typecheck passed, production build passed with existing ESLint
+  warnings, and browser smoke rendered four scan cards plus three ORB cards.
+- Remaining gates are real prices, entitlement/fulfillment mapping, clean-host
+  installation, and live browser/STT/TTS/pointer acceptance.
+
 ## 2026-10-14 — Authenticated developer replay for the complete introduction and tour
 
 - Corrected `/?orbStartupReset=1` so it reaches the landing experience before

@@ -17,6 +17,7 @@ const publicNavItems: PublicNavItem[] = [
   { href: '/', label: 'Website ORB' },
   { href: '/how-it-works', label: 'How It Works' },
   { href: '/use-cases', label: 'Use Cases' },
+  { href: '/pricing', label: 'Pricing' },
   { href: '/founding-beta', label: 'Founding Beta' },
   { href: '/investor-contact', label: 'Investors' },
   { href: '/security', label: 'Vision & Product Philosophy' },

@@ -34,6 +34,7 @@ const PublicFooter: React.FC = () => {
             <a href="/lidar-guidance" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>LiDAR Guidance</a>
             <a href="/how-it-works" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>How It Works</a>
             <a href="/security" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Security</a>
+            <a href="/pricing" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Pricing & Packages</a>
             <a href="/now/desktop-orb" style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Desktop ORB</a>
             <a href={marketplaceUrl} style={{ color: 'inherit', textDecoration: 'none', fontSize: '14px' }}>Marketplace</a>
           </nav>

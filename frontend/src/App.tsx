@@ -20,6 +20,7 @@ import WelcomeWorkspace from './pages/WelcomeWorkspace';
 import Account from './pages/Account';
 import Cart from './pages/Cart';
 import AdminCustomers from './pages/AdminCustomers';
+import AdminPackageCatalog from './pages/AdminPackageCatalog';
 import AdminPointerConsole from './pages/AdminPointerConsole';
 import LegalPage from './pages/LegalPage';
 import RouteScrollReset from './components/RouteScrollReset';
@@ -33,6 +34,7 @@ import PublicFeatures from './pages/PublicFeatures';
 import PublicUseCases from './pages/PublicUseCases';
 import PublicSecurity from './pages/PublicSecurity';
 import PublicOrbWeaverArtifact from './pages/PublicOrbWeaverArtifact';
+import PublicPricing from './pages/PublicPricing';
 import LidarGuidance from './pages/LidarGuidance';
 import { api, authStore, Customer } from './services/api';
 import { marketplaceUrl } from './services/marketplaceUrl';
@@ -169,6 +171,9 @@ function App() {
   if (publicPath === '/security') {
     return renderPublicPage(<PublicSecurity />);
   }
+  if (publicPath === '/pricing') {
+    return renderPublicPage(<PublicPricing />);
+  }
   if (publicPath === '/orb-weaver') {
     return renderPublicPage(<PublicOrbWeaverArtifact />);
   }
@@ -226,6 +231,7 @@ function App() {
           <Route path="/cart" element={<Cart />} />
           <Route path="/checkout/success" element={<Cart />} />
           <Route path="/admin/customers" element={<AdminCustomers />} />
+          <Route path="/admin/packages" element={<AdminPackageCatalog />} />
           <Route path="/admin/pointer-console/:projectId" element={<AdminPointerConsole customer={customer} />} />
           <Route path="/account" element={<Account customer={customer} onLogout={handleLogout} />} />
         </Routes>

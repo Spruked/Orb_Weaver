@@ -583,6 +583,26 @@ export interface Product {
   currency: string;
 }
 
+export interface CustomerPackage {
+  sku: string;
+  name: string;
+  category: 'scan' | 'orb';
+  tier?: 'basic' | 'enhanced' | 'platinum';
+  description: string;
+  features: string[];
+  price_cents: number | null;
+  currency: string;
+  pricing_status: 'tbd' | 'set';
+  purchasable: boolean;
+  active: boolean;
+  sort_order: number;
+}
+
+export interface CustomerPackageCatalog {
+  schema: string;
+  packages: CustomerPackage[];
+}
+
 export interface MarketplaceItem {
   item_id: string;
   market_index_code: string;
@@ -1794,6 +1814,18 @@ export const api = {
   me: () => request<Customer>('/api/auth/me'),
   logout: () => request<{ status: string }>('/api/auth/logout', { method: 'POST' }),
   listProducts: () => request<Product[]>('/api/products'),
+  getCustomerPackageCatalog: () => request<CustomerPackageCatalog>('/api/orb/package-catalog'),
+  adminGetCustomerPackageCatalog: () => request<CustomerPackageCatalog>('/api/admin/orb/package-catalog'),
+  adminUpdateCustomerPackage: (sku: string, payload: {
+    price_cents: number | null;
+    currency: string;
+    purchasable: boolean;
+    active: boolean;
+    sort_order?: number;
+  }) => request<CustomerPackageCatalog>(`/api/admin/orb/package-catalog/${encodeURIComponent(sku)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }),
   listMarketplaceItems: async (category?: string) => {
     const products = await request<MarketplaceProductResponse[]>(
       `/api/marketplace/public/products${category ? `?category=${encodeURIComponent(category)}` : ''}`
