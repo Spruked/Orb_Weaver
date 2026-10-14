@@ -47,10 +47,12 @@ dimensions.
 The customer product structure is documented in the
 [downloadable ORB product review](docs/architecture/DOWNLOADABLE_ORB_PRODUCT_REVIEW.md)
 and is presented at the public [`/pricing`](frontend/src/pages/PublicPricing.tsx)
-route. The catalog separates four scan products—Full Website Intelligence,
-SEO, Dandy Ad Data, and Spatial Mapping—from three installable editions:
-Basic Website Visitor ORB, Enhanced Website Intelligence ORB, and Platinum
-Website ORB w/Premium Dock Station.
+route. The catalog separates three scan tiers—Basic, Enhanced, and Platinum
+Website Intelligence—from two specialized packages—SEO Intelligence and
+Dandy Advertising Intelligence—and three installable editions: Basic Website
+Visitor ORB, Enhanced Website Intelligence ORB, and Platinum Website ORB
+w/Premium Dock Station. Specialized packages can be purchased independently
+or added to a scan tier.
 
 Package prices intentionally begin as `TBD`. The owner can set price,
 visibility, and purchase availability in the authenticated `/admin/packages`

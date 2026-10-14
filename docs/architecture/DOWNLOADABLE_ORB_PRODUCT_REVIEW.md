@@ -43,16 +43,22 @@ runtime editions:
 
 | Product family | Package | Includes |
 | --- | --- | --- |
-| Scan | Full Website Intelligence Scan | Full crawl evidence, SEO findings, commercial catalog, Dandy pack, Site World/report files, and spatial readiness |
-| Scan | SEO Scan | Technical SEO, metadata/content, structured data, performance, accessibility, mobile, security, and prioritized recommendations |
-| Scan | Dandy Ad Data Scan | Candidate claims, offers, proof points, audience signals, ad angles, listener URLs, draft ad reads, and risk/approval state |
-| Scan | Spatial Mapping Scan | Pointer Plot Map, route/target identities, live verification readiness, recovery status, and unresolved targets |
+| Scan | Basic Website Intelligence Scan | Discovery, crawl inventory, content, navigation, basic technical health, foundational SEO, baseline spatial mapping, and downloadable evidence |
+| Scan | Enhanced Website Intelligence Scan | Basic plus deeper semantics, customer journeys, conversion paths, product intelligence, accessibility, responsive layouts, and expanded spatial analysis |
+| Scan | Platinum Website Intelligence Scan | Enhanced plus the complete applicable capability dataset, advanced spatial/workflow analysis, commercial opportunities, verification evidence, and comprehensive recommendations |
+| Specialized | SEO Intelligence Package | Technical SEO, search visibility, structured data, indexing, content opportunities, and supported keyword/competitive analysis |
+| Specialized | Dandy Advertising Intelligence Package | Advertising readiness, campaign landing pages, messaging consistency, conversion tracking, creative opportunities, and connected advertising data where available |
 | ORB | Basic Website Visitor ORB | Site-specific visitor guidance, voice-first interaction, approved context, and basic verified navigation |
 | ORB | Enhanced Website Intelligence ORB | Basic plus expanded scan evidence, commercial/SEO/Dandy/spatial context, and learning-loop runtime context |
 | ORB | Platinum Website ORB w/Premium Dock Station | Enhanced plus Premium Dock Station owner controls, deployment workflow, maintenance, and launch verification |
 
-The Full Website Intelligence Scan is the recommended prerequisite for the
-Enhanced and Platinum editions. A Basic ORB may be offered from a smaller
+The Platinum scan must represent the complete applicable scanning capability
+defined by the Master Capability List; it is not merely a larger PDF. The
+full scanning engine remains capable of collecting authorized measurements,
+while customer entitlement controls which analyses, reports, exports, and
+runtime capabilities are delivered. Expensive analyses and external API calls
+should run only when required by the purchased package. The Basic scan is the
+recommended starting point, and a Basic ORB may be offered from a smaller
 approved evidence set only when the installation readiness and target-quality
 gates pass.
 
@@ -60,7 +66,7 @@ gates pass.
 
 The authoritative catalog is exposed at `GET /api/orb/package-catalog` and is
 persisted under the canonical Vault as `marketing/orb_package_catalog.json`.
-All seven package records start with `price_cents: null`, `pricing_status: tbd`,
+All eight package records start with `price_cents: null`, `pricing_status: tbd`,
 and `purchasable: false`. This prevents an unpriced package from becoming a
 $0 checkout item.
 

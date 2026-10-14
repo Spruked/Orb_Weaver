@@ -586,7 +586,8 @@ export interface Product {
 export interface CustomerPackage {
   sku: string;
   name: string;
-  category: 'scan' | 'orb';
+  category: 'scan' | 'specialized' | 'orb' | 'upgrade';
+  product_group?: string;
   tier?: 'basic' | 'enhanced' | 'platinum';
   description: string;
   features: string[];
@@ -596,6 +597,9 @@ export interface CustomerPackage {
   purchasable: boolean;
   active: boolean;
   sort_order: number;
+  included_capabilities?: string[];
+  entitlement_rules?: Record<string, unknown>;
+  fulfillment?: Record<string, unknown>;
 }
 
 export interface CustomerPackageCatalog {
@@ -1822,6 +1826,10 @@ export const api = {
     purchasable: boolean;
     active: boolean;
     sort_order?: number;
+    features?: string[];
+    included_capabilities?: string[];
+    entitlement_rules?: Record<string, unknown>;
+    fulfillment?: Record<string, unknown>;
   }) => request<CustomerPackageCatalog>(`/api/admin/orb/package-catalog/${encodeURIComponent(sku)}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),

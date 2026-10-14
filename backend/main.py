@@ -871,6 +871,10 @@ class CustomerPackagePricingUpdate(BaseModel):
     purchasable: bool = False
     active: bool = True
     sort_order: Optional[int] = Field(default=None, ge=0)
+    features: Optional[List[str]] = None
+    included_capabilities: Optional[List[str]] = None
+    entitlement_rules: Optional[Dict[str, Any]] = None
+    fulfillment: Optional[Dict[str, Any]] = None
 
 
 MARKETPLACE_ALLOWED_STATUS = {

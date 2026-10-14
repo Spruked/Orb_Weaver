@@ -21,17 +21,17 @@ CATALOG_FILENAME = "orb_package_catalog.json"
 
 DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
     {
-        "sku": "scan-full-intelligence",
-        "name": "Full Website Intelligence Scan",
+        "sku": "scan-basic-intelligence",
+        "name": "Basic Website Intelligence Scan",
         "category": "scan",
-        "description": "The complete scan foundation for a customer Website ORB and decision-ready reporting.",
+        "tier": "basic",
+        "description": "Website discovery, crawl inventory, content, navigation, basic technical health, foundational SEO findings, and baseline spatial mapping.",
         "features": [
-            "Full website crawl and scan evidence",
-            "SEO audit and prioritized recommendations",
-            "Commercial catalog, products, services, and pricing evidence",
-            "Dandy promotional/ad-data pack with owner approval boundary",
-            "Site World, runtime context, and report files",
-            "Spatial mapping and verified pointer readiness assessment",
+            "Website discovery and crawl inventory",
+            "Content, navigation, and basic technical health",
+            "Foundational SEO findings",
+            "Baseline spatial mapping",
+            "Downloadable report and evidence files",
         ],
         "price_cents": None,
         "currency": "usd",
@@ -41,15 +41,17 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "sort_order": 10,
     },
     {
-        "sku": "scan-seo",
-        "name": "SEO Scan",
+        "sku": "scan-enhanced-intelligence",
+        "name": "Enhanced Website Intelligence Scan",
         "category": "scan",
-        "description": "A focused search, content, technical, performance, accessibility, and security scan.",
+        "tier": "enhanced",
+        "description": "Everything in Basic, plus deeper semantic analysis, customer journeys, conversion paths, product intelligence, accessibility, responsive layouts, and expanded spatial analysis.",
         "features": [
-            "Technical SEO and indexability findings",
-            "Content, headings, links, metadata, and structured-data review",
-            "Performance, accessibility, mobile, and security signals",
-            "Prioritized report and exportable recommendations",
+            "Everything in Basic",
+            "Deeper semantic and product intelligence",
+            "Customer journeys and conversion paths",
+            "Accessibility and responsive-layout analysis",
+            "Expanded spatial analysis and downloadable data",
         ],
         "price_cents": None,
         "currency": "usd",
@@ -59,15 +61,17 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "sort_order": 20,
     },
     {
-        "sku": "scan-dandy-ad-data",
-        "name": "Dandy Ad Data Scan",
+        "sku": "scan-platinum-intelligence",
+        "name": "Platinum Website Intelligence Scan",
         "category": "scan",
-        "description": "Source-grounded promotional intelligence extracted from public commercial website evidence.",
+        "tier": "platinum",
+        "description": "Everything in Enhanced, plus the complete applicable website intelligence dataset, advanced spatial mapping, workflow analysis, commercial opportunities, verification evidence, and comprehensive recommendations.",
         "features": [
-            "Candidate claims, offers, prices, and proof points",
-            "Target-customer signals and promotional angles",
-            "Listener URLs and draft 15/30/60-second ad reads",
-            "Risk flags and explicit owner-approval workflow",
+            "Everything in Enhanced",
+            "Complete applicable Master Capability List scan dataset",
+            "Advanced spatial mapping and verification evidence",
+            "Workflow analysis and commercial opportunities",
+            "Comprehensive recommendations and downloadable data",
         ],
         "price_cents": None,
         "currency": "usd",
@@ -77,15 +81,15 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "sort_order": 30,
     },
     {
-        "sku": "scan-spatial-mapping",
-        "name": "Spatial Mapping Scan",
-        "category": "scan",
-        "description": "A runtime-readiness scan for spatial movement, verified destinations, and Point/Ping guidance.",
+        "sku": "scan-seo-intelligence",
+        "name": "SEO Intelligence Package",
+        "category": "specialized",
+        "description": "A dedicated technical SEO, search visibility, structured-data, indexing, content-opportunity, keyword, and competitive analysis package where supported.",
         "features": [
-            "Pointer Plot Map and target identity evidence",
-            "Live DOM verification and recovery readiness",
-            "Route, target, geometry, and protected-area signals",
-            "Guidance eligibility and unresolved-target reporting",
+            "Technical SEO and indexability findings",
+            "Structured data, metadata, and content opportunities",
+            "Keyword and competitive analysis where supported",
+            "Downloadable SEO report and evidence files",
         ],
         "price_cents": None,
         "currency": "usd",
@@ -93,6 +97,24 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "purchasable": False,
         "active": True,
         "sort_order": 40,
+    },
+    {
+        "sku": "scan-dandy-advertising",
+        "name": "Dandy Advertising Intelligence Package",
+        "category": "specialized",
+        "description": "Advertising readiness, campaign landing pages, messaging consistency, conversion tracking, creative opportunities, and available connected advertising data.",
+        "features": [
+            "Candidate claims, offers, proof points, and audience signals",
+            "Campaign landing-page and messaging consistency review",
+            "Conversion tracking and creative opportunities",
+            "Draft ad reads, listener URLs, risk flags, and owner approval",
+        ],
+        "price_cents": None,
+        "currency": "usd",
+        "pricing_status": "tbd",
+        "purchasable": False,
+        "active": True,
+        "sort_order": 50,
     },
     {
         "sku": "orb-basic-website-visitor",
@@ -111,7 +133,7 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "pricing_status": "tbd",
         "purchasable": False,
         "active": True,
-        "sort_order": 50,
+        "sort_order": 60,
     },
     {
         "sku": "orb-enhanced-website-intelligence",
@@ -130,7 +152,7 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "pricing_status": "tbd",
         "purchasable": False,
         "active": True,
-        "sort_order": 60,
+        "sort_order": 70,
     },
     {
         "sku": "orb-platinum-premium-dock-station",
@@ -149,7 +171,7 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "pricing_status": "tbd",
         "purchasable": False,
         "active": True,
-        "sort_order": 70,
+        "sort_order": 80,
     },
 ]
 
@@ -166,6 +188,11 @@ def _normalized_package(package: dict[str, Any]) -> dict[str, Any]:
     item["pricing_status"] = "set" if item["price_cents"] is not None else "tbd"
     item["purchasable"] = bool(item.get("purchasable")) and item["price_cents"] is not None and item["pricing_status"] == "set"
     item["features"] = [str(value) for value in item.get("features") or []]
+    item["category"] = str(item.get("category") or "upgrade")
+    item["product_group"] = str(item.get("product_group") or item["category"])
+    item["included_capabilities"] = [str(value) for value in item.get("included_capabilities") or item["features"]]
+    item["entitlement_rules"] = item.get("entitlement_rules") if isinstance(item.get("entitlement_rules"), dict) else {}
+    item["fulfillment"] = item.get("fulfillment") if isinstance(item.get("fulfillment"), dict) else {}
     return item
 
 
@@ -179,11 +206,18 @@ def load_catalog(vault_root: Path) -> list[dict[str, Any]]:
         if not isinstance(packages, list):
             raise ValueError("catalog packages must be a list")
         defaults = {item["sku"]: item for item in DEFAULT_PACKAGE_CATALOG}
-        merged = []
+        persisted = {}
         for item in packages:
             if not isinstance(item, dict) or not item.get("sku"):
                 continue
-            merged.append(_normalized_package({**defaults.get(item["sku"], {}), **item}))
+            persisted[item["sku"]] = item
+        merged = [_normalized_package({**item, **persisted.get(item["sku"], {})}) for item in DEFAULT_PACKAGE_CATALOG]
+        known = set(defaults)
+        merged.extend(
+            _normalized_package(item)
+            for sku, item in persisted.items()
+            if sku not in known and item.get("category") in {"upgrade", "service"}
+        )
         return merged or [_normalized_package(item) for item in DEFAULT_PACKAGE_CATALOG]
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         return [_normalized_package(item) for item in DEFAULT_PACKAGE_CATALOG]
@@ -201,7 +235,7 @@ def update_package(vault_root: Path, sku: str, updates: dict[str, Any]) -> list[
     packages = load_catalog(vault_root)
     for package in packages:
         if package["sku"] == sku:
-            for field in ("price_cents", "currency", "purchasable", "active", "sort_order"):
+            for field in ("price_cents", "currency", "purchasable", "active", "sort_order", "features", "included_capabilities", "entitlement_rules", "fulfillment"):
                 if field in updates:
                     package[field] = updates[field]
             break

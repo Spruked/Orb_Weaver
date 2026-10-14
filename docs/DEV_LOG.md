@@ -8,19 +8,23 @@
   pointer/spatial runtime artifacts.
 - Added the customer product review at
   `docs/architecture/DOWNLOADABLE_ORB_PRODUCT_REVIEW.md`.
-- Defined four evidence products: Full Website Intelligence Scan, SEO Scan,
-  Dandy Ad Data Scan, and Spatial Mapping Scan.
+- Defined three scan tiers: Basic, Enhanced, and Platinum Website
+  Intelligence Scan. Added SEO Intelligence and Dandy Advertising Intelligence
+  as specialized packages that can be purchased independently or added to any
+  scan tier.
 - Defined three installable editions: Basic Website Visitor ORB, Enhanced
   Website Intelligence ORB, and Platinum Website ORB w/Premium Dock Station.
 - Added the Vault-backed package catalog. All seven packages begin as TBD and
   non-purchasable; an admin must set a price and explicitly enable purchase.
   The cart accepts a package SKU only after that guard passes.
 - Added the public `/pricing` page and authenticated `/admin/packages`
-  controls. Pricing remains TBD until the owner supplies the commercial
-  values.
+  controls for price, capabilities, entitlement rules, fulfillment, visibility,
+  and purchase availability. Pricing remains TBD until the owner supplies the
+  commercial values.
 - Verification: Python compilation passed, package catalog tests passed 2/2,
   frontend typecheck passed, production build passed with existing ESLint
-  warnings, and browser smoke rendered four scan cards plus three ORB cards.
+  warnings, and browser smoke rendered three scan tiers, two specialized
+  packages, and three ORB editions.
 - Remaining gates are real prices, entitlement/fulfillment mapping, clean-host
   installation, and live browser/STT/TTS/pointer acceptance.
 
