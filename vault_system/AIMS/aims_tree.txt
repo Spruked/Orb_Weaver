@@ -1,0 +1,102 @@
+bryan@ProPrimeSeries:~/projects/Orb_Weaver/vault_system/AIMS$ tree
+.
+├── DEV_LOG.md
+├── HARDENING_CONTRACT.md
+├── LICENSE
+├── README.md
+├── __pycache__
+│   ├── service.cpython-312.pyc
+│   └── service.cpython-314.pyc
+├── aims_memory_system.egg-info
+│   ├── PKG-INFO
+│   ├── SOURCES.txt
+│   ├── dependency_links.txt
+│   ├── requires.txt
+│   └── top_level.txt
+├── memory_core
+│   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-312.pyc
+│   │   ├── __init__.cpython-314.pyc
+│   │   ├── glyph_trace.cpython-312.pyc
+│   │   ├── glyph_trace.cpython-314.pyc
+│   │   ├── indexes.cpython-312.pyc
+│   │   ├── indexes.cpython-314.pyc
+│   │   ├── long_term.cpython-312.pyc
+│   │   ├── long_term.cpython-314.pyc
+│   │   ├── maintenance.cpython-312.pyc
+│   │   ├── maintenance.cpython-314.pyc
+│   │   ├── memory_layer.cpython-312.pyc
+│   │   ├── memory_layer.cpython-314.pyc
+│   │   ├── outcomes.cpython-312.pyc
+│   │   ├── outcomes.cpython-314.pyc
+│   │   ├── retrieval_ledger.cpython-312.pyc
+│   │   ├── retrieval_ledger.cpython-314.pyc
+│   │   ├── schema.cpython-312.pyc
+│   │   ├── schema.cpython-314.pyc
+│   │   ├── session_memory.cpython-312.pyc
+│   │   ├── session_memory.cpython-314.pyc
+│   │   ├── short_term.cpython-312.pyc
+│   │   ├── short_term.cpython-314.pyc
+│   │   ├── temporal.cpython-312.pyc
+│   │   ├── temporal.cpython-314.pyc
+│   │   ├── vault.cpython-312.pyc
+│   │   ├── vault.cpython-314.pyc
+│   │   ├── writer_lock.cpython-312.pyc
+│   │   └── writer_lock.cpython-314.pyc
+│   ├── glyph_trace.py
+│   ├── indexes.py
+│   ├── long_term.py
+│   ├── maintenance.py
+│   ├── memory_layer.py
+│   ├── outcomes.py
+│   ├── retrieval_ledger.py
+│   ├── schema.py
+│   ├── session_memory.py
+│   ├── short_term.py
+│   ├── skg
+│   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-312.pyc
+│   │   │   ├── __init__.cpython-314.pyc
+│   │   │   ├── backend.cpython-312.pyc
+│   │   │   ├── backend.cpython-314.pyc
+│   │   │   ├── domain.cpython-312.pyc
+│   │   │   ├── domain.cpython-314.pyc
+│   │   │   ├── trio.cpython-312.pyc
+│   │   │   ├── trio.cpython-314.pyc
+│   │   │   ├── types.cpython-312.pyc
+│   │   │   └── types.cpython-314.pyc
+│   │   ├── backend.py
+│   │   ├── domain.py
+│   │   ├── trio.py
+│   │   └── types.py
+│   ├── temporal.py
+│   ├── vault.py
+│   └── writer_lock.py
+├── pyproject.toml
+├── requirements.txt
+├── service.py
+├── system_outline.md
+└── tests
+    ├── __pycache__
+    │   ├── test_complete_cognitive_memory_cycle.cpython-312.pyc
+    │   ├── test_complete_cognitive_memory_cycle.cpython-314.pyc
+    │   ├── test_core_integrity.cpython-312.pyc
+    │   ├── test_core_integrity.cpython-314.pyc
+    │   ├── test_graphqlite_backend.cpython-312.pyc
+    │   ├── test_graphqlite_backend.cpython-314.pyc
+    │   ├── test_service_security.cpython-312.pyc
+    │   ├── test_service_security.cpython-314.pyc
+    │   ├── test_three_skgs.cpython-312.pyc
+    │   ├── test_three_skgs.cpython-314.pyc
+    │   ├── test_website_orb_memory_foundation.cpython-312.pyc
+    │   └── test_website_orb_memory_foundation.cpython-314.pyc
+    ├── test_complete_cognitive_memory_cycle.py
+    ├── test_core_integrity.py
+    ├── test_graphqlite_backend.py
+    ├── test_service_security.py
+    ├── test_three_skgs.py
+    └── test_website_orb_memory_foundation.py
+
+9 directories, 90 files
