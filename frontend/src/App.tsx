@@ -36,7 +36,7 @@ import PublicOrbWeaverArtifact from './pages/PublicOrbWeaverArtifact';
 import LidarGuidance from './pages/LidarGuidance';
 import { api, authStore, Customer } from './services/api';
 import { marketplaceUrl } from './services/marketplaceUrl';
-import { cancelLandingExperience, entryRouteDecision, hasReturningVisitorMarker, markReturningVisitor } from './landing/startupDevelopment';
+import { cancelLandingExperience, developerReplayRequested, developerReplayResetRequested, hasReturningVisitorMarker, markReturningVisitor, replayAwareEntryRouteDecision } from './landing/startupDevelopment';
 import './index.css';
 
 const MarketplaceRedirect: React.FC = () => {
@@ -110,6 +110,8 @@ function App() {
   }
 
   const publicPath = location.pathname;
+  const replayRequested = developerReplayRequested(location.search);
+  const replayResetRequested = developerReplayResetRequested(location.search);
 
   const renderPublicPage = (element: React.ReactNode) => {
     markReturningVisitor();
@@ -123,8 +125,12 @@ function App() {
     );
   };
 
+  if (replayResetRequested && publicPath !== '/') {
+    return <Navigate to="/?orbStartupReset=1" replace />;
+  }
+
   if (publicPath === '/') {
-    const entryDecision = entryRouteDecision(Boolean(customer), hasReturningVisitorMarker());
+    const entryDecision = replayAwareEntryRouteDecision(Boolean(customer), hasReturningVisitorMarker(), replayRequested);
     if (entryDecision === 'workspace') {
       cancelLandingExperience('authenticated_entry');
       return <Navigate to="/dashboard" replace />;

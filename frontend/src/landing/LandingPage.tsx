@@ -6,7 +6,7 @@ import { api, authStore } from "../services/api";
 import { currentSpeechCaption } from "../orb/speechCaptions";
 import { trackOnboardingEvent } from "../services/analytics";
 import { createIntentGuestSession, LandingIntent } from "../onboarding/guestOnboarding";
-import { developmentIntroVariant, emitDevelopmentStartupTrace } from "./startupDevelopment";
+import { developmentIntroVariant, emitDevelopmentStartupTrace, resetDeveloperReplayState } from "./startupDevelopment";
 import "./Landing.css";
 
 const LANDING_SPLASH_SESSION_KEY = "orbweaver-landing-splash-played";
@@ -148,7 +148,9 @@ const LandingPage: React.FC = () => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const forcedDevelopmentVariant = developmentIntroVariant(INTRO_VARIANTS.map((variant) => variant.id));
-    if (params.get("orbStartupReset") === "1" || forcedDevelopmentVariant) {
+    if (params.get("orbStartupReset") === "1") {
+      resetDeveloperReplayState();
+    } else if (forcedDevelopmentVariant) {
       window.sessionStorage.removeItem(LANDING_SPLASH_SESSION_KEY);
       window.sessionStorage.removeItem(LANDING_SPLASH_COMPLETE_SESSION_KEY);
       window.sessionStorage.removeItem(LANDING_STARTUP_READINESS_SESSION_KEY);

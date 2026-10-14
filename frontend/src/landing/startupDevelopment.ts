@@ -1,6 +1,8 @@
 export const DEV_FULL_TOUR_QUERY_KEY = 'orbDevFullTour';
 export const DEV_INTRO_VARIANT_QUERY_KEY = 'orbIntroVariant';
 export const DEV_LLM_SCRIPTED_TOUR_QUERY_KEY = 'orbLlmScriptedTour';
+export const DEV_REPLAY_QUERY_KEY = 'orbStartupReset';
+export const DEV_REPLAY_SESSION_KEY = 'orbweaver-developer-replay-v1';
 export const RETURNING_VISITOR_STORAGE_KEY = 'orbweaver-returning-visitor-v1';
 
 export type EntryRouteDecision = 'landing' | 'login' | 'workspace';
@@ -9,6 +11,71 @@ export const entryRouteDecision = (
   authenticated: boolean,
   returningVisitor: boolean,
 ): EntryRouteDecision => authenticated ? 'workspace' : returningVisitor ? 'login' : 'landing';
+
+export const replayAwareEntryRouteDecision = (
+  authenticated: boolean,
+  returningVisitor: boolean,
+  replayRequested = false,
+): EntryRouteDecision => replayRequested ? 'landing' : entryRouteDecision(authenticated, returningVisitor);
+
+const REPLAY_SESSION_KEYS = [
+  'orbweaver-landing-splash-played',
+  'orbweaver-landing-splash-complete',
+  'orbweaver-landing-startup-readiness',
+  'orbweaver-scripted-orientation-v1',
+  'orbweaver-scripted-orientation-v2',
+  'orbweaver-scripted-orientation-progress-v2',
+  'orbweaver-startup-greeting-played',
+  'orbweaver-first-encounter-state',
+  'orbweaver-website-journey',
+  'orbweaver-last-intro-variant',
+] as const;
+
+export const developerReplayRequested = (
+  search = typeof window === 'undefined' ? '' : window.location.search,
+  environment = process.env.NODE_ENV,
+): boolean => {
+  if (new URLSearchParams(search).get(DEV_REPLAY_QUERY_KEY) === '1') return true;
+  if (developmentFullTourOverride(search, environment)) return true;
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.sessionStorage.getItem(DEV_REPLAY_SESSION_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+export const developerReplayResetRequested = (
+  search = typeof window === 'undefined' ? '' : window.location.search,
+): boolean => new URLSearchParams(search).get(DEV_REPLAY_QUERY_KEY) === '1';
+
+export const beginDeveloperReplay = (): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(DEV_REPLAY_SESSION_KEY, '1');
+  } catch {
+    // Replay still works for the current mount if session storage is blocked.
+  }
+};
+
+export const finishDeveloperReplay = (): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.removeItem(DEV_REPLAY_SESSION_KEY);
+  } catch {
+    // Storage cleanup must not interrupt a completed tour.
+  }
+};
+
+export const resetDeveloperReplayState = (): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    REPLAY_SESSION_KEYS.forEach((key) => window.sessionStorage.removeItem(key));
+    beginDeveloperReplay();
+  } catch {
+    // The in-memory startup reset remains usable if storage is unavailable.
+  }
+};
 
 export const hasReturningVisitorMarker = (): boolean => {
   if (typeof window === 'undefined') return false;

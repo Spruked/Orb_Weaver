@@ -1,4 +1,4 @@
-import { createInitialJourneyState, loadJourneyState, migrateStoredJourneyState, saveJourneyState, WEBSITE_JOURNEY_STORAGE_KEY, type WebsiteJourneyStateV2 } from "../state/tourControllerStore";
+import { createInitialJourneyState, loadJourneyState, migrateStoredJourneyState, saveJourneyState, type WebsiteJourneyStateV2 } from "../state/tourControllerStore";
 import { TOUR_POINTER_TARGETS, TOUR_STOP_SOURCE_SELECTORS } from "../tour/curriculum";
 import { runTourController, isTourDecisionReady } from "../tour/controller";
 import { createTourAgencyRuntime } from "../tour/agencyRuntime";
@@ -43,7 +43,7 @@ import {
 import { canAdvanceCaptionProgression, currentSpeechCaption } from "../orb/speechCaptions";
 import { SITE_TOUR_SCRIPT, scriptedPageOrientation, type ScriptedOrientationStep } from "../orb/scriptedOrientation";
 import { resolveDirectRouteNavigation, type VerifiedRouteNavigation } from "../orb/directRouteNavigation";
-import { developmentFullTourOverride, developmentLlmScriptedTourOverride, emitDevelopmentStartupTrace, tourEligibleForAccount } from "./startupDevelopment";
+import { developerReplayRequested, developerReplayResetRequested, developmentLlmScriptedTourOverride, emitDevelopmentStartupTrace, finishDeveloperReplay, resetDeveloperReplayState, tourEligibleForAccount } from "./startupDevelopment";
 
 const wait = (ms: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, ms));
@@ -557,7 +557,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   // The documented dev reset must reset the journey as well as the splash.
   // Otherwise a prior pending question or paused state survives the visual
   // reset and blocks the fresh ORIENT -> DISCOVER handoff.
-  const startupResetRequestedRef = useRef(new URLSearchParams(window.location.search).get('orbStartupReset') === '1');
+  const startupResetRequestedRef = useRef(developerReplayResetRequested());
   const [journeyBoot] = useState(() => startupResetRequestedRef.current
     ? { status: 'initial' as const, state: createInitialJourneyState() }
     : loadJourneyState());
@@ -2939,9 +2939,9 @@ export const AutonomousOrb: React.FC<Props> = ({
 
   const runLandingTour = useCallback(async () => {
     const authenticated = Boolean(authStore.getToken());
-    const developmentOverride = developmentFullTourOverride();
-    const accountEligible = tourEligibleForAccount(authenticated, developmentOverride);
-    emitDevelopmentStartupTrace("tour_eligibility_result", { authenticated, development_full_tour_override: developmentOverride, eligible: accountEligible });
+    const replayMode = developerReplayRequested();
+    const accountEligible = tourEligibleForAccount(authenticated, replayMode);
+    emitDevelopmentStartupTrace("tour_eligibility_result", { authenticated, development_full_tour_override: replayMode, eligible: accountEligible });
     if (!accountEligible) {
       emitOrbRuntimeEvent('landing_tour_skipped_authenticated');
       return;
@@ -3827,10 +3827,10 @@ export const AutonomousOrb: React.FC<Props> = ({
   const runStartupVoiceSequence = useCallback(async () => {
     const onLanding = isPublicLandingExperience();
     const authenticatedExistingAccount = Boolean(authStore.getToken());
-    const fullTourDevelopmentOverride = developmentFullTourOverride();
-    const accountTourEligible = tourEligibleForAccount(authenticatedExistingAccount, fullTourDevelopmentOverride);
+    const replayMode = developerReplayRequested();
+    const accountTourEligible = tourEligibleForAccount(authenticatedExistingAccount, replayMode);
     emitDevelopmentStartupTrace("authenticated_account_detected", { authenticated: authenticatedExistingAccount });
-    emitDevelopmentStartupTrace("full_tour_development_override", { active: fullTourDevelopmentOverride });
+    emitDevelopmentStartupTrace("full_tour_development_override", { active: replayMode });
     const greetingAlreadyPlayed =
       window.sessionStorage.getItem(STARTUP_GREETING_SESSION_KEY) === "1";
 
@@ -3915,6 +3915,7 @@ export const AutonomousOrb: React.FC<Props> = ({
       emitOrbRuntimeEvent("intro_to_tour_settle_completed");
       const scriptedOpeningComplete = await runScriptedOrientation("site:full-tour", SITE_TOUR_SCRIPT);
       scriptedLandingOpeningCompleteRef.current = scriptedOpeningComplete;
+      if (scriptedOpeningComplete && replayMode) finishDeveloperReplay();
       if (scriptedOpeningComplete && (liveTourReady || liveTourReadyRef.current)) {
         setStatusTitle("Weaver is ready for questions");
         setStatusLine("The guided tour is complete. Ask Weaver anything about this site.");
@@ -3932,6 +3933,7 @@ export const AutonomousOrb: React.FC<Props> = ({
         emitOrbRuntimeEvent("intro_to_tour_settle_completed");
         const scriptedOpeningComplete = await runScriptedOrientation("site:full-tour", SITE_TOUR_SCRIPT);
         scriptedLandingOpeningCompleteRef.current = scriptedOpeningComplete;
+        if (scriptedOpeningComplete && replayMode) finishDeveloperReplay();
         emitOrbRuntimeEvent("intro_handoff_to_scripted_landing_tour");
         if (scriptedOpeningComplete && (liveTourReady || liveTourReadyRef.current)) {
           setStatusTitle("Weaver is ready for questions");
@@ -4010,14 +4012,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   }, [interruptOrbSpeech, location.pathname, markVisitorActivity, showStatus, startOrbRecording, stopOrbRecording, voiceState]);
 
   const resetStartupSequence = useCallback(() => {
-    window.sessionStorage.removeItem(LANDING_SPLASH_SESSION_KEY);
-    window.sessionStorage.removeItem(LANDING_SPLASH_COMPLETE_SESSION_KEY);
-    window.sessionStorage.removeItem(LANDING_STARTUP_READINESS_SESSION_KEY);
-    window.sessionStorage.removeItem(SCRIPTED_ORIENTATION_SESSION_KEY);
-    window.sessionStorage.removeItem(SCRIPTED_ORIENTATION_PROGRESS_SESSION_KEY);
-    window.sessionStorage.removeItem(STARTUP_GREETING_SESSION_KEY);
-    window.sessionStorage.removeItem(FIRST_ENCOUNTER_STORAGE_KEY);
-    window.sessionStorage.removeItem(WEBSITE_JOURNEY_STORAGE_KEY);
+    resetDeveloperReplayState();
     firstEncounterStateRef.current = { ...EMPTY_FIRST_ENCOUNTER_STATE };
     websiteJourneyRef.current = createInitialJourneyState();
     setTourState(websiteJourneyRef.current);
