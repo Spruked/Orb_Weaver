@@ -115,7 +115,7 @@ from app.orb.memory_governance import (
     authorize_account_memory,
 )
 from app.orb.agency_cognition import AgencyCognitionRequest, agency_cognition
-from app.orb.nine_of_clubs import ShowcaseInteraction, guidance_prompt, showcase_guidance_mode
+from app.orb.nine_of_clubs import GuidanceMode, guidance_prompt, showcase_guidance_mode
 from app.orb.site_lexicon import weaver_lexical_context
 from app.pack_generator import generate_pack_file
 from manufacturing.website_orb import manufacture_website_orb
@@ -573,7 +573,7 @@ class WebsiteOrbVoiceResponse(BaseModel):
 
 class WebsiteOrbExperienceContext(BaseModel):
     tour: Optional[TourActContext] = None
-    guidance_mode: Optional[ShowcaseInteraction] = None
+    guidance_mode: Optional[GuidanceMode] = None
     phase: str = Field(..., pattern="^(orientation|understanding|agency|make_it_personal|relevant_continuation)$")
     objective: str = Field(..., min_length=8, max_length=600)
     visitor_turn: int = Field(default=0, ge=0, le=20)
@@ -9514,7 +9514,7 @@ async def website_orb_voice(
     site_id: Optional[str] = Form(default=None),
     project_id: Optional[str] = Form(default=None),
     experience_phase: Optional[str] = Form(default=None),
-    experience_guidance_mode: Optional[ShowcaseInteraction] = Form(default=None),
+    experience_guidance_mode: Optional[GuidanceMode] = Form(default=None),
     experience_objective: Optional[str] = Form(default=None),
     experience_turn: int = Form(default=0),
     experience_verification_state: str = Form(default="not_applicable"),

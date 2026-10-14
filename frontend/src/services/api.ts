@@ -1344,7 +1344,16 @@ export type WebsiteOrbExperiencePhase =
   | 'relevant_continuation';
 
 export interface WebsiteOrbExperienceContext {
-  guidance_mode?: 'tour_question' | 'account_setup';
+  guidance_mode?:
+    | 'tour_narration'
+    | 'tour_question'
+    | 'discovery'
+    | 'account_setup'
+    | 'login'
+    | 'preflight'
+    | 'preflight_review'
+    | 'beta'
+    | 'investor';
   tour?: {
     chapter_id: string;
     stop_id: string;
