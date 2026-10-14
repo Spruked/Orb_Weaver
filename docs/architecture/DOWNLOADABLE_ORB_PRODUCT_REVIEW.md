@@ -57,7 +57,8 @@ defined by the Master Capability List; it is not merely a larger PDF. The
 full scanning engine remains capable of collecting authorized measurements,
 while customer entitlement controls which analyses, reports, exports, and
 runtime capabilities are delivered. Expensive analyses and external API calls
-should run only when required by the purchased package. The Basic scan is the
+run only when required by the purchased package. The server-side execution
+plan now enforces this boundary: the Basic scan is the
 recommended starting point, and a Basic ORB may be offered from a smaller
 approved evidence set only when the installation readiness and target-quality
 gates pass.

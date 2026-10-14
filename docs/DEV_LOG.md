@@ -1,5 +1,24 @@
 # Orb Weaver Development Log
 
+## 2026-10-14 — Purchased-tier scan execution gates
+
+- Added a server-side scan execution entitlement planner. It resolves only
+  active ORB entitlements and paid, project-bound checkout line items; browser
+  request fields cannot grant a package.
+- Basic owner preview remains available for baseline discovery, foundational
+  SEO, and baseline spatial evidence, while Dandy, competitor crawling, and
+  GA4 are explicitly skipped unless their purchased capability is present.
+- Dandy generation now records `NOT_ENTITLED` without creating a Dandy
+  artifact. Competitor domains are not fetched when competitive analysis is
+  not entitled, and GA4 import returns a structured entitlement-required
+  response before contacting Google.
+- Added package-level entitlement rules to the Vault-backed catalog and
+  regression tests for preview, Dandy, Platinum, and catalog overrides.
+- Verification: focused entitlement, package-catalog, and Dandy tests passed
+  12/12; Python compilation and diff checks passed. The active `.venv` was
+  used because the system interpreter lacked the repository's declared test
+  dependencies.
+
 ## 2026-10-14 — Downloadable ORB product review and TBD package catalog
 
 - Reviewed `manufacturing/templates/Website_Orb_Final`, the scan-bound

@@ -39,6 +39,7 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "purchasable": False,
         "active": True,
         "sort_order": 10,
+        "entitlement_rules": {"capabilities": ["baseline_scan", "foundational_seo", "baseline_spatial"], "external_apis": []},
     },
     {
         "sku": "scan-enhanced-intelligence",
@@ -59,6 +60,7 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "purchasable": False,
         "active": True,
         "sort_order": 20,
+        "entitlement_rules": {"capabilities": ["baseline_scan", "foundational_seo", "baseline_spatial", "semantic_analysis", "journey_analysis", "conversion_analysis", "product_intelligence", "accessibility_analysis", "responsive_analysis", "expanded_spatial"], "external_apis": []},
     },
     {
         "sku": "scan-platinum-intelligence",
@@ -79,6 +81,7 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "purchasable": False,
         "active": True,
         "sort_order": 30,
+        "entitlement_rules": {"capabilities": ["baseline_scan", "foundational_seo", "baseline_spatial", "semantic_analysis", "journey_analysis", "conversion_analysis", "product_intelligence", "accessibility_analysis", "responsive_analysis", "expanded_spatial", "advanced_spatial", "workflow_analysis", "commercial_opportunities", "verification_evidence", "comprehensive_recommendations", "competitor_analysis", "ga4_analytics"], "external_apis": ["ga4"]},
     },
     {
         "sku": "scan-seo-intelligence",
@@ -97,6 +100,7 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "purchasable": False,
         "active": True,
         "sort_order": 40,
+        "entitlement_rules": {"capabilities": ["foundational_seo", "seo_intelligence", "competitor_analysis"], "external_apis": []},
     },
     {
         "sku": "scan-dandy-advertising",
@@ -115,6 +119,7 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "purchasable": False,
         "active": True,
         "sort_order": 50,
+        "entitlement_rules": {"capabilities": ["dandy_promo_pack", "campaign_briefs", "show_production_briefs", "advertising_data"], "external_apis": []},
     },
     {
         "sku": "orb-basic-website-visitor",
@@ -134,6 +139,7 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "purchasable": False,
         "active": True,
         "sort_order": 60,
+        "entitlement_rules": {"capabilities": ["baseline_scan", "baseline_spatial", "orb_runtime_basic"], "external_apis": []},
     },
     {
         "sku": "orb-enhanced-website-intelligence",
@@ -153,6 +159,7 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "purchasable": False,
         "active": True,
         "sort_order": 70,
+        "entitlement_rules": {"capabilities": ["baseline_scan", "baseline_spatial", "semantic_analysis", "journey_analysis", "conversion_analysis", "product_intelligence", "expanded_spatial", "orb_runtime_enhanced"], "external_apis": []},
     },
     {
         "sku": "orb-platinum-premium-dock-station",
@@ -172,6 +179,7 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "purchasable": False,
         "active": True,
         "sort_order": 80,
+        "entitlement_rules": {"capabilities": ["baseline_scan", "baseline_spatial", "semantic_analysis", "journey_analysis", "conversion_analysis", "product_intelligence", "accessibility_analysis", "responsive_analysis", "expanded_spatial", "advanced_spatial", "workflow_analysis", "commercial_opportunities", "verification_evidence", "comprehensive_recommendations", "orb_runtime_platinum", "premium_dock_station"], "external_apis": []},
     },
 ]
 

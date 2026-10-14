@@ -75,6 +75,13 @@ Visitor ORB, Enhanced Website Intelligence ORB, and Platinum Website ORB
 w/Premium Dock Station. Specialized packages can be purchased independently
 or added to a scan tier.
 
+Scan execution enforces package entitlements server-side. A project receives
+capabilities only from an active ORB entitlement or a paid, project-bound
+checkout order. Without the required purchase, Dandy generation and
+competitor crawling are recorded as `NOT_ENTITLED` and do not run; GA4 import
+is rejected before the external API is contacted. Owner preview remains
+limited to baseline evidence and does not grant expensive analysis.
+
 Package prices intentionally begin as `TBD`. The owner can set price,
 visibility, and purchase availability in the authenticated `/admin/packages`
 controls. A package cannot enter the cart until it has both a price and an

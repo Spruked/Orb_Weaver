@@ -118,6 +118,7 @@ from app.orb.agency_cognition import AgencyCognitionRequest, agency_cognition
 from app.orb.nine_of_clubs import GuidanceMode, guidance_prompt, showcase_guidance_mode
 from app.orb.site_lexicon import weaver_lexical_context
 from app.orb.package_catalog import load_catalog, update_package
+from app.orb.scan_entitlements import build_scan_execution_plan, capability_allowed
 from app.pack_generator import generate_pack_file
 from manufacturing.website_orb import manufacture_website_orb
 from app.services.chrome_devtools import ChromeDevToolsReviewRunner
@@ -463,6 +464,35 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def _project_scan_execution_plan(project: Project, customer: Customer, db: Session) -> Dict[str, Any]:
+    """Resolve purchased scan rights from project-bound payment evidence."""
+    purchased_skus: set[str] = set()
+    entitlements = db.query(OrbsEntitlement).filter(
+        OrbsEntitlement.project_id == project.id,
+        OrbsEntitlement.customer_id == customer.id,
+        OrbsEntitlement.status == "active",
+    ).all()
+    purchased_skus.update(str(item.package_sku) for item in entitlements if item.package_sku)
+
+    paid_orders = db.query(CheckoutOrder).filter(
+        CheckoutOrder.project_id == project.id,
+        CheckoutOrder.customer_id == customer.id,
+        or_(CheckoutOrder.status == "paid", CheckoutOrder.payment_verified_at.isnot(None)),
+    ).all()
+    for order in paid_orders:
+        for item in order.line_items or []:
+            sku = str(item.get("sku") or "") if isinstance(item, dict) else ""
+            if sku:
+                purchased_skus.add(sku)
+
+    catalog = load_catalog(VAULT_ROOT)
+    return build_scan_execution_plan(
+        purchased_skus,
+        catalog,
+        source="verified_project_purchase" if purchased_skus else "owner_preview",
+    )
 
 
 class ProjectCreate(BaseModel):
@@ -6617,6 +6647,8 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
         dandy_path = root / "dandy_packs" / "latest_pack.json"
         dandy_pack: Optional[Dict[str, Any]] = None
         try:
+            if not capability_allowed((crawl_job.config or {}).get("entitlement_plan"), "dandy_promo_pack"):
+                raise EntitlementStageSkipped("dandy_promo_pack_not_entitled")
             dandy_pack = build_dandy_promo_pack(
                 [_page_to_dict(page) for page in pages],
                 domain=project.domain,
@@ -6641,31 +6673,66 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
                 "latest_pack": dandy_path.name,
             })
         except Exception as exc:
+            if isinstance(exc, EntitlementStageSkipped):
+                dandy_status = {
+                    "status": "not_entitled",
+                    "path": None,
+                    "schema": "orb_weaver.dandy_promo_pack.v1",
+                    "reason": str(exc),
+                }
+                payload["dandy_pack"] = dandy_status
+                crawl_config = dict(crawl_job.config or {})
+                crawl_config["dandy_pack"] = dandy_status
+                execution = dict(crawl_config.get("scan_stage_execution") or {})
+                execution["dandy_promo_pack"] = {
+                    "status": "NOT_ENTITLED",
+                    "started_at": None,
+                    "completed_at": datetime.utcnow().isoformat(),
+                    "input_count": 0,
+                    "output_count": 0,
+                    "artifact": None,
+                    "error": None,
+                    "reason": str(exc),
+                    "version": "1",
+                    "blocking": False,
+                }
+                crawl_config["scan_stage_execution"] = execution
+                crawl_job.config = crawl_config
+                # The common persistence path below records the skip and keeps
+                # the rest of the client context intact.
             dandy_status = {
                 "status": "failed",
                 "path": str(dandy_path),
                 "schema": "orb_weaver.dandy_promo_pack.v1",
                 "error": str(exc),
             }
-            try:
-                _write_json(dandy_path, {
+            if not isinstance(exc, EntitlementStageSkipped):
+                try:
+                    _write_json(dandy_path, {
+                        "schema": "orb_weaver.dandy_promo_pack.v1",
+                        "status": "failed",
+                        "source": {"crawl_job_id": str(crawl_job.id), "domain": project.domain},
+                        "error": str(exc),
+                        "owner_approval": {"status": "unavailable", "owner_approved": False},
+                    })
+                except Exception:
+                    pass
+                try:
+                    _write_json(root / "dandy_sponsor_pack" / "latest_pack.json", {
+                        "schema": "orb_weaver.dandy_sponsor_pack.v0.1",
+                        "status": "failed",
+                        "replacement": "../dandy_packs/latest_pack.json",
+                        "error": str(exc),
+                    })
+                except Exception:
+                    pass
+            if isinstance(exc, EntitlementStageSkipped):
+                dandy_status = {
+                    "status": "not_entitled",
+                    "path": None,
                     "schema": "orb_weaver.dandy_promo_pack.v1",
-                    "status": "failed",
-                    "source": {"crawl_job_id": str(crawl_job.id), "domain": project.domain},
-                    "error": str(exc),
-                    "owner_approval": {"status": "unavailable", "owner_approved": False},
-                })
-            except Exception:
-                pass
-            try:
-                _write_json(root / "dandy_sponsor_pack" / "latest_pack.json", {
-                    "schema": "orb_weaver.dandy_sponsor_pack.v0.1",
-                    "status": "failed",
-                    "replacement": "../dandy_packs/latest_pack.json",
-                    "error": str(exc),
-                })
-            except Exception:
-                pass
+                    "reason": str(exc),
+                }
         crawl_config = dict(crawl_job.config or {})
         crawl_config["dandy_pack"] = dandy_status
         execution = dict(crawl_config.get("scan_stage_execution") or {})
@@ -6673,14 +6740,15 @@ def preserve_client_crawl_intelligence(project: Project, crawl_job: CrawlJob, pa
             "status": (
                 "COMPLETE" if dandy_status.get("status") in {"complete", "empty"}
                 else "BLOCKED" if dandy_status.get("status") == "blocked_quality"
+                else "NOT_ENTITLED" if dandy_status.get("status") == "not_entitled"
                 else "FAILED"
             ),
             "started_at": dandy_pack.get("generated_at") if dandy_pack else None,
             "completed_at": datetime.utcnow().isoformat(),
             "input_count": len(pages),
             "output_count": len((dandy_pack or {}).get("candidate_claims") or []) if dandy_pack else 0,
-            "artifact": str(dandy_path),
-            "error": dandy_status.get("error"),
+            "artifact": str(dandy_path) if dandy_status.get("status") != "not_entitled" else None,
+            "error": dandy_status.get("error") or dandy_status.get("reason"),
             "version": "1",
             "blocking": False,
         }
@@ -7980,6 +8048,10 @@ class CrawlCancellationRequested(RuntimeError):
     """Raised inside a crawl worker after a user requests cancellation."""
 
 
+class EntitlementStageSkipped(RuntimeError):
+    """Raised internally when an expensive stage is not purchased."""
+
+
 class LifecycleCancellationRequested(RuntimeError):
     """Raised between lifecycle phases after a user requests cancellation."""
 
@@ -8022,6 +8094,8 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
         )
 
         config = CrawlConfig(**config_data)
+        entitlement_plan = _project_scan_execution_plan(project, project.customer or db.get(Customer, project.customer_id), db)
+        config_data = {**config_data, "entitlement_plan": entitlement_plan}
         authenticated_storage_state_path: Optional[str] = None
         authenticated_session_state = _claim_authenticated_crawl_session(config.authenticated_session_id, project)
         if authenticated_session_state:
@@ -8047,6 +8121,7 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
         stage_started_at = crawl_job.start_time.isoformat()
         crawl_job.config = {
             **(crawl_job.config or {}),
+            "entitlement_plan": entitlement_plan,
             "authenticated_session_status": authenticated_session_status,
             "scan_stage_execution": {
                 stage_id: {
@@ -8170,7 +8245,14 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
         knowledge_graph = _knowledge_graph(stored_pages)
         historical = _historical_delta(stats, previous_stats)
         trend_model = _trend_model(stats, previous_jobs, db)
-        competitor_results = await _crawl_competitors(config.competitor_domains, config) if config.competitor_domains else []
+        competitor_results = (
+            await _crawl_competitors(config.competitor_domains, config)
+            if config.competitor_domains and entitlement_plan.get("competitor_analysis_allowed")
+            else []
+        )
+        competitor_skip_reason = None
+        if config.competitor_domains and not entitlement_plan.get("competitor_analysis_allowed"):
+            competitor_skip_reason = "competitor_analysis_not_entitled"
         competitor_gap = _competitor_gap(stored_pages, competitor_results, authority_flow)
         template_detection = _template_detection(stored_pages)
         pointer_summary = _pointer_summary_from_pages(stored_pages)
@@ -8247,6 +8329,13 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             "knowledge_chunking": evidence("COMPLETE", len(stored_pages), knowledge_chunks["chunk_count"], "crawl.config.knowledge_chunks"),
             "retrieval_index_build": evidence("COMPLETE", knowledge_chunks["chunk_count"], retrieval_index["term_count"], "crawl.config.retrieval_index"),
             "source_validation": evidence("COMPLETE", source_validation["input_count"], source_validation["validated_count"], "crawl.config.source_validation"),
+            "competitor_analysis": evidence(
+                "COMPLETE" if competitor_results else "NOT_ENTITLED" if competitor_skip_reason else "NOT_REQUESTED",
+                len(config.competitor_domains),
+                len(competitor_results),
+                "crawl.config.competitors" if competitor_results else None,
+                competitor_skip_reason,
+            ),
             "pointer_verification": evidence("BLOCKED", int(pointer_summary.get("record_count") or 0), 0, None, "Live DOM verification is required before any target can become guidance-authoritative."),
             "pointer_recovery": evidence("BLOCKED" if pointer_quality.get("recovery_required") else "NOT_STARTED", int(pointer_summary.get("record_count") or 0), 0, None, "Pointer recovery must process unresolved and conflicting targets." if pointer_quality.get("recovery_required") else None),
             "runtime_guidance": evidence("BLOCKED", int(pointer_summary.get("record_count") or 0), int(pointer_summary.get("guidance_eligible_count") or 0), None, "Independent pointer verification has not run."),
@@ -8273,6 +8362,12 @@ async def run_crawl_job(crawl_job_id: int, config_data: Dict, lifecycle_job_id: 
             "authority_flow": authority_flow,
             "knowledge_graph": knowledge_graph,
             "competitors": competitor_results,
+            "competitor_analysis": {
+                "status": "COMPLETE" if competitor_results else "NOT_ENTITLED" if competitor_skip_reason else "NOT_REQUESTED",
+                "requested_domains": len(config.competitor_domains),
+                "executed_domains": len(competitor_results),
+                "reason": competitor_skip_reason,
+            },
             "competitor_gap": competitor_gap,
             "template_detection": template_detection,
             "lexical_index": lexical_index,
@@ -12720,6 +12815,17 @@ async def import_project_ga4_data(
     customer: Customer = Depends(get_current_customer),
 ):
     project = _owned_project(project_id, customer, db)
+    entitlement_plan = _project_scan_execution_plan(project, customer, db)
+    if not entitlement_plan.get("ga4_allowed"):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "entitlement_required",
+                "message": "Google Analytics imports require a purchased Platinum Website Intelligence Scan entitlement.",
+                "required_capability": "ga4_analytics",
+                "execution_plan": entitlement_plan,
+            },
+        )
     if config.ga4_property_id is not None:
         project.ga4_property_id = config.ga4_property_id.strip() or None
     if config.ga4_measurement_id is not None:
