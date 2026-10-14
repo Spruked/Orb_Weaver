@@ -2870,7 +2870,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   const contextTargetUrl = useCallback(() => {
     if (activeOrbContext) return buildCustomerPageCapsuleUrl(activeOrbContext);
     if (["127.0.0.1", "localhost"].includes(window.location.hostname)) {
-      return new URL(`${window.location.pathname}${window.location.search}`, "https://orbweaver.spruked.com").toString();
+      return new URL(`${window.location.pathname}${window.location.search}`, "https://orbsweaver.com").toString();
     }
     return window.location.href;
   }, [activeOrbContext]);
@@ -4544,7 +4544,7 @@ export const AutonomousOrb: React.FC<Props> = ({
   useEffect(() => {
     const controller = new AbortController();
     const pointerDomain = activeOrbContext?.canonical_domain
-      || (["127.0.0.1", "localhost"].includes(window.location.hostname) ? "orbweaver.spruked.com" : window.location.hostname);
+      || (["127.0.0.1", "localhost"].includes(window.location.hostname) ? "orbsweaver.com" : window.location.hostname);
     api.websiteOrbPointerMap(pointerDomain, controller.signal)
       .then((pointerMap) => {
         pointerRecordsRef.current = Array.isArray(pointerMap.records) ? pointerMap.records : [];

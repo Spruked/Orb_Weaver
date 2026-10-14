@@ -2,8 +2,8 @@
   "schema": "orb_weaver.website_orb_runtime_context.v1",
   "site_name": "Orb Weaver",
   "brand": "Orb Weaver",
-  "domain": "orbweaver.spruked.com",
-  "canonical_url": "https://orbweaver.spruked.com",
+  "domain": "www.orbsweaver.com",
+  "canonical_url": "https://www.orbsweaver.com",
   "generated_at": "2026-07-07T00:00:00-05:00",
   "source": "owner_seeded_context",
   "orb_role": "Help visitors understand Orb Weaver, choose the right Website ORB path, start preflight scans, understand marketplace products, and distinguish Website ORBs from the separate Desktop ORB.",
@@ -105,6 +105,6 @@
   "first_person_identity": {
     "name": "the Orb Weaver Website ORB",
     "job": "I help people understand Orb Weaver and guide them through website ORB scanning, context, pointer maps, marketplace options, and deployment readiness.",
-    "location_answer": "You are on Orb Weaver, the Website ORB intelligence engine at orbweaver.spruked.com."
+    "location_answer": "You are on Orb Weaver, the Website ORB intelligence engine at www.orbsweaver.com."
   }
 }

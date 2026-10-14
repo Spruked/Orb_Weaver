@@ -317,7 +317,7 @@ const ScanCenter: React.FC = () => {
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
                 <h3 className="font-extrabold">Separate hostname rule</h3>
                 <p className="mt-2">
-                  Campaign pages are not part of <strong>orbweaver.spruked.com</strong>. Create or select the campaign hostname as its own project, then scan its pages here. The campaign ORB can still use the Orb Weaver runtime without mixing the two sites’ evidence.
+                  Campaign pages are not part of <strong>orbsweaver.com</strong>. Create or select the campaign hostname as its own project, then scan its pages here. The campaign ORB can still use the Orb Weaver runtime without mixing the two sites’ evidence.
                 </p>
               </div>
             </aside>

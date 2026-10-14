@@ -143,6 +143,15 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
     }
   };
 
+  const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (isSignup && step === 1) {
+      continueToWebsite();
+      return;
+    }
+    void submit();
+  };
+
   const guidance = !isSignup
     ? 'Sign in and I’ll resume from the latest authoritative workspace state.'
     : step === 1
@@ -180,61 +189,63 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated, initialMode = 'log
             </div>
           )}
 
-          {(!isSignup || step === 1) && (
-            <div className="onboarding-fields">
-              {isSignup && (
-                <>
-                  <label htmlFor="onboarding-full-name">Full name</label>
-                  <input id="onboarding-full-name" data-orb-target="full-name-field" aria-label="Full name" autoComplete="name" value={form.full_name} onChange={(event) => update('full_name', event.target.value)} />
-                  <label htmlFor="onboarding-business-name">Business name</label>
-                  <input id="onboarding-business-name" data-orb-target="business-name-field" autoComplete="organization" value={form.business_name} onChange={(event) => update('business_name', event.target.value)} />
-                </>
-              )}
-              <label htmlFor="onboarding-email">Email</label>
-              <input id="onboarding-email" data-orb-target="email-field" type="email" autoComplete="email" value={form.email} onChange={(event) => update('email', event.target.value)} />
-              <label htmlFor="onboarding-password">Password</label>
-              <div id="onboarding-password-container" data-orb-target="password-container">
-                <input id="onboarding-password" type="password" autoComplete={isSignup ? 'new-password' : 'current-password'} value={form.password} onChange={(event) => update('password', event.target.value)} />
+          <form onSubmit={handleFormSubmit}>
+            {(!isSignup || step === 1) && (
+              <div className="onboarding-fields">
+                {isSignup && (
+                  <>
+                    <label htmlFor="onboarding-full-name">Full name</label>
+                    <input id="onboarding-full-name" data-orb-target="full-name-field" aria-label="Full name" autoComplete="name" value={form.full_name} onChange={(event) => update('full_name', event.target.value)} />
+                    <label htmlFor="onboarding-business-name">Business name</label>
+                    <input id="onboarding-business-name" data-orb-target="business-name-field" autoComplete="organization" value={form.business_name} onChange={(event) => update('business_name', event.target.value)} />
+                  </>
+                )}
+                <label htmlFor="onboarding-email">Email</label>
+                <input id="onboarding-email" data-orb-target="email-field" type="email" autoComplete="email" value={form.email} onChange={(event) => update('email', event.target.value)} />
+                <label htmlFor="onboarding-password">Password</label>
+                <div id="onboarding-password-container" data-orb-target="password-container">
+                  <input id="onboarding-password" type="password" autoComplete={isSignup ? 'new-password' : 'current-password'} value={form.password} onChange={(event) => update('password', event.target.value)} />
+                </div>
               </div>
-            </div>
-          )}
-
-          {isSignup && step === 2 && (
-            <div className="onboarding-fields">
-              <label htmlFor="onboarding-website">Website URL</label>
-              <input id="onboarding-website" data-orb-target="website-url-field" type="url" inputMode="url" placeholder="https://example.com" value={form.website_url} onChange={(event) => update('website_url', event.target.value)} />
-              <label htmlFor="onboarding-website-confirmation">Confirm website</label>
-              <input id="onboarding-website-confirmation" data-orb-target="website-confirmation-field" type="url" inputMode="url" placeholder="Enter the same website again" value={form.website_confirmation} onChange={(event) => update('website_confirmation', event.target.value)} />
-              <div className="onboarding-disclaimer" data-orb-target="privacy-disclaimer" role="note">
-                <strong>Privacy statement</strong>
-                <span>We use your account details and website URL to create and operate this workspace. Read the <a href="/privacy">Privacy Statement</a> before continuing.</span>
-              </div>
-              <div className="onboarding-legal">
-                <label className="onboarding-legal-box"><input data-orb-target="terms-acknowledgement" type="checkbox" checked={legal.terms} onChange={(event) => setLegal({ ...legal, terms: event.target.checked })} /> <span>I acknowledge the account and authorized-use requirements. <a href="/terms">Terms</a></span></label>
-                <label className="onboarding-legal-box"><input data-orb-target="privacy-acknowledgement" type="checkbox" checked={legal.privacy} onChange={(event) => setLegal({ ...legal, privacy: event.target.checked })} /> <span>I acknowledge the data-handling statement and Privacy Statement.</span></label>
-              </div>
-            </div>
-          )}
-
-          {intent.intent === 'package' && isSignup && (
-            <p className="onboarding-intent-note">Your {intent.tier || 'selected'} package interest is preserved. Eligibility and the final recommendation require Preflight, Crawl, and Final Audit.</p>
-          )}
-          {intent.intent === 'enterprise' && isSignup && (
-            <p className="onboarding-intent-note">Your enterprise interest is preserved for an evidence-led supported integration discussion.</p>
-          )}
-
-          {error && <div className="onboarding-error" role="alert">{error}</div>}
-
-          <div className="onboarding-actions">
-            {isSignup && step === 2 && <button type="button" className="secondary" onClick={() => setStep(1)}>Back</button>}
-            {isSignup && step === 1 ? (
-              <button id="onboarding-continue" data-orb-target="continue" type="button" className="primary" onClick={continueToWebsite}>Continue</button>
-            ) : (
-              <button id={isSignup ? 'onboarding-create-account' : 'onboarding-login'} data-orb-target={isSignup ? 'create-account' : 'login'} type="button" className="primary" disabled={isSubmitting} onClick={submit}>
-                {isSubmitting ? 'Working…' : isSignup ? 'Create Account' : 'Login'}
-              </button>
             )}
-          </div>
+
+            {isSignup && step === 2 && (
+              <div className="onboarding-fields">
+                <label htmlFor="onboarding-website">Website URL</label>
+                <input id="onboarding-website" data-orb-target="website-url-field" type="url" inputMode="url" placeholder="https://example.com" value={form.website_url} onChange={(event) => update('website_url', event.target.value)} />
+                <label htmlFor="onboarding-website-confirmation">Confirm website</label>
+                <input id="onboarding-website-confirmation" data-orb-target="website-confirmation-field" type="url" inputMode="url" placeholder="Enter the same website again" value={form.website_confirmation} onChange={(event) => update('website_confirmation', event.target.value)} />
+                <div className="onboarding-disclaimer" data-orb-target="privacy-disclaimer" role="note">
+                  <strong>Privacy statement</strong>
+                  <span>We use your account details and website URL to create and operate this workspace. Read the <a href="/privacy">Privacy Statement</a> before continuing.</span>
+                </div>
+                <div className="onboarding-legal">
+                  <label className="onboarding-legal-box"><input data-orb-target="terms-acknowledgement" type="checkbox" checked={legal.terms} onChange={(event) => setLegal({ ...legal, terms: event.target.checked })} /> <span>I acknowledge the account and authorized-use requirements. <a href="/terms">Terms</a></span></label>
+                  <label className="onboarding-legal-box"><input data-orb-target="privacy-acknowledgement" type="checkbox" checked={legal.privacy} onChange={(event) => setLegal({ ...legal, privacy: event.target.checked })} /> <span>I acknowledge the data-handling statement and Privacy Statement.</span></label>
+                </div>
+              </div>
+            )}
+
+            {intent.intent === 'package' && isSignup && (
+              <p className="onboarding-intent-note">Your {intent.tier || 'selected'} package interest is preserved. Eligibility and the final recommendation require Preflight, Crawl, and Final Audit.</p>
+            )}
+            {intent.intent === 'enterprise' && isSignup && (
+              <p className="onboarding-intent-note">Your enterprise interest is preserved for an evidence-led supported integration discussion.</p>
+            )}
+
+            {error && <div className="onboarding-error" role="alert">{error}</div>}
+
+            <div className="onboarding-actions">
+              {isSignup && step === 2 && <button type="button" className="secondary" onClick={() => setStep(1)}>Back</button>}
+              {isSignup && step === 1 ? (
+                <button id="onboarding-continue" data-orb-target="continue" type="submit" className="primary">Continue</button>
+              ) : (
+                <button id={isSignup ? 'onboarding-create-account' : 'onboarding-login'} data-orb-target={isSignup ? 'create-account' : 'login'} type="submit" className="primary" disabled={isSubmitting}>
+                  {isSubmitting ? 'Working…' : isSignup ? 'Create Account' : 'Login'}
+                </button>
+              )}
+            </div>
+          </form>
         </section>
 
         <aside className="weaver-guide" aria-labelledby="morb-guide-title" aria-live="polite">

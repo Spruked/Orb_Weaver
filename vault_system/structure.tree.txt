@@ -1,0 +1,324 @@
+Orb Weaver vault_system design tree
+
+Depth: 3 levels
+Excluded: sensitive evidence contents, .git, node_modules, caches, __pycache__, bytecode, build/dist output, vendor/dependency folders, and dependency manifest files.
+
+vault_system/
+├── AIMS/
+│   ├── .github/
+│   │   └── workflows/
+│   ├── .gitignore
+│   ├── DEV_LOG.md
+│   ├── HARDENING_CONTRACT.md
+│   ├── LICENSE
+│   ├── README.md
+│   ├── memory_core/
+│   │   ├── __init__.py
+│   │   ├── glyph_trace.py
+│   │   ├── indexes.py
+│   │   ├── long_term.py
+│   │   ├── maintenance.py
+│   │   ├── memory_layer.py
+│   │   ├── outcomes.py
+│   │   ├── retrieval_ledger.py
+│   │   ├── schema.py
+│   │   ├── session_memory.py
+│   │   ├── short_term.py
+│   │   ├── skg/
+│   │   ├── temporal.py
+│   │   ├── vault.py
+│   │   └── writer_lock.py
+│   ├── service.py
+│   ├── system_outline.md
+│   └── tests/
+│       ├── test_complete_cognitive_memory_cycle.py
+│       ├── test_core_integrity.py
+│       ├── test_graphqlite_backend.py
+│       ├── test_service_security.py
+│       ├── test_three_skgs.py
+│       └── test_website_orb_memory_foundation.py
+├── Interplanetary_Stardate_Syncrometer/
+│   ├── .gitignore
+│   ├── COPYRIGHT.md
+│   ├── DEVLOG.md
+│   ├── INTEGRATION.md
+│   ├── LICENSE
+│   ├── PROJECT_TREE.txt
+│   ├── README.md
+│   ├── SITE_MAP.md
+│   ├── docs/
+│   │   └── RELATIVISTIC_TIME_MODEL.md
+│   ├── iss_module/
+│   │   ├── __init__.py
+│   │   ├── api/
+│   │   ├── core/
+│   │   ├── service.py
+│   │   └── templates/
+│   └── widget/
+│       ├── README.md
+│       ├── index.html
+│       ├── scripts/
+│       ├── src/
+│       └── src-tauri/
+├── README.md
+├── __init__.py
+├── apriori/
+│   └── apriori_core.json
+├── audit/
+│   └── glyph_trace/
+│       ├── events.jsonl
+│       └── objects.jsonl
+├── backups/
+├── client_or_owner_data/
+├── clients/
+│   ├── 127.0.0.1/
+│   │   └── website_orb_learning/
+│   ├── campaign.orbweaver.spruked.com/
+│   │   ├── approved_claims/
+│   │   ├── banned_claims/
+│   │   ├── claims/
+│   │   ├── crm_context/
+│   │   ├── current/
+│   │   ├── dandy_packs/
+│   │   ├── dandy_sponsor_pack/
+│   │   ├── history/
+│   │   ├── local_index/
+│   │   ├── mail_context/
+│   │   ├── owner_seed_changes/
+│   │   ├── preflight/
+│   │   ├── recommendations/
+│   │   ├── reports/
+│   │   ├── runs/
+│   │   ├── visitor_questions/
+│   │   ├── website_orb_context/
+│   │   └── website_orb_learning/
+│   ├── localhost/
+│   │   └── website_orb_learning/
+│   ├── orbweaver.spruked.com/
+│   │   ├── approved_claims/
+│   │   ├── banned_claims/
+│   │   ├── claims/
+│   │   ├── crm_context/
+│   │   ├── current/
+│   │   ├── dandy_packs/
+│   │   ├── dandy_sponsor_pack/
+│   │   ├── history/
+│   │   ├── local_index/
+│   │   ├── mail_context/
+│   │   ├── owner_seed_changes/
+│   │   ├── preflight/
+│   │   ├── recommendations/
+│   │   ├── reports/
+│   │   ├── visitor_questions/
+│   │   ├── website_orb_context/
+│   │   └── website_orb_learning/
+│   ├── pops.spruked.com/
+│   │   ├── approved_claims/
+│   │   ├── banned_claims/
+│   │   ├── claims/
+│   │   ├── crm_context/
+│   │   ├── current/
+│   │   ├── dandy_packs/
+│   │   ├── dandy_sponsor_pack/
+│   │   ├── history/
+│   │   ├── local_index/
+│   │   ├── mail_context/
+│   │   ├── owner_seed_changes/
+│   │   ├── recommendations/
+│   │   ├── reports/
+│   │   ├── visitor_questions/
+│   │   └── website_orb_context/
+│   ├── shilohridgekatahdins.com/
+│   │   ├── approved_claims/
+│   │   ├── banned_claims/
+│   │   ├── claims/
+│   │   ├── crm_context/
+│   │   ├── current/
+│   │   ├── dandy_packs/
+│   │   ├── dandy_sponsor_pack/
+│   │   ├── history/
+│   │   ├── local_index/
+│   │   ├── mail_context/
+│   │   ├── owner_seed_changes/
+│   │   ├── recommendations/
+│   │   ├── reports/
+│   │   ├── visitor_questions/
+│   │   └── website_orb_context/
+│   ├── spruked.com/
+│   │   ├── approved_claims/
+│   │   ├── banned_claims/
+│   │   ├── claims/
+│   │   ├── crm_context/
+│   │   ├── current/
+│   │   ├── dandy_packs/
+│   │   ├── dandy_sponsor_pack/
+│   │   ├── history/
+│   │   ├── local_index/
+│   │   ├── mail_context/
+│   │   ├── owner_seed_changes/
+│   │   ├── preflight/
+│   │   ├── recommendations/
+│   │   ├── reports/
+│   │   ├── runs/
+│   │   ├── visitor_questions/
+│   │   ├── website_orb_context/
+│   │   └── website_orb_learning/
+│   ├── truemarkmint.com/
+│   │   ├── approved_claims/
+│   │   ├── banned_claims/
+│   │   ├── claims/
+│   │   ├── crm_context/
+│   │   ├── current/
+│   │   ├── dandy_packs/
+│   │   ├── dandy_sponsor_pack/
+│   │   ├── history/
+│   │   ├── local_index/
+│   │   ├── mail_context/
+│   │   ├── owner_seed_changes/
+│   │   ├── preflight/
+│   │   ├── recommendations/
+│   │   ├── reports/
+│   │   ├── verification/
+│   │   ├── visitor_questions/
+│   │   └── website_orb_context/
+│   ├── www-spruked.com/
+│   │   └── preflight/
+│   └── www.spruked.com/
+│       └── preflight/
+├── databases/
+│   ├── orb_weaver.db
+│   └── orb_weaver_dev.db
+├── development/
+│   ├── databases/
+│   │   └── orb_weaver_dev.db
+│   ├── logs/
+│   │   ├── backend-16666.log
+│   │   └── frontend-16667.log
+│   ├── pids/
+│   │   ├── backend-16666.pid
+│   │   └── frontend-16667.pid
+│   └── runtime/
+├── global_intelligence -> indexes/global_intelligence/
+├── identity/
+│   ├── orb_serial_registry.json
+│   └── orb_weaver_website_orb.json
+├── indexes/
+│   └── global_intelligence/
+│       ├── audit_patterns.jsonl
+│       ├── crawl_patterns.jsonl
+│       └── dandy_promo_inventory.jsonl
+├── integrations/
+│   ├── cali_crm/
+│   │   ├── README.md
+│   │   └── imports/
+│   ├── public_leads/
+│   │   └── private_investor_discussion_20261006041552_be718b5604.json
+│   └── true_mark/
+│       └── orb_certification_requests/
+├── long_term_memory/
+│   └── tpc/
+│       ├── 1fd72fbe61a5b6f46b1ab9c1.json
+│       ├── 3a0f8e219b875810c62fe8de.json
+│       ├── 7c1c73b4e3e398ba06506af8.json
+│       ├── 88823c2baac7d43a83dda982.json
+│       ├── e690e0161948d69173930b83.json
+│       └── f7e00aff91c24704a42d59e9.json
+├── manager.py
+├── manifests/
+├── observations/
+│   └── cognition/
+│       └── workers/
+├── paths.py
+├── permissions/
+├── reports/
+│   ├── 1_fdps/
+│   │   ├── audit_2.json
+│   │   ├── crawl_1.json
+│   │   ├── latest_report.json
+│   │   └── preflight/
+│   ├── 2_shiloh_ridge_farm/
+│   │   ├── audit_1.json
+│   │   ├── crawl_2.json
+│   │   ├── latest_report.json
+│   │   └── preflight/
+│   ├── 3_orb_weaver_site/
+│   │   ├── audit_3.json
+│   │   ├── audit_4.json
+│   │   ├── crawl_3.json
+│   │   ├── crawl_4.json
+│   │   ├── crawl_5.json
+│   │   ├── latest_report.json
+│   │   └── preflight/
+│   ├── 4_spruked_com/
+│   │   ├── audit_10.json
+│   │   ├── audit_11.json
+│   │   ├── audit_5.json
+│   │   ├── crawl_18.json
+│   │   ├── crawl_6.json
+│   │   ├── crawl_7.json
+│   │   ├── latest_report.json
+│   │   └── preflight/
+│   ├── 5_pops/
+│   │   ├── audit_12.json
+│   │   ├── audit_6.json
+│   │   ├── crawl_11.json
+│   │   ├── crawl_21.json
+│   │   ├── crawl_8.json
+│   │   ├── crawl_9.json
+│   │   ├── latest_report.json
+│   │   └── preflight/
+│   ├── 6_true_mark/
+│   │   ├── audit_7.json
+│   │   ├── audit_8.json
+│   │   ├── audit_9.json
+│   │   ├── crawl_12.json
+│   │   ├── crawl_14.json
+│   │   ├── crawl_15.json
+│   │   ├── crawl_16.json
+│   │   ├── crawl_22.json
+│   │   ├── crawl_23.json
+│   │   ├── latest_report.json
+│   │   └── preflight/
+│   └── 7_pro_prime/
+├── runtime/
+│   ├── backend_data_compat/
+│   ├── browser_reviews/
+│   ├── faster_whisper-13000.log
+│   ├── inference_gateway/
+│   │   ├── events.jsonl
+│   │   ├── events.jsonl.1
+│   │   ├── logs/
+│   │   └── pids/
+│   ├── logs/
+│   │   ├── kokoro_tts.log
+│   │   └── preflight_scanner.log
+│   ├── state/
+│   │   └── kokoro_tts.pid
+│   └── website_orb_aims/
+│       ├── aims_schema.json
+│       ├── derived_graphs/
+│       ├── indexes/
+│       ├── long_term_matrix.ledger
+│       ├── retrieval/
+│       └── vault/
+├── runtime_state/
+├── schemas/
+│   ├── orb_weaver.cali_crm_contact_dossier.v1.json
+│   ├── orb_weaver.orbs_guest_merge_request.v1.json
+│   ├── orb_weaver.orbs_guest_merge_result.v1.json
+│   ├── orb_weaver.orbs_guest_session.v1.json
+│   ├── orb_weaver.orbs_stage_action_request.v1.json
+│   ├── orb_weaver.orbs_stage_action_result.v1.json
+│   └── orb_weaver.orbs_stage_snapshot.v1.json
+├── short_term_memory/
+│   └── website_orb/
+│       ├── 1fd72fbe61a5b6f46b1ab9c1.json
+│       ├── 3a0f8e219b875810c62fe8de.json
+│       ├── 7c1c73b4e3e398ba06506af8.json
+│       ├── 88823c2baac7d43a83dda982.json
+│       ├── e690e0161948d69173930b83.json
+│       └── f7e00aff91c24704a42d59e9.json
+├── site_or_environment_data/
+├── structure.tree.txt
+├── verified_outcomes/
+└── workflow_state/

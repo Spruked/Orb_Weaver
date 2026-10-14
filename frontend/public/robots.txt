@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://orbweaver.spruked.com/sitemap.xml
+Sitemap: https://orbsweaver.com/sitemap.xml

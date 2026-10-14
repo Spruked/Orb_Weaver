@@ -17,7 +17,8 @@ from urllib.parse import urlparse
 
 
 ORB_WEAVER_PLATFORM_HOSTS: Set[str] = {
-    "orbweaver.spruked.com",
+    "www.orbsweaver.com",
+    "orbsweaver.com",
     "campaign.orbweaver.spruked.com",
 }
 

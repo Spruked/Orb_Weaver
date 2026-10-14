@@ -37,7 +37,10 @@ def weaver_lexical_context(website_context: dict | None, page_capsule: dict | No
     context = website_context or {}
     # The server supplies this context from the active site's scan, not a
     # browser-provided alias bank or another customer's graph.
-    if context.get("domain") not in {None, "orbweaver.spruked.com", "https://orbweaver.spruked.com", "localhost", "127.0.0.1"}:
+    if context.get("domain") not in {
+        None, "www.orbsweaver.com", "orbsweaver.com", "https://www.orbsweaver.com",
+        "orbweaver.spruked.com", "https://orbweaver.spruked.com", "localhost", "127.0.0.1",
+    }:
         return {}
     snapshot = json.dumps({"records": (context.get("pointer_plot_map") or {}).get("records") or [],
                            "pages": context.get("page_knowledge") or context.get("pages") or [], "lexical_index": context.get("lexical_index") or {}},

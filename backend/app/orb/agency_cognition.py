@@ -88,7 +88,7 @@ async def agency_cognition(request: AgencyCognitionRequest, customer_id: Optiona
         return {"event_id": event["event_id"], "source": source, "payload_bytes": payload_bytes}
 
     transcript = str(payload.get("visitorResponse") or payload.get("visitor_context") or "Current governed tour objective")[:1500]
-    memory = context_for_agency(transcript, request.anonymous_session_id, customer_id)
+    memory = context_for_agency(transcript, request.anonymous_session_id, customer_id, request.target_url)
     # Purpose-built retrieval; never send the entire session cache and never
     # record cognition plumbing as if it were a new visitor utterance.
     relevant = []

@@ -208,6 +208,7 @@ def install_rendered_dom_support(crawler_type) -> None:
             self._orb_unresolved_app_shell_urls = unresolved
 
         if not rendered or looks_like_unrendered_app_shell(rendered):
+            self._orb_last_render_error = getattr(self, "_orb_last_render_error", None) or "Rendered application shell has no extracted content."
             self._orb_render_failures = int(getattr(self, "_orb_render_failures", 0)) + 1
             unresolved.add(self._normalize_url(url))
             return None
@@ -250,6 +251,10 @@ def install_rendered_dom_support(crawler_type) -> None:
             "unresolved_app_shell_count": len(unresolved),
             "unresolved_app_shell_urls": unresolved[:50],
         }
+        # These counters drive the scan stage report. Only validated rendered
+        # DOMs count, not subprocesses that merely returned an HTML document.
+        stats["javascript_render_attempts"] = attempted
+        stats["javascript_render_successes"] = succeeded
         return stats
 
     crawler_type._looks_like_spa_shell = enhanced_shell_detection

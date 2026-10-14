@@ -1,12 +1,12 @@
 {
   "schema": "orb_weaver.tool_cache.v1",
   "mode": "basic",
-  "domain": "orbweaver.spruked.com",
+  "domain": "www.orbsweaver.com",
   "generated_at": "2026-07-06T21:11:16.913090+00:00",
   "expires_at": "2026-07-20T21:11:16.913090+00:00",
   "runtime_rule": "intent_keyword -> play WAV; cache miss -> filler WAV -> async MCP call",
   "visual_targets": {
-    "path": "substrate/clients/orbweaver.spruked.com/website_orb_context/pointer_plot_map.json",
+    "path": "substrate/clients/www.orbsweaver.com/website_orb_context/pointer_plot_map.json",
     "available": true,
     "schema": "orb_weaver.pointer_plot_map.v1",
     "record_count": 858

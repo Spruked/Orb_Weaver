@@ -99,7 +99,7 @@ const LandingPage: React.FC = () => {
         }));
         try {
           const readiness: StartupReadinessResult = { ...(await api.websiteOrbStartupReadiness(
-            new URL(`${window.location.pathname}${window.location.search}`, "https://orbweaver.spruked.com").toString(),
+            new URL(`${window.location.pathname}${window.location.search}`, "https://orbsweaver.com").toString(),
           )) };
           lastResult = readiness;
           if (landingTourRuntimeReady(readiness)) {

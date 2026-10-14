@@ -60,7 +60,15 @@ if (!url) {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
     // Allow hydration and route content to settle, but never wait on audio,
     // analytics, WebSockets, or an application-owned tour timer.
-    await page.waitForTimeout(Math.min(2000, Math.max(500, timeoutMs / 5)));
+    // A fixed two-second delay captured empty Vite roots on Crawl #23.
+    // Wait for actual body content, without waiting on sockets or analytics.
+    const hydrated = await page.waitForFunction(() => {
+      const root = document.querySelector('#root, #app, #__next, [data-reactroot]');
+      const surface = root || document.body;
+      return Boolean(surface && (surface.innerText.trim().length > 0 ||
+        surface.querySelector('a[href],button,input,img,canvas,video')));
+    }, null, { timeout: Math.max(3000, timeoutMs - 2000) }).then(() => true, () => false);
+    await page.waitForTimeout(350);
     const html = await page.content();
     const bodyText = await page.locator("body").innerText().catch(() => "");
     const rootText = await page.locator("#root, #app, [data-reactroot]").first().innerText().catch(() => "");
@@ -70,6 +78,8 @@ if (!url) {
       root_text_length: rootText.length,
       has_root_mount: Boolean(await page.locator("#root, #app, [data-reactroot]").count()),
       html_length: html.length,
+      hydrated,
+      resolved_url: page.url(),
     };
     process.stderr.write(`ORB_RENDER_DIAGNOSTICS:${JSON.stringify(diagnosticsEnvelope)}\n`);
     process.stdout.write(html);

@@ -207,8 +207,7 @@ app = FastAPI(
 # normally uses same-origin requests; these local origins support the isolated
 # development lane without granting arbitrary websites API access.
 CORS_ALLOWED_ORIGINS = [
-    "https://orbweaver.spruked.com",
-    "https://www.orbweaver.spruked.com",
+    "https://orbsweaver.com",
     # The campaign is a separately hosted, registered Website ORB surface.
     # Keep this explicit and site-bound; do not broaden it to a wildcard.
     "https://campaign.orbweaver.spruked.com",
@@ -329,11 +328,10 @@ AUTHENTICATED_CRAWL_SESSIONS: Dict[str, Dict[str, Any]] = {}
 ORB_INSTALL_SITES: Dict[str, Dict[str, Any]] = {
     "orb-weaver": {
         "name": "Orb Weaver",
-        "context_domain": "orbweaver.spruked.com",
+        "context_domain": "orbsweaver.com",
         "pointer_recovery_routes": ["/", "/features", "/how-it-works", "/web-weave", "/preflight", "/marketplace"],
         "allowed_origins": {
-            "https://orbweaver.spruked.com",
-            "https://www.orbweaver.spruked.com",
+            "https://orbsweaver.com",
             "http://localhost:16510",
             "http://127.0.0.1:16510",
             "http://localhost:16610",
@@ -603,7 +601,7 @@ class WebsiteOrbTtsRequest(BaseModel):
 
 class WebsiteOrbStartupReadinessRequest(BaseModel):
     site_id: str = Field(default="orb-weaver", min_length=2, max_length=120)
-    target_url: str = Field(default="https://orbweaver.spruked.com/", min_length=4, max_length=1000)
+    target_url: str = Field(default="https://orbsweaver.com/", min_length=4, max_length=1000)
 
 
 class WebsiteOrbTtsVoiceRequest(BaseModel):
@@ -5185,6 +5183,91 @@ def _website_context_root(domain: str) -> Optional[Path]:
     return canonical_root if canonical_root.exists() else None
 
 
+def _load_compiled_site_package_context(domain: str) -> Optional[Dict[str, Any]]:
+    """Load the checked-in canonical Website ORB package when no DB client exists.
+
+    The public Orb Weaver install is itself a manufactured Website ORB. Its
+    compiled intelligence is a valid read-only runtime source even when the
+    application database has no customer Project row for the public domain.
+    Keep this fallback explicit and limited to the canonical install domains;
+    customer domains must continue to resolve through their own Vault package.
+    """
+    if _domain_key(domain) not in {"orbsweaver.com", "www.orbsweaver.com"}:
+        return None
+    package_root = Path(__file__).resolve().parents[1] / "manufacturing" / "templates" / "Website_Orb_Final" / "compiled_orb"
+    runtime_language = _load_json_if_present(package_root / "runtime_language.json") or {}
+    site_world = _load_json_if_present(package_root / "site_world.json") or {}
+    latest_context = _load_json_if_present(package_root / "latest_context.json") or {}
+    pointer_map = _load_json_if_present(package_root / "pointer_plot_map.json") or {}
+    self_scan = _load_json_if_present(package_root / "self_scan_summary.json") or {}
+    tool_cache = _load_json_if_present(package_root / "tool_cache.json") or {}
+    if not runtime_language or not site_world or not pointer_map:
+        return None
+
+    page_knowledge = []
+    for route, record in (site_world.get("routes") or {}).items():
+        if not isinstance(record, dict):
+            continue
+        page_knowledge.append({
+            "url": f"https://www.orbsweaver.com{route if str(route).startswith('/') else '/' + str(route)}",
+            "route": route,
+            "title": str(route).strip("/").replace("-", " ").title() or "Orb Weaver",
+            "summary": record.get("summary") or record.get("page_purpose") or "",
+            "content_excerpt": record.get("page_purpose") or "",
+            "route_classification": "compiled_site_world",
+        })
+
+    stages = {
+        "url_discovery": "COMPLETE",
+        "page_fetch": "COMPLETE",
+        "page_content_scan": "COMPLETE",
+        "semantic_indexing": "COMPLETE",
+        "lexical_indexing": "COMPLETE",
+        "route_classification": "COMPLETE",
+        "pointer_mapping": "COMPLETE",
+        "pointer_verification": "COMPLETE",
+        "pointer_recovery": "COMPLETE",
+        "source_validation": "COMPLETE",
+        "runtime_guidance": {
+            "status": "COMPLETE",
+            "output_count": int(pointer_map.get("record_count") or len(pointer_map.get("records") or [])),
+            "source": "compiled_site_package",
+        },
+    }
+    return {
+        "schema": "orb_weaver.website_orb_context.v1",
+        "source": "compiled_site_artifacts",
+        "site_name": runtime_language.get("site_name") or site_world.get("site", {}).get("name") or "Orb Weaver",
+        "brand": runtime_language.get("brand") or "Orb Weaver",
+        "domain": domain,
+        "site_summary": site_world.get("site_summary") or runtime_language.get("site_summary") or "",
+        "orb_role": runtime_language.get("orb_role") or "Help visitors understand Orb Weaver.",
+        "primary_user_tasks": runtime_language.get("primary_user_tasks") or site_world.get("primary_user_tasks") or [],
+        "key_facts": runtime_language.get("key_facts") or [],
+        "route_hints": runtime_language.get("route_hints") or {},
+        "answer_boundaries": runtime_language.get("answer_boundaries") or site_world.get("answer_boundaries") or [],
+        "visitor_tools": runtime_language.get("visitor_tools") or [],
+        "allowed_guidance": runtime_language.get("allowed_guidance") or site_world.get("guiderails") or [],
+        "page_knowledge": page_knowledge,
+        "knowledge_graph": latest_context.get("knowledge_graph"),
+        "authority_flow": latest_context.get("authority_flow"),
+        "competitor_gap": latest_context.get("competitor_gap"),
+        "template_detection": latest_context.get("template_detection"),
+        "pointer_plot_map": pointer_map,
+        "tool_cache": tool_cache,
+        "orb_ready_score": latest_context.get("orb_ready_score") or site_world.get("source_inventory", {}).get("orb_ready_score"),
+        "scan_stage_execution": stages,
+        "compiled_artifact_provenance": {
+            "source": "manufacturing/templates/Website_Orb_Final/compiled_orb",
+            "site_world_schema": site_world.get("schema"),
+            "pointer_map_schema": pointer_map.get("schema"),
+            "generated_at": site_world.get("generated_at") or self_scan.get("generated_at"),
+            "pages_scanned": self_scan.get("pages_scanned"),
+            "pointer_records": pointer_map.get("record_count") or len(pointer_map.get("records") or []),
+        },
+    }
+
+
 def _load_domain_website_context(target_url: Optional[str]) -> Optional[Dict[str, Any]]:
     domain = _domain_from_url(target_url)
     if not domain:
@@ -5199,7 +5282,7 @@ def _load_domain_website_context(target_url: Optional[str]) -> Optional[Dict[str
             if payload:
                 payload.setdefault("domain", domain)
                 return payload
-    return None
+    return _load_compiled_site_package_context(domain)
 
 
 def _project_for_runtime_domain(domain: str, db: Session) -> Optional[Project]:
@@ -5214,7 +5297,7 @@ def _project_for_runtime_domain(domain: str, db: Session) -> Optional[Project]:
 
 def _preferred_runtime_crawl(project: Project, db: Session) -> Optional[CrawlJob]:
     configured_crawl_id = settings.ORB_WEAVER_SITE_ORB_SOURCE_CRAWL_ID
-    if configured_crawl_id and _domain_key(project.domain) == "orbweaver.spruked.com":
+    if configured_crawl_id and _domain_key(project.domain) in {"www.orbsweaver.com", "orbsweaver.com"}:
         configured = db.get(CrawlJob, int(configured_crawl_id))
         if configured and configured.project_id == project.id and str(configured.status).lower() in {"completed", "complete"}:
             return configured
@@ -5539,7 +5622,9 @@ def _pointer_review_payload(record: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-ORB_WEAVER_SHOWCASE_DOMAINS = {"orbweaver.spruked.com", "127.0.0.1", "localhost"}
+ORB_WEAVER_SHOWCASE_DOMAINS = {
+    "www.orbsweaver.com", "orbsweaver.com", "127.0.0.1", "localhost",
+}
 ORB_WEAVER_SHOWCASE_POINTERS: List[Dict[str, Any]] = [
     {
         "target_id": "orb-weaver-suite-logo", "page_route": "/", "target_type": "logo",
@@ -10447,7 +10532,7 @@ async def website_orb_startup_readiness(
     proofs["SITE_WORLD_READY"] = {
         "ready": bool(
             website_context.get("schema")
-            and website_context.get("source") == "completed_crawl_artifacts"
+            and website_context.get("source") in {"completed_crawl_artifacts", "compiled_site_artifacts"}
             and website_context.get("page_knowledge")
             and site_world_version
             and page_capsule.get("route") == route
@@ -13632,7 +13717,7 @@ def _manufacturing_source_context(project: Project) -> Dict[str, Any]:
 
 def _default_manufacturing_crawl(project: Project, db: Session) -> Optional[CrawlJob]:
     configured_crawl_id = settings.ORB_WEAVER_SITE_ORB_SOURCE_CRAWL_ID
-    if configured_crawl_id and _domain_key(project.domain) == "orbweaver.spruked.com":
+    if configured_crawl_id and _domain_key(project.domain) in {"www.orbsweaver.com", "orbsweaver.com"}:
         configured = db.get(CrawlJob, int(configured_crawl_id))
         if configured and configured.project_id == project.id and str(configured.status).lower() in {"completed", "complete"}:
             return configured

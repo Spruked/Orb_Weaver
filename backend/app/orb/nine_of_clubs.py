@@ -21,7 +21,10 @@ GuidanceMode = Literal[
 ShowcaseInteraction = Literal["tour_question", "account_setup"]
 _MODES = frozenset(GuidanceMode.__args__)
 _POLICY_PATH = Path(__file__).with_name("nine_of_clubs_skg.json")
-_SHOWCASE_HOSTS = frozenset({"orbweaver.spruked.com", "localhost", "127.0.0.1"})
+_SHOWCASE_HOSTS = frozenset({
+    "www.orbsweaver.com", "orbsweaver.com", "orbweaver.spruked.com",
+    "localhost", "127.0.0.1",
+})
 MAX_GUIDANCE_BYTES = 8192
 
 

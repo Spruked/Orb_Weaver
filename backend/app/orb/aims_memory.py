@@ -12,8 +12,10 @@ import hashlib
 import sys
 import time
 import uuid
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 from app.core.storage import RUNTIME_ROOT
 
@@ -29,6 +31,9 @@ from memory_core.skg import graphqlite_backend_factory  # noqa: E402
 _system: Optional[AIMSMemorySystem] = None
 VISITOR_SESSION_TTL_SECONDS = 30 * 60
 _visitor_session_accounts: Dict[str, str] = {}
+AIMS_RECALL_MAX_BYTES = 6000
+AIMS_RECALL_MAX_PRIOR_OUTCOMES = 4
+AIMS_RECALL_MAX_INDEXED_EVIDENCE = 6
 
 
 def _aims() -> AIMSMemorySystem:
@@ -78,6 +83,31 @@ def _compact(value: Any, depth: int = 0) -> Any:
     return value
 
 
+def _site_scope(target_url: Optional[str]) -> Optional[str]:
+    """Return a normalized tenant boundary; missing scope means no recall."""
+    if not target_url:
+        return None
+    hostname = (urlparse(str(target_url)).hostname or "").casefold().rstrip(".")
+    return hostname or None
+
+
+def _bounded_recall(prior: List[Dict[str, Any]], indexed: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Keep durable recall small enough to be safe for the cognition prompt."""
+    selected_prior: List[Dict[str, Any]] = []
+    selected_indexed: List[Dict[str, Any]] = []
+    for item in [*prior[:AIMS_RECALL_MAX_PRIOR_OUTCOMES], *indexed[:AIMS_RECALL_MAX_INDEXED_EVIDENCE]]:
+        candidate_prior = selected_prior + ([item] if item in prior[:AIMS_RECALL_MAX_PRIOR_OUTCOMES] else [])
+        candidate_indexed = selected_indexed + ([item] if item in indexed[:AIMS_RECALL_MAX_INDEXED_EVIDENCE] else [])
+        candidate = {"prior_session_outcomes": candidate_prior, "indexed_evidence": candidate_indexed}
+        if len(json.dumps(candidate, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) > AIMS_RECALL_MAX_BYTES:
+            continue
+        if item in prior[:AIMS_RECALL_MAX_PRIOR_OUTCOMES]:
+            selected_prior.append(item)
+        else:
+            selected_indexed.append(item)
+    return {"prior_session_outcomes": selected_prior, "indexed_evidence": selected_indexed}
+
+
 def _prune_expired_visitor_sessions(now: Optional[float] = None) -> None:
     """Sweep only Website ORB visitor sessions; other A.I.M.S. users are untouched."""
     current = now if now is not None else time.time()
@@ -94,6 +124,7 @@ def _prune_expired_visitor_sessions(now: Optional[float] = None) -> None:
 
 def _selected_context(
     query: str, anonymous_session_id: Optional[str], customer_id: Optional[str], limit: int = 12,
+    target_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Read bounded A.I.M.S. context without manufacturing a new visitor event."""
     aims = _aims()
@@ -104,13 +135,51 @@ def _selected_context(
     if customer_id and anonymous_session_id:
         _visitor_session_accounts[session_id] = str(customer_id)
     selected = aims.session_context(session_id, query, limit=limit)
+    site_scope = _site_scope(target_url)
+    prior: List[Dict[str, Any]] = []
+    indexed: List[Dict[str, Any]] = []
+    # Only an authenticated, explicitly identified visitor gets private prior
+    # outcomes. Anonymous sessions intentionally have no durable identity key.
+    visitor_key = _visitor_key(customer_id)
+    if visitor_key and site_scope:
+        prior = aims.retrieve_prior_session_outcomes(
+            visitor_key, query, limit=AIMS_RECALL_MAX_PRIOR_OUTCOMES, site_scope=site_scope,
+        )
+    if site_scope:
+        receipt = aims.retrieve(
+            query, mode="POSTERIOR_ONLY", limit=AIMS_RECALL_MAX_INDEXED_EVIDENCE,
+            site_scope=site_scope,
+        )
+        indexed = [
+            {
+                "atom_id": item.get("atom_id"),
+                "statement": _compact(item.get("statement", "")),
+                "authority_class": item.get("authority_class", "assertion"),
+                "status": item.get("status"),
+                "confidence": item.get("confidence"),
+                "source_record_id": item.get("source_record_id"),
+                "source_glyph": item.get("source_glyph"),
+                "relevance_score": item.get("relevance_score"),
+                "retrieval_id": receipt.get("retrieval_id"),
+                "authority": "advisory_evidence_only",
+            }
+            for item in receipt.get("results", [])
+        ]
+    recall = _bounded_recall(prior, indexed)
     return {
         "provider": "aims",
         "session_id": session_id,
         "full_session_event_count": selected["session"]["event_count"],
         "relevant_session_context": [_compact(event) for event in selected["context"]],
-        "prior_session_outcomes": [],
-        "authority_note": "AIMS context is advisory, session-scoped, and not cross-session account memory.",
+        "prior_session_outcomes": recall["prior_session_outcomes"],
+        "indexed_evidence": recall["indexed_evidence"],
+        "recall": {
+            "site_scope": site_scope,
+            "authenticated_visitor_scope": bool(visitor_key and site_scope),
+            "max_bytes": AIMS_RECALL_MAX_BYTES,
+            "source": "aims_durable_outcomes_and_posterior_vault",
+        },
+        "authority_note": "AIMS context and durable recall are advisory evidence; TPC, Correspondence Engine, and Doctrine v1 remain governing authority.",
     }
 
 
@@ -131,11 +200,12 @@ def context_for_turn(
         aims.remember_session_event(session_id, "page_visit", {"url": target_url}, tags=["navigation"], relevance=0.65)
     if experience:
         aims.remember_session_event(session_id, "action", _compact(experience), tags=["tour", "experience"], relevance=0.8)
-    return _selected_context(transcript, anonymous_session_id, customer_id)
+    return _selected_context(transcript, anonymous_session_id, customer_id, target_url=target_url)
 
 
 def context_for_agency(
     query: str, anonymous_session_id: Optional[str], customer_id: Optional[str],
+    target_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Retrieve Agency context without recording cognition plumbing as visitor speech.
 
@@ -144,7 +214,7 @@ def context_for_agency(
     compilation, and semantic classification are retrieval operations only.
     """
     _prune_expired_visitor_sessions()
-    return _selected_context(query, anonymous_session_id, customer_id)
+    return _selected_context(query, anonymous_session_id, customer_id, target_url=target_url)
 
 
 def record_turn_result(

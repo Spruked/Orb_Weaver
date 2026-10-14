@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # Legacy compatibility only. It is normalized to the canonical vault and
     # must never create a Windows-looking directory inside Linux.
     ORB_WEAVER_SUBSTRATE_ROOT: str = "../vault_system"
-    PUBLIC_BASE_URL: str = "https://orbweaver.spruked.com"
+    PUBLIC_BASE_URL: str = "https://orbsweaver.com"
     CALI_CRM_URL: str = "http://localhost:21000/"
     PRIME_MAIL_URL: str = "http://localhost:19000/"
     VIV_COMMUNICATIONS_URL: str = "http://host.docker.internal:19000"

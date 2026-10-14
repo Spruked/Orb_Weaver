@@ -35,8 +35,8 @@ def main() -> None:
         "runtime_contract": "precompiled_skg_lookup_only",
         "site": {
             "name": runtime_language.get("site_name", "Orb Weaver"),
-            "domain": runtime_language.get("domain", "orbweaver.spruked.com"),
-            "canonical_url": runtime_language.get("canonical_url", "https://orbweaver.spruked.com/"),
+            "domain": runtime_language.get("domain", "www.orbsweaver.com"),
+            "canonical_url": runtime_language.get("canonical_url", "https://www.orbsweaver.com/"),
         },
         "identity": runtime_language.get("first_person_identity", {}),
         "site_summary": runtime_language.get("site_summary", ""),

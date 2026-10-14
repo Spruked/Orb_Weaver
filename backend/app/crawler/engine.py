@@ -289,9 +289,12 @@ class OrbWeaverCrawler:
         self._orb_last_render_error = None
         self._orb_render_diagnostics = {}
         rendered = self._render_page_with_playwright(url, timeout_seconds)
-        if rendered:
+        if rendered and not self._looks_like_spa_shell(rendered):
             self.render_successes += 1
             return rendered
+        if rendered:
+            self._orb_last_render_error = "Browser returned an unresolved application shell; extraction is incomplete."
+            return None
 
         # Compatibility fallback for minimal installations without Playwright.
         chrome = self._chrome_executable()
@@ -329,6 +332,9 @@ class OrbWeaverCrawler:
         rendered = result.stdout.strip()
         if result.returncode != 0 or "<html" not in rendered.lower():
             self._orb_last_render_error = (result.stderr or "Chromium returned no usable rendered DOM")[-1000:]
+            return None
+        if self._looks_like_spa_shell(rendered):
+            self._orb_last_render_error = "Chromium returned an unresolved application shell; extraction is incomplete."
             return None
         self.render_successes += 1
         return rendered
@@ -876,6 +882,7 @@ class OrbWeaverCrawler:
         )
         render_status = "not_required"
         render_error = None
+        self._orb_render_diagnostics = {}
         if render_required:
             render_status = "attempted"
             rendered_html = await self._render_page_dom(url)

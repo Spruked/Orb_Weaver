@@ -38,7 +38,7 @@ const GA4Dashboard: React.FC = () => {
 
     api.listProjects()
       .then((projects) => {
-        const project = projects.find((item) => item.domain.replace(/^https?:\/\//, '').replace(/\/$/, '') === 'orbweaver.spruked.com') || projects[0] || null;
+        const project = projects.find((item) => item.domain.replace(/^https?:\/\//, '').replace(/\/$/, '') === 'orbsweaver.com') || projects[0] || null;
         setOrbProject(project);
         setPropertyInput(project?.ga4_property_id || '');
       })
