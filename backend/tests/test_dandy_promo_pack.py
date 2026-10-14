@@ -55,6 +55,11 @@ def test_dandy_pack_is_source_grounded_and_contains_ad_inventory():
     assert pack["candidate_claims"][0]["claim_id"] == "claim_001"
     assert pack["cta"]["url"] in {"https://example.test/", "https://example.test/about"}
     assert all(item["source_url"] for item in pack["candidate_claims"])
+    assert pack["assessments"]["site_prominence"]["scoring_method"] == "deterministic_evidence_signals_v1"
+    assert pack["assessments"]["campaign_readiness"]["label"] in {"discovered", "production_ready"}
+    assert pack["candidate_claims"][0]["evidence"]["source_url"]
+    assert pack["candidate_claims"][0]["scan_timestamp"] == pack["generated_at"]
+    assert pack["lifecycle"]["publication_approval_required"] is True
 
 
 def test_dandy_pack_degrades_to_empty_without_pages():
@@ -99,10 +104,30 @@ def test_dandy_approved_export_fails_closed_and_excludes_risky_claims():
         "approved_offer_ids": [],
         "approved_ad_read_ids": ["ad_read_15s"],
     }
+    pack["lifecycle"] = {"current_state": "approved_for_publication"}
     exported = build_approved_dandy_payload(pack)
     assert exported["schema"] == "orb_weaver.dandy_approved_promo_payload.v1"
     assert exported["ad_reads"].keys() == {"15s"}
     assert "risky_claims" not in exported
+    assert exported["lifecycle"]["publication_status"] == "approved_for_publication"
+
+
+def test_dandy_owner_review_is_not_publication_approval():
+    pack = build_dandy_promo_pack(
+        [{"url": "https://example.test", "title": "Acme", "h1": "Reliable service"}],
+        domain="example.test",
+        crawl_job_id=12,
+    )
+    pack["owner_approval"] = {
+        "status": "approved",
+        "owner_approved": True,
+        "approved_claim_ids": [],
+        "approved_offer_ids": [],
+        "approved_ad_read_ids": [],
+    }
+    pack["lifecycle"] = {"current_state": "owner_review"}
+    with pytest.raises(ValueError, match="publication approval"):
+        build_approved_dandy_payload(pack)
 
 
 def test_dandy_pack_blocks_catalog_quality_failures():

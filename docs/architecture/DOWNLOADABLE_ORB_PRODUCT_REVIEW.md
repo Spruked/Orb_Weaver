@@ -47,7 +47,7 @@ runtime editions:
 | Scan | Enhanced Website Intelligence Scan | Basic plus deeper semantics, customer journeys, conversion paths, product intelligence, accessibility, responsive layouts, and expanded spatial analysis |
 | Scan | Platinum Website Intelligence Scan | Enhanced plus the complete applicable capability dataset, advanced spatial/workflow analysis, commercial opportunities, verification evidence, and comprehensive recommendations |
 | Specialized | SEO Intelligence Package | Technical SEO, search visibility, structured data, indexing, content opportunities, and supported keyword/competitive analysis |
-| Specialized | Dandy Advertising Intelligence Package | Advertising readiness, campaign landing pages, messaging consistency, conversion tracking, creative opportunities, and connected advertising data where available |
+| Specialized | Dandy Advertising Intelligence Package | Site Prominence, Commercial Opportunity, Campaign Readiness, campaign briefs, Dandy Show production briefs, traceable evidence, and connected advertising data where available |
 | ORB | Basic Website Visitor ORB | Site-specific visitor guidance, voice-first interaction, approved context, and basic verified navigation |
 | ORB | Enhanced Website Intelligence ORB | Basic plus expanded scan evidence, commercial/SEO/Dandy/spatial context, and learning-loop runtime context |
 | ORB | Platinum Website ORB w/Premium Dock Station | Enhanced plus Premium Dock Station owner controls, deployment workflow, maintenance, and launch verification |
@@ -61,6 +61,20 @@ should run only when required by the purchased package. The Basic scan is the
 recommended starting point, and a Basic ORB may be offered from a smaller
 approved evidence set only when the installation readiness and target-quality
 gates pass.
+
+Dandy is a Tagless Advertising Intelligence product: connected analytics may
+enrich it later, but it stands on public website evidence alone. Its three
+assessments are deliberately separate—Site Prominence, Commercial Opportunity,
+and Campaign Readiness—so homepage placement or price cannot be mistaken for
+profitability or sales volume. Findings retain source URL, scan timestamp,
+evidence type, and verification status. Campaign briefs are distinct from
+Dandy Show production briefs; public staff information never authorizes use of
+a person's identity or likeness.
+
+Dandy lifecycle states are `discovered`, `production_ready`, `owner_review`,
+and `approved_for_publication`. The approved export endpoint fails closed until
+the last state is explicitly recorded with rights, offer-term, and brand
+review confirmations.
 
 ## Commercial implementation
 

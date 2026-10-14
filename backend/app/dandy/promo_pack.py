@@ -152,11 +152,11 @@ def _target_customers(pages: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]
             if isinstance(audience, Mapping):
                 label = _clean(audience.get("audienceType") or audience.get("name"), 160)
                 if label:
-                    audiences.append({"segment": label, "source_url": page.get("url"), "evidence_type": "schema"})
+                        audiences.append({"segment": label, "source_url": page.get("url"), "evidence_type": "schema", "classification": "observed"})
         for text in _page_text(page):
             match = _AUDIENCE.search(text)
             if match:
-                audiences.append({"segment": _clean(match.group(1), 160), "source_url": page.get("url"), "evidence_type": "page_text"})
+                audiences.append({"segment": _clean(match.group(1), 160), "source_url": page.get("url"), "evidence_type": "page_text", "classification": "inferred"})
     seen: set[tuple[str, str]] = set()
     result = []
     for row in audiences:
@@ -167,6 +167,108 @@ def _target_customers(pages: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]
     return result[:12]
 
 
+def _assessment(score: int, label: str, rationale: list[str], evidence: list[str], gaps: list[str] | None = None) -> dict[str, Any]:
+    return {
+        "score": max(0, min(100, int(score))),
+        "label": label,
+        "rationale": rationale,
+        "evidence_urls": _unique(evidence, limit=20),
+        "gaps": _unique(gaps or [], limit=12),
+        "scoring_method": "deterministic_evidence_signals_v1",
+    }
+
+
+def _assessments(
+    pages: Sequence[Mapping[str, Any]],
+    offers: Sequence[Mapping[str, Any]],
+    claims: Sequence[Mapping[str, Any]],
+    audiences: Sequence[Mapping[str, Any]],
+    cta_url: str | None,
+    catalog_quality_status: str,
+) -> dict[str, Any]:
+    homepage = [page for page in pages if urlparse(str(page.get("url") or "")).path.rstrip("/") in {"", "/"}]
+    homepage_text = " ".join(" ".join(_page_text(page)) for page in homepage)
+    prominence_signals = sum([
+        min(len(homepage), 1) * 25,
+        min(len(offers), 3) * 10,
+        15 if homepage and _CTA.search(homepage_text) else 0,
+        10 if any(_schema_objects(page) for page in homepage) else 0,
+    ])
+    opportunity_signals = sum([
+        25 if offers else 0,
+        min(len(claims), 3) * 8,
+        min(len(audiences), 2) * 10,
+        15 if cta_url else 0,
+    ])
+    readiness_signals = sum([
+        25 if offers else 0,
+        20 if cta_url else 0,
+        15 if claims else 0,
+        15 if catalog_quality_status not in {"contaminated", "insufficient", "partial", "not_available"} else 0,
+    ])
+    urls = [str(row.get("url") or row.get("source_url") or "") for row in [*offers, *claims, *audiences]]
+    return {
+        "site_prominence": _assessment(
+            prominence_signals,
+            "strong" if prominence_signals >= 60 else "moderate" if prominence_signals >= 30 else "limited",
+            ["Measures how strongly the site promotes observed products or services; it does not estimate sales or profitability."],
+            urls,
+            ["Homepage promotion evidence is limited." if prominence_signals < 30 else ""],
+        ),
+        "commercial_opportunity": _assessment(
+            opportunity_signals,
+            "high_potential" if opportunity_signals >= 65 else "developing" if opportunity_signals >= 35 else "unresolved",
+            ["Uses observed offers, differentiating claims, audience signals, and conversion pathways; it does not treat price or prominence as proof of profit."],
+            urls,
+            ["Add owner-confirmed differentiation or audience evidence." if opportunity_signals < 65 else ""],
+        ),
+        "campaign_readiness": _assessment(
+            readiness_signals,
+            "production_ready" if readiness_signals >= 70 else "discovered",
+            ["Production readiness means a brief can be assembled from evidence; it is not permission to publish."],
+            urls,
+            [
+                "A verified destination is required." if not cta_url else "",
+                "Owner rights, offer, claim, and brand review are still required before publication.",
+                "Creative assets or production inputs may still be missing.",
+            ],
+        ),
+    }
+
+
+def _campaign_briefs(promo_angles: Sequence[Mapping[str, Any]], business_name: str, destination: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "brief_id": f"campaign_{index:03d}",
+            "title": str(angle.get("angle") or "Evidence-led campaign opportunity"),
+            "business_name": business_name,
+            "objective": "Turn an observed website opportunity into an owner-reviewable campaign.",
+            "hook": str(angle.get("angle") or ""),
+            "destination": destination,
+            "evidence_urls": angle.get("evidence") or [],
+            "creative_requirements": ["Owner-approved claim", "Rights-cleared creative", "Platform-specific copy and format"],
+            "lifecycle_state": "production_ready",
+            "publication_status": "owner_review",
+            "classification": "recommended",
+        }
+        for index, angle in enumerate(promo_angles, 1)
+    ]
+
+
+def _show_production_briefs(business_name: str, differentiators: Sequence[str], listener_urls: Sequence[str]) -> list[dict[str, Any]]:
+    return [{
+        "brief_id": "show_001",
+        "title": f"The Dandy Show: {business_name}",
+        "format": "show_production_brief",
+        "potential_characters": [],
+        "story_arcs": [{"title": value, "classification": "observed", "source_urls": list(listener_urls[:5])} for value in differentiators[:3]],
+        "interview_questions": ["What should visitors understand about this story?", "Who has approved participation and likeness use?"],
+        "supporting_media": [],
+        "lifecycle_state": "discovered",
+        "gaps": ["Owner-supplied participants and rights approvals are required before identity or likeness is used."],
+    }] if differentiators else []
+
+
 def build_dandy_promo_pack(
     pages: Sequence[Mapping[str, Any]],
     *,
@@ -175,6 +277,7 @@ def build_dandy_promo_pack(
     catalog: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a source-grounded Dandy sponsor/promotional pack from crawl pages."""
+    generated_at = datetime.now(timezone.utc).isoformat()
     page_rows = [
         page for page in pages
         if isinstance(page, Mapping) and page.get("url") and not is_sensitive_route(str(page.get("url")))
@@ -202,10 +305,19 @@ def build_dandy_promo_pack(
     what_they_sell = _unique([offer["name"] for offer in offers] + [row["claim"] for row in candidate_claims[:4]], limit=8)
     promo_angles = []
     for offer in offers[:5]:
-        promo_angles.append({"angle": f"Spotlight {offer['name']}", "evidence": [offer.get("url")], "approval": "source_grounded"})
+        promo_angles.append({"angle": f"Spotlight {offer['name']}", "evidence": [offer.get("url")], "approval": "source_grounded", "classification": "recommended"})
     for claim in candidate_claims[:5]:
-        promo_angles.append({"angle": claim["claim"], "evidence": [claim.get("source_url")], "approval": "source_grounded"})
+        promo_angles.append({"angle": claim["claim"], "evidence": [claim.get("source_url")], "approval": "source_grounded", "classification": "recommended"})
     promo_angles = promo_angles[:10]
+    promo_angles = [
+        {
+            **angle,
+            "scan_timestamp": generated_at,
+            "verification_status": "recommended_from_observed_evidence",
+            "evidence_refs": [{"source_url": url, "scan_timestamp": generated_at, "verification_status": "observed"} for url in angle.get("evidence") or []],
+        }
+        for angle in promo_angles
+    ]
     offer_line = offers[0]["name"] if offers else (what_they_sell[0] if what_they_sell else "the business")
     claim_line = candidate_claims[0]["claim"] if candidate_claims else f"Learn more about {business_name}."
     destination = cta_url or domain
@@ -214,13 +326,18 @@ def build_dandy_promo_pack(
         "30s": f"This episode is supported by {business_name}. Discover {offer_line}. {claim_line} Visit {destination} for details.",
         "60s": f"Today’s sponsor is {business_name}. Their site highlights {offer_line}. {claim_line} Explore the source and current details at {destination}.",
     }
-    offers = [{"offer_id": f"offer_{index:03d}", **offer} for index, offer in enumerate(offers, 1)]
-    candidate_claims = [{"claim_id": f"claim_{index:03d}", **claim} for index, claim in enumerate(candidate_claims, 1)]
-    risky_claims = [{"claim_id": f"risky_{index:03d}", **claim} for index, claim in enumerate(risky_claims, 1)]
+    offers = [{"offer_id": f"offer_{index:03d}", "classification": "observed", "scan_timestamp": generated_at, "verification_status": "observed", "evidence": {"source_url": offer.get("url"), "evidence_type": offer.get("source")}} | offer for index, offer in enumerate(offers, 1)]
+    candidate_claims = [{"claim_id": f"claim_{index:03d}", "scan_timestamp": generated_at, "verification_status": "observed", "evidence": {"source_url": claim.get("source_url"), "evidence_type": claim.get("evidence_type")}, **claim} for index, claim in enumerate(candidate_claims, 1)]
+    risky_claims = [{"claim_id": f"risky_{index:03d}", "scan_timestamp": generated_at, "verification_status": "observed_requires_review", "evidence": {"source_url": claim.get("source_url"), "evidence_type": claim.get("evidence_type")}, **claim} for index, claim in enumerate(risky_claims, 1)]
+    target_customer = [{"scan_timestamp": generated_at, "verification_status": "observed" if row.get("classification") == "observed" else "inferred_requires_review", "evidence": {"source_url": row.get("source_url"), "evidence_type": row.get("evidence_type")}, **row} for row in target_customer]
+    prices = [{"scan_timestamp": generated_at, "verification_status": "observed", "evidence": {"source_url": row.get("source_url"), "evidence_type": row.get("evidence_type")}, **row} for row in prices]
+    assessments = _assessments(page_rows, offers, candidate_claims, target_customer, cta_url, catalog_quality_status)
+    campaign_briefs = _campaign_briefs(promo_angles, business_name, destination)
+    show_briefs = _show_production_briefs(business_name, differentiators, listener_urls)
     return {
         "schema": DANDY_PACK_SCHEMA,
         "status": "blocked_quality" if quality_blocked else ("complete" if page_rows else "empty"),
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": generated_at,
         "source": {"crawl_job_id": str(crawl_job_id) if crawl_job_id is not None else None, "domain": domain, "page_count": len(page_rows)},
         "business": {"name": business_name, "name_source_url": business_source, "what_they_sell": what_they_sell},
         "offers": offers,
@@ -230,6 +347,15 @@ def build_dandy_promo_pack(
         "differentiators": differentiators,
         "target_customer": target_customer,
         "promo_angles": promo_angles,
+        "assessments": assessments,
+        "campaign_briefs": campaign_briefs,
+        "show_production_briefs": show_briefs,
+        "lifecycle": {
+            "current_state": "production_ready" if assessments["campaign_readiness"]["label"] == "production_ready" else "discovered",
+            "states": ["discovered", "production_ready", "owner_review", "approved_for_publication"],
+            "publication_approval_required": True,
+            "rule": "Production-ready material is not publication-approved. Rights, claims, offers, brand representation, and platform validation remain separate approval gates.",
+        },
         "cta": {"label": cta_label, "url": cta_url, "approval": "source_grounded" if cta_url else "missing"},
         "candidate_claims": candidate_claims,
         "risky_claims": risky_claims,
@@ -256,6 +382,8 @@ def build_approved_dandy_payload(pack: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("Dandy pack has not received explicit owner approval")
     if pack.get("status") == "blocked_quality":
         raise ValueError("Dandy pack is blocked by commercial catalog data quality")
+    if (pack.get("lifecycle") or {}).get("current_state") != "approved_for_publication":
+        raise ValueError("Dandy pack has not received publication approval")
 
     claim_ids = set(str(value) for value in approval.get("approved_claim_ids") or [])
     offer_ids = set(str(value) for value in approval.get("approved_offer_ids") or [])
@@ -284,5 +412,11 @@ def build_approved_dandy_payload(pack: Mapping[str, Any]) -> dict[str, Any]:
             "approved_claim_ids": sorted(claim_ids),
             "approved_offer_ids": sorted(offer_ids),
             "approved_ad_read_ids": sorted(ad_read_ids),
+        },
+        "assessments": pack.get("assessments") or {},
+        "lifecycle": {
+            **(pack.get("lifecycle") or {}),
+            "current_state": "approved_for_publication",
+            "publication_status": "approved_for_publication",
         },
     }

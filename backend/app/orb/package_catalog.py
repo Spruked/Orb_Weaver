@@ -104,9 +104,9 @@ DEFAULT_PACKAGE_CATALOG: list[dict[str, Any]] = [
         "category": "specialized",
         "description": "Advertising readiness, campaign landing pages, messaging consistency, conversion tracking, creative opportunities, and available connected advertising data.",
         "features": [
-            "Candidate claims, offers, proof points, and audience signals",
-            "Campaign landing-page and messaging consistency review",
-            "Conversion tracking and creative opportunities",
+            "Site Prominence, Commercial Opportunity, and Campaign Readiness",
+            "Traceable claims, offers, proof points, and audience signals",
+            "Campaign briefs and Dandy Show production briefs",
             "Draft ad reads, listener URLs, risk flags, and owner approval",
         ],
         "price_cents": None,

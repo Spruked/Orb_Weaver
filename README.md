@@ -24,12 +24,25 @@ prices, proof points, target-customer signals, promotional angles, listener
 URLs, and draft 15/30/60-second ad reads. A Dandy pack failure does not fail
 the core crawl.
 
+Dandy separates three deterministic assessments: **Site Prominence** measures
+how strongly the site promotes an observed offer; **Commercial Opportunity**
+measures evidence of differentiation, audience fit, and conversion pathways;
+and **Campaign Readiness** measures whether an evidence-backed brief can be
+assembled. None of these scores claims profitability, sales volume, or
+bestseller status. The pack also includes traceable source URL, scan timestamp,
+evidence type, and verification status for material findings.
+
+The pack contains both campaign briefs and Dandy Show production briefs. Show
+briefs may suggest story arcs and interview questions, but public staff
+information never authorizes use of a person's identity or likeness. That
+requires owner and rights approval.
+
 Generated material is never production-authorized by the scan. The client owner
 must explicitly approve selected claim, offer, and ad-read IDs through
-`POST /api/projects/{project_id}/dandy-pack/approval`. Dandy production
-consumption is restricted to
+`POST /api/projects/{project_id}/dandy-pack/approval`. Owner-selected material
+first enters Owner Review. Dandy production consumption is restricted to
 `GET /api/projects/{project_id}/dandy-pack/approved`, which fails closed until
-approval and excludes risky or unapproved content. The global inventory is
+publication approval and excludes risky or unapproved content. The global inventory is
 admin-only and contains matching metadata, not client filesystem paths or
 private pack contents. The pack is a marketing artifact, not a runtime
 dependency of the customer-facing Website ORB.
@@ -41,6 +54,14 @@ Commercial catalog output includes a data-quality gate, and Dandy production
 eligibility is blocked when the catalog is contaminated, insufficient, or only
 partial. Capability coverage reports separate SEO, Marketing, and ORB-readiness
 dimensions.
+
+Dandy lifecycle states are `discovered`, `production_ready`, `owner_review`,
+and `approved_for_publication`. Production-ready means a brief can be built;
+it does not mean the campaign may be published. Rights, offer terms, claims,
+brand representation, creative assets, and platform validation remain separate
+approval gates. Optional connected analytics can enrich the package later, but
+Tagless Advertising Intelligence is a complete product without Google
+Analytics.
 
 ### Customer scan and Website ORB packages
 

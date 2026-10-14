@@ -28,6 +28,25 @@
 - Remaining gates are real prices, entitlement/fulfillment mapping, clean-host
   installation, and live browser/STT/TTS/pointer acceptance.
 
+## 2026-10-14 — Dandy advertising intelligence evidence and lifecycle refinement
+
+- Kept Dandy inside the canonical scan and governance pipeline; no second
+  scanner or separate truth system was introduced.
+- Added deterministic Site Prominence, Commercial Opportunity, and Campaign
+  Readiness assessments. Price or homepage prominence is not treated as proof
+  of profitability, sales volume, or bestseller status.
+- Added scan timestamp, source URL, evidence type, and verification status to
+  important Dandy findings, plus explainable scoring rationale and evidence
+  references.
+- Added evidence-backed campaign briefs and Dandy Show production briefs.
+  Potential characters remain empty until the owner supplies participants and
+  rights; public staff information never authorizes likeness use.
+- Added lifecycle metadata distinguishing `discovered`, `production_ready`,
+  `owner_review`, and `approved_for_publication`. Production-ready material
+  remains separate from publication approval.
+- Preserved Tagless Advertising Intelligence as a standalone product. Connected
+  analytics may enrich it later but are not required for the package to work.
+
 ## 2026-10-14 — Authenticated developer replay for the complete introduction and tour
 
 - Corrected `/?orbStartupReset=1` so it reaches the landing experience before

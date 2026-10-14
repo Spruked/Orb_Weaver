@@ -615,6 +615,10 @@ class DandyPackApprovalRequest(BaseModel):
     approved_offer_ids: List[str] = Field(default_factory=list, max_length=50)
     approved_ad_read_ids: List[str] = Field(default_factory=list, max_length=10)
     note: str = Field(default="", max_length=2000)
+    publication_approved: bool = False
+    rights_confirmed: bool = False
+    offer_terms_confirmed: bool = False
+    brand_reviewed: bool = False
 
 
 class WebsiteOrbTtsResponse(BaseModel):
@@ -13037,6 +13041,8 @@ async def approve_project_dandy_pack(
         raise HTTPException(status_code=400, detail="Select at least one claim, offer, or ad read for approval")
     if claim_ids - available_claims or offer_ids - available_offers or ad_read_ids - available_reads:
         raise HTTPException(status_code=400, detail="Approval contains an item that is not in the current pack")
+    if request.publication_approved and not all((request.rights_confirmed, request.offer_terms_confirmed, request.brand_reviewed)):
+        raise HTTPException(status_code=400, detail="Publication approval requires rights, offer terms, and brand review confirmation")
 
     approved_at = datetime.now(timezone.utc).isoformat()
     pack["owner_approval"] = {
@@ -13048,7 +13054,20 @@ async def approve_project_dandy_pack(
         "approved_offer_ids": sorted(offer_ids),
         "approved_ad_read_ids": sorted(ad_read_ids),
         "note": request.note,
-        "rule": "Only explicitly selected owner-approved material may be exported to Dandy production inventory.",
+        "rule": "Only explicitly selected owner-approved material may proceed to Dandy production review. Publication requires separate rights, offer-term, and brand review confirmation.",
+    }
+    pack["lifecycle"] = {
+        **(pack.get("lifecycle") or {}),
+        "current_state": "approved_for_publication" if request.publication_approved else "owner_review",
+        "publication_status": "approved_for_publication" if request.publication_approved else "owner_review",
+        "publication_approval": {
+            "approved": request.publication_approved,
+            "rights_confirmed": request.rights_confirmed,
+            "offer_terms_confirmed": request.offer_terms_confirmed,
+            "brand_reviewed": request.brand_reviewed,
+            "approved_at": approved_at if request.publication_approved else None,
+            "approved_by": {"customer_id": str(customer.id), "email": customer.email} if request.publication_approved else None,
+        },
     }
     _write_json(pack_path, pack)
     _append_jsonl(
